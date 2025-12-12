@@ -6,7 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "cd ../.. && pnpm --filter @kol360/shared build && cd apps/api && prisma generate && tsc",
     "start": "node dist/index.js",
-    "start:migrate": "prisma migrate deploy && node dist/index.js",
+    "start:migrate": "node dist/index.js",
     "lint": "eslint src/",
     "type-check": "tsc --noEmit"
   },
