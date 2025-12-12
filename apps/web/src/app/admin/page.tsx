@@ -1,12 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Building2, Users, BarChart3, Stethoscope } from 'lucide-react';
 
 function AdminDashboardContent() {
   const { user, signOut } = useAuth();
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
@@ -32,7 +35,7 @@ function AdminDashboardContent() {
                 </div>
                 <div>
                   <dt className="font-medium text-gray-500">Role</dt>
-                  <dd>{user?.role}</dd>
+                  <dd className="capitalize">{user?.role?.replace(/_/g, ' ').toLowerCase()}</dd>
                 </div>
                 {user?.tenantId && (
                   <div>
@@ -50,14 +53,29 @@ function AdminDashboardContent() {
               <CardDescription>Manage your platform</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
+              {isPlatformAdmin && (
+                <Link href="/admin/clients">
+                  <Button variant="outline" className="w-full justify-start">
+                    <Building2 className="w-4 h-4 mr-2" />
+                    Manage Clients
+                  </Button>
+                </Link>
+              )}
+              <Link href="/admin/users">
+                <Button variant="outline" className="w-full justify-start">
+                  <Users className="w-4 h-4 mr-2" />
+                  Manage Users
+                </Button>
+              </Link>
+              <Link href="/admin/hcps">
+                <Button variant="outline" className="w-full justify-start">
+                  <Stethoscope className="w-4 h-4 mr-2" />
+                  HCP Database
+                </Button>
+              </Link>
               <Button variant="outline" className="w-full justify-start" disabled>
-                Manage Clients
-              </Button>
-              <Button variant="outline" className="w-full justify-start" disabled>
-                Manage Users
-              </Button>
-              <Button variant="outline" className="w-full justify-start" disabled>
-                View Campaigns
+                <BarChart3 className="w-4 h-4 mr-2" />
+                View Campaigns (Coming Soon)
               </Button>
             </CardContent>
           </Card>

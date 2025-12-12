@@ -7,6 +7,7 @@ import { authPlugin } from './plugins/auth';
 import { healthRoutes } from './routes/health';
 import { clientRoutes } from './routes/clients';
 import { userRoutes } from './routes/users';
+import { hcpRoutes } from './routes/hcps';
 
 const fastify = Fastify({
   logger: {
@@ -41,6 +42,7 @@ async function main() {
   // API v1 routes
   await fastify.register(clientRoutes, { prefix: '/api/v1/clients' });
   await fastify.register(userRoutes, { prefix: '/api/v1/users' });
+  await fastify.register(hcpRoutes, { prefix: '/api/v1/hcps' });
 
   // Start server
   const port = parseInt(process.env.PORT || '3001', 10);

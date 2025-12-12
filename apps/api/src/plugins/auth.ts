@@ -55,10 +55,27 @@ export const authPlugin = fp(async (fastify) => {
       const token = authHeader.split(' ')[1];
       const payload = await verifier.verify(token);
 
+      // Get role from custom attribute or from Cognito groups
+      let role = payload['custom:role'] as string;
+
+      if (!role) {
+        // Check Cognito groups in the token
+        const groups = payload['cognito:groups'] as string[] | undefined;
+        if (groups?.includes('PLATFORM_ADMIN') || groups?.includes('platform-admins')) {
+          role = 'PLATFORM_ADMIN';
+        } else if (groups?.includes('CLIENT_ADMIN') || groups?.includes('client-admins')) {
+          role = 'CLIENT_ADMIN';
+        } else if (groups?.includes('TEAM_MEMBER') || groups?.includes('team-members')) {
+          role = 'TEAM_MEMBER';
+        } else {
+          role = 'TEAM_MEMBER';
+        }
+      }
+
       request.user = {
         sub: payload.sub,
         email: payload.email as string,
-        role: (payload['custom:role'] as string) || 'TEAM_MEMBER',
+        role,
         tenantId: payload['custom:tenant_id'] as string | undefined,
       };
     } catch (err) {

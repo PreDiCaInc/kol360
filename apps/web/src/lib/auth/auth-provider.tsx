@@ -60,10 +60,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const accessToken = session.tokens?.accessToken;
 
+      // Get role from custom attribute or from Cognito groups
+      let role = accessToken?.payload['custom:role'] as string;
+
+      if (!role) {
+        // Check Cognito groups in the token
+        const groups = accessToken?.payload['cognito:groups'] as string[] | undefined;
+        if (groups?.includes('PLATFORM_ADMIN') || groups?.includes('platform-admins')) {
+          role = 'PLATFORM_ADMIN';
+        } else if (groups?.includes('CLIENT_ADMIN') || groups?.includes('client-admins')) {
+          role = 'CLIENT_ADMIN';
+        } else if (groups?.includes('TEAM_MEMBER') || groups?.includes('team-members')) {
+          role = 'TEAM_MEMBER';
+        } else {
+          role = 'TEAM_MEMBER';
+        }
+      }
+
       setUser({
         sub: currentUser.userId,
         email: attributes.email || '',
-        role: accessToken?.payload['custom:role'] as string || 'TEAM_MEMBER',
+        role,
         tenantId: accessToken?.payload['custom:tenant_id'] as string,
         firstName: attributes.given_name,
         lastName: attributes.family_name,
