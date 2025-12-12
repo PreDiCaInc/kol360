@@ -27,12 +27,12 @@
     "fastify": "^4.27.0",
     "fastify-plugin": "^4.5.0",
     "pino-pretty": "^11.0.0",
+    "prisma": "^5.14.0",
     "xlsx": "^0.18.5",
     "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "prisma": "^5.14.0",
     "tsx": "^4.10.0",
     "typescript": "^5.4.0"
   }
