@@ -12,9 +12,9 @@ applications:
           commands:
             - cd ../.. && pnpm --filter @kol360/web build
             - '[ -d public ] && cp -r public .next/standalone/apps/web/ || true'
-            - '[ -d .next/static ] && cp -r .next/static .next/standalone/apps/web/.next/ || true'
+            - cp -r .next/static .next/standalone/apps/web/.next/
       artifacts:
-        baseDirectory: .next/standalone
+        baseDirectory: .next/standalone/apps/web
         files:
           - '**/*'
       cache:
