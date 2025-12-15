@@ -1,6 +1,11 @@
 import { FastifyPluginAsync } from 'fastify';
 
 export const healthRoutes: FastifyPluginAsync = async (fastify) => {
+  // Root health check (simple, no DB)
+  fastify.get('/', async () => {
+    return { status: 'ok', timestamp: new Date().toISOString() };
+  });
+
   // Liveness check
   fastify.get('/live', async () => {
     return { status: 'ok', timestamp: new Date().toISOString() };

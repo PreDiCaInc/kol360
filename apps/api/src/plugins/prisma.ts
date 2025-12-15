@@ -14,7 +14,18 @@ export const prismaPlugin = fp(async (fastify) => {
       : ['error'],
   });
 
-  await prisma.$connect();
+  // Use lazy connection - don't fail startup if DB is unavailable
+  // Connection will be established on first query
+  if (process.env.DATABASE_URL) {
+    try {
+      await prisma.$connect();
+      fastify.log.info('Database connected');
+    } catch (error) {
+      fastify.log.error('Database connection failed, will retry on first query');
+    }
+  } else {
+    fastify.log.warn('DATABASE_URL not set - database features will be unavailable');
+  }
 
   fastify.decorate('prisma', prisma);
 
