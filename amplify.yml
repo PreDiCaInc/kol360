@@ -11,8 +11,8 @@ applications:
         build:
           commands:
             - cd ../.. && pnpm --filter @kol360/web build
-            - cp -r public .next/standalone/apps/web/
-            - cp -r .next/static .next/standalone/apps/web/.next/
+            - '[ -d public ] && cp -r public .next/standalone/apps/web/ || true'
+            - '[ -d .next/static ] && cp -r .next/static .next/standalone/apps/web/.next/ || true'
       artifacts:
         baseDirectory: .next/standalone
         files:
