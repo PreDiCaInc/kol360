@@ -7,12 +7,11 @@ let handler: (event: APIGatewayProxyEvent, context: Context) => Promise<APIGatew
 async function bootstrap() {
   const app = buildApp();
   await configureApp(app);
-  await app.ready();
+  // Remove app.ready() - the lambda adapter handles this
   return awsLambdaFastify(app);
 }
 
 export const main = async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
-  // Reuse handler across warm invocations
   if (!handler) {
     handler = await bootstrap();
   }
