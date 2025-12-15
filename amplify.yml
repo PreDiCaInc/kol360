@@ -1,21 +1,23 @@
 version: 1
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - npm install -g pnpm
-        - pnpm install --frozen-lockfile
-        - pnpm --filter @kol360/shared build
-    build:
-      commands:
-        - pnpm --filter @kol360/web build
-        - cp -r apps/web/public apps/web/.next/standalone/apps/web/
-        - cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/
-  artifacts:
-    baseDirectory: apps/web/.next/standalone
-    files:
-      - '**/*'
-  cache:
-    paths:
-      - node_modules/**/*
-      - apps/web/.next/cache/**/*
+applications:
+  - appRoot: apps/web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm install -g pnpm
+            - cd ../.. && pnpm install --frozen-lockfile
+            - cd ../.. && pnpm --filter @kol360/shared build
+        build:
+          commands:
+            - cd ../.. && pnpm --filter @kol360/web build
+            - cp -r public .next/standalone/apps/web/
+            - cp -r .next/static .next/standalone/apps/web/.next/
+      artifacts:
+        baseDirectory: .next/standalone
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+          - .next/cache/**/*
