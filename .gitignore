@@ -35,3 +35,7 @@ apps/api/prisma/*.db
 apps/api/prisma/*.db-journal
 kol360-bastion-key.pem
 *.pem
+
+# Lambda build artifacts
+apps/api/lambda-bundle
+apps/api/lambda.zip
