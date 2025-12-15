@@ -10,8 +10,10 @@ applications:
           commands:
             - cd ../.. && pnpm --filter @kol360/shared build
             - cd ../.. && pnpm --filter @kol360/web build
+            - cp -r .next/static .next/standalone/apps/web/.next/
+            - cp -r public .next/standalone/apps/web/ 2>/dev/null || true
       artifacts:
-        baseDirectory: .next
+        baseDirectory: .next/standalone
         files:
           - '**/*'
       cache:
