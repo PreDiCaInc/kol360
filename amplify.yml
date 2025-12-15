@@ -8,12 +8,9 @@ frontend:
         - pnpm --filter @kol360/shared build
     build:
       commands:
-        - pnpm --filter @kol360/web build
-        - cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/
-        - cp -r apps/web/public apps/web/.next/standalone/apps/web/ 2>/dev/null || true
-        - cp -r apps/web/.next/standalone/node_modules/.pnpm apps/web/.next/standalone/apps/web/node_modules/
+        - cd apps/web && pnpm build
   artifacts:
-    baseDirectory: apps/web/.next/standalone/apps/web
+    baseDirectory: apps/web/.next
     files:
       - '**/*'
   cache:
