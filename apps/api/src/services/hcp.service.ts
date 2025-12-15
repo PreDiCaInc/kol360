@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { CreateHcpInput, UpdateHcpInput } from '@kol360/shared';
 
 interface SearchParams {
@@ -87,9 +87,33 @@ export class HcpService {
   }
 
   async importFromExcel(buffer: Buffer, userId: string) {
-    const workbook = XLSX.read(buffer);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet);
+    const workbook = new ExcelJS.Workbook();
+    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    await workbook.xlsx.load(arrayBuffer);
+    const sheet = workbook.worksheets[0];
+
+    // Convert worksheet to array of objects with headers
+    const rows: Record<string, unknown>[] = [];
+    const headers: string[] = [];
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) {
+        // First row is headers
+        row.eachCell((cell) => {
+          headers.push(String(cell.value || ''));
+        });
+      } else {
+        // Data rows
+        const rowData: Record<string, unknown> = {};
+        row.eachCell((cell, colNumber) => {
+          const header = headers[colNumber - 1];
+          if (header) {
+            rowData[header] = cell.value;
+          }
+        });
+        rows.push(rowData);
+      }
+    });
 
     const result = { total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
 
@@ -163,9 +187,31 @@ export class HcpService {
   }
 
   async importAliases(buffer: Buffer, userId: string) {
-    const workbook = XLSX.read(buffer);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet);
+    const workbook = new ExcelJS.Workbook();
+    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    await workbook.xlsx.load(arrayBuffer);
+    const sheet = workbook.worksheets[0];
+
+    // Convert worksheet to array of objects with headers
+    const rows: Record<string, unknown>[] = [];
+    const headers: string[] = [];
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) {
+        row.eachCell((cell) => {
+          headers.push(String(cell.value || ''));
+        });
+      } else {
+        const rowData: Record<string, unknown> = {};
+        row.eachCell((cell, colNumber) => {
+          const header = headers[colNumber - 1];
+          if (header) {
+            rowData[header] = cell.value;
+          }
+        });
+        rows.push(rowData);
+      }
+    });
 
     const result = { total: rows.length, created: 0, skipped: 0, errors: [] as { row: number; error: string }[] };
 
@@ -230,7 +276,7 @@ export class HcpService {
       distinct: ['specialty'],
       orderBy: { specialty: 'asc' },
     });
-    return results.map(r => r.specialty).filter(Boolean);
+    return results.map((r: { specialty: string | null }) => r.specialty).filter(Boolean);
   }
 
   // Get unique states for filter dropdown
@@ -241,6 +287,6 @@ export class HcpService {
       distinct: ['state'],
       orderBy: { state: 'asc' },
     });
-    return results.map(r => r.state).filter(Boolean);
+    return results.map((r: { state: string | null }) => r.state).filter(Boolean);
   }
 }
