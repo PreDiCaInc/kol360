@@ -7,6 +7,8 @@ import {
   signOut as amplifySignOut,
   signUp as amplifySignUp,
   confirmSignUp as amplifyConfirmSignUp,
+  resetPassword as amplifyResetPassword,
+  confirmResetPassword as amplifyConfirmResetPassword,
   getCurrentUser,
   fetchAuthSession,
   fetchUserAttributes,
@@ -40,6 +42,8 @@ interface AuthContextType {
   confirmSignUp: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -149,6 +153,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function forgotPassword(email: string) {
+    try {
+      await amplifyResetPassword({ username: email });
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      throw error;
+    }
+  }
+
+  async function resetPassword(email: string, code: string, newPassword: string) {
+    try {
+      await amplifyConfirmResetPassword({
+        username: email,
+        confirmationCode: code,
+        newPassword,
+      });
+    } catch (error) {
+      console.error('Reset password error:', error);
+      throw error;
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -160,6 +186,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         confirmSignUp,
         signOut,
         getAccessToken,
+        forgotPassword,
+        resetPassword,
       }}
     >
       {children}
