@@ -23,6 +23,6 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Handle connection errors gracefully
-prisma.$connect().catch((e) => {
+prisma.$connect().catch((e: unknown) => {
   console.error('Failed to connect to database:', e);
 });
