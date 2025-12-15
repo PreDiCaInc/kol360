@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: KOL360 API Lambda
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: nodejs20.x
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    Description: PostgreSQL connection string
+    NoEcho: true
+  CorsOrigin:
+    Type: String
+    Description: CORS origin URL
+    Default: '*'
+  CognitoUserPoolId:
+    Type: String
+    Description: Cognito User Pool ID
+  CognitoClientId:
+    Type: String
+    Description: Cognito Client ID
+  CognitoRegion:
+    Type: String
+    Description: Cognito Region
+    Default: us-east-1
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Description: VPC Subnet IDs (comma-separated)
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: VPC Security Group IDs (comma-separated)
+
+Resources:
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: kol360-api
+      Handler: dist/lambda.main
+      CodeUri: .
+      Description: KOL360 API
+      Environment:
+        Variables:
+          NODE_ENV: production
+          DATABASE_URL: !Ref DatabaseUrl
+          DB_DIRECT_URL: !Ref DatabaseUrl
+          CORS_ORIGIN: !Ref CorsOrigin
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_CLIENT_ID: !Ref CognitoClientId
+          COGNITO_REGION: !Ref CognitoRegion
+      VpcConfig:
+        SecurityGroupIds: !Ref VpcSecurityGroupIds
+        SubnetIds: !Ref VpcSubnetIds
+      Policies:
+        - VPCAccessPolicy: {}
+      Events:
+        ApiGateway:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+        ApiGatewayRoot:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  FunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt ApiFunction.Arn
