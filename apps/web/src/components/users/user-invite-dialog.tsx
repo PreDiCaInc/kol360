@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createUserSchema, CreateUserInput } from '@kol360/shared';
@@ -41,6 +41,7 @@ export function UserInviteDialog({ open, onOpenChange }: Props) {
   const inviteUser = useInviteUser();
   const { data: clientsData } = useClients();
   const clients = clientsData?.items || [];
+  const [error, setError] = useState<string | null>(null);
 
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
@@ -57,6 +58,7 @@ export function UserInviteDialog({ open, onOpenChange }: Props) {
 
   useEffect(() => {
     if (open) {
+      setError(null);
       form.reset({
         email: '',
         firstName: '',
@@ -68,12 +70,15 @@ export function UserInviteDialog({ open, onOpenChange }: Props) {
   }, [open, form]);
 
   async function onSubmit(data: CreateUserInput) {
+    setError(null);
     try {
       await inviteUser.mutateAsync(data);
       onOpenChange(false);
       form.reset();
-    } catch (error) {
-      console.error('Failed to invite user:', error);
+    } catch (err) {
+      console.error('Failed to invite user:', err);
+      const message = err instanceof Error ? err.message : 'Failed to invite user';
+      setError(message);
     }
   }
 
@@ -91,6 +96,11 @@ export function UserInviteDialog({ open, onOpenChange }: Props) {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {error && (
+              <div className="p-3 text-sm text-red-600 bg-red-50 rounded-md">
+                {error}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
