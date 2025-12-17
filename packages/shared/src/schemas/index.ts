@@ -14,3 +14,4 @@ export const idParamSchema = z.object({
 export * from './client';
 export * from './user';
 export * from './hcp';
+export * from './question';
