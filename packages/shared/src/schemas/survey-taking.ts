@@ -48,6 +48,7 @@ export const surveyResponseStatusSchema = z.enum([
   'OPENED',
   'IN_PROGRESS',
   'COMPLETED',
+  'EXCLUDED',
 ]);
 
 // Note: SurveyResponseStatus type is exported from types/index.ts
