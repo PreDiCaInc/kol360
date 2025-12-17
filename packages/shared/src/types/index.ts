@@ -7,6 +7,8 @@ export type NominationMatchStatus = 'UNMATCHED' | 'MATCHED' | 'NEW_HCP' | 'EXCLU
 export type PaymentStatus = 'PENDING_EXPORT' | 'EXPORTED' | 'EMAIL_SENT' | 'EMAIL_DELIVERED' | 'EMAIL_OPENED' | 'CLAIMED' | 'BOUNCED' | 'REJECTED' | 'EXPIRED';
 export type OptOutScope = 'CAMPAIGN' | 'GLOBAL';
 export type QuestionType = 'TEXT' | 'NUMBER' | 'RATING' | 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'DROPDOWN' | 'MULTI_TEXT';
+export type DashboardComponentType = 'STANDARD' | 'CUSTOM';
+export type DashboardChartType = 'bar' | 'pie' | 'line' | 'table';
 
 export interface PaginationParams {
   page?: number;

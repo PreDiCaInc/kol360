@@ -694,16 +694,44 @@ model AuditLog {
 // DASHBOARD CONFIG (Phase 2)
 // ============================================
 
+enum DashboardComponentType {
+  STANDARD
+  CUSTOM
+}
+
 model DashboardConfig {
-  id         String  @id @default(cuid())
-  clientId   String?
-  campaignId String?
-  name       String
-  config     Json // Stores visualization config
+  id          String  @id @default(cuid())
+  clientId    String
+  campaignId  String
+  name        String
+  isPublished Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  // Relations
+  components DashboardComponent[]
+
+  @@unique([campaignId])
+  @@index([clientId])
+  @@index([campaignId])
+}
+
+model DashboardComponent {
+  id           String                 @id @default(cuid())
+  dashboardId  String
+  dashboard    DashboardConfig        @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  componentType DashboardComponentType
+  componentKey String // e.g., "response_rate", "top_kols_table", or custom key
+  configJson   Json? // For custom components: chart_type, question_id, group_by, metric
+  sectionTitle String
+  displayOrder Int                    @default(0)
+  isVisible    Boolean                @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([clientId])
-  @@index([campaignId])
+  @@index([dashboardId])
+  @@index([componentKey])
 }
