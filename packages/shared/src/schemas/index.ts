@@ -18,3 +18,4 @@ export * from './question';
 export * from './section';
 export * from './survey-template';
 export * from './score-config';
+export * from './campaign';
