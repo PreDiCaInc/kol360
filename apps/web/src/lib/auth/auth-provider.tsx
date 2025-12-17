@@ -9,6 +9,7 @@ import {
   confirmSignUp as amplifyConfirmSignUp,
   resetPassword as amplifyResetPassword,
   confirmResetPassword as amplifyConfirmResetPassword,
+  confirmSignIn as amplifyConfirmSignIn,
   getCurrentUser,
   fetchAuthSession,
   fetchUserAttributes,
@@ -33,11 +34,17 @@ export interface AuthUser {
   lastName?: string;
 }
 
+interface SignInResult {
+  isSignedIn: boolean;
+  nextStep: 'DONE' | 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED' | string;
+}
+
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<SignInResult>;
+  completeNewPassword: (newPassword: string, email: string) => Promise<void>;
   signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
   confirmSignUp: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -96,12 +103,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function signIn(email: string, password: string) {
+  async function signIn(email: string, password: string): Promise<SignInResult> {
     try {
-      await amplifySignIn({ username: email, password });
-      await checkAuth();
+      // Clear any existing session before signing in to avoid conflicts
+      try {
+        await amplifySignOut();
+      } catch {
+        // Ignore errors if no session exists
+      }
+
+      const result = await amplifySignIn({ username: email, password });
+
+      // Amplify v6 always returns { isSignedIn: boolean, nextStep: { signInStep: string, ... } }
+      const signInStep = result.nextStep?.signInStep;
+
+      // Check if user needs to set a new password (first login with temp password)
+      if (signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
+        return {
+          isSignedIn: false,
+          nextStep: 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED',
+        };
+      }
+
+      // If sign-in is complete
+      if (result.isSignedIn || signInStep === 'DONE') {
+        await checkAuth();
+        return {
+          isSignedIn: true,
+          nextStep: 'DONE',
+        };
+      }
+
+      // Handle other challenge types - return the step so UI can handle if needed
+      return {
+        isSignedIn: result.isSignedIn,
+        nextStep: signInStep || 'DONE',
+      };
     } catch (error) {
       console.error('Sign in error:', error);
+      throw error;
+    }
+  }
+
+  async function completeNewPassword(newPassword: string, email: string) {
+    try {
+      // Fetch user's name from the API using email
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      let userName = email.split('@')[0]; // Default fallback to email prefix
+
+      try {
+        const response = await fetch(`${apiUrl}/users/by-email/${encodeURIComponent(email)}`);
+        if (response.ok) {
+          const userData = await response.json();
+          if (userData.firstName && userData.lastName) {
+            userName = `${userData.firstName} ${userData.lastName}`;
+          } else if (userData.firstName) {
+            userName = userData.firstName;
+          }
+        }
+      } catch {
+        // If API call fails, use email prefix as fallback
+        console.log('Could not fetch user name, using email prefix');
+      }
+
+      await amplifyConfirmSignIn({
+        challengeResponse: newPassword,
+        options: { userAttributes: { name: userName } },
+      });
+      await checkAuth();
+    } catch (error) {
+      console.error('Complete new password error:', error);
       throw error;
     }
   }
@@ -182,6 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         signIn,
+        completeNewPassword,
         signUp,
         confirmSignUp,
         signOut,
