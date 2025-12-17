@@ -8,10 +8,18 @@ import {
   AdminRemoveUserFromGroupCommand,
   AdminGetUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { fromSSO } from '@aws-sdk/credential-providers';
 
-const client = new CognitoIdentityProviderClient({
-  region: process.env.COGNITO_REGION || 'us-east-1',
-});
+// Create client lazily to pick up fresh credentials on each request
+// This ensures SSO token refresh is respected
+function getClient(): CognitoIdentityProviderClient {
+  return new CognitoIdentityProviderClient({
+    region: process.env.COGNITO_REGION || 'us-east-1',
+    credentials: process.env.AWS_PROFILE
+      ? fromSSO({ profile: process.env.AWS_PROFILE })
+      : undefined, // Use default credential chain (env vars, etc.)
+  });
+}
 
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID!;
 
@@ -31,7 +39,7 @@ export class CognitoService {
       MessageAction: tempPassword ? 'SUPPRESS' : undefined,
     });
 
-    const result = await client.send(command);
+    const result = await getClient().send(command);
     return result.User;
   }
 
@@ -43,7 +51,7 @@ export class CognitoService {
       UserPoolId: USER_POOL_ID,
       Username: username,
     });
-    await client.send(command);
+    await getClient().send(command);
   }
 
   /**
@@ -54,20 +62,19 @@ export class CognitoService {
       UserPoolId: USER_POOL_ID,
       Username: username,
     });
-    await client.send(command);
+    await getClient().send(command);
   }
 
   /**
    * Update user's custom attributes
+   * Note: Role is managed via Cognito groups, not custom attributes
    */
-  async updateUserAttributes(username: string, attributes: { role?: string; tenantId?: string }) {
+  async updateUserAttributes(username: string, attributes: { tenantId?: string }) {
     const userAttributes = [];
 
-    if (attributes.role) {
-      userAttributes.push({ Name: 'custom:role', Value: attributes.role });
-    }
     if (attributes.tenantId) {
-      userAttributes.push({ Name: 'custom:tenant_id', Value: attributes.tenantId });
+      // Use hyphen as per the Cognito schema: custom:tenant-id
+      userAttributes.push({ Name: 'custom:tenant-id', Value: attributes.tenantId });
     }
 
     if (userAttributes.length === 0) return;
@@ -77,7 +84,7 @@ export class CognitoService {
       Username: username,
       UserAttributes: userAttributes,
     });
-    await client.send(command);
+    await getClient().send(command);
   }
 
   /**
@@ -89,7 +96,7 @@ export class CognitoService {
       Username: username,
       GroupName: groupName,
     });
-    await client.send(command);
+    await getClient().send(command);
   }
 
   /**
@@ -101,7 +108,7 @@ export class CognitoService {
       Username: username,
       GroupName: groupName,
     });
-    await client.send(command);
+    await getClient().send(command);
   }
 
   /**
@@ -112,7 +119,7 @@ export class CognitoService {
       UserPoolId: USER_POOL_ID,
       Username: username,
     });
-    return client.send(command);
+    return getClient().send(command);
   }
 
   /**
