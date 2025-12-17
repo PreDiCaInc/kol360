@@ -20,3 +20,4 @@ export * from './survey-template';
 export * from './score-config';
 export * from './campaign';
 export * from './distribution';
+export * from './survey-taking';
