@@ -12,6 +12,8 @@ import { questionRoutes } from './routes/questions';
 import { sectionRoutes } from './routes/sections';
 import { surveyTemplateRoutes } from './routes/survey-templates';
 import { scoreConfigRoutes } from './routes/score-config';
+import { campaignRoutes } from './routes/campaigns';
+import { diseaseAreaRoutes } from './routes/disease-areas';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -55,6 +57,8 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(sectionRoutes, { prefix: '/api/v1/sections' });
   await fastify.register(surveyTemplateRoutes, { prefix: '/api/v1/survey-templates' });
   await fastify.register(scoreConfigRoutes, { prefix: '/api/v1' });
+  await fastify.register(campaignRoutes, { prefix: '/api/v1/campaigns' });
+  await fastify.register(diseaseAreaRoutes, { prefix: '/api/v1/disease-areas' });
 
   return fastify;
 }
