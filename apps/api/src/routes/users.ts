@@ -32,6 +32,25 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
+  // Get basic user info by email (public - for password reset flow)
+  // Only returns firstName/lastName, no sensitive data
+  fastify.get<{ Params: { email: string } }>('/by-email/:email', async (request, reply) => {
+    const user = await fastify.prisma.user.findFirst({
+      where: { email: request.params.email },
+      select: { firstName: true, lastName: true },
+    });
+
+    if (!user) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'User not found',
+        statusCode: 404
+      });
+    }
+
+    return user;
+  });
+
   // Get user by ID
   fastify.get<{ Params: { id: string } }>('/:id', {
     preHandler: requireClientAdmin(),
@@ -88,16 +107,23 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
 
     const user = await userService.invite(data);
 
-    // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'user.invited',
-        entityType: 'User',
-        entityId: user.id,
-        newValues: { email: data.email, role: data.role },
-      },
+    // Audit log - look up current user's database ID by cognitoSub
+    const currentUser = await fastify.prisma.user.findFirst({
+      where: { cognitoSub: request.user!.sub },
+      select: { id: true },
     });
+
+    if (currentUser) {
+      await fastify.prisma.auditLog.create({
+        data: {
+          userId: currentUser.id,
+          action: 'user.invited',
+          entityType: 'User',
+          entityId: user.id,
+          newValues: { email: data.email, role: data.role },
+        },
+      });
+    }
 
     return reply.status(201).send(user);
   });

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.948.0",
+    "@aws-sdk/credential-providers": "^3.953.0",
     "@fastify/aws-lambda": "^6.1.1",
     "@fastify/cors": "^9.0.0",
     "@fastify/helmet": "^11.0.0",
