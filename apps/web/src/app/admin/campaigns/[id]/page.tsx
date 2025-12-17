@@ -14,6 +14,7 @@ import {
 import { useScoreConfig, useUpdateScoreConfig, useResetScoreConfig } from '@/hooks/use-score-config';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { ScoreConfigForm } from '@/components/campaigns/score-config-form';
+import { CampaignHcpsTab } from '@/components/campaigns/campaign-hcps-tab';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -302,19 +303,10 @@ export default function CampaignDetailPage() {
           </TabsContent>
 
           <TabsContent value="hcps">
-            <Card>
-              <CardHeader>
-                <CardTitle>Assigned HCPs</CardTitle>
-                <CardDescription>
-                  Manage HCPs assigned to this campaign
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground text-center py-8">
-                  HCP assignment will be available in Module 5B (Survey Distribution)
-                </p>
-              </CardContent>
-            </Card>
+            <CampaignHcpsTab
+              campaignId={campaignId}
+              campaignStatus={campaign.status}
+            />
           </TabsContent>
 
           <TabsContent value="scores">
