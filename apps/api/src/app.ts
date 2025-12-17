@@ -4,6 +4,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { prismaPlugin } from './plugins/prisma';
 import { authPlugin } from './plugins/auth';
+import { loggingPlugin } from './plugins/logging';
 import { healthRoutes } from './routes/health';
 import { clientRoutes } from './routes/clients';
 import { userRoutes } from './routes/users';
@@ -48,6 +49,9 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
 
   // Database
   await fastify.register(prismaPlugin);
+
+  // Logging (adds trace IDs and request logging)
+  await fastify.register(loggingPlugin);
 
   // Authentication
   await fastify.register(authPlugin);
