@@ -27,6 +27,7 @@ const PUBLIC_ROUTES = [
   '/api/v1/auth/signup',
   '/api/v1/auth/login',
   '/api/v1/survey/take', // Public survey taking
+  '/api/v1/unsubscribe', // Email opt-out
 ];
 
 function isPublicRoute(url: string): boolean {
