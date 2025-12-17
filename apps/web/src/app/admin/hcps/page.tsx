@@ -24,10 +24,12 @@ import {
 } from '@/components/ui/select';
 import { HcpImportDialog } from '@/components/hcps/hcp-import-dialog';
 import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
-import { Plus, Upload, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
+import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 
 export default function HcpsPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showAliasImportDialog, setShowAliasImportDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<{
@@ -64,7 +66,11 @@ export default function HcpsPage() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowImportDialog(true)}>
               <Upload className="w-4 h-4 mr-2" />
-              Import
+              Import HCPs
+            </Button>
+            <Button variant="outline" onClick={() => setShowAliasImportDialog(true)}>
+              <Users className="w-4 h-4 mr-2" />
+              Import Aliases
             </Button>
             <Button onClick={() => setShowCreateDialog(true)}>
               <Plus className="w-4 h-4 mr-2" />
@@ -235,6 +241,7 @@ export default function HcpsPage() {
         )}
 
         <HcpImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
+        <AliasImportDialog open={showAliasImportDialog} onOpenChange={setShowAliasImportDialog} />
         <HcpFormDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
       </div>
     </RequireAuth>
