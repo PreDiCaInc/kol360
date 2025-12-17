@@ -11,6 +11,7 @@ import { hcpRoutes } from './routes/hcps';
 import { questionRoutes } from './routes/questions';
 import { sectionRoutes } from './routes/sections';
 import { surveyTemplateRoutes } from './routes/survey-templates';
+import { scoreConfigRoutes } from './routes/score-config';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -53,6 +54,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(questionRoutes, { prefix: '/api/v1/questions' });
   await fastify.register(sectionRoutes, { prefix: '/api/v1/sections' });
   await fastify.register(surveyTemplateRoutes, { prefix: '/api/v1/survey-templates' });
+  await fastify.register(scoreConfigRoutes, { prefix: '/api/v1' });
 
   return fastify;
 }
