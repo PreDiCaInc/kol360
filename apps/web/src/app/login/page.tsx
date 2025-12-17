@@ -8,11 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-type ViewState = 'login' | 'forgot' | 'reset';
+type ViewState = 'login' | 'forgot' | 'reset' | 'newPassword';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, forgotPassword, resetPassword, isLoading } = useAuth();
+  const { signIn, completeNewPassword, forgotPassword, resetPassword, isLoading } = useAuth();
   const [view, setView] = useState<ViewState>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,10 +29,32 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await signIn(email, password);
-      router.push('/admin');
+      const result = await signIn(email, password);
+      if (result.nextStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
+        setView('newPassword');
+        setPassword('');
+      } else {
+        router.push('/admin');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign in');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleNewPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+    setIsSubmitting(true);
+
+    try {
+      // Pass email so the auth provider can fetch user's name from the database
+      await completeNewPassword(newPassword, email);
+      router.push('/admin');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set new password');
     } finally {
       setIsSubmitting(false);
     }
@@ -86,11 +108,13 @@ export default function LoginPage() {
             {view === 'login' && 'Sign In'}
             {view === 'forgot' && 'Forgot Password'}
             {view === 'reset' && 'Reset Password'}
+            {view === 'newPassword' && 'Set New Password'}
           </CardTitle>
           <CardDescription>
             {view === 'login' && 'Enter your credentials to access KOL360'}
             {view === 'forgot' && 'Enter your email to receive a reset code'}
             {view === 'reset' && 'Enter the code and your new password'}
+            {view === 'newPassword' && 'Please set a new password for your account'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -207,6 +231,25 @@ export default function LoginPage() {
                   Back to sign in
                 </button>
               </div>
+            </form>
+          )}
+
+          {view === 'newPassword' && (
+            <form onSubmit={handleNewPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">New Password</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter your new password"
+                  required
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? 'Setting password...' : 'Set Password'}
+              </Button>
             </form>
           )}
         </CardContent>

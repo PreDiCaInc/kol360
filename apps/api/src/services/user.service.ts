@@ -52,25 +52,30 @@ export class UserService {
   }
 
   async invite(data: CreateUserInput) {
-    // Create in Cognito first
+    // Create in Cognito first - must succeed before creating DB record
     const cognitoUser = await cognitoService.createUser(data.email);
 
-    // Set custom attributes
-    await cognitoService.updateUserAttributes(data.email, {
-      role: data.role,
-      tenantId: data.clientId || undefined,
-    });
+    if (!cognitoUser?.Username) {
+      throw new Error('Failed to create user in Cognito');
+    }
 
-    // Add to group
+    // Set tenant-id custom attribute (role is managed via groups)
+    if (data.clientId) {
+      await cognitoService.updateUserAttributes(data.email, {
+        tenantId: data.clientId,
+      });
+    }
+
+    // Add to role group (platform-admins, client-admins, or team-members)
     await cognitoService.addUserToGroup(
       data.email,
       cognitoService.getRoleGroup(data.role)
     );
 
-    // Create in database
+    // Only create in database after Cognito operations succeed
     return prisma.user.create({
       data: {
-        cognitoSub: cognitoUser?.Username || '',
+        cognitoSub: cognitoUser.Username,
         email: data.email,
         firstName: data.firstName,
         lastName: data.lastName,
@@ -85,11 +90,10 @@ export class UserService {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw new Error('User not found');
 
-    // Update Cognito if role changed
+    // Update Cognito group if role changed (role is managed via groups, not custom attributes)
     if (data.role && data.role !== user.role) {
       await cognitoService.removeUserFromGroup(user.email, cognitoService.getRoleGroup(user.role));
       await cognitoService.addUserToGroup(user.email, cognitoService.getRoleGroup(data.role));
-      await cognitoService.updateUserAttributes(user.email, { role: data.role });
     }
 
     return prisma.user.update({
