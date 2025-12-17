@@ -6,6 +6,8 @@ node_modules
 dist
 .next
 .turbo
+out
+apps/web/out
 
 # Environment files
 .env
