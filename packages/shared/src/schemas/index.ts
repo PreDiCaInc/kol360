@@ -15,3 +15,5 @@ export * from './client';
 export * from './user';
 export * from './hcp';
 export * from './question';
+export * from './section';
+export * from './survey-template';
