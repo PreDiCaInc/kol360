@@ -17,6 +17,7 @@ import { diseaseAreaRoutes } from './routes/disease-areas';
 import { distributionRoutes } from './routes/distribution';
 import { surveyTakingRoutes } from './routes/survey-taking';
 import { responseRoutes } from './routes/responses';
+import { nominationRoutes } from './routes/nominations';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -64,6 +65,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(diseaseAreaRoutes, { prefix: '/api/v1/disease-areas' });
   await fastify.register(distributionRoutes, { prefix: '/api/v1' });
   await fastify.register(responseRoutes, { prefix: '/api/v1/campaigns' });
+  await fastify.register(nominationRoutes, { prefix: '/api/v1/campaigns' });
 
   // Public routes (no auth required)
   await fastify.register(surveyTakingRoutes, { prefix: '/api/v1' });
