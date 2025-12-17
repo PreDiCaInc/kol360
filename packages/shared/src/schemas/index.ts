@@ -21,3 +21,4 @@ export * from './score-config';
 export * from './campaign';
 export * from './distribution';
 export * from './survey-taking';
+export * from './response';

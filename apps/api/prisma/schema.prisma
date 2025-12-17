@@ -43,6 +43,7 @@ enum SurveyResponseStatus {
   OPENED
   IN_PROGRESS
   COMPLETED
+  EXCLUDED
 }
 
 enum NominationMatchStatus {
