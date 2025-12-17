@@ -8,6 +8,7 @@ import { healthRoutes } from './routes/health';
 import { clientRoutes } from './routes/clients';
 import { userRoutes } from './routes/users';
 import { hcpRoutes } from './routes/hcps';
+import { questionRoutes } from './routes/questions';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -47,6 +48,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(clientRoutes, { prefix: '/api/v1/clients' });
   await fastify.register(userRoutes, { prefix: '/api/v1/users' });
   await fastify.register(hcpRoutes, { prefix: '/api/v1/hcps' });
+  await fastify.register(questionRoutes, { prefix: '/api/v1/questions' });
 
   return fastify;
 }
