@@ -62,7 +62,7 @@ export class QuestionService {
         type: data.type,
         category: data.category,
         isRequired: data.isRequired ?? false,
-        options: data.options,
+        options: data.options as string[] ?? undefined,
         tags: data.tags ?? [],
         status: 'active',
       },
@@ -89,7 +89,7 @@ export class QuestionService {
         ...(data.type !== undefined && { type: data.type }),
         ...(data.category !== undefined && { category: data.category }),
         ...(data.isRequired !== undefined && { isRequired: data.isRequired }),
-        ...(data.options !== undefined && { options: data.options }),
+        ...(data.options !== undefined && { options: data.options as string[] }),
         ...(data.tags !== undefined && { tags: data.tags }),
       },
     });

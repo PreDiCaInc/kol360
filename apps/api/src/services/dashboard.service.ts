@@ -137,7 +137,7 @@ export class DashboardService {
         dashboardId,
         componentType,
         componentKey,
-        configJson: configJson ?? undefined,
+        configJson: configJson as object ?? undefined,
         sectionTitle,
         displayOrder: displayOrder ?? 0,
         isVisible: isVisible ?? true,
@@ -151,7 +151,7 @@ export class DashboardService {
     return prisma.dashboardComponent.update({
       where: { id: componentId },
       data: {
-        ...(configJson !== undefined && { configJson }),
+        ...(configJson !== undefined && { configJson: configJson as object }),
         ...(sectionTitle !== undefined && { sectionTitle }),
         ...(displayOrder !== undefined && { displayOrder }),
         ...(isVisible !== undefined && { isVisible }),
@@ -468,7 +468,7 @@ export class DashboardService {
         } else {
           const diseaseScore = score.hcp.diseaseAreaScores[0];
           if (diseaseScore) {
-            value = (diseaseScore as Record<string, { toNumber?: () => number } | null>)[segment.key]?.toNumber?.() ?? null;
+            value = (diseaseScore as unknown as Record<string, { toNumber?: () => number } | null>)[segment.key]?.toNumber?.() ?? null;
           }
         }
 

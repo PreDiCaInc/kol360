@@ -54,8 +54,8 @@ export class AuditService {
           action: event.action,
           entityType: event.entityType,
           entityId: event.entityId,
-          oldValues: event.oldValues ?? undefined,
-          newValues: event.newValues ?? undefined,
+          oldValues: event.oldValues as object ?? undefined,
+          newValues: event.newValues as object ?? undefined,
           metadata: {
             ...event.metadata,
             traceId: context.traceId,
