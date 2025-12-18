@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useClients, useDeleteClient } from '@/hooks/use-clients';
-import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -25,10 +24,9 @@ export default function ClientsPage() {
   const clients = data?.items || [];
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN']}>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Clients</h1>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Clients</h1>
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Add Client
@@ -106,6 +104,5 @@ export default function ClientsPage() {
           />
         )}
       </div>
-    </RequireAuth>
   );
 }
