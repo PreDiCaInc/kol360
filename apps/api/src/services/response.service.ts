@@ -109,28 +109,30 @@ export class ResponseService {
     const isJson = typeof value === 'object';
 
     // Get current answer for audit
-    const currentAnswer = await prisma.surveyResponseAnswer.findUnique({
-      where: {
-        responseId_questionId: { responseId, questionId },
-      },
+    const currentAnswer = await prisma.surveyResponseAnswer.findFirst({
+      where: { responseId, questionId },
     });
 
-    // Upsert the answer
-    const answer = await prisma.surveyResponseAnswer.upsert({
-      where: {
-        responseId_questionId: { responseId, questionId },
-      },
-      create: {
-        responseId,
-        questionId,
-        answerText: isJson ? null : String(value),
-        answerJson: isJson ? value : null,
-      },
-      update: {
-        answerText: isJson ? null : String(value),
-        answerJson: isJson ? value : null,
-      },
-    });
+    // Upsert the answer - find existing or create new
+    let answer;
+    if (currentAnswer) {
+      answer = await prisma.surveyResponseAnswer.update({
+        where: { id: currentAnswer.id },
+        data: {
+          answerText: isJson ? null : String(value),
+          answerJson: isJson ? (value as object) : null,
+        },
+      });
+    } else {
+      answer = await prisma.surveyResponseAnswer.create({
+        data: {
+          responseId,
+          questionId,
+          answerText: isJson ? null : String(value),
+          answerJson: isJson ? (value as object) : null,
+        },
+      });
+    }
 
     // Log the edit in audit log
     await prisma.auditLog.create({
@@ -139,7 +141,7 @@ export class ResponseService {
         entityType: 'SurveyResponseAnswer',
         entityId: answer.id,
         userId: updatedBy,
-        details: {
+        metadata: {
           responseId,
           questionId,
           oldValue: currentAnswer?.answerText ?? currentAnswer?.answerJson,
@@ -186,7 +188,7 @@ export class ResponseService {
         entityType: 'SurveyResponse',
         entityId: responseId,
         userId: excludedBy,
-        details: {
+        metadata: {
           reason,
           previousStatus,
         },
@@ -224,7 +226,7 @@ export class ResponseService {
         entityType: 'SurveyResponse',
         entityId: responseId,
         userId: includedBy,
-        details: {
+        metadata: {
           previousStatus: 'EXCLUDED',
         },
       },
