@@ -670,22 +670,32 @@ model OptOut {
 // AUDIT LOG
 // ============================================
 
+enum ActorType {
+  USER
+  SYSTEM
+  API_KEY
+}
+
 model AuditLog {
-  id         String  @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String?
-  user       User?   @relation(fields: [userId], references: [id])
-  action     String // e.g., "hcp.created", "campaign.published"
-  entityType String // e.g., "Hcp", "Campaign"
+  user       User?     @relation(fields: [userId], references: [id])
+  actorType  ActorType @default(USER)
+  tenantId   String?   // Multi-tenant filter
+  action     String    // e.g., "hcp.created", "campaign.published"
+  entityType String    // e.g., "Hcp", "Campaign"
   entityId   String
   oldValues  Json?
   newValues  Json?
   ipAddress  String?
   userAgent  String?
+  metadata   Json?     // Additional context
 
   createdAt DateTime @default(now())
 
   @@index([entityType, entityId])
   @@index([userId])
+  @@index([tenantId])
   @@index([action])
   @@index([createdAt])
 }
