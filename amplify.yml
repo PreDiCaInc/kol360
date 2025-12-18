@@ -1,21 +1,19 @@
 version: 1
-applications:
-  - appRoot: apps/web
-    frontend:
-      phases:
-        preBuild:
-          commands:
-            - npm install -g pnpm
-            - cd $CODEBUILD_SRC_DIR && pnpm install --frozen-lockfile
-            - cd $CODEBUILD_SRC_DIR && pnpm --filter @kol360/shared build
-        build:
-          commands:
-            - cd $CODEBUILD_SRC_DIR/apps/web && pnpm build
-      artifacts:
-        baseDirectory: .next
-        files:
-          - '**/*'
-      cache:
-        paths:
-          - $CODEBUILD_SRC_DIR/node_modules/**/*
-          - .next/cache/**/*
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm install -g pnpm
+        - pnpm install --frozen-lockfile
+        - pnpm --filter @kol360/shared build
+    build:
+      commands:
+        - pnpm --filter @kol360/web build
+  artifacts:
+    baseDirectory: apps/web/.next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - apps/web/.next/cache/**/*
