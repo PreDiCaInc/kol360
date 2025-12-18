@@ -4,6 +4,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { prismaPlugin } from './plugins/prisma';
 import { authPlugin } from './plugins/auth';
+import { loggingPlugin } from './plugins/logging';
 import { healthRoutes } from './routes/health';
 import { clientRoutes } from './routes/clients';
 import { userRoutes } from './routes/users';
@@ -19,6 +20,7 @@ import { surveyTakingRoutes } from './routes/survey-taking';
 import { responseRoutes } from './routes/responses';
 import { nominationRoutes } from './routes/nominations';
 import { dashboardRoutes } from './routes/dashboards';
+import { liteClientRoutes } from './routes/lite-client';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -48,6 +50,9 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   // Database
   await fastify.register(prismaPlugin);
 
+  // Logging (adds trace IDs and request logging)
+  await fastify.register(loggingPlugin);
+
   // Authentication
   await fastify.register(authPlugin);
 
@@ -68,6 +73,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(responseRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(nominationRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(dashboardRoutes, { prefix: '/api/v1' });
+  await fastify.register(liteClientRoutes);
 
   // Public routes (no auth required)
   await fastify.register(surveyTakingRoutes, { prefix: '/api/v1' });
