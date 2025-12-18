@@ -68,7 +68,7 @@ export class SurveyTemplateService {
   async delete(id: string) {
     // Check if template is used by any campaigns
     const usageCount = await prisma.campaign.count({
-      where: { templateId: id },
+      where: { surveyTemplateId: id },
     });
 
     if (usageCount > 0) {
