@@ -10,7 +10,7 @@ frontend:
       commands:
         - pnpm --filter @kol360/web build
   artifacts:
-    baseDirectory: apps/web/.next
+    baseDirectory: apps/web
     files:
       - '**/*'
   cache:
