@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { SurveyTemplateService } from './survey-template.service';
 import { CreateCampaignInput, UpdateCampaignInput, CampaignListQuery } from '@kol360/shared';
+import { CampaignStatus, Prisma } from '@prisma/client';
 
 const surveyTemplateService = new SurveyTemplateService();
 
@@ -8,12 +9,9 @@ export class CampaignService {
   async list(params: CampaignListQuery) {
     const { clientId, status, page, limit } = params;
 
-    const where: {
-      clientId?: string;
-      status?: string;
-    } = {};
+    const where: Prisma.CampaignWhereInput = {};
     if (clientId) where.clientId = clientId;
-    if (status) where.status = status;
+    if (status) where.status = status as CampaignStatus;
 
     const [total, items] = await Promise.all([
       prisma.campaign.count({ where }),

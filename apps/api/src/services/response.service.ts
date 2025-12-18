@@ -120,7 +120,7 @@ export class ResponseService {
         where: { id: currentAnswer.id },
         data: {
           answerText: isJson ? null : String(value),
-          answerJson: isJson ? (value as object) : null,
+          answerJson: isJson ? (value as object) : undefined,
         },
       });
     } else {
@@ -129,7 +129,7 @@ export class ResponseService {
           responseId,
           questionId,
           answerText: isJson ? null : String(value),
-          answerJson: isJson ? (value as object) : null,
+          answerJson: isJson ? (value as object) : undefined,
         },
       });
     }
@@ -145,8 +145,8 @@ export class ResponseService {
           responseId,
           questionId,
           oldValue: currentAnswer?.answerText ?? currentAnswer?.answerJson,
-          newValue: value,
-        },
+          newValue: value as object,
+        } as object,
       },
     });
 

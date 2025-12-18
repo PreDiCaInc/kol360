@@ -15,7 +15,6 @@ export class DistributionService {
             lastName: true,
             email: true,
             specialty: true,
-            institution: true,
           },
         },
       },

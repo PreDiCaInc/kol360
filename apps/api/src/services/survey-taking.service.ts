@@ -176,7 +176,7 @@ export class SurveyTakingService {
           where: { id: existing.id },
           data: {
             answerText: isJson ? null : String(value),
-            answerJson: isJson ? (value as object) : null,
+            answerJson: isJson ? (value as object) : undefined,
           },
         });
       } else {
@@ -185,7 +185,7 @@ export class SurveyTakingService {
             responseId: response.id,
             questionId,
             answerText: isJson ? null : String(value),
-            answerJson: isJson ? (value as object) : null,
+            answerJson: isJson ? (value as object) : undefined,
           },
         });
       }
