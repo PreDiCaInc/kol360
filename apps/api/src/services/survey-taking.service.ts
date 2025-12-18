@@ -166,24 +166,29 @@ export class SurveyTakingService {
 
       const isJson = typeof value === 'object';
 
-      await prisma.surveyResponseAnswer.upsert({
-        where: {
-          responseId_questionId: {
+      // Find existing answer
+      const existing = await prisma.surveyResponseAnswer.findFirst({
+        where: { responseId: response.id, questionId },
+      });
+
+      if (existing) {
+        await prisma.surveyResponseAnswer.update({
+          where: { id: existing.id },
+          data: {
+            answerText: isJson ? null : String(value),
+            answerJson: isJson ? (value as object) : null,
+          },
+        });
+      } else {
+        await prisma.surveyResponseAnswer.create({
+          data: {
             responseId: response.id,
             questionId,
+            answerText: isJson ? null : String(value),
+            answerJson: isJson ? (value as object) : null,
           },
-        },
-        create: {
-          responseId: response.id,
-          questionId,
-          answerText: isJson ? null : String(value),
-          answerJson: isJson ? value : null,
-        },
-        update: {
-          answerText: isJson ? null : String(value),
-          answerJson: isJson ? value : null,
-        },
-      });
+        });
+      }
     }
 
     return { saved: true };
@@ -301,6 +306,7 @@ export class SurveyTakingService {
         scope,
         campaignId: scope === 'CAMPAIGN' ? campaignHcp.campaignId : null,
         reason,
+        optedOutVia: 'email_link',
       },
     });
 
