@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-provider';
@@ -107,29 +108,27 @@ export function Sidebar() {
       )}
     >
       {/* Logo Section */}
-      <div className="flex h-16 items-center justify-between border-b border-[hsl(var(--sidebar-muted))] px-4">
-        {!collapsed && (
-          <Link href="/admin" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--sidebar-primary))]">
+      <div className="flex h-20 items-center justify-center border-b border-[hsl(var(--sidebar-muted))] px-4">
+        <Link href="/admin" className="flex items-center justify-center">
+          {!collapsed ? (
+            <Image
+              src="/images/logo-white.png"
+              alt="BioExec"
+              width={160}
+              height={48}
+              className="h-12 w-auto object-contain"
+              priority
+            />
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-500">
               <span className="text-sm font-bold text-white">BE</span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-white">Bio-Exec</span>
-              <span className="text-[10px] text-[hsl(var(--sidebar-foreground))]/60">KOL Platform</span>
-            </div>
-          </Link>
-        )}
-        {collapsed && (
-          <Link href="/admin" className="mx-auto">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--sidebar-primary))]">
-              <span className="text-sm font-bold text-white">BE</span>
-            </div>
-          </Link>
-        )}
+          )}
+        </Link>
       </div>
 
       {/* Navigation */}
-      <nav className="custom-scrollbar h-[calc(100vh-8rem)] overflow-y-auto px-3 py-4">
+      <nav className="custom-scrollbar h-[calc(100vh-9rem)] overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
           {filteredNavItems.map((item) => {
             const Icon = item.icon;
