@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useUsers, useApproveUser, useDisableUser, useEnableUser } from '@/hooks/use-users';
 import { useClients } from '@/hooks/use-clients';
-import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -75,10 +74,9 @@ export default function UsersPage() {
   };
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Users</h1>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Users</h1>
           <Button onClick={() => setShowInviteDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Invite User
@@ -242,6 +240,5 @@ export default function UsersPage() {
           onOpenChange={setShowInviteDialog}
         />
       </div>
-    </RequireAuth>
   );
 }
