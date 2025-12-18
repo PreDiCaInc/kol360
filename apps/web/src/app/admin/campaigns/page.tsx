@@ -10,7 +10,6 @@ import {
 import { useClients } from '@/hooks/use-clients';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { useSurveyTemplates } from '@/hooks/use-survey-templates';
-import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -121,15 +120,14 @@ export default function CampaignsPage() {
   const templates = templatesData || [];
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Campaigns</h1>
-            <p className="text-muted-foreground">
-              Manage KOL assessment campaigns
-            </p>
-          </div>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Campaigns</h1>
+          <p className="text-muted-foreground">
+            Manage KOL assessment campaigns
+          </p>
+        </div>
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
             New Campaign
@@ -352,6 +350,5 @@ export default function CampaignsPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </RequireAuth>
   );
 }

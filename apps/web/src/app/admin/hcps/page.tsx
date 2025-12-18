@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useHcps, useHcpFilters } from '@/hooks/use-hcps';
-import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -59,10 +58,9 @@ export default function HcpsPage() {
   };
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">HCP Database</h1>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">HCP Database</h1>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowImportDialog(true)}>
               <Upload className="w-4 h-4 mr-2" />
@@ -244,6 +242,5 @@ export default function HcpsPage() {
         <AliasImportDialog open={showAliasImportDialog} onOpenChange={setShowAliasImportDialog} />
         <HcpFormDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
       </div>
-    </RequireAuth>
   );
 }
