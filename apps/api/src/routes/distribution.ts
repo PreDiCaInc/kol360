@@ -1,9 +1,13 @@
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
+import { z } from 'zod';
 import { assignHcpsSchema } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
-import { DistributionService } from '../services/distribution.service';
+import { distributionService } from '../services/distribution.service';
+import { createAuditLog } from '../lib/audit';
 
-const distributionService = new DistributionService();
+const campaignIdSchema = z.object({
+  campaignId: z.string().cuid(),
+});
 
 export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', requireClientAdmin());
@@ -40,11 +44,61 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
     return true;
   }
 
-  // List HCPs assigned to campaign
+  // Get distribution statistics
+  fastify.get<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/distribution/stats',
+    async (request, reply) => {
+      const result = campaignIdSchema.safeParse(request.params);
+      if (!result.success) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'Invalid campaign ID',
+          statusCode: 400,
+        });
+      }
+
+      const hasAccess = await verifyCampaignAccess(result.data.campaignId, request.user!, reply);
+      if (!hasAccess) return;
+
+      return distributionService.getStats(result.data.campaignId);
+    }
+  );
+
+  // Legacy endpoint for stats (backward compatibility)
+  fastify.get<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/distribution-stats',
+    async (request, reply) => {
+      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      if (!hasAccess) return;
+
+      return distributionService.getStats(request.params.campaignId);
+    }
+  );
+
+  // List HCPs with email/response status (paginated)
+  fastify.get<{
+    Params: { campaignId: string };
+    Querystring: { status?: string; page?: string; limit?: string };
+  }>(
+    '/campaigns/:campaignId/distribution',
+    async (request, reply) => {
+      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      if (!hasAccess) return;
+
+      const { status, page = '1', limit = '50' } = request.query;
+
+      return distributionService.listHcps(request.params.campaignId, {
+        status,
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+      });
+    }
+  );
+
+  // List HCPs assigned to campaign (legacy endpoint)
   fastify.get<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/hcps',
     async (request, reply) => {
-      // Verify campaign belongs to user's tenant
       const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
       if (!hasAccess) return;
 
@@ -57,21 +111,17 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/hcps',
     async (request, reply) => {
-      // Verify campaign belongs to user's tenant
       const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
       if (!hasAccess) return;
 
       const { hcpIds } = assignHcpsSchema.parse(request.body);
       const result = await distributionService.assignHcps(request.params.campaignId, hcpIds);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'campaign.hcps_assigned',
-          entityType: 'Campaign',
-          entityId: request.params.campaignId,
-          newValues: { added: result.added, skipped: result.skipped },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'campaign.hcps_assigned',
+        entityType: 'Campaign',
+        entityId: request.params.campaignId,
+        newValues: { added: result.added, skipped: result.skipped },
       });
 
       return result;
@@ -82,21 +132,17 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.delete<{ Params: { campaignId: string; hcpId: string } }>(
     '/campaigns/:campaignId/hcps/:hcpId',
     async (request, reply) => {
-      // Verify campaign belongs to user's tenant
       const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
       if (!hasAccess) return;
 
       try {
         await distributionService.removeHcp(request.params.campaignId, request.params.hcpId);
 
-        await fastify.prisma.auditLog.create({
-          data: {
-            userId: request.user!.sub,
-            action: 'campaign.hcp_removed',
-            entityType: 'Campaign',
-            entityId: request.params.campaignId,
-            newValues: { hcpId: request.params.hcpId },
-          },
+        await createAuditLog(request.user!.sub, {
+          action: 'campaign.hcp_removed',
+          entityType: 'Campaign',
+          entityId: request.params.campaignId,
+          newValues: { hcpId: request.params.hcpId },
         });
 
         return reply.status(204).send();
@@ -110,25 +156,50 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // Send survey invitations
+  // Send all pending invitations
   fastify.post<{ Params: { campaignId: string } }>(
-    '/campaigns/:campaignId/send-invitations',
+    '/campaigns/:campaignId/distribution/send-invitations',
     async (request, reply) => {
-      // Verify campaign belongs to user's tenant
       const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
       if (!hasAccess) return;
 
       try {
         const result = await distributionService.sendInvitations(request.params.campaignId);
 
-        await fastify.prisma.auditLog.create({
-          data: {
-            userId: request.user!.sub,
-            action: 'campaign.invitations_sent',
-            entityType: 'Campaign',
-            entityId: request.params.campaignId,
-            newValues: { sent: result.sent, failed: result.failed },
+        await createAuditLog(request.user!.sub, {
+          action: 'distribution.invitations_sent',
+          entityType: 'Campaign',
+          entityId: request.params.campaignId,
+          newValues: {
+            sent: result.sent,
+            failed: result.failed,
+            skipped: result.skipped,
           },
+        });
+
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to send invitations';
+        return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
+      }
+    }
+  );
+
+  // Legacy endpoint for sending invitations (backward compatibility)
+  fastify.post<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/send-invitations',
+    async (request, reply) => {
+      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      if (!hasAccess) return;
+
+      try {
+        const result = await distributionService.sendInvitations(request.params.campaignId);
+
+        await createAuditLog(request.user!.sub, {
+          action: 'campaign.invitations_sent',
+          entityType: 'Campaign',
+          entityId: request.params.campaignId,
+          newValues: { sent: result.sent, failed: result.failed },
         });
 
         return result;
@@ -142,25 +213,55 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // Send reminders
+  // Send reminders to non-responders
+  fastify.post<{
+    Params: { campaignId: string };
+    Body: { maxReminders?: number };
+  }>(
+    '/campaigns/:campaignId/distribution/send-reminders',
+    async (request, reply) => {
+      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      if (!hasAccess) return;
+
+      try {
+        const { maxReminders = 3 } = request.body || {};
+        const result = await distributionService.sendReminders(request.params.campaignId, maxReminders);
+
+        await createAuditLog(request.user!.sub, {
+          action: 'distribution.reminders_sent',
+          entityType: 'Campaign',
+          entityId: request.params.campaignId,
+          newValues: {
+            sent: result.sent,
+            failed: result.failed,
+            skipped: result.skipped,
+            maxReminders,
+          },
+        });
+
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to send reminders';
+        return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
+      }
+    }
+  );
+
+  // Legacy endpoint for sending reminders (backward compatibility)
   fastify.post<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/send-reminders',
     async (request, reply) => {
-      // Verify campaign belongs to user's tenant
       const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
       if (!hasAccess) return;
 
       try {
         const result = await distributionService.sendReminders(request.params.campaignId);
 
-        await fastify.prisma.auditLog.create({
-          data: {
-            userId: request.user!.sub,
-            action: 'campaign.reminders_sent',
-            entityType: 'Campaign',
-            entityId: request.params.campaignId,
-            newValues: { sent: result.sent },
-          },
+        await createAuditLog(request.user!.sub, {
+          action: 'campaign.reminders_sent',
+          entityType: 'Campaign',
+          entityId: request.params.campaignId,
+          newValues: { sent: result.sent },
         });
 
         return result;
@@ -174,15 +275,30 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // Get distribution statistics
-  fastify.get<{ Params: { campaignId: string } }>(
-    '/campaigns/:campaignId/distribution-stats',
+  // Send single invitation (resend to specific HCP)
+  fastify.post<{ Params: { campaignId: string; hcpId: string } }>(
+    '/campaigns/:campaignId/distribution/:hcpId/send',
     async (request, reply) => {
-      // Verify campaign belongs to user's tenant
-      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      const { campaignId, hcpId } = request.params;
+
+      const hasAccess = await verifyCampaignAccess(campaignId, request.user!, reply);
       if (!hasAccess) return;
 
-      return distributionService.getStats(request.params.campaignId);
+      try {
+        const result = await distributionService.sendSingleInvitation(campaignId, hcpId);
+
+        await createAuditLog(request.user!.sub, {
+          action: 'distribution.invitation_sent',
+          entityType: 'CampaignHcp',
+          entityId: `${campaignId}:${hcpId}`,
+          newValues: { messageId: result.messageId },
+        });
+
+        return { success: true, messageId: result.messageId };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to send invitation';
+        return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
+      }
     }
   );
 };
