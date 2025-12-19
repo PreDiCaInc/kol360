@@ -36,3 +36,22 @@ export const responseIdParamSchema = z.object({
 });
 
 export type ResponseIdParam = z.infer<typeof responseIdParamSchema>;
+
+// Schema for listing payments
+export const paymentListQuerySchema = z.object({
+  status: z.enum([
+    'PENDING_EXPORT',
+    'EXPORTED',
+    'EMAIL_SENT',
+    'EMAIL_DELIVERED',
+    'EMAIL_OPENED',
+    'CLAIMED',
+    'BOUNCED',
+    'REJECTED',
+    'EXPIRED',
+  ]).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type PaymentListQuery = z.infer<typeof paymentListQuerySchema>;
