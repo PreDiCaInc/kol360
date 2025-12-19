@@ -6,13 +6,18 @@ The gh CLI is installed at `/usr/local/bin/gh`.
 
 ### Creating Pull Requests
 
-To create PRs, use the GitHub token with the GH_TOKEN environment variable:
+The GitHub token is set in `~/.bashrc` as `GH_TOKEN`. To use it:
+
+```bash
+source ~/.bashrc
+gh pr create --title "PR Title" --body "PR Body" --base main --repo PreDiCaInc/kol360
+```
+
+Or if GH_TOKEN isn't available, ask the user for the token and use:
 
 ```bash
 GH_TOKEN=<token> gh pr create --title "PR Title" --body "PR Body" --base main --repo PreDiCaInc/kol360
 ```
-
-**Note:** Ask the user for the GitHub token if needed. Do not store tokens in committed files.
 
 ## Repository Info
 - Owner: PreDiCaInc
