@@ -1,4 +1,4 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { responseService } from '../services/response.service';
 import {
@@ -18,6 +18,38 @@ const responseIdParamSchema = z.object({
 });
 
 export const responseRoutes: FastifyPluginAsync = async (fastify) => {
+  // Helper function to verify campaign tenant access
+  async function verifyCampaignAccess(
+    campaignId: string,
+    user: { role: string; tenantId?: string },
+    reply: FastifyReply
+  ): Promise<boolean> {
+    const campaign = await fastify.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { clientId: true },
+    });
+
+    if (!campaign) {
+      reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+      return false;
+    }
+
+    if (user.role !== 'PLATFORM_ADMIN' && campaign.clientId !== user.tenantId) {
+      reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot access data from other tenants',
+        statusCode: 403,
+      });
+      return false;
+    }
+
+    return true;
+  }
+
   // List responses for a campaign
   fastify.get<{
     Params: z.infer<typeof campaignIdParamSchema>;
@@ -28,6 +60,11 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     const query = responseListQuerySchema.parse(request.query);
 
     const result = await responseService.listForCampaign(campaignId, query);
@@ -43,6 +80,11 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     const stats = await responseService.getResponseStats(campaignId);
     return stats;
   });
@@ -55,7 +97,12 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { rid: responseId } = responseIdParamSchema.parse(request.params);
+    const { id: campaignId, rid: responseId } = responseIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     const response = await responseService.getResponseDetail(responseId);
 
     if (!response) {
@@ -74,12 +121,17 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
+    const { id: campaignId, rid: responseId } = responseIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     // Only PLATFORM_ADMIN can edit responses
     if (request.user.role !== 'PLATFORM_ADMIN') {
       return reply.status(403).send({ message: 'Only platform admins can edit responses' });
     }
 
-    const { rid: responseId } = responseIdParamSchema.parse(request.params);
     const { questionId, value } = updateAnswerSchema.parse(request.body);
 
     try {
@@ -105,12 +157,17 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
+    const { id: campaignId, rid: responseId } = responseIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     // Only PLATFORM_ADMIN can exclude responses
     if (request.user.role !== 'PLATFORM_ADMIN') {
       return reply.status(403).send({ message: 'Only platform admins can exclude responses' });
     }
 
-    const { rid: responseId } = responseIdParamSchema.parse(request.params);
     const { reason } = excludeResponseSchema.parse(request.body);
 
     try {
@@ -134,12 +191,16 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
+    const { id: campaignId, rid: responseId } = responseIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     // Only PLATFORM_ADMIN can include responses
     if (request.user.role !== 'PLATFORM_ADMIN') {
       return reply.status(403).send({ message: 'Only platform admins can include responses' });
     }
-
-    const { rid: responseId } = responseIdParamSchema.parse(request.params);
 
     try {
       const response = await responseService.includeResponse(
