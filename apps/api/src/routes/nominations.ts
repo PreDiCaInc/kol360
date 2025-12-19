@@ -1,4 +1,4 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { nominationService } from '../services/nomination.service';
 import {
@@ -22,6 +22,38 @@ const nominationOnlyParamSchema = z.object({
 });
 
 export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
+  // Helper function to verify campaign tenant access
+  async function verifyCampaignAccess(
+    campaignId: string,
+    user: { role: string; tenantId?: string },
+    reply: FastifyReply
+  ): Promise<boolean> {
+    const campaign = await fastify.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { clientId: true },
+    });
+
+    if (!campaign) {
+      reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+      return false;
+    }
+
+    if (user.role !== 'PLATFORM_ADMIN' && campaign.clientId !== user.tenantId) {
+      reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot access data from other tenants',
+        statusCode: 403,
+      });
+      return false;
+    }
+
+    return true;
+  }
+
   // List nominations for a campaign
   fastify.get<{
     Params: z.infer<typeof campaignIdParamSchema>;
@@ -32,6 +64,11 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     const query = nominationListQuerySchema.parse(request.query);
 
     const result = await nominationService.listForCampaign(campaignId, query);
@@ -47,6 +84,11 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     const stats = await nominationService.getStats(campaignId);
     return stats;
   });
@@ -60,6 +102,10 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
 
     try {
       const result = await nominationService.bulkAutoMatch(campaignId, request.user.sub);
@@ -78,7 +124,12 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     const suggestions = await nominationService.getSuggestions(nominationId);
     return suggestions;
   });
@@ -92,7 +143,12 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     const { hcpId, addAlias } = matchNominationSchema.parse(request.body);
 
     try {
@@ -118,7 +174,12 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
     const hcpData = createHcpFromNominationSchema.parse(request.body);
 
     try {
@@ -142,7 +203,11 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
 
     try {
       const result = await nominationService.exclude(nominationId, request.user.sub);
