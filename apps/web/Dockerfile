@@ -45,8 +45,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 USER nextjs
 EXPOSE 3000
 
-# App Runner sets PORT env var, Next.js reads it
-# HOSTNAME must be 0.0.0.0 to accept external connections
-ENV HOSTNAME="0.0.0.0"
-
-CMD ["sh", "-c", "node apps/web/server.js"]
+# Force HOSTNAME to 0.0.0.0 at runtime to override any container hostname
+# App Runner sets HOSTNAME to internal DNS which breaks health checks
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 node apps/web/server.js"]
