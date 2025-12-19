@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { generateTraceId, LogActions } from '../logger';
+import { generateTraceId, LogActions, createRequestLogger, logger } from '../logger';
 
 describe('Logger', () => {
   describe('generateTraceId', () => {
@@ -19,6 +19,65 @@ describe('Logger', () => {
     it('should only contain alphanumeric characters', () => {
       const traceId = generateTraceId();
       expect(traceId).toMatch(/^[a-f0-9]+$/);
+    });
+
+    it('should be derived from UUID format', () => {
+      // Generate multiple trace IDs and verify format
+      for (let i = 0; i < 10; i++) {
+        const traceId = generateTraceId();
+        expect(traceId).toMatch(/^[a-f0-9]{16}$/);
+      }
+    });
+  });
+
+  describe('createRequestLogger', () => {
+    it('should create a child logger with trace ID', () => {
+      const childLogger = createRequestLogger('trace-123');
+      expect(childLogger).toBeDefined();
+      expect(typeof childLogger.info).toBe('function');
+      expect(typeof childLogger.error).toBe('function');
+      expect(typeof childLogger.warn).toBe('function');
+      expect(typeof childLogger.debug).toBe('function');
+    });
+
+    it('should create a child logger with user and tenant context', () => {
+      const childLogger = createRequestLogger('trace-123', 'user-1', 'tenant-1');
+      expect(childLogger).toBeDefined();
+    });
+  });
+
+  describe('logger instance', () => {
+    it('should have error method', () => {
+      expect(typeof logger.error).toBe('function');
+    });
+
+    it('should have warn method', () => {
+      expect(typeof logger.warn).toBe('function');
+    });
+
+    it('should have info method', () => {
+      expect(typeof logger.info).toBe('function');
+    });
+
+    it('should have debug method', () => {
+      expect(typeof logger.debug).toBe('function');
+    });
+
+    it('should have withContext method', () => {
+      expect(typeof logger.withContext).toBe('function');
+    });
+
+    it('withContext should return a new logger instance', () => {
+      const contextLogger = logger.withContext({ trace_id: 'test-trace' });
+      expect(contextLogger).toBeDefined();
+      expect(typeof contextLogger.info).toBe('function');
+    });
+
+    it('withContext should chain properly', () => {
+      const contextLogger = logger
+        .withContext({ trace_id: 'test-trace' })
+        .withContext({ user_id: 'user-1' });
+      expect(contextLogger).toBeDefined();
     });
   });
 
