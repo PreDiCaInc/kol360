@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { createUserSchema, updateUserSchema } from '@kol360/shared';
 import { requireClientAdmin, requirePlatformAdmin, requireTenantAccess } from '../middleware/rbac';
 import { UserService } from '../services/user.service';
+import { createAuditLog } from '../lib/audit';
 
 const userService = new UserService();
 
@@ -107,23 +108,13 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
 
     const user = await userService.invite(data);
 
-    // Audit log - look up current user's database ID by cognitoSub
-    const currentUser = await fastify.prisma.user.findFirst({
-      where: { cognitoSub: request.user!.sub },
-      select: { id: true },
+    // Audit log
+    await createAuditLog(request.user!.sub, {
+      action: 'user.invited',
+      entityType: 'User',
+      entityId: user.id,
+      newValues: { email: data.email, role: data.role },
     });
-
-    if (currentUser) {
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: currentUser.id,
-          action: 'user.invited',
-          entityType: 'User',
-          entityId: user.id,
-          newValues: { email: data.email, role: data.role },
-        },
-      });
-    }
 
     return reply.status(201).send(user);
   });
@@ -165,15 +156,12 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const user = await userService.update(request.params.id, data);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'user.updated',
-        entityType: 'User',
-        entityId: user.id,
-        oldValues: { role: existing.role, firstName: existing.firstName, lastName: existing.lastName },
-        newValues: data,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'user.updated',
+      entityType: 'User',
+      entityId: user.id,
+      oldValues: { role: existing.role, firstName: existing.firstName, lastName: existing.lastName },
+      newValues: data,
     });
 
     return user;
@@ -204,15 +192,12 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const user = await userService.approve(request.params.id, request.user!.sub);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'user.approved',
-        entityType: 'User',
-        entityId: user.id,
-        oldValues: { status: 'PENDING_VERIFICATION' },
-        newValues: { status: 'ACTIVE' },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'user.approved',
+      entityType: 'User',
+      entityId: user.id,
+      oldValues: { status: 'PENDING_VERIFICATION' },
+      newValues: { status: 'ACTIVE' },
     });
 
     return user;
@@ -253,15 +238,12 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const user = await userService.disable(request.params.id);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'user.disabled',
-        entityType: 'User',
-        entityId: user.id,
-        oldValues: { status: existing.status },
-        newValues: { status: 'DISABLED' },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'user.disabled',
+      entityType: 'User',
+      entityId: user.id,
+      oldValues: { status: existing.status },
+      newValues: { status: 'DISABLED' },
     });
 
     return user;
@@ -301,15 +283,12 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const user = await userService.enable(request.params.id);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'user.enabled',
-        entityType: 'User',
-        entityId: user.id,
-        oldValues: { status: 'DISABLED' },
-        newValues: { status: 'ACTIVE' },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'user.enabled',
+      entityType: 'User',
+      entityId: user.id,
+      oldValues: { status: 'DISABLED' },
+      newValues: { status: 'ACTIVE' },
     });
 
     return user;
