@@ -297,7 +297,7 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const campaign = await campaignService.publish(request.params.id);
+      const campaign = await campaignService.publish(request.params.id, request.user!.sub);
 
       await createAuditLog(request.user!.sub, {
         action: 'campaign.published',
