@@ -41,3 +41,6 @@ kol360-bastion-key.pem
 # Lambda build artifacts
 apps/api/lambda-bundle
 apps/api/lambda.zip
+
+# Claude session notes (contains secrets)
+.claude/
