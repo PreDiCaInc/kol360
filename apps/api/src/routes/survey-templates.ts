@@ -8,6 +8,7 @@ import {
 } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { SurveyTemplateService } from '../services/survey-template.service';
+import { createAuditLog } from '../lib/audit';
 
 const surveyTemplateService = new SurveyTemplateService();
 
@@ -37,14 +38,11 @@ export const surveyTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     const data = createSurveyTemplateSchema.parse(request.body);
     const template = await surveyTemplateService.create(data);
 
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'survey_template.created',
-        entityType: 'SurveyTemplate',
-        entityId: template.id,
-        newValues: { name: data.name },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'survey_template.created',
+      entityType: 'SurveyTemplate',
+      entityId: template.id,
+      newValues: { name: data.name },
     });
 
     return reply.status(201).send(template);
@@ -65,15 +63,12 @@ export const surveyTemplateRoutes: FastifyPluginAsync = async (fastify) => {
 
     const template = await surveyTemplateService.update(request.params.id, data);
 
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'survey_template.updated',
-        entityType: 'SurveyTemplate',
-        entityId: template.id,
-        oldValues: { name: existing.name },
-        newValues: data,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'survey_template.updated',
+      entityType: 'SurveyTemplate',
+      entityId: template.id,
+      oldValues: { name: existing.name },
+      newValues: data,
     });
 
     return template;
@@ -84,13 +79,10 @@ export const surveyTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       await surveyTemplateService.delete(request.params.id);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'survey_template.deleted',
-          entityType: 'SurveyTemplate',
-          entityId: request.params.id,
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'survey_template.deleted',
+        entityType: 'SurveyTemplate',
+        entityId: request.params.id,
       });
 
       return reply.status(204).send();
@@ -113,14 +105,11 @@ export const surveyTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const template = await surveyTemplateService.clone(request.params.id, name);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'survey_template.cloned',
-          entityType: 'SurveyTemplate',
-          entityId: template.id,
-          newValues: { name, sourceId: request.params.id },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'survey_template.cloned',
+        entityType: 'SurveyTemplate',
+        entityId: template.id,
+        newValues: { name, sourceId: request.params.id },
       });
 
       return reply.status(201).send(template);
@@ -147,14 +136,11 @@ export const surveyTemplateRoutes: FastifyPluginAsync = async (fastify) => {
         isLocked
       );
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'survey_template.section_added',
-          entityType: 'TemplateSection',
-          entityId: templateSection.id,
-          newValues: { templateId: request.params.id, sectionId },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'survey_template.section_added',
+        entityType: 'TemplateSection',
+        entityId: templateSection.id,
+        newValues: { templateId: request.params.id, sectionId },
       });
 
       return reply.status(201).send(templateSection);
@@ -176,13 +162,10 @@ export const surveyTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       await surveyTemplateService.removeSection(request.params.id, request.params.sectionId);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'survey_template.section_removed',
-          entityType: 'TemplateSection',
-          entityId: `${request.params.id}-${request.params.sectionId}`,
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'survey_template.section_removed',
+        entityType: 'TemplateSection',
+        entityId: `${request.params.id}-${request.params.sectionId}`,
       });
 
       return reply.status(204).send();
