@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { createQuestionSchema, updateQuestionSchema } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { QuestionService } from '../services/question.service';
+import { createAuditLog } from '../lib/audit';
 
 const questionService = new QuestionService();
 
@@ -60,14 +61,11 @@ export const questionRoutes: FastifyPluginAsync = async (fastify) => {
     const question = await questionService.create(data);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'question.created',
-        entityType: 'Question',
-        entityId: question.id,
-        newValues: { text: data.text, type: data.type, category: data.category },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'question.created',
+      entityType: 'Question',
+      entityId: question.id,
+      newValues: { text: data.text, type: data.type, category: data.category },
     });
 
     return reply.status(201).send(question);
@@ -90,15 +88,12 @@ export const questionRoutes: FastifyPluginAsync = async (fastify) => {
       const question = await questionService.update(request.params.id, data);
 
       // Audit log
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'question.updated',
-          entityType: 'Question',
-          entityId: question.id,
-          oldValues: { text: existing.text, type: existing.type },
-          newValues: data,
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'question.updated',
+        entityType: 'Question',
+        entityId: question.id,
+        oldValues: { text: existing.text, type: existing.type },
+        newValues: data,
       });
 
       return question;
@@ -128,13 +123,10 @@ export const questionRoutes: FastifyPluginAsync = async (fastify) => {
     const question = await questionService.archive(request.params.id);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'question.archived',
-        entityType: 'Question',
-        entityId: question.id,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'question.archived',
+      entityType: 'Question',
+      entityId: question.id,
     });
 
     return question;
@@ -154,13 +146,10 @@ export const questionRoutes: FastifyPluginAsync = async (fastify) => {
     const question = await questionService.restore(request.params.id);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'question.restored',
-        entityType: 'Question',
-        entityId: question.id,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'question.restored',
+      entityType: 'Question',
+      entityId: question.id,
     });
 
     return question;
