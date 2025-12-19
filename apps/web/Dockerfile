@@ -22,9 +22,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Build shared first
 RUN pnpm --filter @kol360/shared build
 
-# Build web app
+# Build web app with all NEXT_PUBLIC env vars
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_COGNITO_USER_POOL_ID
+ARG NEXT_PUBLIC_COGNITO_CLIENT_ID
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_COGNITO_USER_POOL_ID=$NEXT_PUBLIC_COGNITO_USER_POOL_ID
+ENV NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID
 RUN pnpm --filter @kol360/web build
 
 # Runner stage
