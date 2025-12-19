@@ -5,8 +5,8 @@ import {
   nominationListQuerySchema,
   matchNominationSchema,
   createHcpFromNominationSchema,
-  idParamSchema,
 } from '@kol360/shared';
+import { AuthUser } from '../plugins/auth';
 
 const campaignIdParamSchema = z.object({
   id: z.string().cuid(),
@@ -17,11 +17,29 @@ const nominationIdParamSchema = z.object({
   nid: z.string().cuid(),
 });
 
-const nominationOnlyParamSchema = z.object({
-  nid: z.string().cuid(),
-});
+type AccessError = { ok: false; error: string; status: 404 | 403 };
+type AccessSuccess = { ok: true; campaign: { clientId: string } };
+type AccessResult = AccessError | AccessSuccess;
 
 export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
+  // Helper function to verify campaign tenant access
+  async function verifyCampaignAccess(campaignId: string, user: AuthUser): Promise<AccessResult> {
+    const campaign = await fastify.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { clientId: true },
+    });
+
+    if (!campaign) {
+      return { ok: false, error: 'Campaign not found', status: 404 };
+    }
+
+    if (user.role !== 'PLATFORM_ADMIN' && campaign.clientId !== user.tenantId) {
+      return { ok: false, error: 'Cannot access data from other tenants', status: 403 };
+    }
+
+    return { ok: true, campaign };
+  }
+
   // List nominations for a campaign
   fastify.get<{
     Params: z.infer<typeof campaignIdParamSchema>;
@@ -32,8 +50,17 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
-    const query = nominationListQuerySchema.parse(request.query);
 
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
+    const query = nominationListQuerySchema.parse(request.query);
     const result = await nominationService.listForCampaign(campaignId, query);
     return result;
   });
@@ -47,6 +74,16 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
     const stats = await nominationService.getStats(campaignId);
     return stats;
   });
@@ -61,12 +98,25 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
 
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
     try {
       const result = await nominationService.bulkAutoMatch(campaignId, request.user.sub);
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to bulk match';
-      return reply.status(400).send({ message });
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message,
+        statusCode: 400,
+      });
     }
   });
 
@@ -78,7 +128,17 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
     const suggestions = await nominationService.getSuggestions(nominationId);
     return suggestions;
   });
@@ -92,7 +152,17 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
     const { hcpId, addAlias } = matchNominationSchema.parse(request.body);
 
     try {
@@ -105,7 +175,11 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to match nomination';
-      return reply.status(400).send({ message });
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message,
+        statusCode: 400,
+      });
     }
   });
 
@@ -118,7 +192,17 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
     const hcpData = createHcpFromNominationSchema.parse(request.body);
 
     try {
@@ -130,7 +214,11 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create HCP';
-      return reply.status(400).send({ message });
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message,
+        statusCode: 400,
+      });
     }
   });
 
@@ -142,14 +230,27 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
 
     try {
       const result = await nominationService.exclude(nominationId, request.user.sub);
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to exclude nomination';
-      return reply.status(400).send({ message });
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message,
+        statusCode: 400,
+      });
     }
   });
 };

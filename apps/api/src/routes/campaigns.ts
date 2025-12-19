@@ -12,10 +12,16 @@ const campaignService = new CampaignService();
 export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', requireClientAdmin());
 
-  // List campaigns
+  // List campaigns - Platform Admin sees all, Client Admin sees their tenant only
   fastify.get('/', async (request) => {
     const query = campaignListQuerySchema.parse(request.query);
-    return campaignService.list(query);
+
+    // Force tenant filter for non-platform-admins
+    const effectiveClientId = request.user!.role === 'PLATFORM_ADMIN'
+      ? query.clientId
+      : request.user!.tenantId;
+
+    return campaignService.list({ ...query, clientId: effectiveClientId });
   });
 
   // Get campaign by ID
@@ -28,12 +34,34 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
         statusCode: 404,
       });
     }
+
+    // Tenant isolation check
+    if (request.user!.role !== 'PLATFORM_ADMIN' && campaign.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot access campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
     return campaign;
   });
 
   // Create campaign
   fastify.post('/', async (request, reply) => {
     const data = createCampaignSchema.parse(request.body);
+
+    // Client admins can only create campaigns for their own tenant
+    if (request.user!.role !== 'PLATFORM_ADMIN') {
+      if (data.clientId !== request.user!.tenantId) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'Cannot create campaigns for other tenants',
+          statusCode: 403,
+        });
+      }
+    }
+
     const campaign = await campaignService.create(data, request.user!.sub);
 
     await fastify.prisma.auditLog.create({
@@ -51,6 +79,24 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Update campaign
   fastify.put<{ Params: { id: string } }>('/:id', async (request, reply) => {
+    const existing = await campaignService.getById(request.params.id);
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Tenant isolation check
+    if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot update campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
     const data = updateCampaignSchema.parse(request.body);
     const campaign = await campaignService.update(request.params.id, data);
 
@@ -69,6 +115,24 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Delete campaign (draft only)
   fastify.delete<{ Params: { id: string } }>('/:id', async (request, reply) => {
+    const existing = await campaignService.getById(request.params.id);
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Tenant isolation check
+    if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot delete campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
     try {
       await campaignService.delete(request.params.id);
 
@@ -93,6 +157,24 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Activate campaign (DRAFT -> ACTIVE)
   fastify.post<{ Params: { id: string } }>('/:id/activate', async (request, reply) => {
+    const existing = await campaignService.getById(request.params.id);
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Tenant isolation check
+    if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot activate campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
     try {
       const campaign = await campaignService.activate(request.params.id);
 
@@ -118,6 +200,24 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Close campaign (ACTIVE -> CLOSED)
   fastify.post<{ Params: { id: string } }>('/:id/close', async (request, reply) => {
+    const existing = await campaignService.getById(request.params.id);
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Tenant isolation check
+    if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot close campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
     try {
       const campaign = await campaignService.close(request.params.id);
 
@@ -143,6 +243,24 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Reopen campaign (CLOSED -> ACTIVE)
   fastify.post<{ Params: { id: string } }>('/:id/reopen', async (request, reply) => {
+    const existing = await campaignService.getById(request.params.id);
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Tenant isolation check
+    if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot reopen campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
     try {
       const campaign = await campaignService.reopen(request.params.id);
 
@@ -168,6 +286,24 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Publish campaign (CLOSED -> PUBLISHED)
   fastify.post<{ Params: { id: string } }>('/:id/publish', async (request, reply) => {
+    const existing = await campaignService.getById(request.params.id);
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Tenant isolation check
+    if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot publish campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
     try {
       const campaign = await campaignService.publish(request.params.id);
 

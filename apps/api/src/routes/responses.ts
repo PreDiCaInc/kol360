@@ -5,8 +5,8 @@ import {
   responseListQuerySchema,
   updateAnswerSchema,
   excludeResponseSchema,
-  idParamSchema,
 } from '@kol360/shared';
+import { AuthUser } from '../plugins/auth';
 
 const campaignIdParamSchema = z.object({
   id: z.string().cuid(),
@@ -17,7 +17,29 @@ const responseIdParamSchema = z.object({
   rid: z.string().cuid(),
 });
 
+type AccessError = { ok: false; error: string; status: 404 | 403 };
+type AccessSuccess = { ok: true; campaign: { clientId: string } };
+type AccessResult = AccessError | AccessSuccess;
+
 export const responseRoutes: FastifyPluginAsync = async (fastify) => {
+  // Helper function to verify campaign tenant access
+  async function verifyCampaignAccess(campaignId: string, user: AuthUser): Promise<AccessResult> {
+    const campaign = await fastify.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { clientId: true },
+    });
+
+    if (!campaign) {
+      return { ok: false, error: 'Campaign not found', status: 404 };
+    }
+
+    if (user.role !== 'PLATFORM_ADMIN' && campaign.clientId !== user.tenantId) {
+      return { ok: false, error: 'Cannot access data from other tenants', status: 403 };
+    }
+
+    return { ok: true, campaign };
+  }
+
   // List responses for a campaign
   fastify.get<{
     Params: z.infer<typeof campaignIdParamSchema>;
@@ -28,8 +50,17 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
-    const query = responseListQuerySchema.parse(request.query);
 
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
+    const query = responseListQuerySchema.parse(request.query);
     const result = await responseService.listForCampaign(campaignId, query);
     return result;
   });
@@ -43,6 +74,16 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
     const stats = await responseService.getResponseStats(campaignId);
     return stats;
   });
@@ -55,11 +96,34 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(401).send({ message: 'Unauthorized' });
     }
 
-    const { rid: responseId } = responseIdParamSchema.parse(request.params);
+    const { id: campaignId, rid: responseId } = responseIdParamSchema.parse(request.params);
+
+    const access = await verifyCampaignAccess(campaignId, request.user);
+    if (!access.ok) {
+      return reply.status(access.status).send({
+        error: access.status === 404 ? 'Not Found' : 'Forbidden',
+        message: access.error,
+        statusCode: access.status,
+      });
+    }
+
     const response = await responseService.getResponseDetail(responseId);
 
     if (!response) {
-      return reply.status(404).send({ message: 'Response not found' });
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Response not found',
+        statusCode: 404,
+      });
+    }
+
+    // Verify response belongs to the campaign
+    if (response.campaignId !== campaignId) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Response not found in this campaign',
+        statusCode: 404,
+      });
     }
 
     return response;
@@ -76,10 +140,29 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Only PLATFORM_ADMIN can edit responses
     if (request.user.role !== 'PLATFORM_ADMIN') {
-      return reply.status(403).send({ message: 'Only platform admins can edit responses' });
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform admins can edit responses',
+        statusCode: 403,
+      });
     }
 
-    const { rid: responseId } = responseIdParamSchema.parse(request.params);
+    const { id: campaignId, rid: responseId } = responseIdParamSchema.parse(request.params);
+
+    // Verify campaign exists
+    const campaign = await fastify.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { id: true },
+    });
+
+    if (!campaign) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
     const { questionId, value } = updateAnswerSchema.parse(request.body);
 
     try {
@@ -92,7 +175,11 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
       return answer;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update answer';
-      return reply.status(400).send({ message });
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message,
+        statusCode: 400,
+      });
     }
   });
 
@@ -107,10 +194,29 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Only PLATFORM_ADMIN can exclude responses
     if (request.user.role !== 'PLATFORM_ADMIN') {
-      return reply.status(403).send({ message: 'Only platform admins can exclude responses' });
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform admins can exclude responses',
+        statusCode: 403,
+      });
     }
 
-    const { rid: responseId } = responseIdParamSchema.parse(request.params);
+    const { id: campaignId, rid: responseId } = responseIdParamSchema.parse(request.params);
+
+    // Verify campaign exists
+    const campaign = await fastify.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { id: true },
+    });
+
+    if (!campaign) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
     const { reason } = excludeResponseSchema.parse(request.body);
 
     try {
@@ -122,7 +228,11 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
       return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to exclude response';
-      return reply.status(400).send({ message });
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message,
+        statusCode: 400,
+      });
     }
   });
 
@@ -136,10 +246,28 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Only PLATFORM_ADMIN can include responses
     if (request.user.role !== 'PLATFORM_ADMIN') {
-      return reply.status(403).send({ message: 'Only platform admins can include responses' });
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform admins can include responses',
+        statusCode: 403,
+      });
     }
 
-    const { rid: responseId } = responseIdParamSchema.parse(request.params);
+    const { id: campaignId, rid: responseId } = responseIdParamSchema.parse(request.params);
+
+    // Verify campaign exists
+    const campaign = await fastify.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { id: true },
+    });
+
+    if (!campaign) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
 
     try {
       const response = await responseService.includeResponse(
@@ -149,7 +277,11 @@ export const responseRoutes: FastifyPluginAsync = async (fastify) => {
       return response;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to include response';
-      return reply.status(400).send({ message });
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message,
+        statusCode: 400,
+      });
     }
   });
 };
