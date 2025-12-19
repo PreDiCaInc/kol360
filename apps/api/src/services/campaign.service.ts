@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { SurveyTemplateService } from './survey-template.service';
+import { scoreCalculationService } from './score-calculation.service';
 import { CreateCampaignInput, UpdateCampaignInput, CampaignListQuery } from '@kol360/shared';
 import { CampaignStatus, Prisma } from '@prisma/client';
 
@@ -161,11 +162,18 @@ export class CampaignService {
     });
   }
 
-  async publish(id: string) {
+  async publish(id: string, publishedBy: string) {
     const campaign = await prisma.campaign.findUnique({ where: { id } });
     if (campaign?.status !== 'CLOSED') {
       throw new Error('Can only publish closed campaigns');
     }
+
+    // Calculate final scores before publishing
+    await scoreCalculationService.calculateSurveyScores(id);
+    await scoreCalculationService.calculateCompositeScores(id);
+
+    // Publish scores (update disease area aggregates)
+    await scoreCalculationService.publishScores(id, publishedBy);
 
     return prisma.campaign.update({
       where: { id },
