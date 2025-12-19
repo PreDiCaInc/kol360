@@ -44,7 +44,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 
 USER nextjs
 EXPOSE 3000
-ENV PORT=3000
+
+# App Runner sets PORT env var, Next.js reads it
+# HOSTNAME must be 0.0.0.0 to accept external connections
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "apps/web/server.js"]
+CMD ["sh", "-c", "node apps/web/server.js"]
