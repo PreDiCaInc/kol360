@@ -1,7 +1,11 @@
 import { prisma } from '../lib/prisma';
-import { EmailService } from './email.service';
+import { emailService } from './email.service';
 
-const emailService = new EmailService();
+interface ListParams {
+  status?: string;
+  page: number;
+  limit: number;
+}
 
 export class DistributionService {
   async listCampaignHcps(campaignId: string) {
@@ -62,135 +66,70 @@ export class DistributionService {
   }
 
   async sendInvitations(campaignId: string) {
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
+    return emailService.sendBulkInvitations(campaignId);
+  }
+
+  async sendReminders(campaignId: string, maxReminders: number = 3) {
+    return emailService.sendBulkReminders(campaignId, maxReminders);
+  }
+
+  async sendSingleInvitation(campaignId: string, hcpId: string) {
+    const campaignHcp = await prisma.campaignHcp.findUnique({
+      where: {
+        campaignId_hcpId: { campaignId, hcpId },
+      },
       include: {
-        campaignHcps: {
-          where: { emailSentAt: null },
-          include: { hcp: true },
+        hcp: true,
+        campaign: {
+          select: { name: true, honorariumAmount: true, status: true },
         },
       },
     });
 
-    if (!campaign) throw new Error('Campaign not found');
-    if (campaign.status !== 'ACTIVE') throw new Error('Campaign must be active to send invitations');
+    if (!campaignHcp) {
+      throw new Error('HCP not found in campaign');
+    }
 
-    let sent = 0;
-    let failed = 0;
-    const errors: string[] = [];
+    if (!campaignHcp.hcp.email) {
+      throw new Error('HCP has no email address');
+    }
 
-    for (const ch of campaign.campaignHcps) {
-      if (!ch.hcp.email) {
-        failed++;
-        errors.push(`${ch.hcp.firstName} ${ch.hcp.lastName}: No email address`);
-        continue;
-      }
+    if (campaignHcp.campaign.status !== 'ACTIVE') {
+      throw new Error('Campaign is not active');
+    }
 
-      // Check opt-out
-      const optOut = await prisma.optOut.findFirst({
+    return emailService.sendSurveyInvitation({
+      campaignId,
+      hcpId,
+      email: campaignHcp.hcp.email,
+      firstName: campaignHcp.hcp.firstName,
+      lastName: campaignHcp.hcp.lastName,
+      surveyToken: campaignHcp.surveyToken,
+      campaignName: campaignHcp.campaign.name,
+      honorariumAmount: campaignHcp.campaign.honorariumAmount
+        ? Number(campaignHcp.campaign.honorariumAmount)
+        : null,
+    });
+  }
+
+  async getStats(campaignId: string) {
+    const [
+      total,
+      invited,
+      optedOut,
+      responses,
+    ] = await Promise.all([
+      prisma.campaignHcp.count({ where: { campaignId } }),
+      prisma.campaignHcp.count({ where: { campaignId, emailSentAt: { not: null } } }),
+      prisma.optOut.count({
         where: {
-          email: ch.hcp.email,
           OR: [
             { scope: 'GLOBAL' },
             { scope: 'CAMPAIGN', campaignId },
           ],
           resubscribedAt: null,
         },
-      });
-
-      if (optOut) {
-        failed++;
-        errors.push(`${ch.hcp.firstName} ${ch.hcp.lastName}: Opted out`);
-        continue;
-      }
-
-      try {
-        await emailService.sendSurveyInvitation({
-          to: ch.hcp.email,
-          hcpName: ch.hcp.lastName,
-          surveyToken: ch.surveyToken,
-          campaignName: campaign.name,
-          honorarium: campaign.honorariumAmount ? Number(campaign.honorariumAmount) : undefined,
-        });
-
-        await prisma.campaignHcp.update({
-          where: { id: ch.id },
-          data: { emailSentAt: new Date() },
-        });
-
-        sent++;
-      } catch (error) {
-        failed++;
-        errors.push(`${ch.hcp.firstName} ${ch.hcp.lastName}: Send failed`);
-      }
-    }
-
-    return { sent, failed, errors };
-  }
-
-  async sendReminders(campaignId: string) {
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
-      include: {
-        campaignHcps: {
-          where: {
-            emailSentAt: { not: null },
-          },
-          include: {
-            hcp: true,
-          },
-        },
-      },
-    });
-
-    if (!campaign) throw new Error('Campaign not found');
-    if (campaign.status !== 'ACTIVE') throw new Error('Campaign must be active to send reminders');
-
-    // Get HCPs who haven't completed the survey
-    const completedResponses = await prisma.surveyResponse.findMany({
-      where: { campaignId, status: 'COMPLETED' },
-      select: { respondentHcpId: true },
-    });
-    const completedHcpIds = new Set(completedResponses.map((r: { respondentHcpId: string | null }) => r.respondentHcpId));
-
-    let sent = 0;
-    const errors: string[] = [];
-
-    for (const ch of campaign.campaignHcps) {
-      // Skip if already completed
-      if (completedHcpIds.has(ch.hcpId)) continue;
-      if (!ch.hcp.email) continue;
-
-      try {
-        await emailService.sendReminder({
-          to: ch.hcp.email,
-          hcpName: ch.hcp.lastName,
-          surveyToken: ch.surveyToken,
-          campaignName: campaign.name,
-          reminderNumber: ch.reminderCount + 1,
-        });
-
-        await prisma.campaignHcp.update({
-          where: { id: ch.id },
-          data: {
-            reminderCount: { increment: 1 },
-            lastReminderAt: new Date(),
-          },
-        });
-
-        sent++;
-      } catch (error) {
-        errors.push(`${ch.hcp.firstName} ${ch.hcp.lastName}: Send failed`);
-      }
-    }
-
-    return { sent, errors };
-  }
-
-  async getStats(campaignId: string) {
-    const [total, invited, responses] = await Promise.all([
-      prisma.campaignHcp.count({ where: { campaignId } }),
-      prisma.campaignHcp.count({ where: { campaignId, emailSentAt: { not: null } } }),
+      }),
       prisma.surveyResponse.groupBy({
         by: ['status'],
         where: { campaignId },
@@ -207,15 +146,92 @@ export class DistributionService {
     );
 
     const completed = statusCounts['COMPLETED'] || 0;
-    const inProgress = (statusCounts['OPENED'] || 0) + (statusCounts['IN_PROGRESS'] || 0);
+    const opened = statusCounts['OPENED'] || 0;
+    const inProgress = statusCounts['IN_PROGRESS'] || 0;
 
     return {
       total,
       invited,
       notInvited: total - invited,
+      opened,
       inProgress,
       completed,
-      completionRate: invited > 0 ? Math.round((completed / invited) * 100) : 0,
+      optedOut,
+      responseRate: invited > 0 ? Math.round((completed / invited) * 100) : 0,
+    };
+  }
+
+  async listHcps(campaignId: string, params: ListParams) {
+    const { status, page, limit } = params;
+
+    // Build where clause based on status filter
+    const where: Record<string, unknown> = { campaignId };
+
+    if (status === 'not_invited') {
+      where.emailSentAt = null;
+    } else if (status === 'invited') {
+      where.emailSentAt = { not: null };
+    }
+
+    const [total, items] = await Promise.all([
+      prisma.campaignHcp.count({ where }),
+      prisma.campaignHcp.findMany({
+        where,
+        include: {
+          hcp: {
+            select: {
+              id: true,
+              npi: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              specialty: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    // Get response statuses for these HCPs
+    const hcpIds = items.map((i: { hcpId: string }) => i.hcpId);
+    const surveyResponses = await prisma.surveyResponse.findMany({
+      where: {
+        campaignId,
+        respondentHcpId: { in: hcpIds },
+      },
+      select: {
+        respondentHcpId: true,
+        status: true,
+        completedAt: true,
+      },
+    });
+
+    const responseMap = new Map(
+      surveyResponses.map((r: { respondentHcpId: string; status: string; completedAt: Date | null }) => [
+        r.respondentHcpId,
+        r,
+      ])
+    );
+
+    const itemsWithStatus = items.map((item: { hcpId: string }) => ({
+      ...item,
+      surveyStatus: responseMap.get(item.hcpId)?.status || null,
+      completedAt: responseMap.get(item.hcpId)?.completedAt || null,
+    }));
+
+    return {
+      items: itemsWithStatus,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
     };
   }
 }
+
+export const distributionService = new DistributionService();
