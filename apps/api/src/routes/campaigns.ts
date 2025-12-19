@@ -6,6 +6,7 @@ import {
 } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { CampaignService } from '../services/campaign.service';
+import { createAuditLog } from '../lib/audit';
 
 const campaignService = new CampaignService();
 
@@ -66,14 +67,12 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
     const campaign = await campaignService.create(data, request.user!.sub);
 
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'campaign.created',
-        entityType: 'Campaign',
-        entityId: campaign.id,
-        newValues: { name: data.name, clientId: data.clientId },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'campaign.created',
+      entityType: 'Campaign',
+      entityId: campaign.id,
+      newValues: { name: data.name, clientId: data.clientId },
+      tenantId: data.clientId,
     });
 
     return reply.status(201).send(campaign);
@@ -103,14 +102,11 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
     const campaign = await campaignService.update(request.params.id, data);
 
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'campaign.updated',
-        entityType: 'Campaign',
-        entityId: campaign.id,
-        newValues: data,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'campaign.updated',
+      entityType: 'Campaign',
+      entityId: campaign.id,
+      newValues: data,
     });
 
     return campaign;
@@ -140,13 +136,10 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       await campaignService.delete(request.params.id);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'campaign.deleted',
-          entityType: 'Campaign',
-          entityId: request.params.id,
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'campaign.deleted',
+        entityType: 'Campaign',
+        entityId: request.params.id,
       });
 
       return reply.status(204).send();
@@ -183,14 +176,11 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const campaign = await campaignService.activate(request.params.id);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'campaign.activated',
-          entityType: 'Campaign',
-          entityId: campaign.id,
-          newValues: { status: 'ACTIVE' },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'campaign.activated',
+        entityType: 'Campaign',
+        entityId: campaign.id,
+        newValues: { status: 'ACTIVE' },
       });
 
       return campaign;
@@ -227,14 +217,11 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const campaign = await campaignService.close(request.params.id);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'campaign.closed',
-          entityType: 'Campaign',
-          entityId: campaign.id,
-          newValues: { status: 'CLOSED' },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'campaign.closed',
+        entityType: 'Campaign',
+        entityId: campaign.id,
+        newValues: { status: 'CLOSED' },
       });
 
       return campaign;
@@ -271,14 +258,11 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const campaign = await campaignService.reopen(request.params.id);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'campaign.reopened',
-          entityType: 'Campaign',
-          entityId: campaign.id,
-          newValues: { status: 'ACTIVE' },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'campaign.reopened',
+        entityType: 'Campaign',
+        entityId: campaign.id,
+        newValues: { status: 'ACTIVE' },
       });
 
       return campaign;
@@ -315,14 +299,11 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const campaign = await campaignService.publish(request.params.id);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'campaign.published',
-          entityType: 'Campaign',
-          entityId: campaign.id,
-          newValues: { status: 'PUBLISHED', publishedAt: campaign.publishedAt },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'campaign.published',
+        entityType: 'Campaign',
+        entityId: campaign.id,
+        newValues: { status: 'PUBLISHED', publishedAt: campaign.publishedAt },
       });
 
       return campaign;

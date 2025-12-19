@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { createHcpSchema, updateHcpSchema } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { HcpService } from '../services/hcp.service';
+import { createAuditLog } from '../lib/audit';
 import multipart from '@fastify/multipart';
 
 const hcpService = new HcpService();
@@ -68,14 +69,11 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     const hcp = await hcpService.create(data, request.user!.sub);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'hcp.created',
-        entityType: 'Hcp',
-        entityId: hcp.id,
-        newValues: { npi: data.npi, name: `${data.firstName} ${data.lastName}` },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'hcp.created',
+      entityType: 'Hcp',
+      entityId: hcp.id,
+      newValues: { npi: data.npi, name: `${data.firstName} ${data.lastName}` },
     });
 
     return reply.status(201).send(hcp);
@@ -97,15 +95,12 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     const hcp = await hcpService.update(request.params.id, data);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'hcp.updated',
-        entityType: 'Hcp',
-        entityId: hcp.id,
-        oldValues: { firstName: existing.firstName, lastName: existing.lastName },
-        newValues: data,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'hcp.updated',
+      entityType: 'Hcp',
+      entityId: hcp.id,
+      oldValues: { firstName: existing.firstName, lastName: existing.lastName },
+      newValues: data,
     });
 
     return hcp;
@@ -126,14 +121,11 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     const result = await hcpService.importFromExcel(buffer, request.user!.sub);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'hcp.bulk_import',
-        entityType: 'Hcp',
-        entityId: 'bulk',
-        newValues: { created: result.created, updated: result.updated, errors: result.errors.length },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'hcp.bulk_import',
+      entityType: 'Hcp',
+      entityId: 'bulk',
+      newValues: { created: result.created, updated: result.updated, errors: result.errors.length },
     });
 
     return result;
@@ -168,14 +160,11 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     const alias = await hcpService.addAlias(request.params.id, aliasName.trim(), request.user!.sub);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'hcp.alias_added',
-        entityType: 'HcpAlias',
-        entityId: alias.id,
-        newValues: { hcpId: request.params.id, aliasName },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'hcp.alias_added',
+      entityType: 'HcpAlias',
+      entityId: alias.id,
+      newValues: { hcpId: request.params.id, aliasName },
     });
 
     return reply.status(201).send(alias);
@@ -188,13 +177,10 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       await hcpService.removeAlias(request.params.aliasId);
 
       // Audit log
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'hcp.alias_removed',
-          entityType: 'HcpAlias',
-          entityId: request.params.aliasId,
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'hcp.alias_removed',
+        entityType: 'HcpAlias',
+        entityId: request.params.aliasId,
       });
 
       return reply.status(204).send();
@@ -216,14 +202,11 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     const result = await hcpService.importAliases(buffer, request.user!.sub);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'hcp.aliases_bulk_import',
-        entityType: 'HcpAlias',
-        entityId: 'bulk',
-        newValues: { created: result.created, skipped: result.skipped, errors: result.errors.length },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'hcp.aliases_bulk_import',
+      entityType: 'HcpAlias',
+      entityId: 'bulk',
+      newValues: { created: result.created, skipped: result.skipped, errors: result.errors.length },
     });
 
     return result;

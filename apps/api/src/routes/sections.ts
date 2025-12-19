@@ -7,6 +7,7 @@ import {
 } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { SectionService } from '../services/section.service';
+import { createAuditLog } from '../lib/audit';
 
 const sectionService = new SectionService();
 
@@ -36,14 +37,11 @@ export const sectionRoutes: FastifyPluginAsync = async (fastify) => {
     const data = createSectionSchema.parse(request.body);
     const section = await sectionService.create(data);
 
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'section.created',
-        entityType: 'SectionTemplate',
-        entityId: section.id,
-        newValues: { name: data.name },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'section.created',
+      entityType: 'SectionTemplate',
+      entityId: section.id,
+      newValues: { name: data.name },
     });
 
     return reply.status(201).send(section);
@@ -64,15 +62,12 @@ export const sectionRoutes: FastifyPluginAsync = async (fastify) => {
 
     const section = await sectionService.update(request.params.id, data);
 
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'section.updated',
-        entityType: 'SectionTemplate',
-        entityId: section.id,
-        oldValues: { name: existing.name },
-        newValues: data,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'section.updated',
+      entityType: 'SectionTemplate',
+      entityId: section.id,
+      oldValues: { name: existing.name },
+      newValues: data,
     });
 
     return section;
@@ -83,13 +78,10 @@ export const sectionRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       await sectionService.delete(request.params.id);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'section.deleted',
-          entityType: 'SectionTemplate',
-          entityId: request.params.id,
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'section.deleted',
+        entityType: 'SectionTemplate',
+        entityId: request.params.id,
       });
 
       return reply.status(204).send();
@@ -112,14 +104,11 @@ export const sectionRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const sectionQuestion = await sectionService.addQuestion(request.params.id, questionId);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'section.question_added',
-          entityType: 'SectionQuestion',
-          entityId: sectionQuestion.id,
-          newValues: { sectionId: request.params.id, questionId },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'section.question_added',
+        entityType: 'SectionQuestion',
+        entityId: sectionQuestion.id,
+        newValues: { sectionId: request.params.id, questionId },
       });
 
       return reply.status(201).send(sectionQuestion);
@@ -141,13 +130,10 @@ export const sectionRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       await sectionService.removeQuestion(request.params.id, request.params.questionId);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'section.question_removed',
-          entityType: 'SectionQuestion',
-          entityId: `${request.params.id}-${request.params.questionId}`,
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'section.question_removed',
+        entityType: 'SectionQuestion',
+        entityId: `${request.params.id}-${request.params.questionId}`,
       });
 
       return reply.status(204).send();

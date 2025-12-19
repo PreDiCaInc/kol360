@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { createClientSchema, updateClientSchema } from '@kol360/shared';
 import { requirePlatformAdmin } from '../middleware/rbac';
 import { ClientService } from '../services/client.service';
+import { createAuditLog } from '../lib/audit';
 
 const clientService = new ClientService();
 
@@ -35,14 +36,12 @@ export const clientRoutes: FastifyPluginAsync = async (fastify) => {
     const client = await clientService.create(data, request.user!.sub);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'client.created',
-        entityType: 'Client',
-        entityId: client.id,
-        newValues: data,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'client.created',
+      entityType: 'Client',
+      entityId: client.id,
+      newValues: data,
+      tenantId: client.id,
     });
 
     return reply.status(201).send(client);
@@ -64,15 +63,13 @@ export const clientRoutes: FastifyPluginAsync = async (fastify) => {
     const client = await clientService.update(request.params.id, data);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'client.updated',
-        entityType: 'Client',
-        entityId: client.id,
-        oldValues: existing,
-        newValues: data,
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'client.updated',
+      entityType: 'Client',
+      entityId: client.id,
+      oldValues: existing,
+      newValues: data,
+      tenantId: client.id,
     });
 
     return client;
@@ -93,15 +90,13 @@ export const clientRoutes: FastifyPluginAsync = async (fastify) => {
     await clientService.deactivate(request.params.id);
 
     // Audit log
-    await fastify.prisma.auditLog.create({
-      data: {
-        userId: request.user!.sub,
-        action: 'client.deactivated',
-        entityType: 'Client',
-        entityId: request.params.id,
-        oldValues: { isActive: true },
-        newValues: { isActive: false },
-      },
+    await createAuditLog(request.user!.sub, {
+      action: 'client.deactivated',
+      entityType: 'Client',
+      entityId: request.params.id,
+      oldValues: { isActive: true },
+      newValues: { isActive: false },
+      tenantId: request.params.id,
     });
 
     return reply.status(204).send();
