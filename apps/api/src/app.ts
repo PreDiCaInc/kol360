@@ -21,6 +21,7 @@ import { responseRoutes } from './routes/responses';
 import { nominationRoutes } from './routes/nominations';
 import { dashboardRoutes } from './routes/dashboards';
 import { liteClientRoutes } from './routes/lite-client';
+import { scoreCalculationRoutes } from './routes/score-calculation';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -72,6 +73,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(distributionRoutes, { prefix: '/api/v1' });
   await fastify.register(responseRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(nominationRoutes, { prefix: '/api/v1/campaigns' });
+  await fastify.register(scoreCalculationRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(dashboardRoutes, { prefix: '/api/v1' });
   await fastify.register(liteClientRoutes);
 
