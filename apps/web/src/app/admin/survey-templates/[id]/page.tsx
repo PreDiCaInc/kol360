@@ -61,7 +61,6 @@ import {
   GripVertical,
   Lock,
   Search,
-  Check,
   ChevronUp,
   ChevronDown,
 } from 'lucide-react';
@@ -94,9 +93,10 @@ export default function SurveyTemplateDetailPage() {
   const [editDescription, setEditDescription] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<string[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [sectionToRemove, setSectionToRemove] = useState<{ id: string; name: string } | null>(null);
+  const [isAddingSections, setIsAddingSections] = useState(false);
 
   // Check for edit=true query param
   useEffect(() => {
@@ -141,19 +141,33 @@ export default function SurveyTemplateDetailPage() {
     }
   };
 
-  const handleAddSection = async () => {
-    if (!selectedSectionId) return;
+  const handleAddSelectedSections = async () => {
+    if (selectedSectionIds.length === 0) return;
+    setIsAddingSections(true);
     try {
-      await addSection.mutateAsync({
-        templateId,
-        sectionId: selectedSectionId,
-        isLocked,
-      });
-      setSelectedSectionId(null);
+      for (const sectionId of selectedSectionIds) {
+        await addSection.mutateAsync({
+          templateId,
+          sectionId,
+          isLocked,
+        });
+      }
+      setSelectedSectionIds([]);
       setIsLocked(false);
+      setShowAddDialog(false);
     } catch (error) {
-      console.error('Failed to add section:', error);
+      console.error('Failed to add sections:', error);
+    } finally {
+      setIsAddingSections(false);
     }
+  };
+
+  const toggleSectionSelection = (sectionId: string) => {
+    setSelectedSectionIds((prev) =>
+      prev.includes(sectionId)
+        ? prev.filter((id) => id !== sectionId)
+        : [...prev, sectionId]
+    );
   };
 
   const handleRemoveSection = async () => {
@@ -421,10 +435,16 @@ export default function SurveyTemplateDetailPage() {
         </div>
 
         {/* Add Section Dialog */}
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <Dialog open={showAddDialog} onOpenChange={(open) => {
+          setShowAddDialog(open);
+          if (!open) {
+            setSelectedSectionIds([]);
+            setIsLocked(false);
+          }
+        }}>
           <DialogContent className="max-w-2xl max-h-[80vh]">
             <DialogHeader>
-              <DialogTitle>Add Section to Template</DialogTitle>
+              <DialogTitle>Add Sections to Template</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="flex gap-2">
@@ -441,17 +461,23 @@ export default function SurveyTemplateDetailPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">Select</TableHead>
                       <TableHead>Section</TableHead>
                       <TableHead>Questions</TableHead>
-                      <TableHead className="w-20">Select</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredSections.map((s) => (
                       <TableRow
                         key={s.id}
-                        className={selectedSectionId === s.id ? 'bg-muted' : ''}
+                        className={selectedSectionIds.includes(s.id) ? 'bg-muted/50' : ''}
                       >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedSectionIds.includes(s.id)}
+                            onCheckedChange={() => toggleSectionSelection(s.id)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             {s.isCore && <Lock className="w-3 h-3 text-muted-foreground" />}
@@ -468,15 +494,6 @@ export default function SurveyTemplateDetailPage() {
                         <TableCell>
                           <Badge variant="outline">{s.questions.length}</Badge>
                         </TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant={selectedSectionId === s.id ? 'default' : 'ghost'}
-                            onClick={() => setSelectedSectionId(s.id)}
-                          >
-                            <Check className="w-4 h-4" />
-                          </Button>
-                        </TableCell>
                       </TableRow>
                     ))}
                     {filteredSections.length === 0 && (
@@ -491,7 +508,7 @@ export default function SurveyTemplateDetailPage() {
                   </TableBody>
                 </Table>
               </div>
-              {selectedSectionId && (
+              {selectedSectionIds.length > 0 && (
                 <div className="flex items-center gap-2 p-3 bg-muted rounded">
                   <Checkbox
                     id="isLocked"
@@ -499,20 +516,25 @@ export default function SurveyTemplateDetailPage() {
                     onCheckedChange={(checked) => setIsLocked(checked === true)}
                   />
                   <label htmlFor="isLocked" className="text-sm">
-                    Lock this section (clients cannot remove it from their surveys)
+                    Lock selected sections (clients cannot remove them from their surveys)
                   </label>
                 </div>
               )}
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAddSection}
-                  disabled={!selectedSectionId || addSection.isPending}
-                >
-                  Add Section
-                </Button>
+              <div className="flex justify-between items-center pt-2 border-t">
+                <span className="text-sm text-muted-foreground">
+                  {selectedSectionIds.length} section{selectedSectionIds.length !== 1 ? 's' : ''} selected
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAddSelectedSections}
+                    disabled={selectedSectionIds.length === 0 || isAddingSections}
+                  >
+                    {isAddingSections ? 'Adding...' : `Add ${selectedSectionIds.length > 0 ? selectedSectionIds.length : ''} Section${selectedSectionIds.length !== 1 ? 's' : ''}`}
+                  </Button>
+                </div>
               </div>
             </div>
           </DialogContent>

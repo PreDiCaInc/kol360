@@ -2,16 +2,23 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { CreateQuestionInput, UpdateQuestionInput } from '@kol360/shared';
 
+interface QuestionOption {
+  text: string;
+  requiresText: boolean;
+}
+
 interface Question {
   id: string;
   text: string;
   type: string;
   category: string | null;
   isRequired: boolean;
-  options: string[] | null;
+  options: QuestionOption[] | null;
   tags: string[];
   status: string;
   usageCount: number;
+  minEntries: number | null;
+  defaultEntries: number | null;
   createdAt: string;
   updatedAt: string;
 }

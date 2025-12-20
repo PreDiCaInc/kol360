@@ -1,5 +1,29 @@
 import { z } from 'zod';
 
+// Predefined question tags for categorization
+export const QUESTION_TAGS = [
+  'Demographics',
+  'Core',
+  'Dry Eye',
+  'Retina',
+  'Glaucoma',
+  'Cataract',
+  'Cornea',
+  'Pediatric',
+  'Oculoplastics',
+  'Neuro-Ophthalmology',
+  'Uveitis',
+  'Clinical Practice',
+  'Research',
+  'Treatment',
+  'Diagnosis',
+  'Patient Care',
+  'Technology',
+  'Outcomes',
+] as const;
+
+export type QuestionTag = (typeof QUESTION_TAGS)[number];
+
 export const questionTypeSchema = z.enum([
   'TEXT',
   'NUMBER',
@@ -10,21 +34,34 @@ export const questionTypeSchema = z.enum([
   'MULTI_TEXT',
 ]);
 
+// Option object with text and optional requiresText flag
+const questionOptionSchema = z.object({
+  text: z.string(),
+  requiresText: z.boolean().default(false),
+});
+
+export type QuestionOption = z.infer<typeof questionOptionSchema>;
+
 // Base schema without refinement for partial updates
 const baseQuestionSchema = z.object({
   text: z.string().min(10, 'Question must be at least 10 characters').max(500),
   type: questionTypeSchema,
   category: z.string().max(50).optional().nullable(),
   isRequired: z.boolean().default(false),
-  options: z.array(z.string()).optional().nullable(),
+  options: z.array(questionOptionSchema).optional().nullable(),
   tags: z.array(z.string()).default([]),
+  // For MULTI_TEXT (nominations) questions
+  minEntries: z.number().int().min(1).optional().nullable(), // Minimum required entries
+  defaultEntries: z.number().int().min(1).optional().nullable(), // Initial text boxes to show (user can add more with +)
 });
 
 export const createQuestionSchema = baseQuestionSchema.refine(
   (data) => {
-    // Choice questions must have at least 2 options
+    // Choice questions must have at least 2 options with non-empty text
     if (['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN'].includes(data.type)) {
-      return data.options && data.options.length >= 2;
+      if (!data.options || data.options.length < 2) return false;
+      const validOptions = data.options.filter((opt) => opt.text && opt.text.trim().length > 0);
+      return validOptions.length >= 2;
     }
     return true;
   },
