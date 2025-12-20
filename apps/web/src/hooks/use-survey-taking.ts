@@ -2,6 +2,11 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+interface QuestionOption {
+  text: string;
+  requiresText: boolean;
+}
+
 interface SurveyQuestion {
   id: string;
   questionId: string;
@@ -9,7 +14,7 @@ interface SurveyQuestion {
   type: 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT';
   section: string | null;
   isRequired: boolean;
-  options: string[] | null;
+  options: QuestionOption[] | null;
 }
 
 interface SurveyData {

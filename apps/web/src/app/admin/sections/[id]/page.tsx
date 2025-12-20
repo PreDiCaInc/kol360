@@ -47,6 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   ArrowLeft,
   Plus,
@@ -54,7 +55,6 @@ import {
   GripVertical,
   Lock,
   Search,
-  Check,
 } from 'lucide-react';
 
 const typeLabels: Record<string, string> = {
@@ -85,6 +85,8 @@ export default function SectionDetailPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [questionToRemove, setQuestionToRemove] = useState<{ id: string; text: string } | null>(null);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+  const [isAddingQuestions, setIsAddingQuestions] = useState(false);
 
   const availableQuestions = questionsData?.items.filter(
     (q) => !section?.questions.some((sq) => sq.questionId === q.id)
@@ -120,12 +122,28 @@ export default function SectionDetailPage() {
     }
   };
 
-  const handleAddQuestion = async (questionId: string) => {
+  const handleAddSelectedQuestions = async () => {
+    if (selectedQuestionIds.length === 0) return;
+    setIsAddingQuestions(true);
     try {
-      await addQuestion.mutateAsync({ sectionId, questionId });
+      for (const questionId of selectedQuestionIds) {
+        await addQuestion.mutateAsync({ sectionId, questionId });
+      }
+      setSelectedQuestionIds([]);
+      setShowAddDialog(false);
     } catch (error) {
-      console.error('Failed to add question:', error);
+      console.error('Failed to add questions:', error);
+    } finally {
+      setIsAddingQuestions(false);
     }
+  };
+
+  const toggleQuestionSelection = (questionId: string) => {
+    setSelectedQuestionIds((prev) =>
+      prev.includes(questionId)
+        ? prev.filter((id) => id !== questionId)
+        : [...prev, questionId]
+    );
   };
 
   const handleRemoveQuestion = async () => {
@@ -325,10 +343,13 @@ export default function SectionDetailPage() {
         </div>
 
         {/* Add Question Dialog */}
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <Dialog open={showAddDialog} onOpenChange={(open) => {
+          setShowAddDialog(open);
+          if (!open) setSelectedQuestionIds([]);
+        }}>
           <DialogContent className="max-w-2xl max-h-[80vh]">
             <DialogHeader>
-              <DialogTitle>Add Question to Section</DialogTitle>
+              <DialogTitle>Add Questions to Section</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="flex gap-2">
@@ -345,14 +366,23 @@ export default function SectionDetailPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">Select</TableHead>
                       <TableHead>Question</TableHead>
                       <TableHead>Type</TableHead>
-                      <TableHead className="w-20">Add</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredQuestions.map((q) => (
-                      <TableRow key={q.id}>
+                      <TableRow
+                        key={q.id}
+                        className={selectedQuestionIds.includes(q.id) ? 'bg-muted/50' : ''}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedQuestionIds.includes(q.id)}
+                            onCheckedChange={() => toggleQuestionSelection(q.id)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <div className="line-clamp-2 text-sm">{q.text}</div>
                           {q.category && (
@@ -361,16 +391,6 @@ export default function SectionDetailPage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{typeLabels[q.type] || q.type}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleAddQuestion(q.id)}
-                            disabled={addQuestion.isPending}
-                          >
-                            <Check className="w-4 h-4" />
-                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -385,6 +405,22 @@ export default function SectionDetailPage() {
                     )}
                   </TableBody>
                 </Table>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t">
+                <span className="text-sm text-muted-foreground">
+                  {selectedQuestionIds.length} question{selectedQuestionIds.length !== 1 ? 's' : ''} selected
+                </span>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAddSelectedQuestions}
+                    disabled={selectedQuestionIds.length === 0 || isAddingQuestions}
+                  >
+                    {isAddingQuestions ? 'Adding...' : `Add ${selectedQuestionIds.length > 0 ? selectedQuestionIds.length : ''} Question${selectedQuestionIds.length !== 1 ? 's' : ''}`}
+                  </Button>
+                </div>
               </div>
             </div>
           </DialogContent>

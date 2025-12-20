@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createQuestionSchema, CreateQuestionInput } from '@kol360/shared';
+import { createQuestionSchema, CreateQuestionInput, QUESTION_TAGS } from '@kol360/shared';
 import { useQuestion, useCreateQuestion, useUpdateQuestion } from '@/hooks/use-questions';
 import {
   Dialog,
@@ -36,12 +36,17 @@ import { Plus, X } from 'lucide-react';
 const questionTypes = [
   { value: 'TEXT', label: 'Text', hasOptions: false },
   { value: 'NUMBER', label: 'Number', hasOptions: false },
-  { value: 'RATING', label: 'Rating (1-5)', hasOptions: false },
-  { value: 'SINGLE_CHOICE', label: 'Single Choice', hasOptions: true },
-  { value: 'MULTI_CHOICE', label: 'Multi Choice', hasOptions: true },
+  { value: 'RATING', label: 'Rating', hasOptions: false },
+  { value: 'SINGLE_CHOICE', label: 'Radio', hasOptions: true },
+  { value: 'MULTI_CHOICE', label: 'Check Multiple', hasOptions: true },
   { value: 'DROPDOWN', label: 'Dropdown', hasOptions: true },
-  { value: 'MULTI_TEXT', label: 'Multi Text (Nominations)', hasOptions: false },
+  { value: 'MULTI_TEXT', label: 'Nominations', hasOptions: false },
 ];
+
+interface QuestionOption {
+  text: string;
+  requiresText: boolean;
+}
 
 interface Props {
   open: boolean;
@@ -55,8 +60,10 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
   const createQuestion = useCreateQuestion();
   const updateQuestion = useUpdateQuestion();
 
-  const [options, setOptions] = useState<string[]>(['', '']);
-  const [tagInput, setTagInput] = useState('');
+  const [options, setOptions] = useState<QuestionOption[]>([
+    { text: '', requiresText: false },
+    { text: '', requiresText: false },
+  ]);
 
   const form = useForm<CreateQuestionInput>({
     resolver: zodResolver(createQuestionSchema),
@@ -67,15 +74,32 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
       isRequired: false,
       options: [],
       tags: [],
+      minEntries: null,
+      defaultEntries: null,
     },
   });
 
   const selectedType = form.watch('type');
   const currentTags = form.watch('tags') || [];
   const needsOptions = ['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN'].includes(selectedType);
+  const isNominations = selectedType === 'MULTI_TEXT';
 
   useEffect(() => {
     if (question) {
+      // Parse options - handle both old string[] format and new object format
+      let parsedOptions: QuestionOption[] = [
+        { text: '', requiresText: false },
+        { text: '', requiresText: false },
+      ];
+      if (question.options?.length) {
+        parsedOptions = question.options.map((opt: string | QuestionOption) => {
+          if (typeof opt === 'string') {
+            return { text: opt, requiresText: false };
+          }
+          return opt;
+        });
+      }
+
       form.reset({
         text: question.text,
         type: question.type as CreateQuestionInput['type'],
@@ -83,8 +107,10 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         isRequired: question.isRequired,
         options: question.options || [],
         tags: question.tags || [],
+        minEntries: question.minEntries ?? null,
+        defaultEntries: question.defaultEntries ?? null,
       });
-      setOptions(question.options?.length ? question.options : ['', '']);
+      setOptions(parsedOptions);
     } else if (!questionId) {
       form.reset({
         text: '',
@@ -93,21 +119,29 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         isRequired: false,
         options: [],
         tags: [],
+        minEntries: null,
+        defaultEntries: null,
       });
-      setOptions(['', '']);
+      setOptions([
+        { text: '', requiresText: false },
+        { text: '', requiresText: false },
+      ]);
     }
   }, [question, questionId, form]);
 
-  // Sync options with form
+  // Sync options with form - store as objects with requiresText flag
   useEffect(() => {
     if (needsOptions) {
-      form.setValue('options', options.filter(Boolean));
+      const validOptions = options.filter((opt) => opt.text.trim());
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      form.setValue('options', validOptions as any);
     } else {
       form.setValue('options', []);
     }
   }, [options, needsOptions, form]);
 
   async function onSubmit(data: CreateQuestionInput) {
+    console.log('Submitting question:', data);
     try {
       if (isEdit) {
         await updateQuestion.mutateAsync({ id: questionId!, data });
@@ -116,15 +150,21 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
       }
       onOpenChange(false);
       form.reset();
-      setOptions(['', '']);
-      setTagInput('');
+      setOptions([
+        { text: '', requiresText: false },
+        { text: '', requiresText: false },
+      ]);
     } catch (error) {
       console.error('Failed to save question:', error);
     }
   }
 
+  function onInvalid(errors: unknown) {
+    console.log('Form validation failed:', errors);
+  }
+
   function addOption() {
-    setOptions([...options, '']);
+    setOptions([...options, { text: '', requiresText: false }]);
   }
 
   function removeOption(index: number) {
@@ -133,28 +173,23 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
     }
   }
 
-  function updateOption(index: number, value: string) {
+  function updateOptionText(index: number, value: string) {
     const newOptions = [...options];
-    newOptions[index] = value;
+    newOptions[index] = { ...newOptions[index], text: value };
     setOptions(newOptions);
   }
 
-  function addTag() {
-    const tag = tagInput.trim();
-    if (tag && !currentTags.includes(tag)) {
+  function toggleOptionRequiresText(index: number) {
+    const newOptions = [...options];
+    newOptions[index] = { ...newOptions[index], requiresText: !newOptions[index].requiresText };
+    setOptions(newOptions);
+  }
+
+  function toggleTag(tag: string) {
+    if (currentTags.includes(tag)) {
+      form.setValue('tags', currentTags.filter((t) => t !== tag));
+    } else {
       form.setValue('tags', [...currentTags, tag]);
-      setTagInput('');
-    }
-  }
-
-  function removeTag(tag: string) {
-    form.setValue('tags', currentTags.filter((t) => t !== tag));
-  }
-
-  function handleTagKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addTag();
     }
   }
 
@@ -166,7 +201,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-4">
             <FormField
               control={form.control}
               name="text"
@@ -235,12 +270,20 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
               <div className="space-y-2">
                 <FormLabel>Options (minimum 2 required)</FormLabel>
                 {options.map((option, index) => (
-                  <div key={index} className="flex gap-2">
+                  <div key={index} className="flex items-center gap-2">
                     <Input
-                      value={option}
-                      onChange={(e) => updateOption(index, e.target.value)}
+                      value={option.text}
+                      onChange={(e) => updateOptionText(index, e.target.value)}
                       placeholder={`Option ${index + 1}`}
+                      className="flex-1"
                     />
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+                      <Checkbox
+                        checked={option.requiresText}
+                        onCheckedChange={() => toggleOptionRequiresText(index)}
+                      />
+                      + Text
+                    </label>
                     {options.length > 2 && (
                       <Button
                         type="button"
@@ -265,35 +308,78 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
               </div>
             )}
 
+            {/* Nominations settings */}
+            {isNominations && (
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="minEntries"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Min Required</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          placeholder="e.g., 3"
+                          value={field.value ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            field.onChange(val ? parseInt(val, 10) : null);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="defaultEntries"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Initial Boxes</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min={1}
+                          placeholder="e.g., 5"
+                          value={field.value ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            field.onChange(val ? parseInt(val, 10) : null);
+                          }}
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        User can add more with +
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
             {/* Tags */}
             <div className="space-y-2">
               <FormLabel>Tags</FormLabel>
-              <div className="flex gap-2">
-                <Input
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={handleTagKeyDown}
-                  placeholder="Add a tag..."
-                />
-                <Button type="button" variant="outline" onClick={addTag}>
-                  Add
-                </Button>
+              <div className="flex gap-2 flex-wrap">
+                {QUESTION_TAGS.map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant={currentTags.includes(tag) ? 'default' : 'outline'}
+                    className="cursor-pointer hover:bg-primary/80 transition-colors"
+                    onClick={() => toggleTag(tag)}
+                  >
+                    {tag}
+                  </Badge>
+                ))}
               </div>
               {currentTags.length > 0 && (
-                <div className="flex gap-2 flex-wrap">
-                  {currentTags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="gap-1">
-                      {tag}
-                      <button
-                        type="button"
-                        onClick={() => removeTag(tag)}
-                        className="ml-1 hover:text-destructive"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
+                <p className="text-sm text-muted-foreground">
+                  Selected: {currentTags.join(', ')}
+                </p>
               )}
             </div>
 

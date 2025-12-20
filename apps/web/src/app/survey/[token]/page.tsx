@@ -32,6 +32,11 @@ import {
 
 type QuestionType = 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT';
 
+interface QuestionOption {
+  text: string;
+  requiresText: boolean;
+}
+
 interface Question {
   id: string;
   questionId: string;
@@ -39,7 +44,7 @@ interface Question {
   type: QuestionType;
   section: string | null;
   isRequired: boolean;
-  options: string[] | null;
+  options: QuestionOption[] | null;
 }
 
 export default function SurveyPage() {
@@ -368,37 +373,54 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
       case 'SINGLE_CHOICE':
         return (
           <RadioGroup
-            value={value as string}
-            onValueChange={onChange}
+            value={(value as { selected: string; text?: string })?.selected || (value as string)}
+            onValueChange={(selected) => onChange({ selected, text: '' })}
             className="space-y-2"
           >
             {question.options?.map((option) => (
-              <div key={option} className="flex items-center space-x-2">
-                <RadioGroupItem value={option} id={`${question.id}-${option}`} />
-                <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+              <div key={option.text} className="flex items-center gap-2">
+                <RadioGroupItem value={option.text} id={`${question.id}-${option.text}`} />
+                <Label htmlFor={`${question.id}-${option.text}`}>{option.text}</Label>
+                {option.requiresText && (value as { selected: string })?.selected === option.text && (
+                  <Input
+                    placeholder="Please specify..."
+                    className="flex-1 max-w-xs"
+                    value={(value as { selected: string; text?: string })?.text || ''}
+                    onChange={(e) => onChange({ selected: option.text, text: e.target.value })}
+                  />
+                )}
               </div>
             ))}
           </RadioGroup>
         );
 
       case 'MULTI_CHOICE':
-        const selectedOptions = (value as string[]) || [];
+        const selectedOptions = (value as { selected: string[]; texts?: Record<string, string> }) || { selected: [], texts: {} };
+        const selected = Array.isArray(value) ? value : selectedOptions.selected || [];
+        const texts = selectedOptions.texts || {};
         return (
           <div className="space-y-2">
             {question.options?.map((option) => (
-              <div key={option} className="flex items-center space-x-2">
+              <div key={option.text} className="flex items-center gap-2">
                 <Checkbox
-                  id={`${question.id}-${option}`}
-                  checked={selectedOptions.includes(option)}
+                  id={`${question.id}-${option.text}`}
+                  checked={selected.includes(option.text)}
                   onCheckedChange={(checked) => {
-                    if (checked) {
-                      onChange([...selectedOptions, option]);
-                    } else {
-                      onChange(selectedOptions.filter((o) => o !== option));
-                    }
+                    const newSelected = checked
+                      ? [...selected, option.text]
+                      : selected.filter((o) => o !== option.text);
+                    onChange({ selected: newSelected, texts });
                   }}
                 />
-                <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+                <Label htmlFor={`${question.id}-${option.text}`}>{option.text}</Label>
+                {option.requiresText && selected.includes(option.text) && (
+                  <Input
+                    placeholder="Please specify..."
+                    className="flex-1 max-w-xs"
+                    value={texts[option.text] || ''}
+                    onChange={(e) => onChange({ selected, texts: { ...texts, [option.text]: e.target.value } })}
+                  />
+                )}
               </div>
             ))}
           </div>
