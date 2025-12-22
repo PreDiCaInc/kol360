@@ -18,6 +18,8 @@ interface HcpSuggestion {
     aliases: Array<{ id: string; aliasName: string }>;
   };
   score: number;
+  matchType: 'exact' | 'primary' | 'alias' | 'partial';
+  isNameMatch: boolean; // true if matched on actual name (not alias)
 }
 
 interface CreateHcpInput {
@@ -120,30 +122,44 @@ export class NominationService {
       take: 15,
     });
 
-    // Score and sort by relevance
+    // Score and sort by relevance - prioritize actual name matches over alias matches
     const scored = suggestions.map((hcp: HcpWithAliases) => {
       const fullName = `${hcp.firstName} ${hcp.lastName}`.toLowerCase();
+      const reverseName = `${hcp.lastName} ${hcp.firstName}`.toLowerCase();
       const rawName = nomination.rawNameEntered.toLowerCase().trim();
 
       let score = 0;
+      let matchType: 'exact' | 'primary' | 'alias' | 'partial' = 'partial';
+      let isNameMatch = false;
 
-      // Exact full name match
-      if (fullName === rawName) {
+      // PRIORITY 1: Exact full name match (highest priority) - 100%
+      if (fullName === rawName || reverseName === rawName) {
         score = 100;
+        matchType = 'exact';
+        isNameMatch = true;
       }
-      // Exact alias match
+      // PRIORITY 2: Exact alias match - 100% (same as exact name match)
       else if (hcp.aliases.some((a: HcpAlias) => a.aliasName.toLowerCase() === rawName)) {
-        score = 95;
+        score = 100;
+        matchType = 'alias';
+        isNameMatch = false;
       }
-      // Full name contains raw name or vice versa
+      // PRIORITY 3: Full name contains raw name or vice versa (primary name match) - needs review
       else if (fullName.includes(rawName) || rawName.includes(fullName)) {
+        score = 90;
+        matchType = 'primary';
+        isNameMatch = true;
+      }
+      // PRIORITY 4: Last name exact match with first name partial - needs review
+      else if (
+        hcp.lastName.toLowerCase() === rawName.split(' ').pop() &&
+        nameParts.some((part: string) => hcp.firstName.toLowerCase().includes(part))
+      ) {
         score = 85;
+        matchType = 'primary';
+        isNameMatch = true;
       }
-      // Last name exact match
-      else if (hcp.lastName.toLowerCase() === rawName.split(' ').pop()) {
-        score = 75;
-      }
-      // Partial alias match
+      // PRIORITY 5: Partial alias match - needs review
       else if (
         hcp.aliases.some((a: HcpAlias) =>
           a.aliasName.toLowerCase().includes(rawName) ||
@@ -151,8 +167,10 @@ export class NominationService {
         )
       ) {
         score = 70;
+        matchType = 'alias';
+        isNameMatch = false;
       }
-      // Multiple name parts match
+      // PRIORITY 6: Multiple name parts match on actual name - needs review
       else {
         const matchCount = nameParts.filter(
           (part: string) =>
@@ -160,6 +178,10 @@ export class NominationService {
             hcp.lastName.toLowerCase().includes(part)
         ).length;
         score = Math.min(60, matchCount * 25);
+        matchType = 'partial';
+        // Only consider it a name match if score is high enough (50%+)
+        // Low-confidence partial matches should offer to add alias
+        isNameMatch = score >= 50;
       }
 
       return {
@@ -174,6 +196,8 @@ export class NominationService {
           aliases: hcp.aliases.map((a: HcpAlias) => ({ id: a.id, aliasName: a.aliasName })),
         },
         score,
+        matchType,
+        isNameMatch,
       };
     });
 
@@ -185,7 +209,9 @@ export class NominationService {
     nominationId: string,
     hcpId: string,
     addAlias: boolean,
-    matchedBy: string
+    matchedBy: string,
+    matchType?: 'exact' | 'primary' | 'alias' | 'partial',
+    matchConfidence?: number
   ) {
     const nomination = await prisma.nomination.findUnique({
       where: { id: nominationId },
@@ -195,27 +221,45 @@ export class NominationService {
       throw new Error('Nomination not found');
     }
 
-    // Optionally add raw name as alias
+    // Optionally add raw name as alias (case-insensitive check)
     if (addAlias) {
-      await prisma.hcpAlias.upsert({
+      const normalizedAlias = nomination.rawNameEntered.trim();
+
+      // Check if alias already exists (case-insensitive)
+      const existingAlias = await prisma.hcpAlias.findFirst({
         where: {
-          hcpId_aliasName: { hcpId, aliasName: nomination.rawNameEntered },
-        },
-        create: {
           hcpId,
-          aliasName: nomination.rawNameEntered,
-          createdBy: matchedBy,
+          aliasName: { equals: normalizedAlias, mode: 'insensitive' },
         },
-        update: {},
       });
+
+      // Only add if no matching alias exists
+      if (!existingAlias) {
+        await prisma.hcpAlias.create({
+          data: {
+            hcpId,
+            aliasName: normalizedAlias,
+            createdBy: matchedBy,
+          },
+        });
+      }
     }
+
+    // Determine match status based on confidence
+    // MATCHED = 100% exact match on primary name OR alias
+    // REVIEW_NEEDED = anything less than 100% needs human verification
+    const confidence = matchConfidence ?? 100;
+    const isExactMatch = confidence === 100 && (matchType === 'exact' || matchType === 'primary' || matchType === 'alias');
+    const matchStatus = isExactMatch ? 'MATCHED' : 'REVIEW_NEEDED';
 
     // Update nomination
     const updated = await prisma.nomination.update({
       where: { id: nominationId },
       data: {
         matchedHcpId: hcpId,
-        matchStatus: 'MATCHED',
+        matchStatus,
+        matchType: matchType || 'exact',
+        matchConfidence: confidence,
         matchedBy,
         matchedAt: new Date(),
       },
@@ -257,14 +301,19 @@ export class NominationService {
       },
     });
 
-    // Add raw name as alias
-    await prisma.hcpAlias.create({
-      data: {
-        hcpId: hcp.id,
-        aliasName: nomination.rawNameEntered,
-        createdBy: matchedBy,
-      },
-    });
+    // Add raw name as alias only if it differs from the HCP's actual name (case-insensitive)
+    const hcpFullName = `${hcpData.firstName} ${hcpData.lastName}`.toLowerCase().trim();
+    const rawNameLower = nomination.rawNameEntered.toLowerCase().trim();
+
+    if (hcpFullName !== rawNameLower) {
+      await prisma.hcpAlias.create({
+        data: {
+          hcpId: hcp.id,
+          aliasName: nomination.rawNameEntered.trim(),
+          createdBy: matchedBy,
+        },
+      });
+    }
 
     // Update nomination
     const updated = await prisma.nomination.update({
@@ -283,13 +332,47 @@ export class NominationService {
     return updated;
   }
 
-  async exclude(nominationId: string, matchedBy: string) {
+  async exclude(nominationId: string, matchedBy: string, reason?: string) {
     return prisma.nomination.update({
       where: { id: nominationId },
       data: {
         matchStatus: 'EXCLUDED',
         matchedBy,
         matchedAt: new Date(),
+        excludeReason: reason || null,
+      },
+    });
+  }
+
+  async updateRawName(nominationId: string, newRawName: string) {
+    const nomination = await prisma.nomination.findUnique({
+      where: { id: nominationId },
+    });
+
+    if (!nomination) {
+      throw new Error('Nomination not found');
+    }
+
+    if (nomination.matchStatus !== 'UNMATCHED' && nomination.matchStatus !== 'REVIEW_NEEDED') {
+      throw new Error('Can only edit unmatched or review-needed nominations');
+    }
+
+    // Reset to UNMATCHED when editing so it can be matched again
+    return prisma.nomination.update({
+      where: { id: nominationId },
+      data: {
+        rawNameEntered: newRawName.trim(),
+        matchStatus: 'UNMATCHED',
+        matchedHcpId: null,
+        matchType: null,
+        matchConfidence: null,
+        matchedBy: null,
+        matchedAt: null,
+      },
+      include: {
+        matchedHcp: { select: { id: true, npi: true, firstName: true, lastName: true } },
+        question: { include: { question: true } },
+        nominatorHcp: { select: { firstName: true, lastName: true } },
       },
     });
   }
@@ -327,10 +410,22 @@ export class NominationService {
         // Get suggestions
         const suggestions = await this.getSuggestions(nomination.id);
 
-        // Auto-match if there's a high-confidence match (score >= 95)
         const bestMatch = suggestions[0];
-        if (bestMatch && bestMatch.score >= 95) {
-          await this.matchToHcp(nomination.id, bestMatch.hcp.id, true, matchedBy);
+        if (bestMatch && bestMatch.score >= 50) {
+          const shouldAddAlias = !bestMatch.isNameMatch; // Don't add alias if name already matches
+
+          // Pass match type and confidence to determine status
+          // Exact matches (100%) -> MATCHED
+          // Alias matches (80%) -> MATCHED
+          // Partial matches -> REVIEW_NEEDED
+          await this.matchToHcp(
+            nomination.id,
+            bestMatch.hcp.id,
+            shouldAddAlias,
+            matchedBy,
+            bestMatch.matchType,
+            bestMatch.score
+          );
           matched++;
         }
       } catch (error) {

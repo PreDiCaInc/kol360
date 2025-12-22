@@ -10,8 +10,14 @@ import {
 } from '@/hooks/use-survey-taking';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Card,
   CardContent,
@@ -30,7 +36,7 @@ import {
   Save,
 } from 'lucide-react';
 
-type QuestionType = 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT';
+type QuestionType = 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN';
 
 interface QuestionOption {
   text: string;
@@ -45,6 +51,8 @@ interface Question {
   section: string | null;
   isRequired: boolean;
   options: QuestionOption[] | null;
+  minEntries: number | null;
+  defaultEntries: number | null;
 }
 
 export default function SurveyPage() {
@@ -61,6 +69,7 @@ export default function SurveyPage() {
   const [submitted, setSubmitted] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   // Initialize answers from saved response
   useEffect(() => {
@@ -69,6 +78,21 @@ export default function SurveyPage() {
       setStarted(true);
     }
   }, [survey]);
+
+  // Mark survey as OPENED when page loads (for tracking purposes)
+  useEffect(() => {
+    if (survey && !survey.response && !submitted) {
+      // Only call startSurvey if there's no existing response yet
+      // This creates a response record with OPENED status
+      startSurvey.mutate(token, {
+        onError: (err) => {
+          // Silently ignore errors - this is just for tracking
+          console.log('Track survey open:', err);
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [survey, token]);
 
   // Auto-save every 30 seconds
   useEffect(() => {
@@ -98,6 +122,7 @@ export default function SurveyPage() {
   };
 
   const updateAnswer = useCallback((questionId: string, value: unknown) => {
+    console.log('updateAnswer called:', questionId, value);
     setAnswers((prev) => ({
       ...prev,
       [questionId]: value,
@@ -111,11 +136,19 @@ export default function SurveyPage() {
   }, []);
 
   const handleSave = async () => {
+    console.log('Saving answers:', JSON.stringify(answers, null, 2));
+    console.log('Questions:', survey?.questions.map(q => ({ id: q.id, questionId: q.questionId, type: q.type, text: q.text.substring(0, 30) })));
     try {
       await saveProgress.mutateAsync({ token, answers });
       setLastSaved(new Date());
+      setSaveMessage('Your progress has been saved. You can use this link to come back and finish later.');
+      // Clear message after 8 seconds
+      setTimeout(() => setSaveMessage(null), 8000);
     } catch (err) {
       console.error('Failed to save:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setSaveMessage(`Failed to save: ${errorMessage}`);
+      setTimeout(() => setSaveMessage(null), 8000);
     }
   };
 
@@ -125,15 +158,26 @@ export default function SurveyPage() {
     const errors: Record<string, string> = {};
 
     for (const question of survey.questions) {
+      const answer = answers[question.id];
+
+      // Check if required question has an answer
       if (question.isRequired) {
-        const answer = answers[question.questionId];
         if (
           answer === undefined ||
           answer === null ||
           answer === '' ||
           (Array.isArray(answer) && answer.filter(Boolean).length === 0)
         ) {
-          errors[question.questionId] = 'This question is required';
+          errors[question.id] = 'This question is required';
+          continue;
+        }
+      }
+
+      // For MULTI_TEXT questions, enforce minEntries
+      if (question.type === 'MULTI_TEXT' && question.minEntries && question.minEntries > 1) {
+        const filledEntries = Array.isArray(answer) ? answer.filter(Boolean).length : 0;
+        if (filledEntries < question.minEntries) {
+          errors[question.id] = `Please provide at least ${question.minEntries} names`;
         }
       }
     }
@@ -164,17 +208,26 @@ export default function SurveyPage() {
     );
   }
 
-  // Error state
+  // Error state - check if already completed (use success styling)
   if (error || !survey) {
+    const errorMessage = error instanceof Error ? error.message : 'This survey link is invalid or has expired.';
+    const isAlreadyCompleted = errorMessage.includes('already completed') || errorMessage.includes('You have already');
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center text-center">
-              <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
-              <h2 className="text-xl font-semibold mb-2">Survey Not Available</h2>
+              {isAlreadyCompleted ? (
+                <CheckCircle2 className="w-12 h-12 text-green-500 mb-4" />
+              ) : (
+                <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+              )}
+              <h2 className="text-xl font-semibold mb-2">
+                {isAlreadyCompleted ? 'Survey Already Completed' : 'Survey Not Available'}
+              </h2>
               <p className="text-muted-foreground">
-                {error instanceof Error ? error.message : 'This survey link is invalid or has expired.'}
+                {errorMessage}
               </p>
             </div>
           </CardContent>
@@ -185,15 +238,19 @@ export default function SurveyPage() {
 
   // Submitted state
   if (submitted) {
+    const thankYouTitle = survey.campaign.surveyThankYouTitle || 'Thank You!';
+    const thankYouMessage = survey.campaign.surveyThankYouMessage ||
+      `Thank you for completing the survey, Dr. ${survey.hcp.lastName}.`;
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center text-center">
               <CheckCircle2 className="w-12 h-12 text-green-500 mb-4" />
-              <h2 className="text-xl font-semibold mb-2">Survey Submitted</h2>
+              <h2 className="text-xl font-semibold mb-2">{thankYouTitle}</h2>
               <p className="text-muted-foreground">
-                Thank you for completing the survey, Dr. {survey.hcp.lastName}.
+                {thankYouMessage}
               </p>
               {survey.campaign.honorariumAmount && (
                 <p className="mt-4 text-sm">
@@ -220,29 +277,47 @@ export default function SurveyPage() {
 
   const sectionNames = Object.keys(sections);
   const totalQuestions = survey.questions.length;
-  const answeredQuestions = Object.keys(answers).filter((k) => {
-    const answer = answers[k];
-    return answer !== undefined && answer !== null && answer !== '' &&
-      (!Array.isArray(answer) || answer.filter(Boolean).length > 0);
+  const answeredQuestions = survey.questions.filter((q) => {
+    const answer = answers[q.id];
+    if (answer === undefined || answer === null || answer === '') return false;
+    // Handle MULTI_TEXT (array of strings)
+    if (Array.isArray(answer)) {
+      return answer.filter(Boolean).length > 0;
+    }
+    // Handle SINGLE_CHOICE / MULTI_CHOICE (object with selected property)
+    if (typeof answer === 'object' && answer !== null) {
+      const obj = answer as { selected?: string | string[] };
+      if ('selected' in obj) {
+        if (Array.isArray(obj.selected)) {
+          return obj.selected.length > 0;
+        }
+        return obj.selected !== undefined && obj.selected !== '';
+      }
+    }
+    // Handle NUMBER, TEXT, DROPDOWN, RATING (primitive values)
+    return true;
   }).length;
   const progress = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
 
   // Welcome screen
   if (!started) {
+    const welcomeTitle = survey.campaign.surveyWelcomeTitle || survey.campaign.name;
+    const welcomeMessage = survey.campaign.surveyWelcomeMessage ||
+      'Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.';
+
     return (
       <div className="min-h-screen bg-gray-50 py-8 px-4">
         <div className="max-w-2xl mx-auto">
           <Card>
             <CardHeader>
-              <CardTitle>{survey.campaign.name}</CardTitle>
+              <CardTitle>{welcomeTitle}</CardTitle>
               <CardDescription>
                 Welcome, Dr. {survey.hcp.lastName}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <p>
-                Thank you for participating in this survey. Your responses will help us
-                better understand key opinion leaders in this field.
+                {welcomeMessage}
               </p>
               {survey.campaign.honorariumAmount && (
                 <p className="text-sm bg-green-50 text-green-800 p-3 rounded-md">
@@ -310,9 +385,9 @@ export default function SurveyPage() {
                   key={question.id}
                   question={question}
                   index={idx}
-                  value={answers[question.questionId]}
-                  onChange={(value) => updateAnswer(question.questionId, value)}
-                  error={validationErrors[question.questionId]}
+                  value={answers[question.id]}
+                  onChange={(value) => updateAnswer(question.id, value)}
+                  error={validationErrors[question.id]}
                 />
               ))}
             </CardContent>
@@ -347,6 +422,13 @@ export default function SurveyPage() {
                 Submit Survey
               </Button>
             </div>
+            {saveMessage && (
+              <div className={`text-sm mt-3 p-3 rounded text-center flex items-center justify-center gap-2 ${saveMessage.includes('Failed') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                {!saveMessage.includes('Failed') && <CheckCircle2 className="w-4 h-4" />}
+                {saveMessage.includes('Failed') && <AlertCircle className="w-4 h-4" />}
+                <span>{saveMessage}</span>
+              </div>
+            )}
             {Object.keys(validationErrors).length > 0 && (
               <p className="text-red-500 text-sm mt-2 text-center">
                 Please answer all required questions before submitting.
@@ -447,16 +529,52 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
 
       case 'TEXT':
         return (
-          <Textarea
+          <Input
             value={(value as string) || ''}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Enter your response..."
-            rows={3}
           />
         );
 
       case 'MULTI_TEXT':
-        return <MultiTextInput value={value as string[]} onChange={onChange} />;
+        return (
+          <MultiTextInput
+            value={value as string[]}
+            onChange={onChange}
+            minEntries={question.minEntries}
+            defaultEntries={question.defaultEntries}
+          />
+        );
+
+      case 'NUMBER':
+        return (
+          <Input
+            type="number"
+            value={(value as string | number) ?? ''}
+            onChange={(e) => onChange(e.target.value ? Number(e.target.value) : '')}
+            placeholder="Enter a number..."
+            className="max-w-xs"
+          />
+        );
+
+      case 'DROPDOWN':
+        return (
+          <Select
+            value={(value as string) || ''}
+            onValueChange={(val) => onChange(val)}
+          >
+            <SelectTrigger className="max-w-xs">
+              <SelectValue placeholder="Select an option..." />
+            </SelectTrigger>
+            <SelectContent>
+              {question.options?.map((option) => (
+                <SelectItem key={option.text} value={option.text}>
+                  {option.text}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
 
       default:
         return null;
@@ -488,20 +606,31 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
 interface MultiTextInputProps {
   value: string[] | undefined;
   onChange: (value: string[]) => void;
+  minEntries: number | null;
+  defaultEntries: number | null;
 }
 
-function MultiTextInput({ value, onChange }: MultiTextInputProps) {
-  const entries = value || [''];
-  const maxEntries = 10;
+function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTextInputProps) {
+  const minRequired = minEntries ?? 1;
+  const defaultCount = defaultEntries ?? minRequired;
+
+  // Initialize with defaultEntries number of empty strings if no value or if array is too short
+  const entries = (value && value.length >= defaultCount) ? value : Array(defaultCount).fill('');
+
+  // Initialize parent state with default entries on mount
+  useEffect(() => {
+    if (!value || value.length < defaultCount) {
+      onChange(Array(defaultCount).fill(''));
+    }
+  }, [defaultCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addEntry = () => {
-    if (entries.length < maxEntries) {
-      onChange([...entries, '']);
-    }
+    onChange([...entries, '']);
   };
 
   const removeEntry = (index: number) => {
-    if (entries.length > 1) {
+    // Don't allow removing below minEntries
+    if (entries.length > minRequired) {
       onChange(entries.filter((_, i) => i !== index));
     }
   };
@@ -515,13 +644,16 @@ function MultiTextInput({ value, onChange }: MultiTextInputProps) {
   return (
     <div className="space-y-2">
       {entries.map((entry, index) => (
-        <div key={index} className="flex gap-2">
+        <div key={index} className="flex gap-2 items-center">
           <Input
             value={entry}
             onChange={(e) => updateEntry(index, e.target.value)}
             placeholder={`Name ${index + 1}`}
           />
-          {entries.length > 1 && (
+          {index < minRequired && (
+            <span className="text-red-500 text-sm">*</span>
+          )}
+          {entries.length > minRequired && index >= minRequired && (
             <Button
               type="button"
               variant="ghost"
@@ -533,15 +665,15 @@ function MultiTextInput({ value, onChange }: MultiTextInputProps) {
           )}
         </div>
       ))}
-      {entries.length < maxEntries && (
-        <Button type="button" variant="outline" size="sm" onClick={addEntry}>
-          <Plus className="w-4 h-4 mr-1" />
-          Add Another
-        </Button>
+      <Button type="button" variant="outline" size="sm" onClick={addEntry}>
+        <Plus className="w-4 h-4 mr-1" />
+        Add Another
+      </Button>
+      {minRequired > 1 && (
+        <p className="text-xs text-muted-foreground">
+          * Minimum {minRequired} names required
+        </p>
       )}
-      <p className="text-xs text-muted-foreground">
-        You can add up to {maxEntries} names ({entries.length}/{maxEntries})
-      </p>
     </div>
   );
 }
