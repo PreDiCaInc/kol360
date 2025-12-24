@@ -88,6 +88,7 @@ model Client {
   id           String     @id @default(cuid())
   name         String
   type         ClientType @default(FULL)
+  isLite       Boolean    @default(false) // Explicit flag for lite clients
   logoUrl      String?
   primaryColor String     @default("#0066CC")
   isActive     Boolean    @default(true)
@@ -99,9 +100,12 @@ model Client {
   users                  User[]
   campaigns              Campaign[]
   liteClientDiseaseAreas LiteClientDiseaseArea[]
+  hcpExclusions          ClientHcpExclusion[]
+  dashboardTemplates     ClientDashboardTemplate[]
 
   @@index([type])
   @@index([isActive])
+  @@index([isLite])
 }
 
 model User {
@@ -172,6 +176,43 @@ model LiteClientDiseaseArea {
   @@index([diseaseAreaId])
 }
 
+// Client-level HCP exclusions - allows clients to exclude specific HCPs from their view
+model ClientHcpExclusion {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  hcpId    String
+  hcp      Hcp    @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+
+  reason     String?
+  excludedAt DateTime @default(now())
+  excludedBy String // User ID who performed the exclusion
+
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, hcpId])
+  @@index([clientId])
+  @@index([hcpId])
+}
+
+// Dashboard template assignment to client
+model ClientDashboardTemplate {
+  id         String @id @default(cuid())
+  clientId   String
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  templateId String
+
+  isActive   Boolean  @default(true)
+  assignedAt DateTime @default(now())
+  assignedBy String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, templateId])
+  @@index([clientId])
+}
+
 // ============================================
 // HCP (Healthcare Provider)
 // ============================================
@@ -197,10 +238,11 @@ model Hcp {
   diseaseAreaScores   HcpDiseaseAreaScore[]
   campaignScores      HcpCampaignScore[]
   campaignHcps        CampaignHcp[]
-  nominationsReceived Nomination[]       @relation("NominatedHcp")
-  nominationsGiven    Nomination[]       @relation("NominatorHcp")
+  nominationsReceived Nomination[]           @relation("NominatedHcp")
+  nominationsGiven    Nomination[]           @relation("NominatorHcp")
   surveyResponses     SurveyResponse[]
   payments            Payment[]
+  clientExclusions    ClientHcpExclusion[]
 
   @@index([npi])
   @@index([lastName, firstName])
@@ -709,6 +751,47 @@ enum DashboardComponentType {
   CUSTOM
 }
 
+// Global dashboard templates managed by platform admin
+model DashboardTemplate {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  isDefault   Boolean @default(false) // Default template for new clients
+  isActive    Boolean @default(true)
+
+  // Template configuration
+  layoutConfig  Json?  // Overall layout configuration
+  componentKeys String[] // List of standard component keys included
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  // Relations
+  templateComponents DashboardTemplateComponent[]
+
+  @@index([isActive])
+  @@index([isDefault])
+}
+
+model DashboardTemplateComponent {
+  id            String                 @id @default(cuid())
+  templateId    String
+  template      DashboardTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  componentType DashboardComponentType
+  componentKey  String
+  configJson    Json?
+  sectionTitle  String
+  displayOrder  Int                    @default(0)
+  isVisible     Boolean                @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([templateId])
+}
+
+// Campaign-specific dashboard configuration
 model DashboardConfig {
   id          String  @id @default(cuid())
   clientId    String
