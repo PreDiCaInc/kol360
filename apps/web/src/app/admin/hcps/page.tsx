@@ -24,7 +24,8 @@ import {
 import { HcpImportDialog } from '@/components/hcps/hcp-import-dialog';
 import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
-import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function HcpsPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -38,7 +39,7 @@ export default function HcpsPage() {
     page: number;
   }>({ page: 1 });
 
-  const { data, isLoading } = useHcps({
+  const { data, isLoading, isError, error, refetch } = useHcps({
     ...filters,
     query: filters.query,
   });
@@ -140,7 +141,21 @@ export default function HcpsPage() {
         </div>
 
         {isLoading ? (
-          <div>Loading...</div>
+          <div className="text-center py-12">Loading...</div>
+        ) : isError ? (
+          <Card className="border-destructive">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <AlertTriangle className="w-12 h-12 text-destructive mb-4" />
+              <h3 className="text-lg font-medium mb-2">Failed to load HCPs</h3>
+              <p className="text-muted-foreground mb-4 text-center max-w-md">
+                {error instanceof Error ? error.message : 'Unable to connect to the server. Please check your connection and try again.'}
+              </p>
+              <Button onClick={() => refetch()} variant="outline">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <>
             <Table>

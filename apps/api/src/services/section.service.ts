@@ -49,16 +49,32 @@ export class SectionService {
       data: {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.description !== undefined && { description: data.description }),
+        ...(data.isCore !== undefined && { isCore: data.isCore }),
       },
     });
   }
 
   async delete(id: string) {
     // Check if it's a core section
-    const section = await prisma.sectionTemplate.findUnique({ where: { id } });
-    if (section?.isCore) {
+    const section = await prisma.sectionTemplate.findUnique({
+      where: { id },
+      include: { _count: { select: { templateSections: true } } },
+    });
+
+    if (!section) {
+      throw new Error('Section not found');
+    }
+
+    if (section.isCore) {
       throw new Error('Cannot delete core sections');
     }
+
+    if (section._count.templateSections > 0) {
+      throw new Error('Cannot delete section that is used in templates. Remove it from all templates first.');
+    }
+
+    // Delete associated section questions first (they cascade, but let's be explicit)
+    await prisma.sectionQuestion.deleteMany({ where: { sectionId: id } });
 
     return prisma.sectionTemplate.delete({ where: { id } });
   }

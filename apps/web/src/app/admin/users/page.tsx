@@ -28,24 +28,71 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { UserInviteDialog } from '@/components/users/user-invite-dialog';
-import { Plus, MoreHorizontal, Check, X, UserCog } from 'lucide-react';
+import { UserEditDialog } from '@/components/users/user-edit-dialog';
+import { Plus, MoreHorizontal, Check, X, UserCog, AlertTriangle, RefreshCw, Users } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+
+interface User {
+  id: string;
+  cognitoSub: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: 'PLATFORM_ADMIN' | 'CLIENT_ADMIN' | 'TEAM_MEMBER';
+  status: 'PENDING_VERIFICATION' | 'ACTIVE' | 'DISABLED';
+  clientId: string | null;
+  client?: { id: string; name: string } | null;
+}
 
 export default function UsersPage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [filters, setFilters] = useState<{
     clientId?: string;
     role?: string;
     status?: string;
   }>({});
 
-  const { data, isLoading } = useUsers(filters);
+  const { data, isLoading, isError, error, refetch } = useUsers(filters);
   const { data: clientsData } = useClients();
   const approveUser = useApproveUser();
   const disableUser = useDisableUser();
   const enableUser = useEnableUser();
 
-  const users = data?.items || [];
+  const users = (data?.items || []) as User[];
   const clients = clientsData?.items || [];
+
+  const handleApprove = async (userId: string) => {
+    setActionError(null);
+    try {
+      await approveUser.mutateAsync(userId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to approve user';
+      setActionError(message);
+    }
+  };
+
+  const handleDisable = async (userId: string) => {
+    if (!confirm('Are you sure you want to disable this user?')) return;
+    setActionError(null);
+    try {
+      await disableUser.mutateAsync(userId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to disable user';
+      setActionError(message);
+    }
+  };
+
+  const handleEnable = async (userId: string) => {
+    setActionError(null);
+    try {
+      await enableUser.mutateAsync(userId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to enable user';
+      setActionError(message);
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -82,6 +129,16 @@ export default function UsersPage() {
             Invite User
           </Button>
         </div>
+
+        {/* Error Alert */}
+        {actionError && (
+          <div className="mb-4 p-3 text-sm text-red-600 bg-red-50 rounded-md flex justify-between items-center">
+            <span>{actionError}</span>
+            <button onClick={() => setActionError(null)} className="text-red-600 hover:text-red-800">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex gap-4 mb-6">
@@ -149,7 +206,35 @@ export default function UsersPage() {
         </div>
 
         {isLoading ? (
-          <div>Loading...</div>
+          <div className="text-center py-12">Loading...</div>
+        ) : isError ? (
+          <Card className="border-destructive">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <AlertTriangle className="w-12 h-12 text-destructive mb-4" />
+              <h3 className="text-lg font-medium mb-2">Failed to load users</h3>
+              <p className="text-muted-foreground mb-4 text-center max-w-md">
+                {error instanceof Error ? error.message : 'Unable to connect to the server. Please check your connection and try again.'}
+              </p>
+              <Button onClick={() => refetch()} variant="outline">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : users.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Users className="w-12 h-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No users found</h3>
+              <p className="text-muted-foreground mb-4">
+                {Object.values(filters).some(Boolean) ? 'Try adjusting your filters' : 'Invite your first user to get started'}
+              </p>
+              <Button onClick={() => setShowInviteDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Invite User
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <Table>
             <TableHeader>
@@ -180,26 +265,20 @@ export default function UsersPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setEditingUser(user)}>
                           <UserCog className="w-4 h-4 mr-2" />
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         {user.status === 'PENDING_VERIFICATION' && (
-                          <DropdownMenuItem
-                            onClick={() => approveUser.mutate(user.id)}
-                          >
+                          <DropdownMenuItem onSelect={() => handleApprove(user.id)}>
                             <Check className="w-4 h-4 mr-2" />
                             Approve
                           </DropdownMenuItem>
                         )}
                         {user.status === 'ACTIVE' && (
                           <DropdownMenuItem
-                            onClick={() => {
-                              if (confirm('Are you sure you want to disable this user?')) {
-                                disableUser.mutate(user.id);
-                              }
-                            }}
+                            onSelect={() => handleDisable(user.id)}
                             className="text-destructive"
                           >
                             <X className="w-4 h-4 mr-2" />
@@ -207,9 +286,7 @@ export default function UsersPage() {
                           </DropdownMenuItem>
                         )}
                         {user.status === 'DISABLED' && (
-                          <DropdownMenuItem
-                            onClick={() => enableUser.mutate(user.id)}
-                          >
+                          <DropdownMenuItem onSelect={() => handleEnable(user.id)}>
                             <Check className="w-4 h-4 mr-2" />
                             Enable
                           </DropdownMenuItem>
@@ -238,6 +315,12 @@ export default function UsersPage() {
         <UserInviteDialog
           open={showInviteDialog}
           onOpenChange={setShowInviteDialog}
+        />
+
+        <UserEditDialog
+          open={!!editingUser}
+          onOpenChange={(open) => !open && setEditingUser(null)}
+          user={editingUser}
         />
       </div>
   );

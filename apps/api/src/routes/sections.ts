@@ -86,12 +86,21 @@ export const sectionRoutes: FastifyPluginAsync = async (fastify) => {
 
       return reply.status(204).send();
     } catch (error) {
-      if (error instanceof Error && error.message.includes('core sections')) {
-        return reply.status(400).send({
-          error: 'Bad Request',
-          message: error.message,
-          statusCode: 400,
-        });
+      if (error instanceof Error) {
+        if (error.message.includes('not found')) {
+          return reply.status(404).send({
+            error: 'Not Found',
+            message: error.message,
+            statusCode: 404,
+          });
+        }
+        if (error.message.includes('core sections') || error.message.includes('used in templates')) {
+          return reply.status(400).send({
+            error: 'Bad Request',
+            message: error.message,
+            statusCode: 400,
+          });
+        }
       }
       throw error;
     }

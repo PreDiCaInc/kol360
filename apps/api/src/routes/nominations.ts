@@ -5,6 +5,8 @@ import {
   nominationListQuerySchema,
   matchNominationSchema,
   createHcpFromNominationSchema,
+  updateNominationRawNameSchema,
+  excludeNominationSchema,
   idParamSchema,
 } from '@kol360/shared';
 
@@ -149,14 +151,16 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
     if (!hasAccess) return;
 
-    const { hcpId, addAlias } = matchNominationSchema.parse(request.body);
+    const { hcpId, addAlias, matchType, matchConfidence } = matchNominationSchema.parse(request.body);
 
     try {
       const result = await nominationService.matchToHcp(
         nominationId,
         hcpId,
         addAlias,
-        request.user.sub
+        request.user.sub,
+        matchType,
+        matchConfidence
       );
       return result;
     } catch (error) {
@@ -198,6 +202,7 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
   // Exclude nomination
   fastify.post<{
     Params: z.infer<typeof nominationIdParamSchema>;
+    Body: z.infer<typeof excludeNominationSchema>;
   }>('/:id/nominations/:nid/exclude', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ message: 'Unauthorized' });
@@ -209,11 +214,39 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
     if (!hasAccess) return;
 
+    const { reason } = excludeNominationSchema.parse(request.body);
+
     try {
-      const result = await nominationService.exclude(nominationId, request.user.sub);
+      const result = await nominationService.exclude(nominationId, request.user.sub, reason);
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to exclude nomination';
+      return reply.status(400).send({ message });
+    }
+  });
+
+  // Update raw name (fix typos)
+  fastify.patch<{
+    Params: z.infer<typeof nominationIdParamSchema>;
+    Body: z.infer<typeof updateNominationRawNameSchema>;
+  }>('/:id/nominations/:nid', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+
+    // Verify campaign belongs to user's tenant
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
+    const { rawNameEntered } = updateNominationRawNameSchema.parse(request.body);
+
+    try {
+      const result = await nominationService.updateRawName(nominationId, rawNameEntered);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update nomination';
       return reply.status(400).send({ message });
     }
   });

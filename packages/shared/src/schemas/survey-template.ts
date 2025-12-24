@@ -8,12 +8,12 @@ export const createSurveyTemplateSchema = z.object({
 export const updateSurveyTemplateSchema = createSurveyTemplateSchema.partial();
 
 export const addSectionToTemplateSchema = z.object({
-  sectionId: z.string().cuid(),
+  sectionId: z.string().min(1),
   isLocked: z.boolean().default(false),
 });
 
 export const reorderSectionsSchema = z.object({
-  sectionIds: z.array(z.string().cuid()),
+  sectionIds: z.array(z.string().min(1)),
 });
 
 export const cloneTemplateSchema = z.object({

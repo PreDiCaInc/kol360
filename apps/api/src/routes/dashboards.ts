@@ -46,7 +46,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     user: { role: string; tenantId?: string },
     reply: FastifyReply
   ): Promise<boolean> {
-    const dashboard = await fastify.prisma.dashboard.findUnique({
+    const dashboard = await fastify.prisma.dashboardConfig.findUnique({
       where: { id: dashboardId },
       select: { clientId: true },
     });

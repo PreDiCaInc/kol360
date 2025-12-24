@@ -15,8 +15,6 @@ import {
   FileText,
   BarChart3,
   ClipboardList,
-  UserCheck,
-  Settings,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -56,11 +54,6 @@ const navigationItems: NavItem[] = [
     title: 'Campaigns',
     href: '/admin/campaigns',
     icon: BarChart3,
-  },
-  {
-    title: 'Nominations',
-    href: '/admin/nominations',
-    icon: UserCheck,
   },
   {
     title: 'Question Bank',

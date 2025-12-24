@@ -213,12 +213,12 @@ export default function ResponsesPage() {
                   {responses?.pagination.total || 0} responses found
                 </CardDescription>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="All statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All statuses</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="PENDING">Pending</SelectItem>
                   <SelectItem value="OPENED">Opened</SelectItem>
                   <SelectItem value="IN_PROGRESS">In Progress</SelectItem>

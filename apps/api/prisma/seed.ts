@@ -48,11 +48,11 @@ async function main() {
   console.log(`Created ${diseaseAreas.length} disease areas`);
 
   // Create sample client
-  const client = await prisma.client.upsert({
-    where: { id: 'sample-client-1' },
-    update: {},
-    create: {
-      id: 'sample-client-1',
+  const existingClient = await prisma.client.findFirst({
+    where: { name: 'Sample Pharma Corp' },
+  });
+  const client = existingClient || await prisma.client.create({
+    data: {
       name: 'Sample Pharma Corp',
       type: 'FULL',
       primaryColor: '#0066CC',

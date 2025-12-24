@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { QuestionFormDialog } from '@/components/questions/question-form-dialog';
 import { Plus, Pencil, Archive, RotateCcw, MoreHorizontal, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { NOMINATION_TYPE_LABELS, NominationType } from '@kol360/shared';
 
 const typeLabels: Record<string, string> = {
   TEXT: 'Text',
@@ -135,7 +136,7 @@ export default function QuestionsPage() {
             onValueChange={(value) =>
               setFilters((prev) => ({
                 ...prev,
-                category: value === 'all' ? undefined : value,
+                category: value === 'all' ? undefined : (value === 'uncategorized' ? '' : value),
                 page: 1,
               }))
             }
@@ -146,7 +147,7 @@ export default function QuestionsPage() {
             <SelectContent>
               <SelectItem value="all">All categories</SelectItem>
               {categories?.map((cat) => (
-                <SelectItem key={cat.name || 'uncategorized'} value={cat.name || ''}>
+                <SelectItem key={cat.name || 'uncategorized'} value={cat.name || 'uncategorized'}>
                   {cat.name || 'Uncategorized'} ({cat.count})
                 </SelectItem>
               ))}
@@ -200,8 +201,9 @@ export default function QuestionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-1/2">Question</TableHead>
+                  <TableHead className="w-1/3">Question</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Nomination Type</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Required</TableHead>
                   <TableHead>Usage</TableHead>
@@ -228,9 +230,18 @@ export default function QuestionsPage() {
                         {typeLabels[q.type] || q.type}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      {q.nominationType ? (
+                        <Badge variant="outline" className="text-xs">
+                          {NOMINATION_TYPE_LABELS[q.nominationType as NominationType] || q.nominationType}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>{q.category || '—'}</TableCell>
                     <TableCell>{q.isRequired ? 'Yes' : 'No'}</TableCell>
-                    <TableCell>{q.usageCount}</TableCell>
+                    <TableCell>{(q._count?.sectionQuestions ?? 0) + (q._count?.surveyQuestions ?? 0)}</TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -264,7 +275,7 @@ export default function QuestionsPage() {
                 ))}
                 {questions.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No questions found. Create your first question to get started.
                     </TableCell>
                   </TableRow>
