@@ -11,10 +11,12 @@ interface SurveyQuestion {
   id: string;
   questionId: string;
   text: string;
-  type: 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT';
+  type: 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN';
   section: string | null;
   isRequired: boolean;
   options: QuestionOption[] | null;
+  minEntries: number | null;
+  defaultEntries: number | null;
 }
 
 interface SurveyData {
@@ -23,6 +25,13 @@ interface SurveyData {
     name: string;
     status: string;
     honorariumAmount: number | null;
+    // Landing page customization
+    surveyWelcomeTitle: string | null;
+    surveyWelcomeMessage: string | null;
+    surveyThankYouTitle: string | null;
+    surveyThankYouMessage: string | null;
+    surveyAlreadyDoneTitle: string | null;
+    surveyAlreadyDoneMessage: string | null;
   };
   hcp: {
     firstName: string;
@@ -53,6 +62,7 @@ async function startSurvey(token: string): Promise<{ status: string; startedAt: 
   const res = await fetch(`${API_BASE}/api/v1/survey/take/${token}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
   });
   if (!res.ok) {
     const error = await res.json();

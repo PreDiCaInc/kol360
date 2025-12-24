@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createQuestionSchema, CreateQuestionInput, QUESTION_TAGS } from '@kol360/shared';
+import { createQuestionSchema, CreateQuestionInput, QUESTION_TAGS, NOMINATION_TYPE_LABELS, NominationType } from '@kol360/shared';
 import { useQuestion, useCreateQuestion, useUpdateQuestion } from '@/hooks/use-questions';
 import {
   Dialog,
@@ -76,6 +76,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
       tags: [],
       minEntries: null,
       defaultEntries: null,
+      nominationType: null,
     },
   });
 
@@ -109,6 +110,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         tags: question.tags || [],
         minEntries: question.minEntries ?? null,
         defaultEntries: question.defaultEntries ?? null,
+        nominationType: (question.nominationType as NominationType) ?? null,
       });
       setOptions(parsedOptions);
     } else if (!questionId) {
@@ -121,6 +123,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         tags: [],
         minEntries: null,
         defaultEntries: null,
+        nominationType: null,
       });
       setOptions([
         { text: '', requiresText: false },
@@ -310,55 +313,89 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
 
             {/* Nominations settings */}
             {isNominations && (
-              <div className="grid grid-cols-2 gap-4">
+              <>
                 <FormField
                   control={form.control}
-                  name="minEntries"
+                  name="nominationType"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Min Required</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          placeholder="e.g., 3"
-                          value={field.value ?? ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            field.onChange(val ? parseInt(val, 10) : null);
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="defaultEntries"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Initial Boxes</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={1}
-                          placeholder="e.g., 5"
-                          value={field.value ?? ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            field.onChange(val ? parseInt(val, 10) : null);
-                          }}
-                        />
-                      </FormControl>
+                      <FormLabel>Nomination Type <span className="text-destructive">*</span></FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(value || null)}
+                        value={field.value || ''}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select nomination type..." />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {(Object.entries(NOMINATION_TYPE_LABELS) as [NominationType, string][]).map(
+                            ([value, label]) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
+                            )
+                          )}
+                        </SelectContent>
+                      </Select>
                       <p className="text-xs text-muted-foreground">
-                        User can add more with +
+                        Categorizes this nomination question for score calculation
                       </p>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-              </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="minEntries"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Min Required</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            placeholder="e.g., 3"
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              field.onChange(val ? parseInt(val, 10) : null);
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="defaultEntries"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Initial Boxes</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={1}
+                            placeholder="e.g., 5"
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              field.onChange(val ? parseInt(val, 10) : null);
+                            }}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          User can add more with +
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </>
             )}
 
             {/* Tags */}

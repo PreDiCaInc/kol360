@@ -41,3 +41,20 @@ kol360-bastion-key.pem
 # Lambda build artifacts
 apps/api/lambda-bundle
 apps/api/lambda.zip
+apps/api/dist-lambda
+
+# Temp files
+tmp/
+*.zip
+~$*
+
+# Data files (keep in func-spec but don't commit)
+func-spec/*.xlsx
+func-spec/*.csv
+func-spec/*.xls
+
+# Tech spec PDFs
+tech-spec/pdf/
+
+# Build info
+*.tsbuildinfo

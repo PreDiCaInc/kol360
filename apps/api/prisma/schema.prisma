@@ -9,9 +9,567 @@ datasource db {
   directUrl = env("DB_DIRECT_URL")
 }
 
-// ============================================
-// ENUMS
-// ============================================
+model Client {
+  id                     String                  @id @default(cuid())
+  name                   String
+  type                   ClientType              @default(FULL)
+  logoUrl                String?
+  primaryColor           String                  @default("#0066CC")
+  isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  campaigns              Campaign[]
+  liteClientDiseaseAreas LiteClientDiseaseArea[]
+  users                  User[]
+
+  @@index([type])
+  @@index([isActive])
+}
+
+model User {
+  id          String     @id @default(cuid())
+  cognitoSub  String     @unique
+  email       String     @unique
+  firstName   String
+  lastName    String
+  role        UserRole
+  status      UserStatus @default(PENDING_VERIFICATION)
+  clientId    String?
+  approvedAt  DateTime?
+  approvedBy  String?
+  lastLoginAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  auditLogs   AuditLog[]
+  client      Client?    @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@index([email])
+  @@index([cognitoSub])
+  @@index([status])
+}
+
+model DiseaseArea {
+  id                     String                  @id @default(cuid())
+  therapeuticArea        String
+  name                   String
+  code                   String                  @unique
+  isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  campaigns              Campaign[]
+  hcpDiseaseAreaScores   HcpDiseaseAreaScore[]
+  liteClientDiseaseAreas LiteClientDiseaseArea[]
+
+  @@index([therapeuticArea])
+  @@index([isActive])
+}
+
+model LiteClientDiseaseArea {
+  id            String      @id @default(cuid())
+  clientId      String
+  diseaseAreaId String
+  isActive      Boolean     @default(true)
+  expiresAt     DateTime?
+  grantedBy     String
+  grantedAt     DateTime    @default(now())
+  client        Client      @relation(fields: [clientId], references: [id])
+  diseaseArea   DiseaseArea @relation(fields: [diseaseAreaId], references: [id])
+
+  @@unique([clientId, diseaseAreaId])
+  @@index([clientId])
+  @@index([diseaseAreaId])
+}
+
+model Hcp {
+  id                  String                @id @default(cuid())
+  npi                 String                @unique
+  firstName           String
+  lastName            String
+  email               String?
+  specialty           String?
+  subSpecialty        String?
+  city                String?
+  state               String?
+  yearsInPractice     Int?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  createdBy           String?
+  campaignHcps        CampaignHcp[]
+  aliases             HcpAlias[]
+  campaignScores      HcpCampaignScore[]
+  diseaseAreaScores   HcpDiseaseAreaScore[]
+  nominationsReceived Nomination[]          @relation("NominatedHcp")
+  nominationsGiven    Nomination[]          @relation("NominatorHcp")
+  payments            Payment[]
+  surveyResponses     SurveyResponse[]
+
+  @@index([npi])
+  @@index([lastName, firstName])
+  @@index([specialty])
+  @@index([state])
+}
+
+model HcpAlias {
+  id        String   @id @default(cuid())
+  hcpId     String
+  aliasName String
+  createdBy String?
+  createdAt DateTime @default(now())
+  hcp       Hcp      @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+
+  @@unique([hcpId, aliasName])
+  @@index([aliasName])
+}
+
+model HcpDiseaseAreaScore {
+  id                   String      @id @default(cuid())
+  hcpId                String
+  diseaseAreaId        String
+  scorePublications    Decimal?    @db.Decimal(5, 2)
+  scoreClinicalTrials  Decimal?    @db.Decimal(5, 2)
+  scoreTradePubs       Decimal?    @db.Decimal(5, 2)
+  scoreOrgLeadership   Decimal?    @db.Decimal(5, 2)
+  scoreOrgAwareness    Decimal?    @db.Decimal(5, 2)
+  scoreConference      Decimal?    @db.Decimal(5, 2)
+  scoreSocialMedia     Decimal?    @db.Decimal(5, 2)
+  scoreMediaPodcasts   Decimal?    @db.Decimal(5, 2)
+  scoreSurvey          Decimal?    @db.Decimal(5, 2)
+  totalNominationCount Int         @default(0)
+  compositeScore       Decimal?    @db.Decimal(5, 2)
+  isCurrent            Boolean     @default(true)
+  effectiveFrom        DateTime    @default(now())
+  effectiveTo          DateTime?
+  campaignCount        Int         @default(0)
+  lastCalculatedAt     DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  diseaseArea          DiseaseArea @relation(fields: [diseaseAreaId], references: [id])
+  hcp                  Hcp         @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+
+  @@index([hcpId, diseaseAreaId, isCurrent])
+  @@index([diseaseAreaId, isCurrent])
+  @@index([hcpId, isCurrent])
+}
+
+model HcpCampaignScore {
+  id              String    @id @default(cuid())
+  hcpId           String
+  campaignId      String
+
+  // Per-nomination-type scores (scaled 0-100)
+  scoreNationalKol       Decimal?  @db.Decimal(5, 2)
+  countNationalKol       Int       @default(0)
+  scoreRisingStar        Decimal?  @db.Decimal(5, 2)
+  countRisingStar        Int       @default(0)
+  scoreRegionalExpert    Decimal?  @db.Decimal(5, 2)
+  countRegionalExpert    Int       @default(0)
+  scoreDigitalInfluencer Decimal?  @db.Decimal(5, 2)
+  countDigitalInfluencer Int       @default(0)
+  scoreClinicalExpert    Decimal?  @db.Decimal(5, 2)
+  countClinicalExpert    Int       @default(0)
+
+  // Consolidated score (average of type scores)
+  scoreSurvey     Decimal?  @db.Decimal(5, 2)
+  nominationCount Int       @default(0)
+  compositeScore  Decimal?  @db.Decimal(5, 2)
+  calculatedAt    DateTime?
+  publishedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  campaign        Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  hcp             Hcp       @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+
+  @@unique([hcpId, campaignId])
+  @@index([campaignId])
+  @@index([hcpId])
+}
+
+model ScoreImportBatch {
+  id              String   @id @default(cuid())
+  diseaseAreaId   String
+  fileName        String
+  recordsTotal    Int
+  recordsImported Int
+  recordsSkipped  Int
+  importedBy      String
+  importedAt      DateTime @default(now())
+  notes           String?
+
+  @@index([diseaseAreaId])
+  @@index([importedAt])
+}
+
+model Question {
+  id               String            @id @default(cuid())
+  text             String
+  type             QuestionType
+  category         String?
+  isRequired       Boolean           @default(false)
+  options          Json?
+  tags             String[]
+  status           String            @default("active")
+  usageCount       Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  minEntries       Int?
+  defaultEntries   Int?
+  nominationType   NominationType?   // For nomination questions: which type of KOL
+  sectionQuestions SectionQuestion[]
+  surveyQuestions  SurveyQuestion[]
+
+  @@index([category])
+  @@index([type])
+  @@index([status])
+  @@index([nominationType])
+}
+
+model SectionTemplate {
+  id               String            @id @default(cuid())
+  name             String
+  description      String?
+  isCore           Boolean           @default(false)
+  sortOrder        Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  questions        SectionQuestion[]
+  templateSections TemplateSection[]
+
+  @@index([isCore])
+}
+
+model SectionQuestion {
+  id         String          @id @default(cuid())
+  sectionId  String
+  questionId String
+  sortOrder  Int             @default(0)
+  question   Question        @relation(fields: [questionId], references: [id])
+  section    SectionTemplate @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, questionId])
+  @@index([sectionId])
+}
+
+model SurveyTemplate {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  campaigns   Campaign[]
+  sections    TemplateSection[]
+}
+
+model TemplateSection {
+  id         String          @id @default(cuid())
+  templateId String
+  sectionId  String
+  sortOrder  Int             @default(0)
+  isLocked   Boolean         @default(false)
+  section    SectionTemplate @relation(fields: [sectionId], references: [id])
+  template   SurveyTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, sectionId])
+  @@index([templateId])
+}
+
+model Campaign {
+  id                       String                @id @default(cuid())
+  clientId                 String
+  diseaseAreaId            String
+  surveyTemplateId         String?
+  name                     String
+  description              String?
+  status                   CampaignStatus        @default(DRAFT)
+  honorariumAmount         Decimal?              @db.Decimal(10, 2)
+  surveyOpenDate           DateTime?
+  surveyCloseDate          DateTime?
+  publishedAt              DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  createdBy                String?
+  invitationEmailBody      String?
+  invitationEmailSubject   String?
+  reminderEmailBody        String?
+  reminderEmailSubject     String?
+  surveyAlreadyDoneMessage String?
+  surveyAlreadyDoneTitle   String?
+  surveyThankYouMessage    String?
+  surveyThankYouTitle      String?
+  surveyWelcomeMessage     String?
+  surveyWelcomeTitle       String?
+  client                   Client                @relation(fields: [clientId], references: [id])
+  diseaseArea              DiseaseArea           @relation(fields: [diseaseAreaId], references: [id])
+  surveyTemplate           SurveyTemplate?       @relation(fields: [surveyTemplateId], references: [id])
+  campaignHcps             CampaignHcp[]
+  compositeScoreConfig     CompositeScoreConfig?
+  hcpCampaignScores        HcpCampaignScore[]
+  optOuts                  OptOut[]
+  payments                 Payment[]
+  surveyQuestions          SurveyQuestion[]
+  surveyResponses          SurveyResponse[]
+
+  @@index([clientId])
+  @@index([diseaseAreaId])
+  @@index([status])
+}
+
+model CampaignHcp {
+  id             String    @id @default(cuid())
+  campaignId     String
+  hcpId          String
+  surveyToken    String    @unique @default(cuid())
+  emailSentAt    DateTime?
+  reminderCount  Int       @default(0)
+  lastReminderAt DateTime?
+  createdAt      DateTime  @default(now())
+  campaign       Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  hcp            Hcp       @relation(fields: [hcpId], references: [id])
+
+  @@unique([campaignId, hcpId])
+  @@index([surveyToken])
+  @@index([campaignId])
+}
+
+model SurveyQuestion {
+  id                   String                 @id @default(cuid())
+  campaignId           String
+  questionId           String
+  sectionName          String
+  sortOrder            Int                    @default(0)
+  isRequired           Boolean                @default(false)
+  questionTextSnapshot String
+  nominationType       NominationType?        // Frozen copy of nomination type
+  createdAt            DateTime               @default(now())
+  nominations          Nomination[]
+  campaign             Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  question             Question               @relation(fields: [questionId], references: [id])
+  answers              SurveyResponseAnswer[]
+
+  @@index([campaignId])
+  @@index([nominationType])
+}
+
+model CompositeScoreConfig {
+  id                   String   @id @default(cuid())
+  campaignId           String   @unique
+  weightPublications   Decimal  @default(10) @db.Decimal(5, 2)
+  weightClinicalTrials Decimal  @default(15) @db.Decimal(5, 2)
+  weightTradePubs      Decimal  @default(10) @db.Decimal(5, 2)
+  weightOrgLeadership  Decimal  @default(10) @db.Decimal(5, 2)
+  weightOrgAwareness   Decimal  @default(10) @db.Decimal(5, 2)
+  weightConference     Decimal  @default(10) @db.Decimal(5, 2)
+  weightSocialMedia    Decimal  @default(5) @db.Decimal(5, 2)
+  weightMediaPodcasts  Decimal  @default(5) @db.Decimal(5, 2)
+  weightSurvey         Decimal  @default(25) @db.Decimal(5, 2)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  campaign             Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+}
+
+model SurveyResponse {
+  id              String                 @id @default(cuid())
+  campaignId      String
+  respondentHcpId String
+  surveyToken     String                 @unique
+  status          SurveyResponseStatus   @default(PENDING)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  ipAddress       String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  nominations     Nomination[]
+  payment         Payment?
+  campaign        Campaign               @relation(fields: [campaignId], references: [id])
+  respondentHcp   Hcp                    @relation(fields: [respondentHcpId], references: [id])
+  answers         SurveyResponseAnswer[]
+
+  @@index([campaignId])
+  @@index([respondentHcpId])
+  @@index([surveyToken])
+  @@index([status])
+}
+
+model SurveyResponseAnswer {
+  id         String         @id @default(cuid())
+  responseId String
+  questionId String
+  answerText String?
+  answerJson Json?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  question   SurveyQuestion @relation(fields: [questionId], references: [id])
+  response   SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@index([responseId])
+  @@index([questionId])
+}
+
+model Nomination {
+  id              String                @id @default(cuid())
+  responseId      String
+  questionId      String
+  nominatorHcpId  String
+  rawNameEntered  String
+  matchedHcpId    String?
+  matchStatus     NominationMatchStatus @default(UNMATCHED)
+  matchedBy       String?
+  matchedAt       DateTime?
+  createdAt       DateTime              @default(now())
+  matchConfidence Int?
+  matchType       String?
+  excludeReason   String?
+  matchedHcp      Hcp?                  @relation("NominatedHcp", fields: [matchedHcpId], references: [id])
+  nominatorHcp    Hcp                   @relation("NominatorHcp", fields: [nominatorHcpId], references: [id])
+  question        SurveyQuestion        @relation(fields: [questionId], references: [id])
+  response        SurveyResponse        @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@index([responseId])
+  @@index([questionId])
+  @@index([matchStatus])
+  @@index([matchedHcpId])
+  @@index([rawNameEntered])
+}
+
+model Payment {
+  id                  String                 @id @default(cuid())
+  campaignId          String
+  hcpId               String
+  responseId          String                 @unique
+  amount              Decimal                @db.Decimal(10, 2)
+  currency            String                 @default("USD")
+  status              PaymentStatus          @default(PENDING_EXPORT)
+  statusUpdatedAt     DateTime?
+  exportedAt          DateTime?
+  exportBatchId       String?
+  externalReferenceId String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  campaign            Campaign               @relation(fields: [campaignId], references: [id])
+  exportBatch         PaymentExportBatch?    @relation(fields: [exportBatchId], references: [id])
+  hcp                 Hcp                    @relation(fields: [hcpId], references: [id])
+  response            SurveyResponse         @relation(fields: [responseId], references: [id])
+  statusHistory       PaymentStatusHistory[]
+
+  @@unique([campaignId, hcpId])
+  @@index([campaignId])
+  @@index([status])
+}
+
+model PaymentExportBatch {
+  id          String    @id @default(cuid())
+  campaignId  String
+  exportedBy  String
+  exportedAt  DateTime  @default(now())
+  recordCount Int
+  fileName    String?
+  notes       String?
+  payments    Payment[]
+
+  @@index([campaignId])
+}
+
+model PaymentStatusHistory {
+  id            String         @id @default(cuid())
+  paymentId     String
+  oldStatus     PaymentStatus?
+  newStatus     PaymentStatus
+  changedAt     DateTime       @default(now())
+  changedBy     String?
+  importBatchId String?
+  payment       Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+}
+
+model PaymentImportBatch {
+  id             String   @id @default(cuid())
+  campaignId     String
+  importedBy     String
+  importedAt     DateTime @default(now())
+  fileName       String
+  recordCount    Int
+  matchedCount   Int
+  unmatchedCount Int
+  status         String
+
+  @@index([campaignId])
+}
+
+model OptOut {
+  id              String      @id @default(cuid())
+  hcpId           String?
+  email           String
+  scope           OptOutScope
+  campaignId      String?
+  reason          String?
+  optedOutAt      DateTime    @default(now())
+  optedOutVia     String
+  resubscribedAt  DateTime?
+  resubscribedVia String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  campaign        Campaign?   @relation(fields: [campaignId], references: [id])
+
+  @@index([email])
+  @@index([scope])
+  @@index([campaignId])
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  actorType  ActorType @default(USER)
+  metadata   Json?
+  tenantId   String?
+  user       User?     @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model DashboardConfig {
+  id          String               @id @default(cuid())
+  clientId    String
+  campaignId  String               @unique
+  name        String
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  createdBy   String?
+  isPublished Boolean              @default(false)
+  components  DashboardComponent[]
+
+  @@index([clientId])
+  @@index([campaignId])
+}
+
+model DashboardComponent {
+  id            String                 @id @default(cuid())
+  dashboardId   String
+  componentType DashboardComponentType
+  componentKey  String
+  configJson    Json?
+  sectionTitle  String
+  displayOrder  Int                    @default(0)
+  isVisible     Boolean                @default(true)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  dashboard     DashboardConfig        @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@index([dashboardId])
+  @@index([componentKey])
+}
 
 enum UserRole {
   PLATFORM_ADMIN
@@ -51,6 +609,7 @@ enum NominationMatchStatus {
   MATCHED
   NEW_HCP
   EXCLUDED
+  REVIEW_NEEDED
 }
 
 enum PaymentStatus {
@@ -80,595 +639,14 @@ enum QuestionType {
   MULTI_TEXT
 }
 
-// ============================================
-// TENANT & USER MANAGEMENT
-// ============================================
-
-model Client {
-  id           String     @id @default(cuid())
-  name         String
-  type         ClientType @default(FULL)
-  logoUrl      String?
-  primaryColor String     @default("#0066CC")
-  isActive     Boolean    @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  users                  User[]
-  campaigns              Campaign[]
-  liteClientDiseaseAreas LiteClientDiseaseArea[]
-
-  @@index([type])
-  @@index([isActive])
+// Nomination types for categorizing HCP nominations
+enum NominationType {
+  NATIONAL_KOL       // Nationally recognized thought leader
+  RISING_STAR        // Emerging/up-and-coming KOL
+  REGIONAL_EXPERT    // Regional/local expert
+  DIGITAL_INFLUENCER // Social media/digital presence
+  CLINICAL_EXPERT    // Clinical trial/research expert
 }
-
-model User {
-  id          String     @id @default(cuid())
-  cognitoSub  String     @unique
-  email       String     @unique
-  firstName   String
-  lastName    String
-  role        UserRole
-  status      UserStatus @default(PENDING_VERIFICATION)
-
-  clientId String?
-  client   Client? @relation(fields: [clientId], references: [id])
-
-  approvedAt  DateTime?
-  approvedBy  String?
-  lastLoginAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  auditLogs AuditLog[]
-
-  @@index([clientId])
-  @@index([email])
-  @@index([cognitoSub])
-  @@index([status])
-}
-
-// ============================================
-// DISEASE AREAS
-// ============================================
-
-model DiseaseArea {
-  id              String  @id @default(cuid())
-  therapeuticArea String // e.g., "Ophthalmology"
-  name            String // e.g., "Retina", "Dry Eye"
-  code            String  @unique // e.g., "RETINA", "DRY_EYE"
-  isActive        Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  campaigns              Campaign[]
-  hcpDiseaseAreaScores   HcpDiseaseAreaScore[]
-  liteClientDiseaseAreas LiteClientDiseaseArea[]
-
-  @@index([therapeuticArea])
-  @@index([isActive])
-}
-
-model LiteClientDiseaseArea {
-  id            String      @id @default(cuid())
-  clientId      String
-  client        Client      @relation(fields: [clientId], references: [id])
-  diseaseAreaId String
-  diseaseArea   DiseaseArea @relation(fields: [diseaseAreaId], references: [id])
-
-  isActive  Boolean   @default(true)
-  expiresAt DateTime?
-  grantedBy String
-  grantedAt DateTime  @default(now())
-
-  @@unique([clientId, diseaseAreaId])
-  @@index([clientId])
-  @@index([diseaseAreaId])
-}
-
-// ============================================
-// HCP (Healthcare Provider)
-// ============================================
-
-model Hcp {
-  id              String  @id @default(cuid())
-  npi             String  @unique
-  firstName       String
-  lastName        String
-  email           String?
-  specialty       String?
-  subSpecialty    String?
-  city            String?
-  state           String?
-  yearsInPractice Int?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String?
-
-  // Relations
-  aliases             HcpAlias[]
-  diseaseAreaScores   HcpDiseaseAreaScore[]
-  campaignScores      HcpCampaignScore[]
-  campaignHcps        CampaignHcp[]
-  nominationsReceived Nomination[]       @relation("NominatedHcp")
-  nominationsGiven    Nomination[]       @relation("NominatorHcp")
-  surveyResponses     SurveyResponse[]
-  payments            Payment[]
-
-  @@index([npi])
-  @@index([lastName, firstName])
-  @@index([specialty])
-  @@index([state])
-}
-
-model HcpAlias {
-  id        String   @id @default(cuid())
-  hcpId     String
-  hcp       Hcp      @relation(fields: [hcpId], references: [id], onDelete: Cascade)
-  aliasName String
-  createdBy String?
-  createdAt DateTime @default(now())
-
-  @@unique([hcpId, aliasName])
-  @@index([aliasName])
-}
-
-// ============================================
-// SCORING
-// ============================================
-
-model HcpDiseaseAreaScore {
-  id            String      @id @default(cuid())
-  hcpId         String
-  hcp           Hcp         @relation(fields: [hcpId], references: [id], onDelete: Cascade)
-  diseaseAreaId String
-  diseaseArea   DiseaseArea @relation(fields: [diseaseAreaId], references: [id])
-
-  // 8 Objective Scores (0-100, manually uploaded)
-  scorePublications   Decimal? @db.Decimal(5, 2)
-  scoreClinicalTrials Decimal? @db.Decimal(5, 2)
-  scoreTradePubs      Decimal? @db.Decimal(5, 2)
-  scoreOrgLeadership  Decimal? @db.Decimal(5, 2)
-  scoreOrgAwareness   Decimal? @db.Decimal(5, 2)
-  scoreConference     Decimal? @db.Decimal(5, 2)
-  scoreSocialMedia    Decimal? @db.Decimal(5, 2)
-  scoreMediaPodcasts  Decimal? @db.Decimal(5, 2)
-
-  // Survey Score (0-100, system-calculated aggregate)
-  scoreSurvey          Decimal? @db.Decimal(5, 2)
-  totalNominationCount Int      @default(0)
-
-  // Composite Score
-  compositeScore Decimal? @db.Decimal(5, 2)
-
-  // SCD Type 2 fields for history tracking
-  isCurrent     Boolean   @default(true)
-  effectiveFrom DateTime  @default(now())
-  effectiveTo   DateTime?
-
-  // Metadata
-  campaignCount    Int       @default(0)
-  lastCalculatedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([hcpId, diseaseAreaId, isCurrent])
-  @@index([diseaseAreaId, isCurrent])
-  @@index([hcpId, isCurrent])
-}
-
-model HcpCampaignScore {
-  id         String   @id @default(cuid())
-  hcpId      String
-  hcp        Hcp      @relation(fields: [hcpId], references: [id], onDelete: Cascade)
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  // Campaign Survey Score (this campaign only)
-  scoreSurvey     Decimal? @db.Decimal(5, 2)
-  nominationCount Int      @default(0)
-
-  // Campaign Composite (8 from disease area + 1 survey from campaign)
-  compositeScore Decimal? @db.Decimal(5, 2)
-
-  calculatedAt DateTime?
-  publishedAt  DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([hcpId, campaignId])
-  @@index([campaignId])
-  @@index([hcpId])
-}
-
-model ScoreImportBatch {
-  id              String   @id @default(cuid())
-  diseaseAreaId   String
-  fileName        String
-  recordsTotal    Int
-  recordsImported Int
-  recordsSkipped  Int
-  importedBy      String
-  importedAt      DateTime @default(now())
-  notes           String?
-
-  @@index([diseaseAreaId])
-  @@index([importedAt])
-}
-
-// ============================================
-// QUESTION BANK
-// ============================================
-
-model Question {
-  id         String       @id @default(cuid())
-  text       String
-  type       QuestionType
-  category   String? // e.g., "Demographics", "Nominations"
-  isRequired Boolean      @default(false)
-  options    Json? // For choice questions: ["Option A", "Option B"]
-  tags       String[]
-  status     String       @default("active") // active, archived
-  usageCount Int          @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  sectionQuestions SectionQuestion[]
-  surveyQuestions  SurveyQuestion[]
-
-  @@index([category])
-  @@index([type])
-  @@index([status])
-}
-
-model SectionTemplate {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-  isCore      Boolean @default(false)
-  sortOrder   Int     @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  questions        SectionQuestion[]
-  templateSections TemplateSection[]
-
-  @@index([isCore])
-}
-
-model SectionQuestion {
-  id         String          @id @default(cuid())
-  sectionId  String
-  section    SectionTemplate @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  questionId String
-  question   Question        @relation(fields: [questionId], references: [id])
-  sortOrder  Int             @default(0)
-
-  @@unique([sectionId, questionId])
-  @@index([sectionId])
-}
-
-model SurveyTemplate {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  sections  TemplateSection[]
-  campaigns Campaign[]
-}
-
-model TemplateSection {
-  id         String          @id @default(cuid())
-  templateId String
-  template   SurveyTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  sectionId  String
-  section    SectionTemplate @relation(fields: [sectionId], references: [id])
-  sortOrder  Int             @default(0)
-  isLocked   Boolean         @default(false)
-
-  @@unique([templateId, sectionId])
-  @@index([templateId])
-}
-
-// ============================================
-// CAMPAIGNS
-// ============================================
-
-model Campaign {
-  id               String          @id @default(cuid())
-  clientId         String
-  client           Client          @relation(fields: [clientId], references: [id])
-  diseaseAreaId    String
-  diseaseArea      DiseaseArea     @relation(fields: [diseaseAreaId], references: [id])
-  surveyTemplateId String?
-  surveyTemplate   SurveyTemplate? @relation(fields: [surveyTemplateId], references: [id])
-
-  name        String
-  description String?
-  status      CampaignStatus @default(DRAFT)
-
-  honorariumAmount Decimal? @db.Decimal(10, 2)
-
-  surveyOpenDate  DateTime?
-  surveyCloseDate DateTime?
-  publishedAt     DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String?
-
-  // Relations
-  campaignHcps         CampaignHcp[]
-  surveyQuestions      SurveyQuestion[]
-  surveyResponses      SurveyResponse[]
-  hcpCampaignScores    HcpCampaignScore[]
-  compositeScoreConfig CompositeScoreConfig?
-  payments             Payment[]
-  optOuts              OptOut[]
-
-  @@index([clientId])
-  @@index([diseaseAreaId])
-  @@index([status])
-}
-
-model CampaignHcp {
-  id         String   @id @default(cuid())
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  hcpId      String
-  hcp        Hcp      @relation(fields: [hcpId], references: [id])
-
-  surveyToken    String    @unique @default(cuid())
-  emailSentAt    DateTime?
-  reminderCount  Int       @default(0)
-  lastReminderAt DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@unique([campaignId, hcpId])
-  @@index([surveyToken])
-  @@index([campaignId])
-}
-
-model SurveyQuestion {
-  id         String   @id @default(cuid())
-  campaignId String
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  questionId String
-  question   Question @relation(fields: [questionId], references: [id])
-
-  sectionName          String
-  sortOrder            Int     @default(0)
-  isRequired           Boolean @default(false)
-  questionTextSnapshot String // Frozen copy of question text
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  answers     SurveyResponseAnswer[]
-  nominations Nomination[]
-
-  @@index([campaignId])
-}
-
-model CompositeScoreConfig {
-  id         String   @id @default(cuid())
-  campaignId String   @unique
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  // Weights for each segment (must sum to 100)
-  weightPublications   Decimal @default(10) @db.Decimal(5, 2)
-  weightClinicalTrials Decimal @default(15) @db.Decimal(5, 2)
-  weightTradePubs      Decimal @default(10) @db.Decimal(5, 2)
-  weightOrgLeadership  Decimal @default(10) @db.Decimal(5, 2)
-  weightOrgAwareness   Decimal @default(10) @db.Decimal(5, 2)
-  weightConference     Decimal @default(10) @db.Decimal(5, 2)
-  weightSocialMedia    Decimal @default(5) @db.Decimal(5, 2)
-  weightMediaPodcasts  Decimal @default(5) @db.Decimal(5, 2)
-  weightSurvey         Decimal @default(25) @db.Decimal(5, 2)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ============================================
-// SURVEY RESPONSES
-// ============================================
-
-model SurveyResponse {
-  id              String               @id @default(cuid())
-  campaignId      String
-  campaign        Campaign             @relation(fields: [campaignId], references: [id])
-  respondentHcpId String
-  respondentHcp   Hcp                  @relation(fields: [respondentHcpId], references: [id])
-  surveyToken     String               @unique
-
-  status      SurveyResponseStatus @default(PENDING)
-  startedAt   DateTime?
-  completedAt DateTime?
-  ipAddress   String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  answers     SurveyResponseAnswer[]
-  nominations Nomination[]
-  payment     Payment?
-
-  @@index([campaignId])
-  @@index([respondentHcpId])
-  @@index([surveyToken])
-  @@index([status])
-}
-
-model SurveyResponseAnswer {
-  id         String         @id @default(cuid())
-  responseId String
-  response   SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
-  questionId String
-  question   SurveyQuestion @relation(fields: [questionId], references: [id])
-
-  answerText String?
-  answerJson Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([responseId])
-  @@index([questionId])
-}
-
-model Nomination {
-  id             String         @id @default(cuid())
-  responseId     String
-  response       SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
-  questionId     String
-  question       SurveyQuestion @relation(fields: [questionId], references: [id])
-  nominatorHcpId String
-  nominatorHcp   Hcp            @relation("NominatorHcp", fields: [nominatorHcpId], references: [id])
-
-  rawNameEntered String
-  matchedHcpId   String?
-  matchedHcp     Hcp?                  @relation("NominatedHcp", fields: [matchedHcpId], references: [id])
-  matchStatus    NominationMatchStatus @default(UNMATCHED)
-  matchedBy      String?
-  matchedAt      DateTime?
-
-  createdAt DateTime @default(now())
-
-  @@index([responseId])
-  @@index([questionId])
-  @@index([matchStatus])
-  @@index([matchedHcpId])
-  @@index([rawNameEntered])
-}
-
-// ============================================
-// PAYMENTS
-// ============================================
-
-model Payment {
-  id         String         @id @default(cuid())
-  campaignId String
-  campaign   Campaign       @relation(fields: [campaignId], references: [id])
-  hcpId      String
-  hcp        Hcp            @relation(fields: [hcpId], references: [id])
-  responseId String         @unique
-  response   SurveyResponse @relation(fields: [responseId], references: [id])
-
-  amount   Decimal       @db.Decimal(10, 2)
-  currency String        @default("USD")
-
-  status          PaymentStatus @default(PENDING_EXPORT)
-  statusUpdatedAt DateTime?
-
-  exportedAt    DateTime?
-  exportBatchId String?
-  exportBatch   PaymentExportBatch? @relation(fields: [exportBatchId], references: [id])
-
-  externalReferenceId String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  statusHistory PaymentStatusHistory[]
-
-  @@unique([campaignId, hcpId])
-  @@index([campaignId])
-  @@index([status])
-}
-
-model PaymentExportBatch {
-  id          String   @id @default(cuid())
-  campaignId  String
-  exportedBy  String
-  exportedAt  DateTime @default(now())
-  recordCount Int
-  fileName    String?
-  notes       String?
-
-  // Relations
-  payments Payment[]
-
-  @@index([campaignId])
-}
-
-model PaymentStatusHistory {
-  id            String         @id @default(cuid())
-  paymentId     String
-  payment       Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  oldStatus     PaymentStatus?
-  newStatus     PaymentStatus
-  changedAt     DateTime       @default(now())
-  changedBy     String?
-  importBatchId String?
-
-  @@index([paymentId])
-}
-
-model PaymentImportBatch {
-  id             String   @id @default(cuid())
-  campaignId     String
-  importedBy     String
-  importedAt     DateTime @default(now())
-  fileName       String
-  recordCount    Int
-  matchedCount   Int
-  unmatchedCount Int
-  status         String // processing, completed, completed_with_errors
-
-  @@index([campaignId])
-}
-
-// ============================================
-// OPT-OUT
-// ============================================
-
-model OptOut {
-  id         String      @id @default(cuid())
-  hcpId      String?
-  email      String
-  scope      OptOutScope
-  campaignId String?
-  campaign   Campaign?   @relation(fields: [campaignId], references: [id])
-
-  reason      String?
-  optedOutAt  DateTime @default(now())
-  optedOutVia String // email_link, admin_manual, api
-
-  resubscribedAt  DateTime?
-  resubscribedVia String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([email])
-  @@index([scope])
-  @@index([campaignId])
-}
-
-// ============================================
-// AUDIT LOG
-// ============================================
 
 enum ActorType {
   USER
@@ -676,72 +654,7 @@ enum ActorType {
   API_KEY
 }
 
-model AuditLog {
-  id         String    @id @default(cuid())
-  userId     String?
-  user       User?     @relation(fields: [userId], references: [id])
-  actorType  ActorType @default(USER)
-  tenantId   String?   // Multi-tenant filter
-  action     String    // e.g., "hcp.created", "campaign.published"
-  entityType String    // e.g., "Hcp", "Campaign"
-  entityId   String
-  oldValues  Json?
-  newValues  Json?
-  ipAddress  String?
-  userAgent  String?
-  metadata   Json?     // Additional context
-
-  createdAt DateTime @default(now())
-
-  @@index([entityType, entityId])
-  @@index([userId])
-  @@index([tenantId])
-  @@index([action])
-  @@index([createdAt])
-}
-
-// ============================================
-// DASHBOARD CONFIG (Phase 2)
-// ============================================
-
 enum DashboardComponentType {
   STANDARD
   CUSTOM
-}
-
-model DashboardConfig {
-  id          String  @id @default(cuid())
-  clientId    String
-  campaignId  String
-  name        String
-  isPublished Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String?
-
-  // Relations
-  components DashboardComponent[]
-
-  @@unique([campaignId])
-  @@index([clientId])
-  @@index([campaignId])
-}
-
-model DashboardComponent {
-  id           String                 @id @default(cuid())
-  dashboardId  String
-  dashboard    DashboardConfig        @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
-  componentType DashboardComponentType
-  componentKey String // e.g., "response_rate", "top_kols_table", or custom key
-  configJson   Json? // For custom components: chart_type, question_id, group_by, metric
-  sectionTitle String
-  displayOrder Int                    @default(0)
-  isVisible    Boolean                @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([dashboardId])
-  @@index([componentKey])
 }

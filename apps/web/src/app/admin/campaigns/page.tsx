@@ -57,7 +57,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, MoreHorizontal, Eye, Trash2, FileText } from 'lucide-react';
+import { Plus, MoreHorizontal, Eye, Trash2, FileText, AlertTriangle, RefreshCw } from 'lucide-react';
 import { CampaignStatus } from '@kol360/shared';
 
 const statusColors: Record<CampaignStatus, string> = {
@@ -72,7 +72,7 @@ export default function CampaignsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<{ id: string; name: string } | null>(null);
 
-  const { data: campaignsData, isLoading } = useCampaigns({
+  const { data: campaignsData, isLoading, isError, error, refetch } = useCampaigns({
     status: statusFilter === 'ALL' ? undefined : statusFilter,
   });
   const { data: clientsData } = useClients();
@@ -155,6 +155,20 @@ export default function CampaignsPage() {
 
         {isLoading ? (
           <div className="text-center py-12">Loading...</div>
+        ) : isError ? (
+          <Card className="border-destructive">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <AlertTriangle className="w-12 h-12 text-destructive mb-4" />
+              <h3 className="text-lg font-medium mb-2">Failed to load campaigns</h3>
+              <p className="text-muted-foreground mb-4 text-center max-w-md">
+                {error instanceof Error ? error.message : 'Unable to connect to the server. Please check your connection and try again.'}
+              </p>
+              <Button onClick={() => refetch()} variant="outline">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
         ) : campaigns.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -262,7 +276,7 @@ export default function CampaignsPage() {
               <div>
                 <label className="text-sm font-medium">Client</label>
                 <Select
-                  value={newCampaign.clientId}
+                  value={newCampaign.clientId || undefined}
                   onValueChange={(value) => setNewCampaign({ ...newCampaign, clientId: value })}
                 >
                   <SelectTrigger>
@@ -280,7 +294,7 @@ export default function CampaignsPage() {
               <div>
                 <label className="text-sm font-medium">Disease Area</label>
                 <Select
-                  value={newCampaign.diseaseAreaId}
+                  value={newCampaign.diseaseAreaId || undefined}
                   onValueChange={(value) => setNewCampaign({ ...newCampaign, diseaseAreaId: value })}
                 >
                   <SelectTrigger>
@@ -298,14 +312,14 @@ export default function CampaignsPage() {
               <div>
                 <label className="text-sm font-medium">Survey Template (optional)</label>
                 <Select
-                  value={newCampaign.surveyTemplateId}
-                  onValueChange={(value) => setNewCampaign({ ...newCampaign, surveyTemplateId: value })}
+                  value={newCampaign.surveyTemplateId || 'none'}
+                  onValueChange={(value) => setNewCampaign({ ...newCampaign, surveyTemplateId: value === 'none' ? '' : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select template" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No template</SelectItem>
+                    <SelectItem value="none">No template</SelectItem>
                     {templates.map((template) => (
                       <SelectItem key={template.id} value={template.id}>
                         {template.name}

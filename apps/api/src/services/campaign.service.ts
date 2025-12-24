@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { SurveyTemplateService } from './survey-template.service';
 import { scoreCalculationService } from './score-calculation.service';
-import { CreateCampaignInput, UpdateCampaignInput, CampaignListQuery } from '@kol360/shared';
+import { CreateCampaignInput, UpdateCampaignInput, CampaignListQuery, EmailTemplatesInput, LandingPageTemplatesInput } from '@kol360/shared';
 import { CampaignStatus, Prisma } from '@prisma/client';
 
 const surveyTemplateService = new SurveyTemplateService();
@@ -46,7 +46,7 @@ export class CampaignService {
   }
 
   async getById(id: string) {
-    return prisma.campaign.findUnique({
+    const campaign = await prisma.campaign.findUnique({
       where: { id },
       include: {
         client: true,
@@ -65,6 +65,24 @@ export class CampaignService {
         },
       },
     });
+
+    if (!campaign) return null;
+
+    // Get completed responses count separately
+    const completedResponses = await prisma.surveyResponse.count({
+      where: {
+        campaignId: id,
+        status: 'COMPLETED',
+      },
+    });
+
+    return {
+      ...campaign,
+      _count: {
+        ...campaign._count,
+        completedResponses,
+      },
+    };
   }
 
   async create(data: CreateCampaignInput, createdBy: string) {
@@ -134,7 +152,10 @@ export class CampaignService {
 
     return prisma.campaign.update({
       where: { id },
-      data: { status: 'ACTIVE' },
+      data: {
+        status: 'ACTIVE',
+        surveyOpenDate: new Date(),
+      },
     });
   }
 
@@ -146,7 +167,10 @@ export class CampaignService {
 
     return prisma.campaign.update({
       where: { id },
-      data: { status: 'CLOSED' },
+      data: {
+        status: 'CLOSED',
+        surveyCloseDate: new Date(),
+      },
     });
   }
 
@@ -158,7 +182,10 @@ export class CampaignService {
 
     return prisma.campaign.update({
       where: { id },
-      data: { status: 'ACTIVE' },
+      data: {
+        status: 'ACTIVE',
+        surveyCloseDate: null, // Clear close date when reopening
+      },
     });
   }
 
@@ -180,6 +207,32 @@ export class CampaignService {
       data: {
         status: 'PUBLISHED',
         publishedAt: new Date(),
+      },
+    });
+  }
+
+  async updateEmailTemplates(id: string, data: EmailTemplatesInput) {
+    return prisma.campaign.update({
+      where: { id },
+      data: {
+        invitationEmailSubject: data.invitationEmailSubject,
+        invitationEmailBody: data.invitationEmailBody,
+        reminderEmailSubject: data.reminderEmailSubject,
+        reminderEmailBody: data.reminderEmailBody,
+      },
+    });
+  }
+
+  async updateLandingPageTemplates(id: string, data: LandingPageTemplatesInput) {
+    return prisma.campaign.update({
+      where: { id },
+      data: {
+        surveyWelcomeTitle: data.surveyWelcomeTitle,
+        surveyWelcomeMessage: data.surveyWelcomeMessage,
+        surveyThankYouTitle: data.surveyThankYouTitle,
+        surveyThankYouMessage: data.surveyThankYouMessage,
+        surveyAlreadyDoneTitle: data.surveyAlreadyDoneTitle,
+        surveyAlreadyDoneMessage: data.surveyAlreadyDoneMessage,
       },
     });
   }

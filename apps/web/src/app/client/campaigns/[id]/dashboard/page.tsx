@@ -1,6 +1,6 @@
 'use client';
 
-import { use } from 'react';
+import { useParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { useDashboard, useDashboardStats } from '@/hooks/use-dashboards';
 import {
@@ -23,12 +23,9 @@ interface CustomComponentConfig {
   metric: 'count' | 'average' | 'sum';
 }
 
-export default function ClientDashboardPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id: campaignId } = use(params);
+export default function ClientDashboardPage() {
+  const params = useParams();
+  const campaignId = params.id as string;
   const { data: dashboard, isLoading: dashboardLoading } = useDashboard(campaignId);
   const { data: stats, isLoading: statsLoading } = useDashboardStats(campaignId);
 

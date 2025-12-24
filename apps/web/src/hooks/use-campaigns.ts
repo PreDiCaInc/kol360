@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
-import { CreateCampaignInput, UpdateCampaignInput, CampaignStatus } from '@kol360/shared';
+import { CreateCampaignInput, UpdateCampaignInput, CampaignStatus, EmailTemplatesInput, LandingPageTemplatesInput } from '@kol360/shared';
 
 interface Client {
   id: string;
@@ -168,5 +168,102 @@ export function usePublishCampaign() {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       queryClient.invalidateQueries({ queryKey: ['campaigns', id] });
     },
+  });
+}
+
+// Email Templates
+export interface EmailTemplates {
+  invitationEmailSubject: string | null;
+  invitationEmailBody: string | null;
+  reminderEmailSubject: string | null;
+  reminderEmailBody: string | null;
+}
+
+export function useEmailTemplates(campaignId: string) {
+  return useQuery({
+    queryKey: ['campaigns', campaignId, 'email-templates'],
+    queryFn: () => apiClient.get<EmailTemplates>(`/api/v1/campaigns/${campaignId}/email-templates`),
+    enabled: !!campaignId,
+  });
+}
+
+export function useUpdateEmailTemplates() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ campaignId, data }: { campaignId: string; data: EmailTemplatesInput }) =>
+      apiClient.put<EmailTemplates>(`/api/v1/campaigns/${campaignId}/email-templates`, data),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'email-templates'] });
+    },
+  });
+}
+
+// Landing Page Templates
+export interface LandingPageTemplates {
+  surveyWelcomeTitle: string | null;
+  surveyWelcomeMessage: string | null;
+  surveyThankYouTitle: string | null;
+  surveyThankYouMessage: string | null;
+  surveyAlreadyDoneTitle: string | null;
+  surveyAlreadyDoneMessage: string | null;
+}
+
+export function useLandingPageTemplates(campaignId: string) {
+  return useQuery({
+    queryKey: ['campaigns', campaignId, 'landing-page-templates'],
+    queryFn: () => apiClient.get<LandingPageTemplates>(`/api/v1/campaigns/${campaignId}/landing-page-templates`),
+    enabled: !!campaignId,
+  });
+}
+
+export function useUpdateLandingPageTemplates() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ campaignId, data }: { campaignId: string; data: LandingPageTemplatesInput }) =>
+      apiClient.put<LandingPageTemplates>(`/api/v1/campaigns/${campaignId}/landing-page-templates`, data),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'landing-page-templates'] });
+    },
+  });
+}
+
+// Survey Preview
+interface QuestionOption {
+  text: string;
+  requiresText: boolean;
+}
+
+export interface SurveyPreviewQuestion {
+  id: string;
+  questionId: string;
+  text: string;
+  type: string;
+  section: string | null;
+  isRequired: boolean;
+  options: QuestionOption[] | null;
+  minEntries: number | null;
+  defaultEntries: number | null;
+  nominationType: string | null;
+}
+
+export interface SurveyPreviewData {
+  campaignName: string;
+  honorariumAmount: number | null;
+  welcomeTitle: string | null;
+  welcomeMessage: string | null;
+  thankYouTitle: string | null;
+  thankYouMessage: string | null;
+  questions: SurveyPreviewQuestion[];
+  sections: Record<string, SurveyPreviewQuestion[]>;
+  totalQuestions: number;
+}
+
+export function useSurveyPreview(campaignId: string) {
+  return useQuery({
+    queryKey: ['campaigns', campaignId, 'survey-preview'],
+    queryFn: () => apiClient.get<SurveyPreviewData>(`/api/v1/campaigns/${campaignId}/survey-preview`),
+    enabled: !!campaignId,
   });
 }
