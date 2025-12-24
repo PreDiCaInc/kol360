@@ -5,6 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import { prismaPlugin } from './plugins/prisma';
 import { authPlugin } from './plugins/auth';
 import { loggingPlugin } from './plugins/logging';
+import { errorHandlerPlugin } from './plugins/error-handler';
 import { healthRoutes } from './routes/health';
 import { clientRoutes } from './routes/clients';
 import { userRoutes } from './routes/users';
@@ -54,6 +55,9 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
 
   // Logging (adds trace IDs and request logging)
   await fastify.register(loggingPlugin);
+
+  // Global error handler (must be after logging for trace IDs)
+  await fastify.register(errorHandlerPlugin);
 
   // Authentication
   await fastify.register(authPlugin);

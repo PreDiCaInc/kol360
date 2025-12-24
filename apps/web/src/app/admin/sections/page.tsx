@@ -32,8 +32,20 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Plus, Pencil, Trash2, Lock, FileText } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Plus, MoreHorizontal, Eye, Pencil, Trash2, Lock, FolderOpen } from 'lucide-react';
 
 export default function SectionsPage() {
   const { data: sections, isLoading } = useSections();
@@ -64,10 +76,13 @@ export default function SectionsPage() {
   const handleDelete = async () => {
     if (!sectionToDelete) return;
     try {
+      console.log('Deleting section:', sectionToDelete.id);
       await deleteSection.mutateAsync(sectionToDelete.id);
+      console.log('Section deleted successfully');
       setSectionToDelete(null);
     } catch (error) {
       console.error('Failed to delete section:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete section');
     }
   };
 
@@ -83,83 +98,114 @@ export default function SectionsPage() {
           </div>
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Section
+            New Section
           </Button>
         </div>
 
         {isLoading ? (
-          <div>Loading...</div>
+          <div className="text-center py-12">Loading...</div>
+        ) : !sections || sections.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <FolderOpen className="w-12 h-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No sections yet</h3>
+              <p className="text-muted-foreground mb-4">
+                Create your first section to organize questions
+              </p>
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Section
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Questions</TableHead>
-                <TableHead>Used In</TableHead>
-                <TableHead className="w-24">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sections?.map((section) => (
-                <TableRow key={section.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {section.isCore && (
-                        <Lock className="w-4 h-4 text-muted-foreground" />
-                      )}
-                      <Link
-                        href={`/admin/sections/${section.id}`}
-                        className="font-medium text-blue-600 hover:underline"
-                      >
-                        {section.name}
-                      </Link>
-                      {section.isCore && (
-                        <Badge variant="secondary">Core</Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate">
-                    {section.description || '—'}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      <FileText className="w-3 h-3 mr-1" />
-                      {section.questions.length}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {section._count.templateSections} template(s)
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link href={`/admin/sections/${section.id}`}>
-                          <Pencil className="w-4 h-4" />
-                        </Link>
-                      </Button>
-                      {!section.isCore && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setSectionToDelete({ id: section.id, name: section.name })}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {(!sections || sections.length === 0) && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    No section templates found. Create your first section to get started.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <Card>
+            <CardHeader>
+              <CardTitle>All Sections</CardTitle>
+              <CardDescription>
+                {sections.length} section{sections.length !== 1 ? 's' : ''} available
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Questions</TableHead>
+                    <TableHead>Used In</TableHead>
+                    <TableHead className="w-16"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sections.map((section) => (
+                    <TableRow key={section.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {section.isCore && (
+                            <Lock className="w-4 h-4 text-muted-foreground" />
+                          )}
+                          <div>
+                            <div className="font-medium">{section.name}</div>
+                            {section.description && (
+                              <div className="text-sm text-muted-foreground line-clamp-1">
+                                {section.description}
+                              </div>
+                            )}
+                          </div>
+                          {section.isCore && (
+                            <Badge variant="secondary">Core</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{section.questions.length}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {section._count.templateSections > 0 ? (
+                          <span className="text-sm">
+                            {section._count.templateSections} template{section._count.templateSections !== 1 ? 's' : ''}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Not used</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/admin/sections/${section.id}`}>
+                                <Eye className="w-4 h-4 mr-2" />
+                                View Details
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/admin/sections/${section.id}`}>
+                                <Pencil className="w-4 h-4 mr-2" />
+                                Edit
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setSectionToDelete({ id: section.id, name: section.name })}
+                              disabled={section.isCore || (section._count?.templateSections ?? 0) > 0}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
 
         {/* Create Section Dialog */}
@@ -170,21 +216,19 @@ export default function SectionsPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name">Name</Label>
+                <label className="text-sm font-medium">Name</label>
                 <Input
-                  id="name"
+                  placeholder="e.g., Demographics"
                   value={newSectionName}
                   onChange={(e) => setNewSectionName(e.target.value)}
-                  placeholder="e.g., Demographics"
                 />
               </div>
               <div>
-                <Label htmlFor="description">Description</Label>
+                <label className="text-sm font-medium">Description</label>
                 <Textarea
-                  id="description"
+                  placeholder="Describe this section..."
                   value={newSectionDescription}
                   onChange={(e) => setNewSectionDescription(e.target.value)}
-                  placeholder="Optional description..."
                   rows={3}
                 />
               </div>
@@ -192,11 +236,8 @@ export default function SectionsPage() {
                 <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
                   Cancel
                 </Button>
-                <Button
-                  onClick={handleCreate}
-                  disabled={!newSectionName.trim() || createSection.isPending}
-                >
-                  {createSection.isPending ? 'Creating...' : 'Create'}
+                <Button onClick={handleCreate} disabled={createSection.isPending || !newSectionName.trim()}>
+                  Create
                 </Button>
               </div>
             </div>
@@ -215,12 +256,7 @@ export default function SectionsPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                Delete
-              </AlertDialogAction>
+              <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

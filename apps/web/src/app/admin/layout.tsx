@@ -1,24 +1,12 @@
 'use client';
 
-import { ReactNode, useState, createContext, useContext } from 'react';
+import { ReactNode, useState } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { SidebarContext } from '@/components/layout/sidebar-context';
 import { cn } from '@/lib/utils';
-
-// Create context for sidebar state
-interface SidebarContextValue {
-  collapsed: boolean;
-  setCollapsed: (collapsed: boolean) => void;
-}
-
-const SidebarContext = createContext<SidebarContextValue>({
-  collapsed: false,
-  setCollapsed: () => {},
-});
-
-export const useSidebarContext = () => useContext(SidebarContext);
 
 interface AdminLayoutProps {
   children: ReactNode;

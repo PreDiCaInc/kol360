@@ -48,6 +48,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   ArrowLeft,
   Plus,
@@ -55,7 +56,9 @@ import {
   GripVertical,
   Lock,
   Search,
+  Eye,
 } from 'lucide-react';
+import { SectionPreviewDialog } from '@/components/sections/section-preview-dialog';
 
 const typeLabels: Record<string, string> = {
   TEXT: 'Text',
@@ -83,6 +86,7 @@ export default function SectionDetailPage() {
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [questionToRemove, setQuestionToRemove] = useState<{ id: string; text: string } | null>(null);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
@@ -119,6 +123,18 @@ export default function SectionDetailPage() {
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to update section:', error);
+    }
+  };
+
+  const handleToggleCore = async () => {
+    if (!section) return;
+    try {
+      await updateSection.mutateAsync({
+        id: sectionId,
+        data: { isCore: !section.isCore },
+      });
+    } catch (error) {
+      console.error('Failed to toggle core status:', error);
     }
   };
 
@@ -258,6 +274,19 @@ export default function SectionDetailPage() {
                     <span className="text-muted-foreground">Used in:</span>{' '}
                     <span className="font-medium">{section._count.templateSections} template(s)</span>
                   </div>
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <div className="text-sm">
+                      <span className="font-medium">Core Section</span>
+                      <p className="text-xs text-muted-foreground">
+                        Core sections cannot be deleted
+                      </p>
+                    </div>
+                    <Switch
+                      checked={section.isCore}
+                      onCheckedChange={handleToggleCore}
+                      disabled={updateSection.isPending}
+                    />
+                  </div>
                   <Button variant="outline" onClick={handleStartEdit}>
                     Edit Details
                   </Button>
@@ -271,10 +300,21 @@ export default function SectionDetailPage() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Questions</CardTitle>
-                <Button size="sm" onClick={() => setShowAddDialog(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Question
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowPreview(true)}
+                    disabled={section.questions.length === 0}
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Preview
+                  </Button>
+                  <Button size="sm" onClick={() => setShowAddDialog(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Question
+                  </Button>
+                </div>
               </div>
               <CardDescription>
                 Drag to reorder questions within this section
@@ -444,6 +484,13 @@ export default function SectionDetailPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Section Preview Dialog */}
+        <SectionPreviewDialog
+          open={showPreview}
+          onOpenChange={setShowPreview}
+          section={section}
+        />
       </div>
     </RequireAuth>
   );

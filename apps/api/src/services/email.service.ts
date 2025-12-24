@@ -9,6 +9,8 @@ const ses = new SESClient({
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || 'noreply@bio-exec.com';
 const FROM_NAME = process.env.SES_FROM_NAME || 'BioExec KOL Research';
 const MOCK_MODE = process.env.EMAIL_MOCK_MODE === 'true';
+const SEND_EXTERNAL_EMAIL = process.env.SEND_EXTERNAL_EMAIL === 'true';
+const ALLOWED_EMAIL_DOMAIN = 'bio-exec.com';
 
 // Base URL for survey links
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://kol360.bio-exec.com';
@@ -29,6 +31,8 @@ interface SendInvitationParams {
   surveyToken: string;
   campaignName: string;
   honorariumAmount?: number | null;
+  customSubject?: string | null;
+  customBody?: string | null;
 }
 
 interface SendReminderParams extends SendInvitationParams {
@@ -39,6 +43,9 @@ interface BulkSendResult {
   sent: number;
   failed: number;
   skipped: number;
+  skippedCompleted?: number;
+  skippedRecentlyReminded?: number;
+  skippedMaxReminders?: number;
   errors: Array<{ email: string; error: string }>;
 }
 
@@ -48,6 +55,19 @@ export class EmailService {
    */
   async sendEmail(params: SendEmailParams): Promise<{ messageId: string }> {
     const { to, subject, htmlBody, textBody } = params;
+
+    // Check if external emails are allowed
+    const emailDomain = to.split('@')[1]?.toLowerCase();
+    const isInternalEmail = emailDomain === ALLOWED_EMAIL_DOMAIN;
+
+    if (!isInternalEmail && !SEND_EXTERNAL_EMAIL) {
+      logger.info('BLOCKED: External email not allowed', {
+        to,
+        subject,
+        reason: 'SEND_EXTERNAL_EMAIL is not enabled'
+      });
+      return { messageId: `blocked-external-${Date.now()}` };
+    }
 
     if (MOCK_MODE) {
       logger.info('MOCK: Would send email', { to, subject });
@@ -91,15 +111,46 @@ export class EmailService {
   /**
    * Send survey invitation email to a single HCP
    */
+  /**
+   * Replace template placeholders with actual values
+   */
+  private replaceTemplatePlaceholders(
+    template: string,
+    params: {
+      firstName: string;
+      lastName: string;
+      surveyUrl: string;
+      unsubscribeUrl: string;
+      campaignName: string;
+      honorariumAmount?: number | null;
+    }
+  ): string {
+    const honorariumText = params.honorariumAmount
+      ? `$${params.honorariumAmount}`
+      : '';
+
+    return template
+      .replace(/\{firstName\}/g, params.firstName)
+      .replace(/\{lastName\}/g, params.lastName)
+      .replace(/\{surveyLink\}/g, params.surveyUrl)
+      .replace(/\{surveyUrl\}/g, params.surveyUrl)
+      .replace(/\{unsubscribeUrl\}/g, params.unsubscribeUrl)
+      .replace(/\{campaignName\}/g, params.campaignName)
+      .replace(/\{honorarium\}/g, honorariumText);
+  }
+
   async sendSurveyInvitation(params: SendInvitationParams): Promise<{ messageId: string }> {
     const {
       campaignId,
       hcpId,
       email,
+      firstName,
       lastName,
       surveyToken,
       campaignName,
       honorariumAmount,
+      customSubject,
+      customBody,
     } = params;
 
     // Check opt-out status
@@ -126,9 +177,17 @@ export class EmailService {
       ? `As a thank you for your participation, you will receive a $${honorariumAmount} honorarium upon completion.`
       : '';
 
-    const subject = `Your expertise needed: ${campaignName} KOL Survey`;
+    // Use custom subject/body if provided, otherwise use default
+    const subject = customSubject
+      ? this.replaceTemplatePlaceholders(customSubject, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount })
+      : `Your expertise needed: ${campaignName} KOL Survey`;
 
-    const htmlBody = `
+    // If custom body provided, use it with placeholder replacement
+    let htmlBody: string;
+    if (customBody) {
+      htmlBody = this.replaceTemplatePlaceholders(customBody, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount });
+    } else {
+      htmlBody = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -176,8 +235,12 @@ export class EmailService {
 </body>
 </html>
     `.trim();
+    }
 
-    const textBody = `
+    // Generate plain text version (strip HTML if custom body was provided)
+    const textBody = customBody
+      ? htmlBody.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+      : `
 Dear Dr. ${lastName},
 
 You have been identified as a key opinion leader in your field, and we would greatly value your insights.
@@ -228,11 +291,14 @@ BioExec Research | Confidential KOL Survey
       campaignId,
       hcpId,
       email,
+      firstName,
       lastName,
       surveyToken,
       campaignName,
       honorariumAmount,
       reminderNumber,
+      customSubject,
+      customBody,
     } = params;
 
     // Check opt-out status
@@ -275,9 +341,16 @@ BioExec Research | Confidential KOL Survey
       ? 'This survey will be closing soon. '
       : '';
 
-    const subject = `Reminder: ${campaignName} KOL Survey - We value your input`;
+    // Use custom subject/body if provided, otherwise use default
+    const subject = customSubject
+      ? this.replaceTemplatePlaceholders(customSubject, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount })
+      : `Reminder: ${campaignName} KOL Survey - We value your input`;
 
-    const htmlBody = `
+    let htmlBody: string;
+    if (customBody) {
+      htmlBody = this.replaceTemplatePlaceholders(customBody, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount });
+    } else {
+      htmlBody = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -320,8 +393,12 @@ BioExec Research | Confidential KOL Survey
 </body>
 </html>
     `.trim();
+    }
 
-    const textBody = `
+    // Generate plain text version (strip HTML if custom body was provided)
+    const textBody = customBody
+      ? htmlBody.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+      : `
 Dear Dr. ${lastName},
 
 We recently invited you to participate in the ${campaignName} research study, and we noticed you haven't yet completed the survey.
@@ -373,6 +450,8 @@ BioExec Research | Confidential KOL Survey
         name: true,
         status: true,
         honorariumAmount: true,
+        invitationEmailSubject: true,
+        invitationEmailBody: true,
       },
     });
 
@@ -428,6 +507,8 @@ BioExec Research | Confidential KOL Survey
           surveyToken,
           campaignName: campaign.name,
           honorariumAmount: campaign.honorariumAmount ? Number(campaign.honorariumAmount) : null,
+          customSubject: campaign.invitationEmailSubject,
+          customBody: campaign.invitationEmailBody,
         });
         result.sent++;
 
@@ -455,6 +536,8 @@ BioExec Research | Confidential KOL Survey
         name: true,
         status: true,
         honorariumAmount: true,
+        reminderEmailSubject: true,
+        reminderEmailBody: true,
       },
     });
 
@@ -466,22 +549,13 @@ BioExec Research | Confidential KOL Survey
       throw new Error('Can only send reminders for active campaigns');
     }
 
-    // Get HCPs who:
-    // - Have been sent an invitation
-    // - Haven't completed the survey
-    // - Haven't exceeded max reminders
-    // - Haven't been sent a reminder in the last 24 hours
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const eligibleHcps = await prisma.campaignHcp.findMany({
+    // Get all HCPs who have been invited (no reminder count filter - we'll count those separately)
+    const allInvitedHcps = await prisma.campaignHcp.findMany({
       where: {
         campaignId,
         emailSentAt: { not: null },
-        reminderCount: { lt: maxReminders },
-        OR: [
-          { lastReminderAt: null },
-          { lastReminderAt: { lt: oneDayAgo } },
-        ],
       },
       include: {
         hcp: {
@@ -495,7 +569,7 @@ BioExec Research | Confidential KOL Survey
       },
     });
 
-    // Filter out those who have completed
+    // Get completed HCP IDs
     const completedHcpIds = new Set(
       (await prisma.surveyResponse.findMany({
         where: {
@@ -510,14 +584,33 @@ BioExec Research | Confidential KOL Survey
       sent: 0,
       failed: 0,
       skipped: 0,
+      skippedCompleted: 0,
+      skippedRecentlyReminded: 0,
+      skippedMaxReminders: 0,
       errors: [],
     };
 
-    for (const campaignHcp of eligibleHcps) {
-      const { hcp, surveyToken, reminderCount } = campaignHcp;
+    for (const campaignHcp of allInvitedHcps) {
+      const { hcp, surveyToken, reminderCount, lastReminderAt } = campaignHcp;
 
+      // Check if completed (highest priority - count all completed)
       if (completedHcpIds.has(hcp.id)) {
         result.skipped++;
+        result.skippedCompleted!++;
+        continue;
+      }
+
+      // Check if max reminders reached
+      if (reminderCount >= maxReminders) {
+        result.skipped++;
+        result.skippedMaxReminders!++;
+        continue;
+      }
+
+      // Check 24-hour cooldown (only in production mode)
+      if (!MOCK_MODE && lastReminderAt && lastReminderAt >= oneDayAgo) {
+        result.skipped++;
+        result.skippedRecentlyReminded!++;
         continue;
       }
 
@@ -537,6 +630,8 @@ BioExec Research | Confidential KOL Survey
           campaignName: campaign.name,
           honorariumAmount: campaign.honorariumAmount ? Number(campaign.honorariumAmount) : null,
           reminderNumber: reminderCount + 1,
+          customSubject: campaign.reminderEmailSubject,
+          customBody: campaign.reminderEmailBody,
         });
         result.sent++;
 

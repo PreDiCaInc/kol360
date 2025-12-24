@@ -2,12 +2,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 import { CreateSectionInput, UpdateSectionInput } from '@kol360/shared';
 
+interface QuestionOption {
+  text: string;
+  requiresText: boolean;
+}
+
 interface Question {
   id: string;
   text: string;
   type: string;
   category: string | null;
   isRequired: boolean;
+  options: QuestionOption[] | null;
+  minEntries: number | null;
+  defaultEntries: number | null;
+  nominationType: string | null;
 }
 
 interface SectionQuestion {
@@ -78,6 +87,7 @@ export function useDeleteSection() {
     mutationFn: (id: string) => apiClient.delete(`/api/v1/sections/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sections'] });
+      queryClient.invalidateQueries({ queryKey: ['survey-templates'] });
     },
   });
 }

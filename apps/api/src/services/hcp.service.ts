@@ -177,8 +177,22 @@ export class HcpService {
   }
 
   async addAlias(hcpId: string, aliasName: string, createdBy: string) {
+    const normalizedAlias = aliasName.trim();
+
+    // Check if alias already exists (case-insensitive)
+    const existingAlias = await prisma.hcpAlias.findFirst({
+      where: {
+        hcpId,
+        aliasName: { equals: normalizedAlias, mode: 'insensitive' },
+      },
+    });
+
+    if (existingAlias) {
+      throw new Error('This alias already exists for this HCP');
+    }
+
     return prisma.hcpAlias.create({
-      data: { hcpId, aliasName, createdBy },
+      data: { hcpId, aliasName: normalizedAlias, createdBy },
     });
   }
 
@@ -228,8 +242,9 @@ export class HcpService {
         const hcp = await prisma.hcp.findUnique({ where: { npi } });
         if (!hcp) throw new Error(`HCP not found: ${npi}`);
 
+        // Check for existing alias (case-insensitive)
         const existing = await prisma.hcpAlias.findFirst({
-          where: { hcpId: hcp.id, aliasName: alias },
+          where: { hcpId: hcp.id, aliasName: { equals: alias, mode: 'insensitive' } },
         });
 
         if (existing) {

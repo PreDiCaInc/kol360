@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { CreateSurveyTemplateInput, UpdateSurveyTemplateInput } from '@kol360/shared';
+import { NominationType } from '@prisma/client';
 
 export class SurveyTemplateService {
   async list() {
@@ -157,6 +158,7 @@ export class SurveyTemplateService {
       sortOrder: number;
       isRequired: boolean;
       questionTextSnapshot: string;
+      nominationType: NominationType | null;
     }[] = [];
     let globalOrder = 0;
 
@@ -169,6 +171,7 @@ export class SurveyTemplateService {
           sortOrder: globalOrder++,
           isRequired: sectionQuestion.question.isRequired,
           questionTextSnapshot: sectionQuestion.question.text,
+          nominationType: sectionQuestion.question.nominationType as NominationType | null,
         });
       }
     }

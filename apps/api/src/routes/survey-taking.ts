@@ -32,8 +32,10 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
     // Check if already completed
     if (survey.response?.status === 'COMPLETED') {
       return reply.status(400).send({
-        message: 'You have already completed this survey',
+        message: survey.campaign.surveyAlreadyDoneMessage || 'You have already completed this survey',
         completed: true,
+        customTitle: survey.campaign.surveyAlreadyDoneTitle,
+        honorariumAmount: survey.campaign.honorariumAmount,
       });
     }
 
