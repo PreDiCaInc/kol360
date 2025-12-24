@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { CreateQuestionInput, UpdateQuestionInput } from '@kol360/shared';
 
@@ -29,6 +30,14 @@ export class QuestionService {
       prisma.question.count({ where }),
       prisma.question.findMany({
         where,
+        include: {
+          _count: {
+            select: {
+              sectionQuestions: true,
+              surveyQuestions: true,
+            },
+          },
+        },
         orderBy: [{ category: 'asc' }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
@@ -62,8 +71,11 @@ export class QuestionService {
         type: data.type,
         category: data.category,
         isRequired: data.isRequired ?? false,
-        options: data.options as string[] ?? undefined,
+        options: data.options ?? undefined,
         tags: data.tags ?? [],
+        minEntries: data.minEntries ?? undefined,
+        defaultEntries: data.defaultEntries ?? undefined,
+        nominationType: data.nominationType ?? undefined,
         status: 'active',
       },
     });
@@ -89,8 +101,13 @@ export class QuestionService {
         ...(data.type !== undefined && { type: data.type }),
         ...(data.category !== undefined && { category: data.category }),
         ...(data.isRequired !== undefined && { isRequired: data.isRequired }),
-        ...(data.options !== undefined && { options: data.options as string[] }),
+        ...(data.options !== undefined && {
+          options: data.options === null ? Prisma.JsonNull : data.options,
+        }),
         ...(data.tags !== undefined && { tags: data.tags }),
+        ...(data.minEntries !== undefined && { minEntries: data.minEntries }),
+        ...(data.defaultEntries !== undefined && { defaultEntries: data.defaultEntries }),
+        ...(data.nominationType !== undefined && { nominationType: data.nominationType }),
       },
     });
   }

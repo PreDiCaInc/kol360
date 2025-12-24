@@ -15,8 +15,6 @@ import {
   FileText,
   BarChart3,
   ClipboardList,
-  UserCheck,
-  Settings,
   ChevronLeft,
   ChevronRight,
   ChevronDown,

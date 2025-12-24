@@ -57,6 +57,9 @@ import {
   Search,
   AlertCircle,
   CheckCircle2,
+  Clock,
+  Eye,
+  Loader2,
 } from 'lucide-react';
 
 interface CampaignHcpsTabProps {
@@ -74,7 +77,7 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
   const [selectedHcpIds, setSelectedHcpIds] = useState<string[]>([]);
   const [hcpToRemove, setHcpToRemove] = useState<{ id: string; name: string } | null>(null);
   const [showSendConfirm, setShowSendConfirm] = useState<'invitations' | 'reminders' | null>(null);
-  const [sendResult, setSendResult] = useState<{ sent: number; failed?: number; errors: string[] } | null>(null);
+  const [sendResult, setSendResult] = useState<{ sent: number; failed?: number; skipped?: number; skippedCompleted?: number; skippedRecentlyReminded?: number; skippedMaxReminders?: number; errors: Array<{ email: string; error: string }> } | null>(null);
 
   const assignHcps = useAssignHcps();
   const removeHcp = useRemoveHcp();
@@ -230,14 +233,29 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
                     <TableCell>{ch.hcp.specialty || '-'}</TableCell>
                     <TableCell>{ch.hcp.institution || '-'}</TableCell>
                     <TableCell>
-                      {ch.emailSentAt ? (
+                      {ch.surveyStatus === 'COMPLETED' ? (
                         <Badge variant="outline" className="bg-green-50 text-green-700">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Completed
+                        </Badge>
+                      ) : ch.surveyStatus === 'IN_PROGRESS' ? (
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                          <Loader2 className="w-3 h-3 mr-1" />
+                          In Progress
+                        </Badge>
+                      ) : ch.surveyStatus === 'OPENED' ? (
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700">
+                          <Eye className="w-3 h-3 mr-1" />
+                          Opened
+                        </Badge>
+                      ) : ch.emailSentAt ? (
+                        <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
                           <MailCheck className="w-3 h-3 mr-1" />
                           Invited
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="bg-gray-50">
-                          <Mail className="w-3 h-3 mr-1" />
+                          <Clock className="w-3 h-3 mr-1" />
                           Pending
                         </Badge>
                       )}
@@ -389,21 +407,41 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
               Emails Sent
             </DialogTitle>
           </DialogHeader>
-          <div className="py-4 space-y-4">
+          <div className="py-4 space-y-2">
             <p className="text-lg">
-              Successfully sent: <strong>{sendResult?.sent || 0}</strong>
+              Successfully sent: <strong className="text-green-600">{sendResult?.sent || 0}</strong>
             </p>
-            {sendResult?.failed && sendResult.failed > 0 && (
-              <p className="text-lg text-red-600">
-                Failed: <strong>{sendResult.failed}</strong>
+            {(sendResult?.failed ?? 0) > 0 && (
+              <p className="text-lg">
+                Failed: <strong className="text-red-600">{sendResult?.failed}</strong>
               </p>
             )}
+            {(sendResult?.skipped ?? 0) > 0 && (
+              <div className="space-y-1">
+                <p className="text-lg">
+                  Skipped: <strong className="text-muted-foreground">{sendResult?.skipped}</strong>
+                </p>
+                {((sendResult?.skippedCompleted ?? 0) > 0 || (sendResult?.skippedRecentlyReminded ?? 0) > 0 || (sendResult?.skippedMaxReminders ?? 0) > 0) && (
+                  <ul className="text-sm text-muted-foreground ml-4 list-disc">
+                    {(sendResult?.skippedCompleted ?? 0) > 0 && (
+                      <li>{sendResult?.skippedCompleted} already completed</li>
+                    )}
+                    {(sendResult?.skippedMaxReminders ?? 0) > 0 && (
+                      <li>{sendResult?.skippedMaxReminders} reached max reminders</li>
+                    )}
+                    {(sendResult?.skippedRecentlyReminded ?? 0) > 0 && (
+                      <li>{sendResult?.skippedRecentlyReminded} received a reminder within the last 24 hrs</li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            )}
             {sendResult?.errors && sendResult.errors.length > 0 && (
-              <div>
+              <div className="mt-4">
                 <p className="font-medium mb-2">Errors:</p>
                 <ul className="text-sm text-muted-foreground space-y-1">
                   {sendResult.errors.map((err, i) => (
-                    <li key={i}>{err}</li>
+                    <li key={i}>{err.email}: {err.error}</li>
                   ))}
                 </ul>
               </div>

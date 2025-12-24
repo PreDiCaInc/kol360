@@ -25,12 +25,15 @@ interface NominationQuestion {
 interface Nomination {
   id: string;
   rawNameEntered: string;
-  matchStatus: 'UNMATCHED' | 'MATCHED' | 'NEW_HCP' | 'EXCLUDED';
+  matchStatus: 'UNMATCHED' | 'MATCHED' | 'REVIEW_NEEDED' | 'NEW_HCP' | 'EXCLUDED';
+  matchType: 'exact' | 'primary' | 'alias' | 'partial' | null;
+  matchConfidence: number | null;
   matchedAt: string | null;
   matchedBy: string | null;
   matchedHcp: MatchedHcp | null;
   nominatorHcp: NominatorHcp;
   question: NominationQuestion;
+  excludeReason: string | null;
 }
 
 interface NominationsListResponse {
@@ -52,6 +55,7 @@ interface NominationsQuery {
 interface NominationStats {
   UNMATCHED?: number;
   MATCHED?: number;
+  REVIEW_NEEDED?: number;
   NEW_HCP?: number;
   EXCLUDED?: number;
 }
@@ -68,6 +72,8 @@ interface HcpSuggestion {
     aliases: Array<{ id: string; aliasName: string }>;
   };
   score: number;
+  matchType: 'exact' | 'primary' | 'alias' | 'partial';
+  isNameMatch: boolean; // true if matched on actual name (not alias)
 }
 
 interface BulkMatchResult {
@@ -120,15 +126,21 @@ export function useMatchNomination() {
       nominationId,
       hcpId,
       addAlias,
+      matchType,
+      matchConfidence,
     }: {
       campaignId: string;
       nominationId: string;
       hcpId: string;
       addAlias: boolean;
+      matchType?: 'exact' | 'primary' | 'alias' | 'partial';
+      matchConfidence?: number;
     }) =>
       apiClient.post(`/api/v1/campaigns/${campaignId}/nominations/${nominationId}/match`, {
         hcpId,
         addAlias,
+        matchType,
+        matchConfidence,
       }),
     onSuccess: (_, { campaignId }) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });
@@ -175,11 +187,15 @@ export function useExcludeNomination() {
     mutationFn: ({
       campaignId,
       nominationId,
+      reason,
     }: {
       campaignId: string;
       nominationId: string;
+      reason?: string;
     }) =>
-      apiClient.post(`/api/v1/campaigns/${campaignId}/nominations/${nominationId}/exclude`, {}),
+      apiClient.post(`/api/v1/campaigns/${campaignId}/nominations/${nominationId}/exclude`, {
+        reason,
+      }),
     onSuccess: (_, { campaignId }) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });
     },
@@ -193,6 +209,29 @@ export function useBulkAutoMatch() {
     mutationFn: (campaignId: string) =>
       apiClient.post<BulkMatchResult>(`/api/v1/campaigns/${campaignId}/nominations/bulk-match`, {}),
     onSuccess: (_, campaignId) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });
+    },
+  });
+}
+
+export function useUpdateNominationRawName() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      nominationId,
+      rawNameEntered,
+    }: {
+      campaignId: string;
+      nominationId: string;
+      rawNameEntered: string;
+    }) =>
+      apiClient.patch<Nomination>(
+        `/api/v1/campaigns/${campaignId}/nominations/${nominationId}`,
+        { rawNameEntered }
+      ),
+    onSuccess: (_, { campaignId }) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });
     },
   });

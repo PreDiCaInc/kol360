@@ -1,6 +1,7 @@
 'use client';
 
-import { use, useState } from 'react';
+import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -80,12 +81,9 @@ const STANDARD_COMPONENT_LABELS: Record<string, string> = {
   score_trend: 'Score Trend Over Time',
 };
 
-export default function DashboardBuilderPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id: campaignId } = use(params);
+export default function DashboardBuilderPage() {
+  const params = useParams();
+  const campaignId = params.id as string;
   const { data: dashboard, isLoading } = useDashboard(campaignId);
   const updateDashboard = useUpdateDashboard(campaignId);
   const publishDashboard = usePublishDashboard(campaignId);

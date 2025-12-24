@@ -3,6 +3,8 @@ import {
   createCampaignSchema,
   updateCampaignSchema,
   campaignListQuerySchema,
+  emailTemplatesSchema,
+  landingPageTemplatesSchema,
 } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { CampaignService } from '../services/campaign.service';
@@ -62,7 +64,7 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
       // Force clientId to their tenant
-      data.clientId = request.user!.tenantId;
+      data.clientId = request.user!.tenantId!;
     }
 
     const campaign = await campaignService.create(data, request.user!.sub);
@@ -314,5 +316,219 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
         statusCode: 400,
       });
     }
+  });
+
+  // Get email templates for campaign
+  fastify.get<{ Params: { id: string } }>('/:id/email-templates', async (request, reply) => {
+    const campaign = await campaignService.getById(request.params.id);
+    if (!campaign) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Client admins can only view templates from their tenant
+    if (request.user!.role !== 'PLATFORM_ADMIN' && campaign.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot access campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
+    return {
+      invitationEmailSubject: campaign.invitationEmailSubject,
+      invitationEmailBody: campaign.invitationEmailBody,
+      reminderEmailSubject: campaign.reminderEmailSubject,
+      reminderEmailBody: campaign.reminderEmailBody,
+    };
+  });
+
+  // Update email templates for campaign
+  fastify.put<{ Params: { id: string } }>('/:id/email-templates', async (request, reply) => {
+    const data = emailTemplatesSchema.parse(request.body);
+    const existing = await campaignService.getById(request.params.id);
+
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Client admins can only update templates from their tenant
+    if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot update campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
+    const campaign = await campaignService.updateEmailTemplates(request.params.id, data);
+
+    await createAuditLog(request.user!.sub, {
+      action: 'campaign.email_templates_updated',
+      entityType: 'Campaign',
+      entityId: campaign.id,
+      newValues: {
+        invitationEmailSubject: data.invitationEmailSubject ? '(updated)' : null,
+        reminderEmailSubject: data.reminderEmailSubject ? '(updated)' : null,
+      },
+    });
+
+    return {
+      invitationEmailSubject: campaign.invitationEmailSubject,
+      invitationEmailBody: campaign.invitationEmailBody,
+      reminderEmailSubject: campaign.reminderEmailSubject,
+      reminderEmailBody: campaign.reminderEmailBody,
+    };
+  });
+
+  // Get landing page templates for campaign
+  fastify.get<{ Params: { id: string } }>('/:id/landing-page-templates', async (request, reply) => {
+    const campaign = await campaignService.getById(request.params.id);
+    if (!campaign) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Client admins can only view templates from their tenant
+    if (request.user!.role !== 'PLATFORM_ADMIN' && campaign.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot access campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
+    return {
+      surveyWelcomeTitle: campaign.surveyWelcomeTitle,
+      surveyWelcomeMessage: campaign.surveyWelcomeMessage,
+      surveyThankYouTitle: campaign.surveyThankYouTitle,
+      surveyThankYouMessage: campaign.surveyThankYouMessage,
+      surveyAlreadyDoneTitle: campaign.surveyAlreadyDoneTitle,
+      surveyAlreadyDoneMessage: campaign.surveyAlreadyDoneMessage,
+    };
+  });
+
+  // Update landing page templates for campaign
+  fastify.put<{ Params: { id: string } }>('/:id/landing-page-templates', async (request, reply) => {
+    const data = landingPageTemplatesSchema.parse(request.body);
+    const existing = await campaignService.getById(request.params.id);
+
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Client admins can only update templates from their tenant
+    if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot update campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
+    const campaign = await campaignService.updateLandingPageTemplates(request.params.id, data);
+
+    await createAuditLog(request.user!.sub, {
+      action: 'campaign.landing_page_templates_updated',
+      entityType: 'Campaign',
+      entityId: campaign.id,
+      newValues: {
+        surveyWelcomeTitle: data.surveyWelcomeTitle ? '(updated)' : null,
+        surveyThankYouTitle: data.surveyThankYouTitle ? '(updated)' : null,
+      },
+    });
+
+    return {
+      surveyWelcomeTitle: campaign.surveyWelcomeTitle,
+      surveyWelcomeMessage: campaign.surveyWelcomeMessage,
+      surveyThankYouTitle: campaign.surveyThankYouTitle,
+      surveyThankYouMessage: campaign.surveyThankYouMessage,
+      surveyAlreadyDoneTitle: campaign.surveyAlreadyDoneTitle,
+      surveyAlreadyDoneMessage: campaign.surveyAlreadyDoneMessage,
+    };
+  });
+
+  // Get survey preview data for a campaign
+  fastify.get<{ Params: { id: string } }>('/:id/survey-preview', async (request, reply) => {
+    const campaignId = request.params.id;
+
+    const campaign = await fastify.prisma.campaign.findUnique({
+      where: { id: campaignId },
+      include: {
+        surveyQuestions: {
+          include: {
+            question: true,
+          },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+    });
+
+    if (!campaign) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Client admins can only view their own campaigns
+    if (request.user!.role !== 'PLATFORM_ADMIN' && campaign.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot access campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
+    // Transform questions for preview
+    const questions = campaign.surveyQuestions.map((sq) => ({
+      id: sq.id,
+      questionId: sq.questionId,
+      text: sq.questionTextSnapshot,
+      type: sq.question.type,
+      section: sq.sectionName,
+      isRequired: sq.isRequired,
+      options: sq.question.options,
+      minEntries: sq.question.minEntries,
+      defaultEntries: sq.question.defaultEntries,
+      nominationType: sq.nominationType,
+    }));
+
+    // Group by section
+    const sections: Record<string, typeof questions> = {};
+    for (const q of questions) {
+      const sectionName = q.section || 'General';
+      if (!sections[sectionName]) {
+        sections[sectionName] = [];
+      }
+      sections[sectionName].push(q);
+    }
+
+    return {
+      campaignName: campaign.name,
+      honorariumAmount: campaign.honorariumAmount ? Number(campaign.honorariumAmount) : null,
+      welcomeTitle: campaign.surveyWelcomeTitle,
+      welcomeMessage: campaign.surveyWelcomeMessage,
+      thankYouTitle: campaign.surveyThankYouTitle,
+      thankYouMessage: campaign.surveyThankYouMessage,
+      questions,
+      sections,
+      totalQuestions: questions.length,
+    };
   });
 };

@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { createUserSchema, updateUserSchema } from '@kol360/shared';
-import { requireClientAdmin, requirePlatformAdmin, requireTenantAccess } from '../middleware/rbac';
+import { requireClientAdmin, requirePlatformAdmin } from '../middleware/rbac';
 import { UserService } from '../services/user.service';
 import { createAuditLog } from '../lib/audit';
 

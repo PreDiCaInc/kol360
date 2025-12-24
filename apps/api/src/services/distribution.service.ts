@@ -9,7 +9,7 @@ interface ListParams {
 
 export class DistributionService {
   async listCampaignHcps(campaignId: string) {
-    return prisma.campaignHcp.findMany({
+    const items = await prisma.campaignHcp.findMany({
       where: { campaignId },
       include: {
         hcp: {
@@ -24,6 +24,30 @@ export class DistributionService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Get survey response statuses for these HCPs
+    const hcpIds = items.map((i) => i.hcpId);
+    const surveyResponses = await prisma.surveyResponse.findMany({
+      where: {
+        campaignId,
+        respondentHcpId: { in: hcpIds },
+      },
+      select: {
+        respondentHcpId: true,
+        status: true,
+        completedAt: true,
+      },
+    });
+
+    const responseMap = new Map(
+      surveyResponses.map((r) => [r.respondentHcpId, r])
+    );
+
+    return items.map((item) => ({
+      ...item,
+      surveyStatus: responseMap.get(item.hcpId)?.status || null,
+      completedAt: responseMap.get(item.hcpId)?.completedAt || null,
+    }));
   }
 
   async assignHcps(campaignId: string, hcpIds: string[]) {
@@ -157,7 +181,7 @@ export class DistributionService {
       inProgress,
       completed,
       optedOut,
-      responseRate: invited > 0 ? Math.round((completed / invited) * 100) : 0,
+      completionRate: invited > 0 ? Math.round((completed / invited) * 100) : 0,
     };
   }
 

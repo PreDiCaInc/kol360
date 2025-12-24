@@ -8,6 +8,8 @@ interface SurveyQuestion {
   section: string | null;
   isRequired: boolean;
   options: unknown;
+  minEntries: number | null;
+  defaultEntries: number | null;
 }
 
 interface SurveyData {
@@ -16,6 +18,13 @@ interface SurveyData {
     name: string;
     status: string;
     honorariumAmount: number | null;
+    // Landing page customization
+    surveyWelcomeTitle: string | null;
+    surveyWelcomeMessage: string | null;
+    surveyThankYouTitle: string | null;
+    surveyThankYouMessage: string | null;
+    surveyAlreadyDoneTitle: string | null;
+    surveyAlreadyDoneMessage: string | null;
   };
   hcp: {
     firstName: string;
@@ -65,6 +74,12 @@ export class SurveyTakingService {
         honorariumAmount: campaignHcp.campaign.honorariumAmount
           ? Number(campaignHcp.campaign.honorariumAmount)
           : null,
+        surveyWelcomeTitle: campaignHcp.campaign.surveyWelcomeTitle,
+        surveyWelcomeMessage: campaignHcp.campaign.surveyWelcomeMessage,
+        surveyThankYouTitle: campaignHcp.campaign.surveyThankYouTitle,
+        surveyThankYouMessage: campaignHcp.campaign.surveyThankYouMessage,
+        surveyAlreadyDoneTitle: campaignHcp.campaign.surveyAlreadyDoneTitle,
+        surveyAlreadyDoneMessage: campaignHcp.campaign.surveyAlreadyDoneMessage,
       },
       hcp: campaignHcp.hcp,
       questions: campaignHcp.campaign.surveyQuestions.map((sq: {
@@ -73,7 +88,7 @@ export class SurveyTakingService {
         questionTextSnapshot: string;
         sectionName: string | null;
         isRequired: boolean;
-        question: { type: string; options: unknown };
+        question: { type: string; options: unknown; minEntries: number | null; defaultEntries: number | null };
       }) => ({
         id: sq.id,
         questionId: sq.questionId,
@@ -82,6 +97,8 @@ export class SurveyTakingService {
         section: sq.sectionName,
         isRequired: sq.isRequired,
         options: sq.question.options,
+        minEntries: sq.question.minEntries,
+        defaultEntries: sq.question.defaultEntries,
       })),
       response: response
         ? {
@@ -201,7 +218,13 @@ export class SurveyTakingService {
     const response = await prisma.surveyResponse.findUnique({
       where: { surveyToken: token },
       include: {
-        campaign: true,
+        campaign: {
+          include: {
+            surveyQuestions: {
+              include: { question: true },
+            },
+          },
+        },
         answers: {
           include: {
             question: {
@@ -214,6 +237,41 @@ export class SurveyTakingService {
 
     if (!response) {
       throw new Error('Survey not found');
+    }
+
+    // Validate required fields and minEntries
+    const validationErrors: string[] = [];
+    for (const sq of response.campaign.surveyQuestions) {
+      const answer = response.answers.find((a) => a.questionId === sq.id);
+      const answerValue = answer?.answerJson ?? answer?.answerText;
+
+      // Check required questions
+      if (sq.question.isRequired) {
+        const isEmpty =
+          answerValue === undefined ||
+          answerValue === null ||
+          answerValue === '' ||
+          (Array.isArray(answerValue) && answerValue.filter(Boolean).length === 0);
+
+        if (isEmpty) {
+          validationErrors.push(`Question "${sq.question.text}" is required`);
+          continue;
+        }
+      }
+
+      // Check minEntries for MULTI_TEXT questions
+      if (sq.question.type === 'MULTI_TEXT' && sq.question.minEntries && sq.question.minEntries > 1) {
+        const filledEntries = Array.isArray(answerValue) ? answerValue.filter(Boolean).length : 0;
+        if (filledEntries < sq.question.minEntries) {
+          validationErrors.push(
+            `Question "${sq.question.text}" requires at least ${sq.question.minEntries} names`
+          );
+        }
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      throw new Error(`Validation failed: ${validationErrors.join('; ')}`);
     }
 
     // Mark as completed
