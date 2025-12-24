@@ -22,6 +22,7 @@ import {
   PanelTop,
   Eye,
   Dna,
+  UserCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 
