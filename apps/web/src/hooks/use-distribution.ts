@@ -20,27 +20,35 @@ interface CampaignHcp {
   lastReminderAt: string | null;
   createdAt: string;
   hcp: Hcp;
+  surveyStatus: 'PENDING' | 'OPENED' | 'IN_PROGRESS' | 'COMPLETED' | 'EXCLUDED' | null;
+  completedAt: string | null;
 }
 
 interface DistributionStats {
   total: number;
   invited: number;
   notInvited: number;
+  opened: number;
   inProgress: number;
   completed: number;
+  optedOut: number;
   completionRate: number;
 }
 
 interface SendResult {
   sent: number;
   failed?: number;
-  errors: string[];
+  skipped?: number;
+  errors: Array<{ email: string; error: string }>;
 }
 
 export function useCampaignHcps(campaignId: string) {
   return useQuery({
     queryKey: ['campaigns', campaignId, 'hcps'],
-    queryFn: () => apiClient.get<CampaignHcp[]>(`/api/v1/campaigns/${campaignId}/hcps`),
+    queryFn: async () => {
+      const response = await apiClient.get<{ items: CampaignHcp[] }>(`/api/v1/campaigns/${campaignId}/hcps`);
+      return response.items;
+    },
     enabled: !!campaignId,
   });
 }
@@ -86,7 +94,7 @@ export function useSendInvitations() {
 
   return useMutation({
     mutationFn: (campaignId: string) =>
-      apiClient.post<SendResult>(`/api/v1/campaigns/${campaignId}/distribution/send`),
+      apiClient.post<SendResult>(`/api/v1/campaigns/${campaignId}/distribution/send-invitations`),
     onSuccess: (_, campaignId) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'hcps'] });
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'distribution-stats'] });
@@ -99,7 +107,7 @@ export function useSendReminders() {
 
   return useMutation({
     mutationFn: (campaignId: string) =>
-      apiClient.post<SendResult>(`/api/v1/campaigns/${campaignId}/distribution/remind`),
+      apiClient.post<SendResult>(`/api/v1/campaigns/${campaignId}/distribution/send-reminders`),
     onSuccess: (_, campaignId) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'hcps'] });
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'distribution-stats'] });

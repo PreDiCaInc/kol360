@@ -6,7 +6,7 @@ export const createSectionSchema = z.object({
   isCore: z.boolean().default(false),
 });
 
-export const updateSectionSchema = createSectionSchema.partial().omit({ isCore: true });
+export const updateSectionSchema = createSectionSchema.partial();
 
 export const addQuestionToSectionSchema = z.object({
   questionId: z.string().cuid(),

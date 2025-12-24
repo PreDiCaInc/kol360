@@ -1,19 +1,155 @@
 import { prisma } from '../lib/prisma';
+import { NominationType } from '@prisma/client';
+
+// Mapping from NominationType enum to score field names
+const NOMINATION_TYPE_FIELDS = {
+  NATIONAL_KOL: { score: 'scoreNationalKol', count: 'countNationalKol' },
+  RISING_STAR: { score: 'scoreRisingStar', count: 'countRisingStar' },
+  REGIONAL_EXPERT: { score: 'scoreRegionalExpert', count: 'countRegionalExpert' },
+  DIGITAL_INFLUENCER: { score: 'scoreDigitalInfluencer', count: 'countDigitalInfluencer' },
+  CLINICAL_EXPERT: { score: 'scoreClinicalExpert', count: 'countClinicalExpert' },
+} as const;
 
 export class ScoreCalculationService {
   /**
    * Calculate survey scores for all HCPs nominated in a campaign.
-   * Survey score = (nomination_count / max_nominations_in_campaign) * 100
+   * Calculates per-nomination-type scores, then averages them for the consolidated score.
+   *
+   * For each nomination type:
+   *   typeScore = (hcp_type_count / max_type_count_in_campaign) * 100
+   *
+   * Consolidated score = average of all non-null type scores
    *
    * This should be called after nomination matching is complete.
    */
   async calculateSurveyScores(campaignId: string): Promise<{ processed: number; updated: number }> {
-    // 1. Get all MATCHED nominations for this campaign, grouped by nominated HCP
+    // 1. Get nomination types used in this campaign from survey questions
+    const surveyQuestions = await prisma.surveyQuestion.findMany({
+      where: {
+        campaignId,
+        nominationType: { not: null },
+      },
+      select: { nominationType: true },
+    });
+
+    const nominationTypesInCampaign = [...new Set(
+      surveyQuestions
+        .map(q => q.nominationType)
+        .filter((t): t is NominationType => t !== null)
+    )];
+
+    if (nominationTypesInCampaign.length === 0) {
+      // No nomination questions with types - fall back to legacy behavior
+      return this.calculateSurveyScoresLegacy(campaignId);
+    }
+
+    // 2. Get all MATCHED/NEW_HCP nominations grouped by HCP and nomination type
+    const nominations = await prisma.nomination.findMany({
+      where: {
+        response: { campaignId },
+        matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
+        matchedHcpId: { not: null },
+      },
+      include: {
+        question: {
+          select: { nominationType: true },
+        },
+      },
+    });
+
+    if (nominations.length === 0) {
+      return { processed: 0, updated: 0 };
+    }
+
+    // 3. Group nominations by HCP and nomination type
+    const hcpTypeCountMap = new Map<string, Map<NominationType, number>>();
+    const maxCountPerType = new Map<NominationType, number>();
+
+    for (const nom of nominations) {
+      if (!nom.matchedHcpId || !nom.question.nominationType) continue;
+
+      const nomType = nom.question.nominationType;
+
+      // Count per HCP per type
+      if (!hcpTypeCountMap.has(nom.matchedHcpId)) {
+        hcpTypeCountMap.set(nom.matchedHcpId, new Map());
+      }
+      const typeCounts = hcpTypeCountMap.get(nom.matchedHcpId)!;
+      typeCounts.set(nomType, (typeCounts.get(nomType) || 0) + 1);
+
+      // Track max count per type
+      const currentMax = maxCountPerType.get(nomType) || 0;
+      const hcpCount = typeCounts.get(nomType) || 0;
+      if (hcpCount > currentMax) {
+        maxCountPerType.set(nomType, hcpCount);
+      }
+    }
+
+    // 4. Calculate and upsert scores for each HCP
+    let updated = 0;
+    for (const [hcpId, typeCounts] of hcpTypeCountMap) {
+      const scoreData: Record<string, number | null> = {};
+      const typeScores: number[] = [];
+      let totalNominations = 0;
+
+      // Calculate score for each nomination type
+      for (const nomType of nominationTypesInCampaign) {
+        const count = typeCounts.get(nomType) || 0;
+        const maxCount = maxCountPerType.get(nomType) || 1;
+        const fields = NOMINATION_TYPE_FIELDS[nomType];
+
+        scoreData[fields.count] = count;
+        totalNominations += count;
+
+        if (count > 0) {
+          const typeScore = (count / maxCount) * 100;
+          scoreData[fields.score] = typeScore;
+          typeScores.push(typeScore);
+        } else {
+          scoreData[fields.score] = null;
+        }
+      }
+
+      // Consolidated score = average of type scores that have data
+      const consolidatedScore = typeScores.length > 0
+        ? typeScores.reduce((sum, s) => sum + s, 0) / typeScores.length
+        : null;
+
+      await prisma.hcpCampaignScore.upsert({
+        where: {
+          hcpId_campaignId: { hcpId, campaignId },
+        },
+        create: {
+          hcpId,
+          campaignId,
+          ...scoreData,
+          scoreSurvey: consolidatedScore,
+          nominationCount: totalNominations,
+          calculatedAt: new Date(),
+        },
+        update: {
+          ...scoreData,
+          scoreSurvey: consolidatedScore,
+          nominationCount: totalNominations,
+          calculatedAt: new Date(),
+        },
+      });
+      updated++;
+    }
+
+    return { processed: hcpTypeCountMap.size, updated };
+  }
+
+  /**
+   * Legacy survey score calculation (no nomination types)
+   * Used when campaign has no nomination type assignments
+   */
+  private async calculateSurveyScoresLegacy(campaignId: string): Promise<{ processed: number; updated: number }> {
     const nominationCounts = await prisma.nomination.groupBy({
       by: ['matchedHcpId'],
       where: {
         response: { campaignId },
-        matchStatus: 'MATCHED',
+        matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
         matchedHcpId: { not: null },
       },
       _count: { id: true },
@@ -23,15 +159,12 @@ export class ScoreCalculationService {
       return { processed: 0, updated: 0 };
     }
 
-    // 2. Find the maximum nomination count (for normalization)
     const maxNominations = Math.max(...nominationCounts.map((n: { _count: { id: number } }) => n._count.id));
 
-    // 3. Calculate and upsert HcpCampaignScore for each nominated HCP
     let updated = 0;
     for (const nom of nominationCounts) {
       if (!nom.matchedHcpId) continue;
 
-      // Survey score normalized to 0-100
       const surveyScore = (nom._count.id / maxNominations) * 100;
 
       await prisma.hcpCampaignScore.upsert({

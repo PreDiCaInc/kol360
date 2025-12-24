@@ -10,7 +10,14 @@
       "Bash(docker compose:*)",
       "Bash(pnpm type-check:*)",
       "Bash(node -e:*)",
-      "Bash(pnpm prisma:*)"
+      "Bash(pnpm prisma:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill -9)",
+      "Bash(pkill:*)",
+      "Bash(cloudflared tunnel run:*)",
+      "Bash(brew services start:*)",
+      "Bash(brew services:*)",
+      "Bash(psql:*)"
     ]
   }
 }

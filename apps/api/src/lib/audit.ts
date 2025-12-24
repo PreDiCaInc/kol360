@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 
 const SYSTEM_USER_EMAIL = 'system@kol360.internal';
@@ -6,8 +7,8 @@ type AuditLogData = {
   action: string;
   entityType: string;
   entityId: string;
-  oldValues?: Record<string, unknown>;
-  newValues?: Record<string, unknown>;
+  oldValues?: Prisma.InputJsonValue;
+  newValues?: Prisma.InputJsonValue;
   tenantId?: string;
 };
 
@@ -60,15 +61,16 @@ export async function createAuditLog(
     const systemUserId = await getSystemUserId();
 
     if (systemUserId) {
+      const extendedNewValues = {
+        ...(typeof data.newValues === 'object' && data.newValues !== null ? data.newValues : {}),
+        _performedByCognitoSub: cognitoSub,
+        _userNotFoundInDatabase: true,
+      };
       await prisma.auditLog.create({
         data: {
           userId: systemUserId,
           ...data,
-          newValues: {
-            ...data.newValues,
-            _performedByCognitoSub: cognitoSub,
-            _userNotFoundInDatabase: true,
-          },
+          newValues: extendedNewValues as Prisma.InputJsonValue,
         },
       });
     } else {

@@ -19,8 +19,13 @@ interface Question {
   usageCount: number;
   minEntries: number | null;
   defaultEntries: number | null;
+  nominationType: string | null;
   createdAt: string;
   updatedAt: string;
+  _count?: {
+    sectionQuestions: number;
+    surveyQuestions: number;
+  };
 }
 
 interface QuestionDetail extends Question {
@@ -28,6 +33,7 @@ interface QuestionDetail extends Question {
     section: { id: string; name: string };
   }[];
   _count: {
+    sectionQuestions: number;
     surveyQuestions: number;
   };
 }

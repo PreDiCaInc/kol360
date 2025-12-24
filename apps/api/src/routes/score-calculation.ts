@@ -12,6 +12,69 @@ export const scoreCalculationRoutes: FastifyPluginAsync = async (fastify) => {
   // All score calculation routes require platform admin
   fastify.addHook('preHandler', requirePlatformAdmin());
 
+  // List campaign scores with HCP details
+  fastify.get<{ Params: z.infer<typeof campaignIdSchema> }>(
+    '/:id/scores',
+    async (request, reply) => {
+      const result = campaignIdSchema.safeParse(request.params);
+      if (!result.success) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'Invalid campaign ID',
+          statusCode: 400,
+        });
+      }
+
+      // Get nomination types used in this campaign
+      const surveyQuestions = await fastify.prisma.surveyQuestion.findMany({
+        where: {
+          campaignId: result.data.id,
+          nominationType: { not: null },
+        },
+        select: { nominationType: true },
+      });
+
+      const nominationTypes = [...new Set(
+        surveyQuestions
+          .map(q => q.nominationType)
+          .filter((t): t is NonNullable<typeof t> => t !== null)
+      )];
+
+      const scores = await fastify.prisma.hcpCampaignScore.findMany({
+        where: { campaignId: result.data.id },
+        include: {
+          hcp: {
+            select: {
+              id: true,
+              npi: true,
+              firstName: true,
+              lastName: true,
+              specialty: true,
+              city: true,
+              state: true,
+            },
+          },
+        },
+        orderBy: [
+          { scoreSurvey: 'desc' },
+          { nominationCount: 'desc' },
+        ],
+      });
+
+      // Get max nomination count for context
+      const maxNominations = scores.length > 0
+        ? Math.max(...scores.map((s) => s.nominationCount))
+        : 0;
+
+      return {
+        items: scores,
+        maxNominations,
+        nominationTypes,
+        total: scores.length,
+      };
+    }
+  );
+
   // Get calculation status
   fastify.get<{ Params: z.infer<typeof campaignIdSchema> }>(
     '/:id/scores/status',

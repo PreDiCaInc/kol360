@@ -30,11 +30,18 @@ export async function api<T>(
   // Get auth token
   const token = getTokenFn ? await getTokenFn() : null;
 
+  // Only set Content-Type for requests with a body
+  const headers: Record<string, string> = {
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+  if (init.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   const response = await fetch(url, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
+      ...headers,
       ...init.headers,
     },
   });
@@ -44,7 +51,23 @@ export async function api<T>(
     throw new Error(error.message || `API Error: ${response.status}`);
   }
 
-  return response.json();
+  // Handle 204 No Content responses (common for DELETE operations)
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  // Parse JSON response, with fallback for empty bodies
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    console.error('Failed to parse API response:', text);
+    throw new Error('Invalid API response');
+  }
 }
 
 export const apiClient = {
