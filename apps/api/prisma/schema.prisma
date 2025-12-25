@@ -13,6 +13,7 @@ model Client {
   id                     String                  @id @default(cuid())
   name                   String
   type                   ClientType              @default(FULL)
+  isLite                 Boolean                 @default(false)
   logoUrl                String?
   primaryColor           String                  @default("#0066CC")
   isActive               Boolean                 @default(true)
@@ -21,9 +22,11 @@ model Client {
   campaigns              Campaign[]
   liteClientDiseaseAreas LiteClientDiseaseArea[]
   users                  User[]
+  hcpExclusions          ClientHcpExclusion[]
 
   @@index([type])
   @@index([isActive])
+  @@index([isLite])
 }
 
 model User {
@@ -81,9 +84,41 @@ model LiteClientDiseaseArea {
   @@index([diseaseAreaId])
 }
 
+model ClientHcpExclusion {
+  id        String   @id @default(cuid())
+  clientId  String
+  hcpId     String
+  reason    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  hcp       Hcp      @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, hcpId])
+  @@index([clientId])
+  @@index([hcpId])
+}
+
+model CampaignHcpExclusion {
+  id         String   @id @default(cuid())
+  campaignId String
+  hcpId      String
+  reason     String?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  hcp        Hcp      @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, hcpId])
+  @@index([campaignId])
+  @@index([hcpId])
+}
+
 model Hcp {
-  id                  String                @id @default(cuid())
-  npi                 String                @unique
+  id                  String                  @id @default(cuid())
+  npi                 String                  @unique
   firstName           String
   lastName            String
   email               String?
@@ -92,17 +127,19 @@ model Hcp {
   city                String?
   state               String?
   yearsInPractice     Int?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
   createdBy           String?
   campaignHcps        CampaignHcp[]
   aliases             HcpAlias[]
   campaignScores      HcpCampaignScore[]
   diseaseAreaScores   HcpDiseaseAreaScore[]
-  nominationsReceived Nomination[]          @relation("NominatedHcp")
-  nominationsGiven    Nomination[]          @relation("NominatorHcp")
+  nominationsReceived Nomination[]            @relation("NominatedHcp")
+  nominationsGiven    Nomination[]            @relation("NominatorHcp")
   payments            Payment[]
   surveyResponses     SurveyResponse[]
+  clientExclusions    ClientHcpExclusion[]
+  campaignExclusions  CampaignHcpExclusion[]
 
   @@index([npi])
   @@index([lastName, firstName])
@@ -274,19 +311,19 @@ model TemplateSection {
 }
 
 model Campaign {
-  id                       String                @id @default(cuid())
+  id                       String                  @id @default(cuid())
   clientId                 String
   diseaseAreaId            String
   surveyTemplateId         String?
   name                     String
   description              String?
-  status                   CampaignStatus        @default(DRAFT)
-  honorariumAmount         Decimal?              @db.Decimal(10, 2)
+  status                   CampaignStatus          @default(DRAFT)
+  honorariumAmount         Decimal?                @db.Decimal(10, 2)
   surveyOpenDate           DateTime?
   surveyCloseDate          DateTime?
   publishedAt              DateTime?
-  createdAt                DateTime              @default(now())
-  updatedAt                DateTime              @updatedAt
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
   createdBy                String?
   invitationEmailBody      String?
   invitationEmailSubject   String?
@@ -298,12 +335,13 @@ model Campaign {
   surveyThankYouTitle      String?
   surveyWelcomeMessage     String?
   surveyWelcomeTitle       String?
-  client                   Client                @relation(fields: [clientId], references: [id])
-  diseaseArea              DiseaseArea           @relation(fields: [diseaseAreaId], references: [id])
-  surveyTemplate           SurveyTemplate?       @relation(fields: [surveyTemplateId], references: [id])
+  client                   Client                  @relation(fields: [clientId], references: [id])
+  diseaseArea              DiseaseArea             @relation(fields: [diseaseAreaId], references: [id])
+  surveyTemplate           SurveyTemplate?         @relation(fields: [surveyTemplateId], references: [id])
   campaignHcps             CampaignHcp[]
   compositeScoreConfig     CompositeScoreConfig?
   hcpCampaignScores        HcpCampaignScore[]
+  hcpExclusions            CampaignHcpExclusion[]
   optOuts                  OptOut[]
   payments                 Payment[]
   surveyQuestions          SurveyQuestion[]

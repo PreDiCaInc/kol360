@@ -65,7 +65,6 @@ export async function api<T>(
   try {
     return JSON.parse(text);
   } catch {
-    console.error('Failed to parse API response:', text);
     throw new Error('Invalid API response');
   }
 }

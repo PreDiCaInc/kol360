@@ -531,4 +531,46 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
       totalQuestions: questions.length,
     };
   });
+
+  // Get campaign audit log (status history)
+  fastify.get<{ Params: { id: string } }>('/:id/audit-log', async (request, reply) => {
+    const campaign = await campaignService.getById(request.params.id);
+    if (!campaign) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Campaign not found',
+        statusCode: 404,
+      });
+    }
+
+    // Client admins can only view their own campaigns
+    if (request.user!.role !== 'PLATFORM_ADMIN' && campaign.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot access campaigns from other tenants',
+        statusCode: 403,
+      });
+    }
+
+    // Query audit logs for this campaign
+    const logs = await fastify.prisma.auditLog.findMany({
+      where: {
+        entityType: 'Campaign',
+        entityId: request.params.id,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return { items: logs };
+  });
 };

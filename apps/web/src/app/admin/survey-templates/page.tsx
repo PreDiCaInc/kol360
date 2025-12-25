@@ -172,7 +172,12 @@ export default function SurveyTemplatesPage() {
                     <TableRow key={template.id}>
                       <TableCell>
                         <div>
-                          <div className="font-medium">{template.name}</div>
+                          <Link
+                            href={`/admin/survey-templates/${template.id}`}
+                            className="font-medium text-blue-600 hover:underline"
+                          >
+                            {template.name}
+                          </Link>
                           {template.description && (
                             <div className="text-sm text-muted-foreground line-clamp-1">
                               {template.description}
