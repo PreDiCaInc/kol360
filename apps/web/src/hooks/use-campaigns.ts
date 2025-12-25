@@ -267,3 +267,33 @@ export function useSurveyPreview(campaignId: string) {
     enabled: !!campaignId,
   });
 }
+
+// Campaign Audit Log
+export interface AuditLogEntry {
+  id: string;
+  userId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
+  createdAt: string;
+  user: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+  } | null;
+}
+
+export interface AuditLogResponse {
+  items: AuditLogEntry[];
+}
+
+export function useCampaignAuditLog(campaignId: string) {
+  return useQuery({
+    queryKey: ['campaigns', campaignId, 'audit-log'],
+    queryFn: () => apiClient.get<AuditLogResponse>(`/api/v1/campaigns/${campaignId}/audit-log`),
+    enabled: !!campaignId,
+  });
+}

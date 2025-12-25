@@ -14,21 +14,24 @@ import {
   Layers,
   FileText,
   BarChart3,
-  ClipboardList,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Megaphone,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface NavItem {
   title: string;
-  href: string;
+  href?: string;
   icon: React.ComponentType<{ className?: string }>;
   roles?: string[];
   children?: NavItem[];
+  collapsible?: boolean;
 }
 
-const navigationItems: NavItem[] = [
+// Navigation structure for Platform Admin
+const platformAdminNavigation: NavItem[] = [
   {
     title: 'Dashboard',
     href: '/admin',
@@ -41,50 +44,183 @@ const navigationItems: NavItem[] = [
     roles: ['PLATFORM_ADMIN'],
   },
   {
-    title: 'Users',
-    href: '/admin/users',
-    icon: Users,
-  },
-  {
-    title: 'HCP Database',
+    title: 'HCPs',
     href: '/admin/hcps',
     icon: Stethoscope,
+    roles: ['PLATFORM_ADMIN'],
   },
   {
     title: 'Campaigns',
     href: '/admin/campaigns',
-    icon: BarChart3,
-  },
-  {
-    title: 'Question Bank',
-    href: '/admin/questions',
-    icon: FileQuestion,
+    icon: Megaphone,
     roles: ['PLATFORM_ADMIN'],
   },
   {
-    title: 'Section Templates',
-    href: '/admin/sections',
-    icon: Layers,
-    roles: ['PLATFORM_ADMIN'],
-  },
-  {
-    title: 'Survey Templates',
-    href: '/admin/survey-templates',
+    title: 'Surveys & Questions',
     icon: FileText,
+    collapsible: true,
+    roles: ['PLATFORM_ADMIN'],
+    children: [
+      {
+        title: 'Survey Templates',
+        href: '/admin/survey-templates',
+        icon: FileText,
+      },
+      {
+        title: 'Section Templates',
+        href: '/admin/sections',
+        icon: Layers,
+      },
+      {
+        title: 'Question Bank',
+        href: '/admin/questions',
+        icon: FileQuestion,
+      },
+    ],
+  },
+  {
+    title: 'Dashboards',
+    href: '/admin/dashboards',
+    icon: BarChart3,
     roles: ['PLATFORM_ADMIN'],
   },
   {
-    title: 'Lite Clients',
-    href: '/admin/lite-clients',
-    icon: ClipboardList,
+    title: 'Users',
+    href: '/admin/users',
+    icon: Users,
     roles: ['PLATFORM_ADMIN'],
   },
 ];
+
+// Navigation structure for Client Admin
+const clientAdminNavigation: NavItem[] = [
+  {
+    title: 'Dashboard',
+    href: '/admin',
+    icon: LayoutDashboard,
+  },
+  {
+    title: 'HCPs',
+    href: '/admin/hcps',
+    icon: Stethoscope,
+  },
+  {
+    title: 'Users',
+    href: '/admin/users',
+    icon: Users,
+  },
+];
+
+function NavItemComponent({
+  item,
+  collapsed,
+  pathname,
+  level = 0,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  pathname: string;
+  level?: number;
+}) {
+  // Check if this item or any of its children are active
+  const isActive = item.href ? (pathname === item.href || pathname.startsWith(item.href + '/')) : false;
+  const hasActiveChild = item.children?.some(child =>
+    child.href && (pathname === child.href || pathname.startsWith(child.href + '/'))
+  );
+
+  // Auto-expand if child is active
+  const [isExpanded, setIsExpanded] = useState(hasActiveChild || false);
+  const Icon = item.icon;
+
+  // Update expansion state when active child changes
+  useEffect(() => {
+    if (hasActiveChild) {
+      setIsExpanded(true);
+    }
+  }, [hasActiveChild]);
+
+  // If item has children and is collapsible
+  if (item.collapsible && item.children) {
+    return (
+      <li>
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className={cn(
+            'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+            'hover:bg-[hsl(var(--sidebar-accent))]',
+            hasActiveChild
+              ? 'text-[hsl(var(--sidebar-primary))]'
+              : 'text-[hsl(var(--sidebar-foreground))]/70 hover:text-[hsl(var(--sidebar-foreground))]',
+            collapsed && 'justify-center px-2',
+            level > 0 && 'pl-6'
+          )}
+          title={collapsed ? item.title : undefined}
+        >
+          <Icon className={cn('h-5 w-5 flex-shrink-0', hasActiveChild && 'text-[hsl(var(--sidebar-primary))]')} />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">{item.title}</span>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 transition-transform',
+                  isExpanded && 'rotate-180'
+                )}
+              />
+            </>
+          )}
+        </button>
+        {!collapsed && isExpanded && item.children && (
+          <ul className="ml-3 mt-1 space-y-1 border-l border-[hsl(var(--sidebar-muted))] pl-3">
+            {item.children.map((child, idx) => (
+              <NavItemComponent
+                key={child.href || `child-${idx}`}
+                item={child}
+                collapsed={collapsed}
+                pathname={pathname}
+                level={level + 1}
+              />
+            ))}
+          </ul>
+        )}
+      </li>
+    );
+  }
+
+  // Regular link item
+  if (item.href) {
+    return (
+      <li>
+        <Link
+          href={item.href}
+          className={cn(
+            'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+            'hover:bg-[hsl(var(--sidebar-accent))]',
+            isActive
+              ? 'bg-[hsl(var(--sidebar-primary))]/10 text-[hsl(var(--sidebar-primary))]'
+              : 'text-[hsl(var(--sidebar-foreground))]/70 hover:text-[hsl(var(--sidebar-foreground))]',
+            collapsed && 'justify-center px-2',
+            level > 0 && !collapsed && 'pl-6 text-xs'
+          )}
+          title={collapsed ? item.title : undefined}
+        >
+          <Icon className={cn('h-4 w-4 flex-shrink-0', isActive && 'text-[hsl(var(--sidebar-primary))]')} />
+          {!collapsed && <span>{item.title}</span>}
+        </Link>
+      </li>
+    );
+  }
+
+  return null;
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Determine navigation based on role
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
+  const navigationItems = isPlatformAdmin ? platformAdminNavigation : clientAdminNavigation;
 
   const filteredNavItems = navigationItems.filter((item) => {
     if (!item.roles) return true;
@@ -123,30 +259,14 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="custom-scrollbar h-[calc(100vh-9rem)] overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
-          {filteredNavItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
-                    'hover:bg-[hsl(var(--sidebar-accent))]',
-                    isActive
-                      ? 'bg-[hsl(var(--sidebar-primary))]/10 text-[hsl(var(--sidebar-primary))]'
-                      : 'text-[hsl(var(--sidebar-foreground))]/70 hover:text-[hsl(var(--sidebar-foreground))]',
-                    collapsed && 'justify-center px-2'
-                  )}
-                  title={collapsed ? item.title : undefined}
-                >
-                  <Icon className={cn('h-5 w-5 flex-shrink-0', isActive && 'text-[hsl(var(--sidebar-primary))]')} />
-                  {!collapsed && <span>{item.title}</span>}
-                </Link>
-              </li>
-            );
-          })}
+          {filteredNavItems.map((item, idx) => (
+            <NavItemComponent
+              key={item.href || `nav-${idx}`}
+              item={item}
+              collapsed={collapsed}
+              pathname={pathname}
+            />
+          ))}
         </ul>
       </nav>
 

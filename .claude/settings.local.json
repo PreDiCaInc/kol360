@@ -17,7 +17,18 @@
       "Bash(cloudflared tunnel run:*)",
       "Bash(brew services start:*)",
       "Bash(brew services:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(npx prisma validate:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(ls:*)",
+      "Bash(ssh:*)",
+      "Bash(cat:*)",
+      "Bash(git checkout:*)",
+      "Bash(AWS_PROFILE=koluser npx tsx:*)",
+      "Bash(export AWS_PROFILE=koluser)",
+      "Bash(npx tsx:*)",
+      "Bash(/Users/haranath/genai/kol360/node_modules/.bin/tsx:*)",
+      "Bash(AWS_PROFILE=koluser node:*)"
     ]
   }
 }

@@ -10,6 +10,7 @@ import {
   useCloseCampaign,
   useReopenCampaign,
   usePublishCampaign,
+  useCampaignAuditLog,
 } from '@/hooks/use-campaigns';
 import { useScoreConfig, useUpdateScoreConfig, useResetScoreConfig } from '@/hooks/use-score-config';
 import { useSendReminders, useDistributionStats } from '@/hooks/use-distribution';
@@ -29,6 +30,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +70,8 @@ import {
   Send,
   Circle,
   ChevronRight,
+  DollarSign,
+  History,
 } from 'lucide-react';
 import {
   Dialog,
@@ -88,6 +99,7 @@ const WORKFLOW_STEPS = [
   { id: 'nominations', label: 'Nominations', icon: UserCheck, description: 'Match nominations', phase: 'active', external: true },
   { id: 'survey-scores', label: 'Survey Scores', icon: Calculator, description: 'Calculate scores', phase: 'closed', external: true },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'View results', phase: 'published', external: true },
+  { id: 'payments', label: 'Payments', icon: DollarSign, description: 'Honorarium tracking', phase: 'published', external: true },
 ];
 
 // Helper type for step completion status
@@ -114,6 +126,7 @@ export default function CampaignDetailPage() {
   const sendReminders = useSendReminders();
   const { data: distributionStats } = useDistributionStats(campaignId);
   const { data: campaignScores } = useCampaignScores(campaignId);
+  const { data: auditLogData } = useCampaignAuditLog(campaignId);
 
   const [activeStep, setActiveStep] = useState('overview');
   const [isEditingName, setIsEditingName] = useState(false);
@@ -246,7 +259,7 @@ export default function CampaignDetailPage() {
         const hasScores = campaignScores && campaignScores.items && campaignScores.items.length > 0;
         return hasScores ? 7 : 6;
       }
-      case 'PUBLISHED': return 8; // Complete
+      case 'PUBLISHED': return 8; // Dashboard is step 8, payments is step 9 (available after publish)
       default: return 0;
     }
   };
@@ -261,6 +274,9 @@ export default function CampaignDetailPage() {
           break;
         case 'survey-scores':
           router.push(`/admin/campaigns/${campaignId}/scores`);
+          break;
+        case 'payments':
+          router.push(`/admin/campaigns/${campaignId}/payments`);
           break;
         case 'dashboard':
           router.push(`/admin/campaigns/${campaignId}/dashboard`);
@@ -453,7 +469,12 @@ export default function CampaignDetailPage() {
 
               // Determine if step is accessible
               const isSetupStep = step.phase === 'setup';
-              const isClickable = isSetupStep || (step.external && campaign.status !== 'DRAFT');
+              // Payments step is only accessible after campaign is published
+              const isPaymentsStep = step.id === 'payments';
+              const canAccessPayments = isPaymentsStep && campaign.status === 'PUBLISHED';
+              // Other external steps are accessible once campaign is not in DRAFT
+              const canAccessOtherExternal = step.external && !isPaymentsStep && campaign.status !== 'DRAFT';
+              const isClickable = isSetupStep || canAccessPayments || canAccessOtherExternal;
 
               // Is this the "next" step to complete?
               const nextStep = getNextIncompleteStep();
@@ -533,12 +554,20 @@ export default function CampaignDetailPage() {
                 </Card>
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Honorarium</CardTitle>
+                    <CardTitle className="text-lg">Score Status</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">
-                      {campaign.honorariumAmount ? `$${campaign.honorariumAmount}` : 'N/A'}
-                    </div>
+                    {campaignScores && campaignScores.items && campaignScores.items.length > 0 ? (
+                      <div>
+                        <div className="text-3xl font-bold text-green-600">{campaignScores.items.length}</div>
+                        <p className="text-sm text-muted-foreground">HCPs scored</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="text-3xl font-bold text-muted-foreground">--</div>
+                        <p className="text-sm text-muted-foreground">Not calculated</p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -586,6 +615,66 @@ export default function CampaignDetailPage() {
                     <label className="text-sm text-muted-foreground">Created</label>
                     <p>{new Date(campaign.createdAt).toLocaleString()}</p>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Campaign Status Audit Log */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="w-5 h-5" />
+                    Status History
+                  </CardTitle>
+                  <CardDescription>Audit log of campaign status changes</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {auditLogData?.items && auditLogData.items.length > 0 ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Action</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Changed By</TableHead>
+                          <TableHead>Date/Time</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {auditLogData.items.map((log) => {
+                          // Format action to be more readable
+                          const actionLabel = log.action
+                            .replace('campaign.', '')
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, (c) => c.toUpperCase());
+
+                          // Get status from newValues if available
+                          const newStatus = log.newValues?.status as string | undefined;
+
+                          return (
+                            <TableRow key={log.id}>
+                              <TableCell className="font-medium">{actionLabel}</TableCell>
+                              <TableCell>
+                                {newStatus && (
+                                  <Badge className={statusColors[newStatus as CampaignStatus] || 'bg-gray-100'}>
+                                    {newStatus}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {log.user
+                                  ? `${log.user.firstName || ''} ${log.user.lastName || ''}`.trim() || log.user.email
+                                  : 'System'}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {new Date(log.createdAt).toLocaleString()}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">No status changes recorded yet</p>
+                  )}
                 </CardContent>
               </Card>
             </>
