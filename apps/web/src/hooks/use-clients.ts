@@ -6,6 +6,7 @@ interface Client {
   id: string;
   name: string;
   type: 'FULL' | 'LITE';
+  isLite: boolean;
   logoUrl: string | null;
   primaryColor: string;
   isActive: boolean;

@@ -21,6 +21,22 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+// Allowed specialties for the application
+const ALLOWED_SPECIALTIES = [
+  'Ophthalmology',
+  'Cornea',
+  'Glaucoma',
+  'Retina',
+  'Dry Eye',
+];
 
 interface Props {
   open: boolean;
@@ -170,45 +186,33 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="specialty"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Specialty</FormLabel>
+            <FormField
+              control={form.control}
+              name="specialty"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Specialty</FormLabel>
+                  <Select
+                    value={field.value || ''}
+                    onValueChange={(value) => field.onChange(value || null)}
+                  >
                     <FormControl>
-                      <Input
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value || null)}
-                        placeholder="Ophthalmology"
-                      />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select specialty" />
+                      </SelectTrigger>
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="subSpecialty"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sub-specialty</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value || null)}
-                        placeholder="Retina"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    <SelectContent>
+                      {ALLOWED_SPECIALTIES.map((specialty) => (
+                        <SelectItem key={specialty} value={specialty}>
+                          {specialty}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <div className="grid grid-cols-3 gap-4">
               <FormField
