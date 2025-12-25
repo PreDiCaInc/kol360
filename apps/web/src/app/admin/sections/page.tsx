@@ -145,7 +145,12 @@ export default function SectionsPage() {
                             <Lock className="w-4 h-4 text-muted-foreground" />
                           )}
                           <div>
-                            <div className="font-medium">{section.name}</div>
+                            <Link
+                              href={`/admin/sections/${section.id}`}
+                              className="font-medium text-blue-600 hover:underline"
+                            >
+                              {section.name}
+                            </Link>
                             {section.description && (
                               <div className="text-sm text-muted-foreground line-clamp-1">
                                 {section.description}

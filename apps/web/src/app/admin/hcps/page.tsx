@@ -27,6 +27,15 @@ import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
 import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
+// Allowed specialties for the application
+const ALLOWED_SPECIALTIES = [
+  'Ophthalmology',
+  'Cornea',
+  'Glaucoma',
+  'Retina',
+  'Dry Eye',
+];
+
 export default function HcpsPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAliasImportDialog, setShowAliasImportDialog] = useState(false);
@@ -108,7 +117,7 @@ export default function HcpsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Specialties</SelectItem>
-              {filterOptions?.specialties.map((specialty) => (
+              {ALLOWED_SPECIALTIES.map((specialty) => (
                 <SelectItem key={specialty} value={specialty}>
                   {specialty}
                 </SelectItem>

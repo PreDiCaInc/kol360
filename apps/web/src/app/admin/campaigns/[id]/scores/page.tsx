@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   useCampaignScores,
   useCalculateSurveyScores,
 } from '@/hooks/use-campaign-scores';
 import { useNominationStats } from '@/hooks/use-nominations';
-import { useCampaign } from '@/hooks/use-campaigns';
+import { useCampaign, usePublishCampaign } from '@/hooks/use-campaigns';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +36,16 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   ArrowLeft,
   Calculator,
   Loader2,
@@ -43,6 +53,8 @@ import {
   AlertTriangle,
   BarChart3,
   Award,
+  ChevronRight,
+  LayoutDashboard,
 } from 'lucide-react';
 
 // Nomination type labels for display
@@ -65,18 +77,21 @@ const NOMINATION_TYPE_FIELDS: Record<string, { score: string; count: string }> =
 
 export default function CampaignScoresPage() {
   const params = useParams();
+  const router = useRouter();
   const campaignId = params.id as string;
 
   const [showCalculateResult, setShowCalculateResult] = useState<{
     processed: number;
     updated: number;
   } | null>(null);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
   const { data: campaign } = useCampaign(campaignId);
   const { data: scores, isLoading } = useCampaignScores(campaignId);
   const { data: nominationStats } = useNominationStats(campaignId);
 
   const calculateSurveyScores = useCalculateSurveyScores();
+  const publishCampaign = usePublishCampaign();
 
   const handleCalculateScores = async () => {
     try {
@@ -84,6 +99,16 @@ export default function CampaignScoresPage() {
       setShowCalculateResult(result);
     } catch (error) {
       console.error('Score calculation failed:', error);
+    }
+  };
+
+  const handlePublish = async () => {
+    try {
+      await publishCampaign.mutateAsync(campaignId);
+      setShowPublishConfirm(false);
+      router.push(`/admin/campaigns/${campaignId}/dashboard`);
+    } catch (error) {
+      console.error('Publish failed:', error);
     }
   };
 
@@ -119,18 +144,32 @@ export default function CampaignScoresPage() {
               )}
             </div>
           </div>
-          <Button
-            onClick={handleCalculateScores}
-            disabled={calculateSurveyScores.isPending || !canCalculate}
-            variant={hasExistingScores ? 'outline' : 'default'}
-          >
-            {calculateSurveyScores.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Calculator className="w-4 h-4 mr-2" />
+          <div className="flex gap-2">
+            <Button
+              onClick={handleCalculateScores}
+              disabled={calculateSurveyScores.isPending || !canCalculate}
+              variant={hasExistingScores ? 'outline' : 'default'}
+            >
+              {calculateSurveyScores.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Calculator className="w-4 h-4 mr-2" />
+              )}
+              {hasExistingScores ? 'Recalculate Scores' : 'Calculate Survey Scores'}
+            </Button>
+            {hasExistingScores && campaign?.status === 'CLOSED' && (
+              <Button onClick={() => setShowPublishConfirm(true)}>
+                Publish Results
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
             )}
-            {hasExistingScores ? 'Recalculate Scores' : 'Calculate Survey Scores'}
-          </Button>
+            {campaign?.status === 'PUBLISHED' && (
+              <Button onClick={() => router.push(`/admin/campaigns/${campaignId}/dashboard`)} variant="outline">
+                <LayoutDashboard className="w-4 h-4 mr-2" />
+                View Dashboard
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Status Cards */}
@@ -432,6 +471,31 @@ export default function CampaignScoresPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Publish Confirmation Dialog */}
+        <AlertDialog open={showPublishConfirm} onOpenChange={setShowPublishConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Publish Results</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will publish the KOL scores and make them final. This action cannot be undone.
+                Are you sure you want to proceed?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handlePublish}
+                disabled={publishCampaign.isPending}
+              >
+                {publishCampaign.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : null}
+                Publish Results
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </RequireAuth>
   );

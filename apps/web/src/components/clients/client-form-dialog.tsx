@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -46,6 +47,7 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
     defaultValues: {
       name: '',
       type: 'FULL',
+      isLite: false,
       primaryColor: '#0066CC',
     },
   });
@@ -55,6 +57,7 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
       form.reset({
         name: client.name,
         type: client.type as 'FULL' | 'LITE',
+        isLite: client.isLite || false,
         primaryColor: client.primaryColor,
         logoUrl: client.logoUrl,
       });
@@ -71,7 +74,7 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
       onOpenChange(false);
       form.reset();
     } catch (error) {
-      console.error('Failed to save client:', error);
+      // Error is handled by the mutation hook
     }
   }
 
@@ -116,6 +119,27 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
                     </SelectContent>
                   </Select>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="isLite"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-base">Lite Client Mode</FormLabel>
+                    <p className="text-sm text-muted-foreground">
+                      Lite clients can view HCPs and scores but cannot run campaigns
+                    </p>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
                 </FormItem>
               )}
             />

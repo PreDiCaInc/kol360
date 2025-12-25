@@ -69,11 +69,13 @@ const statusColors: Record<CampaignStatus, string> = {
 
 export default function CampaignsPage() {
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | 'ALL'>('ALL');
+  const [clientFilter, setClientFilter] = useState<string>('ALL');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<{ id: string; name: string } | null>(null);
 
   const { data: campaignsData, isLoading, isError, error, refetch } = useCampaigns({
     status: statusFilter === 'ALL' ? undefined : statusFilter,
+    clientId: clientFilter === 'ALL' ? undefined : clientFilter,
   });
   const { data: clientsData } = useClients();
   const { data: diseaseAreasData } = useDiseaseAreas();
@@ -136,6 +138,22 @@ export default function CampaignsPage() {
 
         {/* Filters */}
         <div className="flex gap-4 mb-6">
+          <Select
+            value={clientFilter}
+            onValueChange={setClientFilter}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filter by client" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Clients</SelectItem>
+              {clients.map((client) => (
+                <SelectItem key={client.id} value={client.id}>
+                  {client.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select
             value={statusFilter}
             onValueChange={(value) => setStatusFilter(value as CampaignStatus | 'ALL')}
@@ -210,7 +228,7 @@ export default function CampaignsPage() {
                       <TableCell>
                         <Link
                           href={`/admin/campaigns/${campaign.id}`}
-                          className="font-medium hover:underline"
+                          className="font-medium text-blue-600 hover:underline"
                         >
                           {campaign.name}
                         </Link>
