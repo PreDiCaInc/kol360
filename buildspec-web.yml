@@ -1,0 +1,25 @@
+version: 0.2
+
+env:
+  variables:
+    ECR_REPO: 163859990568.dkr.ecr.us-east-2.amazonaws.com/kol360-web
+    NEXT_PUBLIC_API_URL: https://y7uwumfu52ye3id5ac6g232gqi0etize.lambda-url.us-east-2.on.aws
+    NEXT_PUBLIC_COGNITO_USER_POOL_ID: us-east-2_63CJVTAV9
+    NEXT_PUBLIC_COGNITO_CLIENT_ID: 7tqkritsrh3dgmaj6oq8va46vj
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 163859990568.dkr.ecr.us-east-2.amazonaws.com
+  build:
+    commands:
+      - echo Building the Docker image...
+      - docker build -f apps/web/Dockerfile -t $ECR_REPO:latest --build-arg NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL --build-arg NEXT_PUBLIC_COGNITO_USER_POOL_ID=$NEXT_PUBLIC_COGNITO_USER_POOL_ID --build-arg NEXT_PUBLIC_COGNITO_CLIENT_ID=$NEXT_PUBLIC_COGNITO_CLIENT_ID .
+      - docker tag $ECR_REPO:latest $ECR_REPO:$CODEBUILD_RESOLVED_SOURCE_VERSION
+  post_build:
+    commands:
+      - echo Pushing the Docker image...
+      - docker push $ECR_REPO:latest
+      - docker push $ECR_REPO:$CODEBUILD_RESOLVED_SOURCE_VERSION
+      - echo Build completed on `date`

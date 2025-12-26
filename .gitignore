@@ -1,0 +1,62 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+.next
+.turbo
+out
+apps/web/out
+
+# Environment files
+.env
+.env.local
+.env*.local
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Testing
+coverage
+
+# Prisma
+apps/api/prisma/*.db
+apps/api/prisma/*.db-journal
+kol360-bastion-key.pem
+*.pem
+
+# Lambda build artifacts
+apps/api/lambda-bundle
+apps/api/lambda.zip
+apps/api/dist-lambda
+
+# Temp files
+tmp/
+*.zip
+~$*
+
+# Data files (keep in func-spec but don't commit)
+func-spec/*.xlsx
+func-spec/*.csv
+func-spec/*.xls
+
+# Tech spec PDFs
+tech-spec/pdf/
+
+# Build info
+*.tsbuildinfo
+apps/api/lambda.zip
+apps/api/lambda-bundle/
