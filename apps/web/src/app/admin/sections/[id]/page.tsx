@@ -64,8 +64,8 @@ const typeLabels: Record<string, string> = {
   TEXT: 'Text',
   NUMBER: 'Number',
   RATING: 'Rating',
-  SINGLE_CHOICE: 'Single Choice',
-  MULTI_CHOICE: 'Multi Choice',
+  SINGLE_CHOICE: 'Radio',
+  MULTI_CHOICE: 'Multi',
   DROPDOWN: 'Dropdown',
   MULTI_TEXT: 'Multi Text',
 };
