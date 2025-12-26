@@ -364,6 +364,9 @@ model Campaign {
   surveyThankYouTitle      String?
   surveyWelcomeMessage     String?
   surveyWelcomeTitle       String?
+  // Workflow step confirmation timestamps (when user explicitly reviewed/confirmed each step)
+  scoreConfigConfirmedAt   DateTime?
+  templatesConfirmedAt     DateTime?
   client                   Client                  @relation(fields: [clientId], references: [id])
   diseaseArea              DiseaseArea             @relation(fields: [diseaseAreaId], references: [id])
   surveyTemplate           SurveyTemplate?         @relation(fields: [surveyTemplateId], references: [id])
