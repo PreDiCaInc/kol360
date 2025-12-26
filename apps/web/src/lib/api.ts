@@ -8,9 +8,12 @@ export function setAuthTokenFn(fn: () => Promise<string | null>) {
 
 export async function api<T>(
   endpoint: string,
-  options: RequestInit & { params?: Record<string, string | number | boolean | undefined | null> } = {}
+  options: RequestInit & {
+    params?: Record<string, string | number | boolean | undefined | null>;
+    responseType?: 'json' | 'blob';
+  } = {}
 ): Promise<T> {
-  const { params, ...init } = options;
+  const { params, responseType = 'json', ...init } = options;
 
   // Build URL with query params
   let url = `${API_BASE}${endpoint}`;
@@ -30,11 +33,11 @@ export async function api<T>(
   // Get auth token
   const token = getTokenFn ? await getTokenFn() : null;
 
-  // Only set Content-Type for requests with a body
+  // Only set Content-Type for requests with a body (and not FormData)
   const headers: Record<string, string> = {
     ...(token && { Authorization: `Bearer ${token}` }),
   };
-  if (init.body) {
+  if (init.body && typeof init.body === 'string') {
     headers['Content-Type'] = 'application/json';
   }
 
@@ -54,6 +57,12 @@ export async function api<T>(
   // Handle 204 No Content responses (common for DELETE operations)
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  // Handle blob responses (for file downloads)
+  if (responseType === 'blob') {
+    const blob = await response.blob();
+    return blob as T;
   }
 
   // Parse JSON response, with fallback for empty bodies

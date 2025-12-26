@@ -45,7 +45,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Plus, MoreHorizontal, Eye, Pencil, Trash2, Lock, FolderOpen } from 'lucide-react';
+import { Plus, MoreHorizontal, Eye, Pencil, Trash2, Lock, FolderOpen, MessageSquare, Layers } from 'lucide-react';
 
 export default function SectionsPage() {
   const { data: sections, isLoading } = useSections();
@@ -86,15 +86,17 @@ export default function SectionsPage() {
     }
   };
 
+  const totalQuestions = sections?.reduce((sum, s) => sum + s.questions.length, 0) || 0;
+  const coreCount = sections?.filter(s => s.isCore).length || 0;
+
   return (
     <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
+      <div className="p-6 lg:p-8 fade-in">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold">Section Templates</h1>
-            <p className="text-muted-foreground">
-              Organize questions into reusable sections for survey templates
-            </p>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Section Templates</h1>
+            <p className="text-muted-foreground mt-1">Organize questions into reusable sections for survey templates</p>
           </div>
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -102,31 +104,78 @@ export default function SectionsPage() {
           </Button>
         </div>
 
+        {/* Stats Summary */}
+        {!isLoading && sections && sections.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <div className="bg-card rounded-xl border border-border/60 p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Layers className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{sections.length}</p>
+                <p className="text-sm text-muted-foreground">Total Sections</p>
+              </div>
+            </div>
+            <div className="bg-card rounded-xl border border-border/60 p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <MessageSquare className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{totalQuestions}</p>
+                <p className="text-sm text-muted-foreground">Total Questions</p>
+              </div>
+            </div>
+            <div className="bg-card rounded-xl border border-border/60 p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <Lock className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{coreCount}</p>
+                <p className="text-sm text-muted-foreground">Core Sections</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
-          <div className="text-center py-12">Loading...</div>
+          <div className="bg-card rounded-xl border border-border/60 overflow-hidden">
+            <div className="p-4 border-b border-border/60">
+              <div className="h-5 w-32 skeleton rounded" />
+            </div>
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="p-4 border-b border-border/40 last:border-0">
+                <div className="flex items-center gap-4">
+                  <div className="h-4 w-40 skeleton rounded" />
+                  <div className="h-5 w-10 skeleton rounded-full" />
+                  <div className="h-4 w-24 skeleton rounded ml-auto" />
+                  <div className="h-8 w-8 skeleton rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : !sections || sections.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <FolderOpen className="w-12 h-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No sections yet</h3>
-              <p className="text-muted-foreground mb-4">
-                Create your first section to organize questions
-              </p>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Section
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="bg-card rounded-xl border border-border/60 p-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+              <FolderOpen className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium mb-2">No sections yet</h3>
+            <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+              Create your first section to start organizing questions into reusable groups.
+            </p>
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create Section
+            </Button>
+          </div>
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle>All Sections</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg">All Sections</CardTitle>
               <CardDescription>
                 {sections.length} section{sections.length !== 1 ? 's' : ''} available
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -142,12 +191,12 @@ export default function SectionsPage() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {section.isCore && (
-                            <Lock className="w-4 h-4 text-muted-foreground" />
+                            <Lock className="w-4 h-4 text-amber-500" />
                           )}
                           <div>
                             <Link
                               href={`/admin/sections/${section.id}`}
-                              className="font-medium text-blue-600 hover:underline"
+                              className="font-medium text-primary hover:text-primary/80 transition-colors"
                             >
                               {section.name}
                             </Link>
@@ -158,7 +207,7 @@ export default function SectionsPage() {
                             )}
                           </div>
                           {section.isCore && (
-                            <Badge variant="secondary">Core</Badge>
+                            <Badge variant="warning" className="ml-2">Core</Badge>
                           )}
                         </div>
                       </TableCell>
@@ -167,9 +216,9 @@ export default function SectionsPage() {
                       </TableCell>
                       <TableCell>
                         {section._count.templateSections > 0 ? (
-                          <span className="text-sm">
+                          <Badge variant="success">
                             {section._count.templateSections} template{section._count.templateSections !== 1 ? 's' : ''}
-                          </span>
+                          </Badge>
                         ) : (
                           <span className="text-sm text-muted-foreground">Not used</span>
                         )}
@@ -177,7 +226,7 @@ export default function SectionsPage() {
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
                               <MoreHorizontal className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -226,6 +275,7 @@ export default function SectionsPage() {
                   placeholder="e.g., Demographics"
                   value={newSectionName}
                   onChange={(e) => setNewSectionName(e.target.value)}
+                  className="mt-1.5"
                 />
               </div>
               <div>
@@ -235,14 +285,15 @@ export default function SectionsPage() {
                   value={newSectionDescription}
                   onChange={(e) => setNewSectionDescription(e.target.value)}
                   rows={3}
+                  className="mt-1.5"
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
                   Cancel
                 </Button>
                 <Button onClick={handleCreate} disabled={createSection.isPending || !newSectionName.trim()}>
-                  Create
+                  Create Section
                 </Button>
               </div>
             </div>

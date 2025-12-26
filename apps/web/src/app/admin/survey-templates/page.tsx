@@ -50,7 +50,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, MoreHorizontal, Copy, Trash2, Eye, Pencil, FileText } from 'lucide-react';
+import { Plus, MoreHorizontal, Copy, Trash2, Eye, Pencil, FileText, ClipboardList, MessageSquare, FolderKanban } from 'lucide-react';
 
 export default function SurveyTemplatesPage() {
   const { data: templates, isLoading } = useSurveyTemplates();
@@ -116,15 +116,17 @@ export default function SurveyTemplatesPage() {
     return template.sections.reduce((sum, ts) => sum + ts.section.questions.length, 0);
   };
 
+  const totalSections = templates?.reduce((sum, t) => sum + t.sections.length, 0) || 0;
+  const totalQuestions = templates?.reduce((sum, t) => sum + getTotalQuestions(t), 0) || 0;
+
   return (
     <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
-      <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
+      <div className="p-6 lg:p-8 fade-in">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold">Survey Templates</h1>
-            <p className="text-muted-foreground">
-              Create and manage reusable survey templates
-            </p>
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Survey Templates</h1>
+            <p className="text-muted-foreground mt-1">Create and manage reusable survey templates</p>
           </div>
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -132,31 +134,79 @@ export default function SurveyTemplatesPage() {
           </Button>
         </div>
 
+        {/* Stats Summary */}
+        {!isLoading && templates && templates.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+            <div className="bg-card rounded-xl border border-border/60 p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <ClipboardList className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{templates.length}</p>
+                <p className="text-sm text-muted-foreground">Templates</p>
+              </div>
+            </div>
+            <div className="bg-card rounded-xl border border-border/60 p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <FolderKanban className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{totalSections}</p>
+                <p className="text-sm text-muted-foreground">Total Sections</p>
+              </div>
+            </div>
+            <div className="bg-card rounded-xl border border-border/60 p-4 flex items-center gap-4">
+              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <MessageSquare className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-semibold">{totalQuestions}</p>
+                <p className="text-sm text-muted-foreground">Total Questions</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
-          <div className="text-center py-12">Loading...</div>
+          <div className="bg-card rounded-xl border border-border/60 overflow-hidden">
+            <div className="p-4 border-b border-border/60">
+              <div className="h-5 w-32 skeleton rounded" />
+            </div>
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="p-4 border-b border-border/40 last:border-0">
+                <div className="flex items-center gap-4">
+                  <div className="h-4 w-48 skeleton rounded" />
+                  <div className="h-5 w-12 skeleton rounded-full" />
+                  <div className="h-5 w-12 skeleton rounded-full" />
+                  <div className="h-4 w-24 skeleton rounded ml-auto" />
+                  <div className="h-8 w-8 skeleton rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : !templates || templates.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <FileText className="w-12 h-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No templates yet</h3>
-              <p className="text-muted-foreground mb-4">
-                Create your first survey template to get started
-              </p>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Template
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="bg-card rounded-xl border border-border/60 p-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium mb-2">No templates yet</h3>
+            <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+              Create your first survey template to start building reusable questionnaires.
+            </p>
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create Template
+            </Button>
+          </div>
         ) : (
           <Card>
-            <CardHeader>
-              <CardTitle>All Templates</CardTitle>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg">All Templates</CardTitle>
               <CardDescription>
                 {templates.length} template{templates.length !== 1 ? 's' : ''} available
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -174,7 +224,7 @@ export default function SurveyTemplatesPage() {
                         <div>
                           <Link
                             href={`/admin/survey-templates/${template.id}`}
-                            className="font-medium text-blue-600 hover:underline"
+                            className="font-medium text-primary hover:text-primary/80 transition-colors"
                           >
                             {template.name}
                           </Link>
@@ -193,9 +243,9 @@ export default function SurveyTemplatesPage() {
                       </TableCell>
                       <TableCell>
                         {template._count.campaigns > 0 ? (
-                          <span className="text-sm">
+                          <Badge variant="success">
                             {template._count.campaigns} campaign{template._count.campaigns !== 1 ? 's' : ''}
-                          </span>
+                          </Badge>
                         ) : (
                           <span className="text-sm text-muted-foreground">Not used</span>
                         )}
@@ -203,7 +253,7 @@ export default function SurveyTemplatesPage() {
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
                               <MoreHorizontal className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -256,6 +306,7 @@ export default function SurveyTemplatesPage() {
                   placeholder="e.g., Quarterly HCP Survey"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  className="mt-1.5"
                 />
               </div>
               <div>
@@ -265,14 +316,15 @@ export default function SurveyTemplatesPage() {
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   rows={3}
+                  className="mt-1.5"
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
                   Cancel
                 </Button>
                 <Button onClick={handleCreate} disabled={createTemplate.isPending || !newName.trim()}>
-                  Create
+                  Create Template
                 </Button>
               </div>
             </div>
@@ -295,14 +347,15 @@ export default function SurveyTemplatesPage() {
                   placeholder="Enter name for cloned template"
                   value={cloneName}
                   onChange={(e) => setCloneName(e.target.value)}
+                  className="mt-1.5"
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" onClick={() => setShowCloneDialog(false)}>
                   Cancel
                 </Button>
                 <Button onClick={handleClone} disabled={cloneTemplate.isPending || !cloneName.trim()}>
-                  Clone
+                  Clone Template
                 </Button>
               </div>
             </div>

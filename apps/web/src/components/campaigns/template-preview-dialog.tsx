@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Mail, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Eye, Mail, FileText, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
 
 type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done';
 
@@ -48,7 +48,7 @@ const SAMPLE_DATA = {
   unsubscribeUrl: 'https://kol360.bio-exec.com/unsubscribe/abc123',
 };
 
-// Default templates matching the email service
+// Updated email templates with new design system colors (teal primary: #147a6d)
 const DEFAULT_INVITATION_SUBJECT = 'Your expertise needed: {campaignName} KOL Survey';
 const DEFAULT_INVITATION_BODY = `
 <!DOCTYPE html>
@@ -57,42 +57,48 @@ const DEFAULT_INVITATION_BODY = `
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="text-align: center; margin-bottom: 30px;">
-    <img src="/images/logo-black.png" alt="BioExec" style="height: 40px;">
-  </div>
+<body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.7; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+    <!-- Header with gradient -->
+    <div style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
+      <img src="/images/logo-white.png" alt="KOL360" style="height: 36px; margin-bottom: 8px;">
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Key Opinion Leader Research</p>
+    </div>
 
-  <h2 style="color: #0066CC;">Dear Dr. {lastName},</h2>
+    <div style="padding: 32px 24px;">
+      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Dear Dr. {lastName},</h2>
 
-  <p>You have been identified as a key opinion leader in your field, and we would greatly value your insights.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">You have been identified as a <strong>key opinion leader</strong> in your field, and we would greatly value your insights.</p>
 
-  <p>We are conducting the <strong>{campaignName}</strong> research study and would like to invite you to participate in a brief survey about thought leaders in your specialty area.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">We are conducting the <strong style="color: #147a6d;">{campaignName}</strong> research study and would like to invite you to participate in a brief survey about thought leaders in your specialty area.</p>
 
-  <p>The survey takes approximately <strong>5-10 minutes</strong> to complete.</p>
+      <div style="background: #f0fdf9; border-left: 4px solid #147a6d; padding: 16px; border-radius: 0 8px 8px 0; margin: 24px 0;">
+        <p style="margin: 0; color: #0f5d54; font-size: 14px;">
+          <strong>⏱️ Estimated time:</strong> 5-10 minutes
+        </p>
+      </div>
 
-  {honorariumBlock}
+      {honorariumBlock}
 
-  <div style="text-align: center; margin: 30px 0;">
-    <a href="{surveyLink}" style="background-color: #0066CC; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-      Start Survey
-    </a>
-  </div>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="{surveyLink}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
+          Start Survey →
+        </a>
+      </div>
 
-  <p>If the button above doesn't work, copy and paste this link into your browser:</p>
-  <p style="word-break: break-all; color: #666; font-size: 14px;">{surveyLink}</p>
+      <p style="font-size: 13px; color: #6b7280; margin: 24px 0 8px 0;">If the button doesn't work, copy this link:</p>
+      <p style="word-break: break-all; color: #147a6d; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 0;">{surveyLink}</p>
+    </div>
 
-  <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-
-  <p style="font-size: 14px; color: #666;">
-    Your responses will be kept confidential and used only for research purposes.
-  </p>
-
-  <p style="font-size: 12px; color: #999;">
-    If you wish to unsubscribe from this survey, <a href="{unsubscribeUrl}" style="color: #999;">click here</a>.
-  </p>
-
-  <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999; text-align: center;">
-    <p>BioExec Research | Confidential KOL Survey</p>
+    <!-- Footer -->
+    <div style="background: #f8fafc; padding: 24px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 13px; color: #6b7280; margin: 0 0 8px 0; text-align: center;">
+        🔒 Your responses will be kept confidential and used only for research purposes.
+      </p>
+      <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
+        <a href="{unsubscribeUrl}" style="color: #9ca3af;">Unsubscribe</a> · BioExec Research · Confidential KOL Survey
+      </p>
+    </div>
   </div>
 </body>
 </html>
@@ -106,38 +112,50 @@ const DEFAULT_REMINDER_BODY = `
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="text-align: center; margin-bottom: 30px;">
-    <img src="/images/logo-black.png" alt="BioExec" style="height: 40px;">
-  </div>
+<body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.7; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+    <!-- Header with gradient -->
+    <div style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
+      <img src="/images/logo-white.png" alt="KOL360" style="height: 36px; margin-bottom: 8px;">
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Key Opinion Leader Research</p>
+    </div>
 
-  <h2 style="color: #0066CC;">Dear Dr. {lastName},</h2>
+    <div style="padding: 32px 24px;">
+      <!-- Reminder badge -->
+      <div style="display: inline-block; background: #fef3c7; color: #92400e; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 20px;">
+        ⏰ Friendly Reminder
+      </div>
 
-  <p>We recently invited you to participate in the <strong>{campaignName}</strong> research study, and we noticed you haven't yet completed the survey.</p>
+      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Dear Dr. {lastName},</h2>
 
-  <p>Your insights as a key opinion leader are invaluable to this research.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">We recently invited you to participate in the <strong style="color: #147a6d;">{campaignName}</strong> research study, and we noticed you haven't yet completed the survey.</p>
 
-  <p>The survey takes only <strong>5-10 minutes</strong> to complete.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">Your insights as a key opinion leader are <strong>invaluable</strong> to this research.</p>
 
-  {honorariumBlock}
+      <div style="background: #f0fdf9; border-left: 4px solid #147a6d; padding: 16px; border-radius: 0 8px 8px 0; margin: 24px 0;">
+        <p style="margin: 0; color: #0f5d54; font-size: 14px;">
+          <strong>⏱️ Only 5-10 minutes</strong> to complete
+        </p>
+      </div>
 
-  <div style="text-align: center; margin: 30px 0;">
-    <a href="{surveyLink}" style="background-color: #0066CC; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-      Complete Survey Now
-    </a>
-  </div>
+      {honorariumBlock}
 
-  <p>If the button above doesn't work, copy and paste this link into your browser:</p>
-  <p style="word-break: break-all; color: #666; font-size: 14px;">{surveyLink}</p>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="{surveyLink}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
+          Complete Survey Now →
+        </a>
+      </div>
 
-  <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+      <p style="font-size: 13px; color: #6b7280; margin: 24px 0 8px 0;">If the button doesn't work, copy this link:</p>
+      <p style="word-break: break-all; color: #147a6d; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 0;">{surveyLink}</p>
+    </div>
 
-  <p style="font-size: 12px; color: #999;">
-    If you wish to unsubscribe from this survey, <a href="{unsubscribeUrl}" style="color: #999;">click here</a>.
-  </p>
-
-  <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999; text-align: center;">
-    <p>BioExec Research | Confidential KOL Survey</p>
+    <!-- Footer -->
+    <div style="background: #f8fafc; padding: 24px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
+        <a href="{unsubscribeUrl}" style="color: #9ca3af;">Unsubscribe</a> · BioExec Research · Confidential KOL Survey
+      </p>
+    </div>
   </div>
 </body>
 </html>
@@ -149,7 +167,11 @@ function replacePlaceholders(
   honorariumAmount?: number | null
 ): string {
   const honorariumBlock = honorariumAmount
-    ? `<p style="background-color: #f0f7ff; padding: 15px; border-radius: 5px;">As a thank you for your participation, you will receive a $${honorariumAmount} honorarium upon completion.</p>`
+    ? `<div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin: 24px 0; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 14px; color: #065f46;">Upon completion, you will receive</p>
+        <p style="margin: 0; font-size: 28px; font-weight: 700; color: #047857;">$${honorariumAmount}</p>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #065f46;">honorarium</p>
+      </div>`
     : '';
   const honorariumText = honorariumAmount ? `$${honorariumAmount}` : '';
 
@@ -183,6 +205,11 @@ export function TemplatePreviewDialog({
 }: TemplatePreviewDialogProps) {
   const [activeTab, setActiveTab] = useState<PreviewType>(type);
 
+  // Sync activeTab with type prop when dialog opens
+  useEffect(() => {
+    setActiveTab(type);
+  }, [type, open]);
+
   const renderEmailPreview = (
     subject: string | undefined,
     body: string | undefined,
@@ -206,29 +233,29 @@ export function TemplatePreviewDialog({
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Mail className="w-4 h-4" />
           <span>{emailType === 'invitation' ? 'Invitation Email' : 'Reminder Email'} Preview</span>
-          {!body && <Badge variant="secondary">Using Default Template</Badge>}
+          {!body && <Badge variant="success" className="text-xs">Using Default Template</Badge>}
         </div>
 
         {/* Email Header Mock */}
-        <div className="border rounded-lg overflow-hidden">
-          <div className="bg-gray-100 p-3 border-b space-y-1">
+        <div className="border border-border/60 rounded-xl overflow-hidden shadow-sm">
+          <div className="bg-muted/50 p-4 border-b border-border/60 space-y-2">
             <div className="flex gap-2 text-sm">
-              <span className="text-muted-foreground w-16">From:</span>
+              <span className="text-muted-foreground w-16 shrink-0">From:</span>
               <span>BioExec KOL Research &lt;noreply@bio-exec.com&gt;</span>
             </div>
             <div className="flex gap-2 text-sm">
-              <span className="text-muted-foreground w-16">To:</span>
+              <span className="text-muted-foreground w-16 shrink-0">To:</span>
               <span>dr.{SAMPLE_DATA.lastName.toLowerCase()}@example.com</span>
             </div>
             <div className="flex gap-2 text-sm">
-              <span className="text-muted-foreground w-16">Subject:</span>
+              <span className="text-muted-foreground w-16 shrink-0">Subject:</span>
               <span className="font-medium">{finalSubject}</span>
             </div>
           </div>
 
           {/* Email Body */}
           <div
-            className="p-4 bg-white"
+            className="bg-slate-100 p-4"
             dangerouslySetInnerHTML={{ __html: finalBody }}
           />
         </div>
@@ -258,14 +285,14 @@ export function TemplatePreviewDialog({
         message = thankYouMessage || '';
         defaultTitle = 'Thank You!';
         defaultMessage = `Thank you for completing the survey, Dr. ${SAMPLE_DATA.lastName}.`;
-        icon = <CheckCircle2 className="w-12 h-12 text-green-500" />;
+        icon = <CheckCircle2 className="w-12 h-12 text-emerald-500" />;
         break;
       case 'already-done':
         title = alreadyDoneTitle || '';
         message = alreadyDoneMessage || '';
         defaultTitle = 'Survey Already Completed';
         defaultMessage = 'You have already completed this survey. Thank you for your participation.';
-        icon = <AlertCircle className="w-12 h-12 text-blue-500" />;
+        icon = <AlertCircle className="w-12 h-12 text-primary" />;
         break;
     }
 
@@ -280,42 +307,52 @@ export function TemplatePreviewDialog({
             {previewType === 'welcome' ? 'Welcome Page' :
              previewType === 'thankyou' ? 'Thank You Page' : 'Already Completed Page'} Preview
           </span>
-          {!title && !message && <Badge variant="secondary">Using Defaults</Badge>}
+          {!title && !message && <Badge variant="muted" className="text-xs">Using Defaults</Badge>}
         </div>
 
         {/* Landing Page Mock */}
-        <div className="bg-gray-100 rounded-lg p-8">
-          <Card className="max-w-md mx-auto">
+        <div className="bg-gradient-to-b from-muted/30 to-muted/60 rounded-xl p-8 min-h-[400px] flex items-center justify-center">
+          <Card className="max-w-md w-full shadow-lg border-border/60 overflow-hidden">
             {previewType === 'welcome' ? (
               <>
-                <CardHeader>
-                  <CardTitle>{finalTitle}</CardTitle>
-                  <CardDescription>Welcome, Dr. {SAMPLE_DATA.lastName}</CardDescription>
+                <div className="h-1.5 bg-gradient-to-r from-primary to-primary/60" />
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-xl tracking-tight">{finalTitle}</CardTitle>
+                  <CardDescription className="text-base">
+                    Welcome, Dr. {SAMPLE_DATA.lastName}
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">{finalMessage}</p>
+                  <p className="text-muted-foreground leading-relaxed">{finalMessage}</p>
                   {honorariumAmount && (
-                    <p className="text-sm bg-green-50 text-green-800 p-3 rounded-md">
-                      Upon completion, you will receive a ${honorariumAmount} honorarium.
-                    </p>
+                    <div className="flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800/30">
+                      <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-800/40 flex items-center justify-center shrink-0">
+                        <span className="text-lg font-semibold">$</span>
+                      </div>
+                      <p className="text-sm">
+                        Upon completion, you will receive a <strong>${honorariumAmount}</strong> honorarium.
+                      </p>
+                    </div>
                   )}
-                  <p className="text-sm text-muted-foreground">
-                    This survey contains questions across multiple sections.
-                    Your progress will be saved automatically.
-                  </p>
-                  <Button className="w-full" disabled>Begin Survey</Button>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-4 py-3 rounded-lg">
+                    <Sparkles className="w-4 h-4 shrink-0" />
+                    <span>Your progress will be saved automatically.</span>
+                  </div>
+                  <Button className="w-full" size="lg" disabled>Begin Survey</Button>
                 </CardContent>
               </>
             ) : (
-              <CardContent className="pt-6">
+              <CardContent className="pt-8 pb-8">
                 <div className="flex flex-col items-center text-center">
-                  {icon}
-                  <h2 className="text-xl font-semibold mt-4 mb-2">{finalTitle}</h2>
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${previewType === 'thankyou' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-primary/10'}`}>
+                    {icon}
+                  </div>
+                  <h2 className="text-2xl font-semibold mb-3 tracking-tight">{finalTitle}</h2>
                   <p className="text-muted-foreground">{finalMessage}</p>
                   {previewType === 'thankyou' && honorariumAmount && (
-                    <p className="mt-4 text-sm">
+                    <div className="mt-5 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm border border-emerald-200 dark:border-emerald-800/30">
                       Your ${honorariumAmount} honorarium will be processed shortly.
-                    </p>
+                    </div>
                   )}
                 </div>
               </CardContent>
@@ -345,14 +382,14 @@ export function TemplatePreviewDialog({
         </DialogHeader>
 
         {/* Tab Navigation */}
-        <div className="flex gap-1 border-b pb-2 overflow-x-auto">
+        <div className="flex gap-1 border-b border-border/60 pb-3 overflow-x-auto">
           {tabs.map((tab) => (
             <Button
               key={tab.key}
               variant={activeTab === tab.key ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setActiveTab(tab.key)}
-              className="flex items-center gap-1"
+              className="flex items-center gap-1.5 shrink-0"
             >
               {tab.icon}
               {tab.label}
@@ -381,7 +418,7 @@ export function TemplatePreviewDialog({
           {activeTab === 'already-done' && renderLandingPagePreview('already-done')}
         </div>
 
-        <div className="flex justify-end pt-4 border-t">
+        <div className="flex justify-end pt-4 border-t border-border/60">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>

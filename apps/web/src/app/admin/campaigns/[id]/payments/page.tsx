@@ -7,6 +7,7 @@ import {
   usePayments,
   usePaymentStats,
   useExportPayments,
+  useReExportPayments,
   useImportPaymentStatus,
 } from '@/hooks/use-payments';
 import { useCampaign } from '@/hooks/use-campaigns';
@@ -55,6 +56,7 @@ import {
   XCircle,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 
 // Payment status configuration
@@ -94,6 +96,7 @@ export default function CampaignPaymentsPage() {
   });
   const { data: stats } = usePaymentStats(campaignId);
   const exportPayments = useExportPayments();
+  const reExportPayments = useReExportPayments();
   const importStatus = useImportPaymentStatus();
 
   const handleExport = async () => {
@@ -101,6 +104,14 @@ export default function CampaignPaymentsPage() {
       await exportPayments.mutateAsync(campaignId);
     } catch (error) {
       console.error('Export failed:', error);
+    }
+  };
+
+  const handleReExport = async () => {
+    try {
+      await reExportPayments.mutateAsync(campaignId);
+    } catch (error) {
+      console.error('Re-export failed:', error);
     }
   };
 
@@ -133,6 +144,7 @@ export default function CampaignPaymentsPage() {
   };
 
   const pendingCount = stats?.byStatus?.PENDING_EXPORT?.count || 0;
+  const exportedCount = stats?.byStatus?.EXPORTED?.count || 0;
 
   return (
     <RequireAuth allowedRoles={['PLATFORM_ADMIN']}>
@@ -169,6 +181,19 @@ export default function CampaignPaymentsPage() {
                 <Upload className="w-4 h-4 mr-2" />
               )}
               Import Status
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleReExport}
+              disabled={reExportPayments.isPending || exportedCount === 0}
+              title="Re-download exported payments without changing status"
+            >
+              {reExportPayments.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              Re-export ({exportedCount})
             </Button>
             <Button
               onClick={handleExport}

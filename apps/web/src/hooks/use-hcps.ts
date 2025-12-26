@@ -8,13 +8,28 @@ interface HcpAlias {
   createdAt: string;
 }
 
+export interface Specialty {
+  id: string;
+  name: string;
+  code: string;
+  category: string | null;
+  isActive: boolean;
+  _count?: { hcps: number };
+}
+
+interface HcpSpecialty {
+  id: string;
+  isPrimary: boolean;
+  specialty: Specialty;
+}
+
 interface Hcp {
   id: string;
   npi: string;
   firstName: string;
   lastName: string;
   email: string | null;
-  specialty: string | null;
+  specialty: string | null;  // Legacy field
   subSpecialty: string | null;
   city: string | null;
   state: string | null;
@@ -22,6 +37,7 @@ interface Hcp {
   createdAt: string;
   updatedAt: string;
   aliases: HcpAlias[];
+  specialties?: HcpSpecialty[];  // New multi-specialty relation
   _count?: {
     campaignHcps: number;
     nominationsReceived: number;
@@ -84,7 +100,7 @@ interface AliasImportResult {
 }
 
 interface FiltersResponse {
-  specialties: string[];
+  specialties: Specialty[];
   states: string[];
 }
 
@@ -221,6 +237,75 @@ export function useImportHcpAliases() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hcps'] });
+    },
+  });
+}
+
+// Specialty management hooks
+export function useSpecialties() {
+  return useQuery({
+    queryKey: ['specialties'],
+    queryFn: () => apiClient.get<Specialty[]>('/api/v1/specialties'),
+  });
+}
+
+export function useSetHcpSpecialties() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      hcpId,
+      specialtyIds,
+      primarySpecialtyId,
+    }: {
+      hcpId: string;
+      specialtyIds: string[];
+      primarySpecialtyId?: string;
+    }) =>
+      apiClient.put<HcpSpecialty[]>(`/api/v1/hcps/${hcpId}/specialties`, {
+        specialtyIds,
+        primarySpecialtyId,
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['hcps'] });
+      queryClient.invalidateQueries({ queryKey: ['hcps', variables.hcpId] });
+    },
+  });
+}
+
+export function useAddHcpSpecialty() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      hcpId,
+      specialtyId,
+      isPrimary,
+    }: {
+      hcpId: string;
+      specialtyId: string;
+      isPrimary?: boolean;
+    }) =>
+      apiClient.post<HcpSpecialty>(`/api/v1/hcps/${hcpId}/specialties`, {
+        specialtyId,
+        isPrimary,
+      }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['hcps'] });
+      queryClient.invalidateQueries({ queryKey: ['hcps', variables.hcpId] });
+    },
+  });
+}
+
+export function useRemoveHcpSpecialty() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ hcpId, specialtyId }: { hcpId: string; specialtyId: string }) =>
+      apiClient.delete(`/api/v1/hcps/${hcpId}/specialties/${specialtyId}`),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['hcps'] });
+      queryClient.invalidateQueries({ queryKey: ['hcps', variables.hcpId] });
     },
   });
 }

@@ -24,6 +24,7 @@ import { dashboardRoutes } from './routes/dashboards';
 import { liteClientRoutes } from './routes/lite-client';
 import { scoreCalculationRoutes } from './routes/score-calculation';
 import { exportRoutes } from './routes/exports';
+import { specialtyRoutes } from './routes/specialties';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -75,6 +76,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(scoreConfigRoutes, { prefix: '/api/v1' });
   await fastify.register(campaignRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(diseaseAreaRoutes, { prefix: '/api/v1/disease-areas' });
+  await fastify.register(specialtyRoutes, { prefix: '/api/v1/specialties' });
   await fastify.register(distributionRoutes, { prefix: '/api/v1' });
   await fastify.register(responseRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(nominationRoutes, { prefix: '/api/v1/campaigns' });

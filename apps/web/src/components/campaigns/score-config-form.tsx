@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { scoreConfigSchema, ScoreConfigInput } from '@kol360/shared';
@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { CheckCircle2 } from 'lucide-react';
 
 const segments = [
   { key: 'weightPublications', label: 'Peer-reviewed Publications', defaultWeight: 10 },
@@ -35,6 +36,8 @@ interface ScoreConfigFormProps {
 }
 
 export function ScoreConfigForm({ config, onSave, onReset, isLoading }: ScoreConfigFormProps) {
+  const [showSaved, setShowSaved] = useState(false);
+
   const form = useForm<ScoreConfigInput>({
     resolver: zodResolver(scoreConfigSchema),
     defaultValues: config || {
@@ -62,6 +65,8 @@ export function ScoreConfigForm({ config, onSave, onReset, isLoading }: ScoreCon
 
   const handleSubmit = async (data: ScoreConfigInput) => {
     await onSave(data);
+    setShowSaved(true);
+    setTimeout(() => setShowSaved(false), 3000);
   };
 
   const handleReset = async () => {
@@ -112,7 +117,13 @@ export function ScoreConfigForm({ config, onSave, onReset, isLoading }: ScoreCon
             <p className="text-sm text-red-600">{form.formState.errors.root.message}</p>
           )}
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end items-center gap-2">
+            {showSaved && (
+              <span className="flex items-center gap-1 text-sm text-green-600 animate-in fade-in">
+                <CheckCircle2 className="h-4 w-4" />
+                Saved!
+              </span>
+            )}
             <Button
               type="button"
               variant="outline"

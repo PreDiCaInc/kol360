@@ -2,6 +2,7 @@ import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { updateScoreConfigSchema } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { ScoreConfigService } from '../services/score-config.service';
+import { createAuditLog } from '../lib/audit';
 
 const scoreConfigService = new ScoreConfigService();
 
@@ -63,14 +64,11 @@ export const scoreConfigRoutes: FastifyPluginAsync = async (fastify) => {
       const data = updateScoreConfigSchema.parse(request.body);
       const config = await scoreConfigService.update(request.params.campaignId, data);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'score_config.updated',
-          entityType: 'CompositeScoreConfig',
-          entityId: config.id,
-          newValues: data,
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'score_config.updated',
+        entityType: 'CompositeScoreConfig',
+        entityId: config.id,
+        newValues: data,
       });
 
       return config;
@@ -87,14 +85,11 @@ export const scoreConfigRoutes: FastifyPluginAsync = async (fastify) => {
 
       const config = await scoreConfigService.resetToDefaults(request.params.campaignId);
 
-      await fastify.prisma.auditLog.create({
-        data: {
-          userId: request.user!.sub,
-          action: 'score_config.reset',
-          entityType: 'CompositeScoreConfig',
-          entityId: config.id,
-          newValues: { reset: true },
-        },
+      await createAuditLog(request.user!.sub, {
+        action: 'score_config.reset',
+        entityType: 'CompositeScoreConfig',
+        entityId: config.id,
+        newValues: { reset: true },
       });
 
       return config;

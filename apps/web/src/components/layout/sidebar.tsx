@@ -146,7 +146,7 @@ function NavItemComponent({
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+            'group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
             'hover:bg-[hsl(var(--sidebar-accent))]',
             hasActiveChild
               ? 'text-[hsl(var(--sidebar-primary))]'
@@ -156,21 +156,29 @@ function NavItemComponent({
           )}
           title={collapsed ? item.title : undefined}
         >
-          <Icon className={cn('h-5 w-5 flex-shrink-0', hasActiveChild && 'text-[hsl(var(--sidebar-primary))]')} />
+          <Icon className={cn(
+            'h-[18px] w-[18px] flex-shrink-0 transition-colors duration-200',
+            hasActiveChild ? 'text-[hsl(var(--sidebar-primary))]' : 'text-[hsl(var(--sidebar-foreground))]/50 group-hover:text-[hsl(var(--sidebar-foreground))]/70'
+          )} />
           {!collapsed && (
             <>
               <span className="flex-1 text-left">{item.title}</span>
               <ChevronDown
                 className={cn(
-                  'h-4 w-4 transition-transform',
+                  'h-4 w-4 text-[hsl(var(--sidebar-foreground))]/40 transition-transform duration-200',
                   isExpanded && 'rotate-180'
                 )}
               />
             </>
           )}
         </button>
-        {!collapsed && isExpanded && item.children && (
-          <ul className="ml-3 mt-1 space-y-1 border-l border-[hsl(var(--sidebar-muted))] pl-3">
+        <div
+          className={cn(
+            'overflow-hidden transition-all duration-200',
+            isExpanded && !collapsed ? 'max-h-48 opacity-100' : 'max-h-0 opacity-0'
+          )}
+        >
+          <ul className="ml-4 mt-1 space-y-0.5 border-l border-[hsl(var(--sidebar-border))] pl-3">
             {item.children.map((child, idx) => (
               <NavItemComponent
                 key={child.href || `child-${idx}`}
@@ -181,7 +189,7 @@ function NavItemComponent({
               />
             ))}
           </ul>
-        )}
+        </div>
       </li>
     );
   }
@@ -193,17 +201,27 @@ function NavItemComponent({
         <Link
           href={item.href}
           className={cn(
-            'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all',
+            'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
             'hover:bg-[hsl(var(--sidebar-accent))]',
             isActive
-              ? 'bg-[hsl(var(--sidebar-primary))]/10 text-[hsl(var(--sidebar-primary))]'
+              ? 'bg-[hsl(var(--sidebar-primary))]/10 text-[hsl(var(--sidebar-primary))] shadow-sm'
               : 'text-[hsl(var(--sidebar-foreground))]/70 hover:text-[hsl(var(--sidebar-foreground))]',
             collapsed && 'justify-center px-2',
-            level > 0 && !collapsed && 'pl-6 text-xs'
+            level > 0 && !collapsed && 'py-2 text-[13px]'
           )}
           title={collapsed ? item.title : undefined}
         >
-          <Icon className={cn('h-4 w-4 flex-shrink-0', isActive && 'text-[hsl(var(--sidebar-primary))]')} />
+          <div className="relative">
+            <Icon className={cn(
+              'h-[18px] w-[18px] flex-shrink-0 transition-colors duration-200',
+              isActive 
+                ? 'text-[hsl(var(--sidebar-primary))]' 
+                : 'text-[hsl(var(--sidebar-foreground))]/50 group-hover:text-[hsl(var(--sidebar-foreground))]/70'
+            )} />
+            {isActive && collapsed && (
+              <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[hsl(var(--sidebar-primary))]" />
+            )}
+          </div>
           {!collapsed && <span>{item.title}</span>}
         </Link>
       </li>
@@ -230,26 +248,29 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-40 h-screen transition-all duration-300 ease-in-out',
+        'fixed left-0 top-0 z-40 h-screen transition-all duration-300 ease-out',
         'bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
-        'border-r border-[hsl(var(--sidebar-muted))]',
-        collapsed ? 'w-16' : 'w-64'
+        'border-r border-[hsl(var(--sidebar-border))]',
+        collapsed ? 'w-[72px]' : 'w-64'
       )}
     >
       {/* Logo Section */}
-      <div className="flex h-20 items-center justify-center border-b border-[hsl(var(--sidebar-muted))] px-4">
-        <Link href="/admin" className="flex items-center justify-center">
+      <div className={cn(
+        'flex h-[72px] items-center border-b border-[hsl(var(--sidebar-border))] transition-all duration-300',
+        collapsed ? 'justify-center px-2' : 'px-5'
+      )}>
+        <Link href="/admin" className="flex items-center">
           {!collapsed ? (
             <Image
               src="/images/logo-white.png"
               alt="BioExec"
-              width={160}
-              height={48}
-              className="h-12 w-auto object-contain"
+              width={140}
+              height={42}
+              className="h-10 w-auto object-contain"
               priority
             />
           ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-500">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/20">
               <span className="text-sm font-bold text-white">BE</span>
             </div>
           )}
@@ -257,7 +278,10 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="custom-scrollbar h-[calc(100vh-9rem)] overflow-y-auto px-3 py-4">
+      <nav className={cn(
+        'custom-scrollbar h-[calc(100vh-72px-64px)] overflow-y-auto py-4 transition-all duration-300',
+        collapsed ? 'px-2' : 'px-3'
+      )}>
         <ul className="space-y-1">
           {filteredNavItems.map((item, idx) => (
             <NavItemComponent
@@ -271,24 +295,27 @@ export function Sidebar() {
       </nav>
 
       {/* Collapse Toggle */}
-      <div className="absolute bottom-0 left-0 right-0 border-t border-[hsl(var(--sidebar-muted))] p-3">
+      <div className="absolute bottom-0 left-0 right-0 border-t border-[hsl(var(--sidebar-border))] p-3">
         <button
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm',
-            'text-[hsl(var(--sidebar-foreground))]/60 hover:text-[hsl(var(--sidebar-foreground))]',
-            'hover:bg-[hsl(var(--sidebar-accent))] transition-colors',
+            'group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm',
+            'text-[hsl(var(--sidebar-foreground))]/50 hover:text-[hsl(var(--sidebar-foreground))]',
+            'hover:bg-[hsl(var(--sidebar-accent))] transition-all duration-200',
             collapsed && 'justify-center px-2'
           )}
         >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <>
-              <ChevronLeft className="h-4 w-4" />
-              <span>Collapse</span>
-            </>
-          )}
+          <div className={cn(
+            'flex h-6 w-6 items-center justify-center rounded-md bg-[hsl(var(--sidebar-muted))] transition-all duration-200',
+            'group-hover:bg-[hsl(var(--sidebar-primary))]/20'
+          )}>
+            {collapsed ? (
+              <ChevronRight className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronLeft className="h-3.5 w-3.5" />
+            )}
+          </div>
+          {!collapsed && <span className="text-[13px]">Collapse sidebar</span>}
         </button>
       </div>
     </aside>
@@ -296,5 +323,5 @@ export function Sidebar() {
 }
 
 export function SidebarSpacer({ collapsed }: { collapsed?: boolean }) {
-  return <div className={cn('flex-shrink-0 transition-all duration-300', collapsed ? 'w-16' : 'w-64')} />;
+  return <div className={cn('flex-shrink-0 transition-all duration-300', collapsed ? 'w-[72px]' : 'w-64')} />;
 }

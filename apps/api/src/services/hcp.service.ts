@@ -26,7 +26,14 @@ export class HcpService {
         { aliases: { some: { aliasName: { contains: query, mode: 'insensitive' } } } },
       ];
     }
-    if (specialty) where.specialty = specialty;
+    // Support filtering by specialty (check both legacy field and new relation)
+    if (specialty) {
+      where.OR = [
+        ...(where.OR as unknown[] || []),
+        { specialty: specialty },
+        { specialties: { some: { specialty: { name: specialty } } } },
+      ];
+    }
     if (state) where.state = state;
 
     const [total, items] = await Promise.all([
@@ -35,6 +42,10 @@ export class HcpService {
         where,
         include: {
           aliases: true,
+          specialties: {
+            include: { specialty: true },
+            orderBy: { isPrimary: 'desc' },
+          },
           _count: { select: { campaignHcps: true, nominationsReceived: true } },
         },
         skip: (page - 1) * limit,
@@ -54,6 +65,10 @@ export class HcpService {
       where: { id },
       include: {
         aliases: true,
+        specialties: {
+          include: { specialty: true },
+          orderBy: { isPrimary: 'desc' },
+        },
         diseaseAreaScores: {
           where: { isCurrent: true },
           include: { diseaseArea: true },
@@ -285,13 +300,56 @@ export class HcpService {
 
   // Get unique specialties for filter dropdown
   async getSpecialties() {
-    const results = await prisma.hcp.findMany({
-      where: { specialty: { not: null } },
-      select: { specialty: true },
-      distinct: ['specialty'],
-      orderBy: { specialty: 'asc' },
+    // Get from new Specialty model
+    const specialties = await prisma.specialty.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
     });
-    return results.map((r: { specialty: string | null }) => r.specialty).filter(Boolean);
+    return specialties;
+  }
+
+  // Specialty management
+  async addSpecialtyToHcp(hcpId: string, specialtyId: string, isPrimary: boolean = false) {
+    // If setting as primary, unset any existing primary
+    if (isPrimary) {
+      await prisma.hcpSpecialty.updateMany({
+        where: { hcpId, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+    return prisma.hcpSpecialty.upsert({
+      where: { hcpId_specialtyId: { hcpId, specialtyId } },
+      create: { hcpId, specialtyId, isPrimary },
+      update: { isPrimary },
+      include: { specialty: true },
+    });
+  }
+
+  async removeSpecialtyFromHcp(hcpId: string, specialtyId: string) {
+    return prisma.hcpSpecialty.delete({
+      where: { hcpId_specialtyId: { hcpId, specialtyId } },
+    });
+  }
+
+  async setHcpSpecialties(hcpId: string, specialtyIds: string[], primarySpecialtyId?: string) {
+    // Remove all existing specialties
+    await prisma.hcpSpecialty.deleteMany({ where: { hcpId } });
+
+    // Add new specialties
+    if (specialtyIds.length > 0) {
+      await prisma.hcpSpecialty.createMany({
+        data: specialtyIds.map(specialtyId => ({
+          hcpId,
+          specialtyId,
+          isPrimary: specialtyId === primarySpecialtyId,
+        })),
+      });
+    }
+
+    return prisma.hcpSpecialty.findMany({
+      where: { hcpId },
+      include: { specialty: true },
+    });
   }
 
   // Get unique states for filter dropdown
