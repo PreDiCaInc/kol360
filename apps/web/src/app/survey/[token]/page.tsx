@@ -262,7 +262,7 @@ export default function SurveyPage() {
 
       if (isGrouped) {
         // Group all questions from this section together
-        if (currentGroupedSection?.title === section) {
+        if (currentGroupedSection && currentGroupedSection.title === section) {
           currentGroupedSection.questions.push(question);
         } else {
           // Save previous grouped section if exists

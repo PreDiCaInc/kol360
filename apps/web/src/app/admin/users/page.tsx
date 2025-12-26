@@ -97,9 +97,9 @@ export default function UsersPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'ACTIVE':
-        return <Badge variant="default">Active</Badge>;
+        return <Badge variant="success">Active</Badge>;
       case 'PENDING_VERIFICATION':
-        return <Badge variant="secondary">Pending</Badge>;
+        return <Badge variant="warning">Pending</Badge>;
       case 'DISABLED':
         return <Badge variant="destructive">Disabled</Badge>;
       default:
@@ -112,18 +112,21 @@ export default function UsersPage() {
       case 'PLATFORM_ADMIN':
         return <Badge variant="default">Platform Admin</Badge>;
       case 'CLIENT_ADMIN':
-        return <Badge variant="secondary">Client Admin</Badge>;
+        return <Badge variant="info">Client Admin</Badge>;
       case 'TEAM_MEMBER':
-        return <Badge variant="outline">Team Member</Badge>;
+        return <Badge variant="muted">Team Member</Badge>;
       default:
         return <Badge variant="outline">{role}</Badge>;
     }
   };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Users</h1>
+    <div className="p-6 lg:p-8 fade-in">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Users</h1>
+          <p className="text-muted-foreground mt-1">Manage platform users and permissions</p>
+        </div>
           <Button onClick={() => setShowInviteDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Invite User
@@ -132,16 +135,16 @@ export default function UsersPage() {
 
         {/* Error Alert */}
         {actionError && (
-          <div className="mb-4 p-3 text-sm text-red-600 bg-red-50 rounded-md flex justify-between items-center">
+          <div className="mb-6 p-4 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-800/30 flex justify-between items-center">
             <span>{actionError}</span>
-            <button onClick={() => setActionError(null)} className="text-red-600 hover:text-red-800">
+            <button onClick={() => setActionError(null)} className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
         )}
 
         {/* Filters */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex flex-wrap gap-3 mb-6">
           <Select
             value={filters.clientId || 'all'}
             onValueChange={(value) =>
@@ -151,7 +154,7 @@ export default function UsersPage() {
               }))
             }
           >
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-48 bg-card">
               <SelectValue placeholder="All Clients" />
             </SelectTrigger>
             <SelectContent>
@@ -173,7 +176,7 @@ export default function UsersPage() {
               }))
             }
           >
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-48 bg-card">
               <SelectValue placeholder="All Roles" />
             </SelectTrigger>
             <SelectContent>
@@ -193,7 +196,7 @@ export default function UsersPage() {
               }))
             }
           >
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-48 bg-card">
               <SelectValue placeholder="All Statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -206,7 +209,11 @@ export default function UsersPage() {
         </div>
 
         {isLoading ? (
-          <div className="text-center py-12">Loading...</div>
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-16 rounded-lg skeleton" />
+            ))}
+          </div>
         ) : isError ? (
           <Card className="border-destructive">
             <CardContent className="flex flex-col items-center justify-center py-12">

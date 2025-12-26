@@ -211,4 +211,103 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
     return result;
   });
+
+  // Set HCP specialties (replaces all existing)
+  fastify.put<{ Params: { id: string } }>('/:id/specialties', async (request, reply) => {
+    const { specialtyIds, primarySpecialtyId } = request.body as {
+      specialtyIds: string[];
+      primarySpecialtyId?: string;
+    };
+
+    if (!Array.isArray(specialtyIds)) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'specialtyIds must be an array',
+        statusCode: 400,
+      });
+    }
+
+    const hcp = await hcpService.getById(request.params.id);
+    if (!hcp) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'HCP not found',
+        statusCode: 404,
+      });
+    }
+
+    const specialties = await hcpService.setHcpSpecialties(
+      request.params.id,
+      specialtyIds,
+      primarySpecialtyId
+    );
+
+    // Audit log
+    await createAuditLog(request.user!.sub, {
+      action: 'hcp.specialties_updated',
+      entityType: 'Hcp',
+      entityId: request.params.id,
+      newValues: { specialtyIds, primarySpecialtyId },
+    });
+
+    return specialties;
+  });
+
+  // Add specialty to HCP
+  fastify.post<{ Params: { id: string } }>('/:id/specialties', async (request, reply) => {
+    const { specialtyId, isPrimary } = request.body as {
+      specialtyId: string;
+      isPrimary?: boolean;
+    };
+
+    if (!specialtyId) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'specialtyId is required',
+        statusCode: 400,
+      });
+    }
+
+    const hcp = await hcpService.getById(request.params.id);
+    if (!hcp) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'HCP not found',
+        statusCode: 404,
+      });
+    }
+
+    const hcpSpecialty = await hcpService.addSpecialtyToHcp(
+      request.params.id,
+      specialtyId,
+      isPrimary || false
+    );
+
+    // Audit log
+    await createAuditLog(request.user!.sub, {
+      action: 'hcp.specialty_added',
+      entityType: 'HcpSpecialty',
+      entityId: hcpSpecialty.id,
+      newValues: { hcpId: request.params.id, specialtyId, isPrimary },
+    });
+
+    return reply.status(201).send(hcpSpecialty);
+  });
+
+  // Remove specialty from HCP
+  fastify.delete<{ Params: { id: string; specialtyId: string } }>(
+    '/:id/specialties/:specialtyId',
+    async (request, reply) => {
+      await hcpService.removeSpecialtyFromHcp(request.params.id, request.params.specialtyId);
+
+      // Audit log
+      await createAuditLog(request.user!.sub, {
+        action: 'hcp.specialty_removed',
+        entityType: 'HcpSpecialty',
+        entityId: `${request.params.id}_${request.params.specialtyId}`,
+      });
+
+      return reply.status(204).send();
+    }
+  );
 };

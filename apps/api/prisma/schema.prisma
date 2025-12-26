@@ -68,6 +68,34 @@ model DiseaseArea {
   @@index([isActive])
 }
 
+model Specialty {
+  id          String         @id @default(cuid())
+  name        String         @unique
+  code        String         @unique
+  category    String?        // e.g., "Medical", "Surgical", "Primary Care"
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  hcps        HcpSpecialty[]
+
+  @@index([category])
+  @@index([isActive])
+}
+
+model HcpSpecialty {
+  id          String    @id @default(cuid())
+  hcpId       String
+  specialtyId String
+  isPrimary   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  hcp         Hcp       @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+  specialty   Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@unique([hcpId, specialtyId])
+  @@index([hcpId])
+  @@index([specialtyId])
+}
+
 model LiteClientDiseaseArea {
   id            String      @id @default(cuid())
   clientId      String
@@ -122,7 +150,7 @@ model Hcp {
   firstName           String
   lastName            String
   email               String?
-  specialty           String?
+  specialty           String?                 // Legacy field - kept for backward compatibility
   subSpecialty        String?
   city                String?
   state               String?
@@ -130,6 +158,7 @@ model Hcp {
   createdAt           DateTime                @default(now())
   updatedAt           DateTime                @updatedAt
   createdBy           String?
+  specialties         HcpSpecialty[]
   campaignHcps        CampaignHcp[]
   aliases             HcpAlias[]
   campaignScores      HcpCampaignScore[]
