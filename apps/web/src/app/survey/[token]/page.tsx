@@ -34,6 +34,8 @@ import {
   Plus,
   X,
   Save,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 type QuestionType = 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN';
@@ -55,6 +57,9 @@ interface Question {
   defaultEntries: number | null;
 }
 
+// Sections that should show all questions together (like form fields)
+const GROUPED_SECTIONS = ['Demographics', 'Contact Information', 'Profile'];
+
 export default function SurveyPage() {
   const params = useParams();
   const token = params.token as string;
@@ -70,6 +75,7 @@ export default function SurveyPage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(0);
 
   // Initialize answers from saved response
   useEffect(() => {
@@ -82,11 +88,8 @@ export default function SurveyPage() {
   // Mark survey as OPENED when page loads (for tracking purposes)
   useEffect(() => {
     if (survey && !survey.response && !submitted) {
-      // Only call startSurvey if there's no existing response yet
-      // This creates a response record with OPENED status
       startSurvey.mutate(token, {
         onError: (err) => {
-          // Silently ignore errors - this is just for tracking
           console.log('Track survey open:', err);
         },
       });
@@ -122,12 +125,10 @@ export default function SurveyPage() {
   };
 
   const updateAnswer = useCallback((questionId: string, value: unknown) => {
-    console.log('updateAnswer called:', questionId, value);
     setAnswers((prev) => ({
       ...prev,
       [questionId]: value,
     }));
-    // Clear validation error when user answers
     setValidationErrors((prev) => {
       const next = { ...prev };
       delete next[questionId];
@@ -136,13 +137,10 @@ export default function SurveyPage() {
   }, []);
 
   const handleSave = async () => {
-    console.log('Saving answers:', JSON.stringify(answers, null, 2));
-    console.log('Questions:', survey?.questions.map(q => ({ id: q.id, questionId: q.questionId, type: q.type, text: q.text.substring(0, 30) })));
     try {
       await saveProgress.mutateAsync({ token, answers });
       setLastSaved(new Date());
       setSaveMessage('Your progress has been saved. You can use this link to come back and finish later.');
-      // Clear message after 8 seconds
       setTimeout(() => setSaveMessage(null), 8000);
     } catch (err) {
       console.error('Failed to save:', err);
@@ -152,33 +150,41 @@ export default function SurveyPage() {
     }
   };
 
-  const validateAnswers = (): boolean => {
+  const validateQuestion = (question: Question): string | null => {
+    const answer = answers[question.id];
+
+    if (question.isRequired) {
+      if (
+        answer === undefined ||
+        answer === null ||
+        answer === '' ||
+        (Array.isArray(answer) && answer.filter(Boolean).length === 0)
+      ) {
+        return 'This question is required';
+      }
+    }
+
+    if (question.type === 'MULTI_TEXT' && question.minEntries && question.minEntries > 1) {
+      const filledEntries = Array.isArray(answer) ? answer.filter(Boolean).length : 0;
+      if (filledEntries < question.minEntries) {
+        return `Please provide at least ${question.minEntries} names`;
+      }
+    }
+
+    return null;
+  };
+
+  const validateCurrentStep = (): boolean => {
     if (!survey) return false;
 
+    const steps = buildSteps(survey.questions);
+    const currentStepQuestions = steps[currentStep]?.questions || [];
     const errors: Record<string, string> = {};
 
-    for (const question of survey.questions) {
-      const answer = answers[question.id];
-
-      // Check if required question has an answer
-      if (question.isRequired) {
-        if (
-          answer === undefined ||
-          answer === null ||
-          answer === '' ||
-          (Array.isArray(answer) && answer.filter(Boolean).length === 0)
-        ) {
-          errors[question.id] = 'This question is required';
-          continue;
-        }
-      }
-
-      // For MULTI_TEXT questions, enforce minEntries
-      if (question.type === 'MULTI_TEXT' && question.minEntries && question.minEntries > 1) {
-        const filledEntries = Array.isArray(answer) ? answer.filter(Boolean).length : 0;
-        if (filledEntries < question.minEntries) {
-          errors[question.id] = `Please provide at least ${question.minEntries} names`;
-        }
+    for (const question of currentStepQuestions) {
+      const error = validateQuestion(question);
+      if (error) {
+        errors[question.id] = error;
       }
     }
 
@@ -186,8 +192,52 @@ export default function SurveyPage() {
     return Object.keys(errors).length === 0;
   };
 
+  const validateAllAnswers = (): boolean => {
+    if (!survey) return false;
+
+    const errors: Record<string, string> = {};
+
+    for (const question of survey.questions) {
+      const error = validateQuestion(question);
+      if (error) {
+        errors[question.id] = error;
+      }
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleNext = async () => {
+    if (!validateCurrentStep()) {
+      return;
+    }
+
+    // Save progress when moving to next step
+    try {
+      await saveProgress.mutateAsync({ token, answers });
+      setLastSaved(new Date());
+    } catch (err) {
+      console.error('Failed to save:', err);
+    }
+
+    const steps = buildSteps(survey!.questions);
+    if (currentStep < steps.length - 1) {
+      setCurrentStep(currentStep + 1);
+      // Scroll to top on mobile
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!validateAnswers()) {
+    if (!validateAllAnswers()) {
       return;
     }
 
@@ -199,6 +249,47 @@ export default function SurveyPage() {
     }
   };
 
+  // Build steps from questions - group certain sections, show others one at a time
+  const buildSteps = (questions: Question[]): { title: string; questions: Question[] }[] => {
+    const steps: { title: string; questions: Question[] }[] = [];
+    let currentGroupedSection: { title: string; questions: Question[] } | null = null;
+
+    for (const question of questions) {
+      const section = question.section || 'General';
+      const isGrouped = GROUPED_SECTIONS.some(gs =>
+        section.toLowerCase().includes(gs.toLowerCase())
+      );
+
+      if (isGrouped) {
+        // Group all questions from this section together
+        if (currentGroupedSection?.title === section) {
+          currentGroupedSection.questions.push(question);
+        } else {
+          // Save previous grouped section if exists
+          if (currentGroupedSection) {
+            steps.push(currentGroupedSection);
+          }
+          currentGroupedSection = { title: section, questions: [question] };
+        }
+      } else {
+        // Save any pending grouped section
+        if (currentGroupedSection) {
+          steps.push(currentGroupedSection);
+          currentGroupedSection = null;
+        }
+        // Each non-grouped question gets its own step
+        steps.push({ title: section, questions: [question] });
+      }
+    }
+
+    // Don't forget the last grouped section
+    if (currentGroupedSection) {
+      steps.push(currentGroupedSection);
+    }
+
+    return steps;
+  };
+
   // Loading state
   if (isLoading) {
     return (
@@ -208,7 +299,7 @@ export default function SurveyPage() {
     );
   }
 
-  // Error state - check if already completed (use success styling)
+  // Error state
   if (error || !survey) {
     const errorMessage = error instanceof Error ? error.message : 'This survey link is invalid or has expired.';
     const isAlreadyCompleted = errorMessage.includes('already completed') || errorMessage.includes('You have already');
@@ -264,27 +355,15 @@ export default function SurveyPage() {
     );
   }
 
-  // Group questions by section
-  const sections = survey.questions.reduce(
-    (acc, q) => {
-      const section = q.section || 'General';
-      if (!acc[section]) acc[section] = [];
-      acc[section].push(q);
-      return acc;
-    },
-    {} as Record<string, Question[]>
-  );
-
-  const sectionNames = Object.keys(sections);
+  const steps = buildSteps(survey.questions);
+  const totalSteps = steps.length;
   const totalQuestions = survey.questions.length;
   const answeredQuestions = survey.questions.filter((q) => {
     const answer = answers[q.id];
     if (answer === undefined || answer === null || answer === '') return false;
-    // Handle MULTI_TEXT (array of strings)
     if (Array.isArray(answer)) {
       return answer.filter(Boolean).length > 0;
     }
-    // Handle SINGLE_CHOICE / MULTI_CHOICE (object with selected property)
     if (typeof answer === 'object' && answer !== null) {
       const obj = answer as { selected?: string | string[] };
       if ('selected' in obj) {
@@ -294,7 +373,6 @@ export default function SurveyPage() {
         return obj.selected !== undefined && obj.selected !== '';
       }
     }
-    // Handle NUMBER, TEXT, DROPDOWN, RATING (primitive values)
     return true;
   }).length;
   const progress = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
@@ -307,7 +385,7 @@ export default function SurveyPage() {
 
     return (
       <div className="min-h-screen bg-gray-50 py-8 px-4">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-lg mx-auto">
           <Card>
             <CardHeader>
               <CardTitle>{welcomeTitle}</CardTitle>
@@ -325,10 +403,10 @@ export default function SurveyPage() {
                 </p>
               )}
               <p className="text-sm text-muted-foreground">
-                This survey contains {totalQuestions} questions across {sectionNames.length} section(s).
+                This survey contains {totalQuestions} questions.
                 Your progress will be saved automatically.
               </p>
-              <Button onClick={handleStart} className="w-full" disabled={startSurvey.isPending}>
+              <Button onClick={handleStart} className="w-full" size="lg" disabled={startSurvey.isPending}>
                 {startSurvey.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 ) : null}
@@ -341,87 +419,128 @@ export default function SurveyPage() {
     );
   }
 
+  const currentStepData = steps[currentStep];
+  const isLastStep = currentStep === totalSteps - 1;
+  const isFirstStep = currentStep === 0;
+
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Header */}
+    <div className="min-h-screen bg-gray-50 py-4 px-4 sm:py-8">
+      <div className="max-w-lg mx-auto space-y-4">
+        {/* Progress Header */}
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">{survey.campaign.name}</CardTitle>
-            <CardDescription>Dr. {survey.hcp.lastName}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Progress bar */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>{answeredQuestions} of {totalQuestions} questions answered</span>
-                <span>{progress}%</span>
+          <CardContent className="py-4">
+            <div className="space-y-3">
+              {/* Step indicator */}
+              <div className="flex justify-between items-center text-sm">
+                <span className="font-medium">{currentStepData.title}</span>
+                <span className="text-muted-foreground">
+                  Step {currentStep + 1} of {totalSteps}
+                </span>
               </div>
+              {/* Progress bar */}
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-primary h-2 rounded-full transition-all"
-                  style={{ width: `${progress}%` }}
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
                 />
               </div>
+              {/* Progress dots for mobile */}
+              <div className="flex justify-center gap-1.5 flex-wrap">
+                {steps.map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`w-2 h-2 rounded-full transition-all ${
+                      idx === currentStep
+                        ? 'bg-primary w-4'
+                        : idx < currentStep
+                        ? 'bg-primary/60'
+                        : 'bg-gray-300'
+                    }`}
+                  />
+                ))}
+              </div>
+              {lastSaved && (
+                <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1">
+                  <Save className="w-3 h-3" />
+                  Saved {lastSaved.toLocaleTimeString()}
+                </p>
+              )}
             </div>
-            {lastSaved && (
-              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                <Save className="w-3 h-3" />
-                Last saved: {lastSaved.toLocaleTimeString()}
-              </p>
-            )}
           </CardContent>
         </Card>
 
-        {/* Questions by section */}
-        {sectionNames.map((sectionName) => (
-          <Card key={sectionName}>
-            <CardHeader>
-              <CardTitle className="text-base">{sectionName}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {sections[sectionName].map((question, idx) => (
-                <QuestionRenderer
-                  key={question.id}
-                  question={question}
-                  index={idx}
-                  value={answers[question.id]}
-                  onChange={(value) => updateAnswer(question.id, value)}
-                  error={validationErrors[question.id]}
-                />
-              ))}
-            </CardContent>
-          </Card>
-        ))}
-
-        {/* Actions */}
+        {/* Question(s) Card */}
         <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col sm:flex-row gap-3">
+          <CardContent className="py-6 space-y-6">
+            {currentStepData.questions.map((question, idx) => (
+              <QuestionRenderer
+                key={question.id}
+                question={question}
+                index={idx}
+                value={answers[question.id]}
+                onChange={(value) => updateAnswer(question.id, value)}
+                error={validationErrors[question.id]}
+                showNumber={currentStepData.questions.length > 1}
+              />
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Navigation */}
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
-                onClick={handleSave}
-                disabled={saveProgress.isPending}
+                onClick={handlePrevious}
+                disabled={isFirstStep}
                 className="flex-1"
+                size="lg"
               >
-                {saveProgress.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
-                Save Progress
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Back
               </Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={submitSurvey.isPending}
-                className="flex-1"
-              >
-                {submitSurvey.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : null}
-                Submit Survey
-              </Button>
+
+              {isLastStep ? (
+                <Button
+                  onClick={handleSubmit}
+                  disabled={submitSurvey.isPending}
+                  className="flex-1"
+                  size="lg"
+                >
+                  {submitSurvey.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Submit
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleNext}
+                  disabled={saveProgress.isPending}
+                  className="flex-1"
+                  size="lg"
+                >
+                  {saveProgress.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              )}
             </div>
+
+            {/* Save for later button */}
+            <Button
+              variant="ghost"
+              onClick={handleSave}
+              disabled={saveProgress.isPending}
+              className="w-full mt-3 text-muted-foreground"
+              size="sm"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Save and continue later
+            </Button>
+
             {saveMessage && (
               <div className={`text-sm mt-3 p-3 rounded text-center flex items-center justify-center gap-2 ${saveMessage.includes('Failed') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
                 {!saveMessage.includes('Failed') && <CheckCircle2 className="w-4 h-4" />}
@@ -429,9 +548,10 @@ export default function SurveyPage() {
                 <span>{saveMessage}</span>
               </div>
             )}
+
             {Object.keys(validationErrors).length > 0 && (
               <p className="text-red-500 text-sm mt-2 text-center">
-                Please answer all required questions before submitting.
+                Please answer all required questions before continuing.
               </p>
             )}
           </CardContent>
@@ -447,9 +567,10 @@ interface QuestionRendererProps {
   value: unknown;
   onChange: (value: unknown) => void;
   error?: string;
+  showNumber?: boolean;
 }
 
-function QuestionRenderer({ question, index, value, onChange, error }: QuestionRendererProps) {
+function QuestionRenderer({ question, index, value, onChange, error, showNumber = true }: QuestionRendererProps) {
   const renderInput = () => {
     switch (question.type) {
       case 'SINGLE_CHOICE':
@@ -457,20 +578,23 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
           <RadioGroup
             value={(value as { selected: string; text?: string })?.selected || (value as string)}
             onValueChange={(selected) => onChange({ selected, text: '' })}
-            className="space-y-2"
+            className="space-y-3"
           >
             {question.options?.map((option) => (
-              <div key={option.text} className="flex items-center gap-2">
-                <RadioGroupItem value={option.text} id={`${question.id}-${option.text}`} />
-                <Label htmlFor={`${question.id}-${option.text}`}>{option.text}</Label>
-                {option.requiresText && (value as { selected: string })?.selected === option.text && (
-                  <Input
-                    placeholder="Please specify..."
-                    className="flex-1 max-w-xs"
-                    value={(value as { selected: string; text?: string })?.text || ''}
-                    onChange={(e) => onChange({ selected: option.text, text: e.target.value })}
-                  />
-                )}
+              <div key={option.text} className="flex items-start gap-3">
+                <RadioGroupItem value={option.text} id={`${question.id}-${option.text}`} className="mt-1" />
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor={`${question.id}-${option.text}`} className="text-base font-normal cursor-pointer">
+                    {option.text}
+                  </Label>
+                  {option.requiresText && (value as { selected: string })?.selected === option.text && (
+                    <Input
+                      placeholder="Please specify..."
+                      value={(value as { selected: string; text?: string })?.text || ''}
+                      onChange={(e) => onChange({ selected: option.text, text: e.target.value })}
+                    />
+                  )}
+                </div>
               </div>
             ))}
           </RadioGroup>
@@ -481,9 +605,9 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
         const selected = Array.isArray(value) ? value : selectedOptions.selected || [];
         const texts = selectedOptions.texts || {};
         return (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {question.options?.map((option) => (
-              <div key={option.text} className="flex items-center gap-2">
+              <div key={option.text} className="flex items-start gap-3">
                 <Checkbox
                   id={`${question.id}-${option.text}`}
                   checked={selected.includes(option.text)}
@@ -493,16 +617,20 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
                       : selected.filter((o) => o !== option.text);
                     onChange({ selected: newSelected, texts });
                   }}
+                  className="mt-1"
                 />
-                <Label htmlFor={`${question.id}-${option.text}`}>{option.text}</Label>
-                {option.requiresText && selected.includes(option.text) && (
-                  <Input
-                    placeholder="Please specify..."
-                    className="flex-1 max-w-xs"
-                    value={texts[option.text] || ''}
-                    onChange={(e) => onChange({ selected, texts: { ...texts, [option.text]: e.target.value } })}
-                  />
-                )}
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor={`${question.id}-${option.text}`} className="text-base font-normal cursor-pointer">
+                    {option.text}
+                  </Label>
+                  {option.requiresText && selected.includes(option.text) && (
+                    <Input
+                      placeholder="Please specify..."
+                      value={texts[option.text] || ''}
+                      onChange={(e) => onChange({ selected, texts: { ...texts, [option.text]: e.target.value } })}
+                    />
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -511,15 +639,14 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
       case 'RATING':
         const ratingValue = value as number;
         return (
-          <div className="flex gap-2">
+          <div className="flex gap-2 justify-center flex-wrap">
             {[1, 2, 3, 4, 5].map((n) => (
               <Button
                 key={n}
                 type="button"
                 variant={ratingValue === n ? 'default' : 'outline'}
-                size="sm"
                 onClick={() => onChange(n)}
-                className="w-10 h-10"
+                className="w-12 h-12 text-lg"
               >
                 {n}
               </Button>
@@ -533,6 +660,7 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
             value={(value as string) || ''}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Enter your response..."
+            className="text-base"
           />
         );
 
@@ -553,7 +681,7 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
             value={(value as string | number) ?? ''}
             onChange={(e) => onChange(e.target.value ? Number(e.target.value) : '')}
             placeholder="Enter a number..."
-            className="max-w-xs"
+            className="text-base"
           />
         );
 
@@ -563,7 +691,7 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
             value={(value as string) || ''}
             onValueChange={(val) => onChange(val)}
           >
-            <SelectTrigger className="max-w-xs">
+            <SelectTrigger className="text-base">
               <SelectValue placeholder="Select an option..." />
             </SelectTrigger>
             <SelectContent>
@@ -582,17 +710,17 @@ function QuestionRenderer({ question, index, value, onChange, error }: QuestionR
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <span className="text-muted-foreground">{index + 1}.</span>
-        <div className="flex-1">
-          <p className="font-medium">
-            {question.text}
-            {question.isRequired && <span className="text-red-500 ml-1">*</span>}
-          </p>
-        </div>
+    <div className="space-y-4">
+      <div>
+        <p className="text-lg font-medium leading-relaxed">
+          {showNumber && <span className="text-muted-foreground mr-2">{index + 1}.</span>}
+          {question.text}
+          {question.isRequired && <span className="text-red-500 ml-1">*</span>}
+        </p>
       </div>
-      {renderInput()}
+      <div className="pl-0 sm:pl-6">
+        {renderInput()}
+      </div>
       {error && (
         <p className="text-red-500 text-sm flex items-center gap-1">
           <AlertCircle className="w-4 h-4" />
@@ -614,10 +742,8 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
   const minRequired = minEntries ?? 1;
   const defaultCount = defaultEntries ?? minRequired;
 
-  // Initialize with defaultEntries number of empty strings if no value or if array is too short
   const entries = (value && value.length >= defaultCount) ? value : Array(defaultCount).fill('');
 
-  // Initialize parent state with default entries on mount
   useEffect(() => {
     if (!value || value.length < defaultCount) {
       onChange(Array(defaultCount).fill(''));
@@ -629,7 +755,6 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
   };
 
   const removeEntry = (index: number) => {
-    // Don't allow removing below minEntries
     if (entries.length > minRequired) {
       onChange(entries.filter((_, i) => i !== index));
     }
@@ -642,16 +767,17 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {entries.map((entry, index) => (
         <div key={index} className="flex gap-2 items-center">
           <Input
             value={entry}
             onChange={(e) => updateEntry(index, e.target.value)}
             placeholder={`Name ${index + 1}`}
+            className="text-base"
           />
           {index < minRequired && (
-            <span className="text-red-500 text-sm">*</span>
+            <span className="text-red-500 text-sm shrink-0">*</span>
           )}
           {entries.length > minRequired && index >= minRequired && (
             <Button
@@ -659,6 +785,7 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
               variant="ghost"
               size="icon"
               onClick={() => removeEntry(index)}
+              className="shrink-0"
             >
               <X className="w-4 h-4" />
             </Button>
