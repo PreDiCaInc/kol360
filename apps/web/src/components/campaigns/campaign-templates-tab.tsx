@@ -141,11 +141,11 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 fade-in">
       {/* Preview Button Header */}
       <div className="flex justify-end">
-        <Button variant="outline" onClick={() => setShowSurveyPreview(true)}>
-          <Eye className="w-4 h-4 mr-2" />
+        <Button variant="outline" onClick={() => setShowSurveyPreview(true)} className="gap-2">
+          <Eye className="w-4 h-4" />
           Preview Survey
         </Button>
       </div>

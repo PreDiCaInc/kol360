@@ -61,10 +61,10 @@ import { Plus, MoreHorizontal, Eye, Trash2, FileText, AlertTriangle, RefreshCw }
 import { CampaignStatus } from '@kol360/shared';
 
 const statusColors: Record<CampaignStatus, string> = {
-  DRAFT: 'bg-gray-100 text-gray-800',
-  ACTIVE: 'bg-green-100 text-green-800',
-  CLOSED: 'bg-yellow-100 text-yellow-800',
-  PUBLISHED: 'bg-blue-100 text-blue-800',
+  DRAFT: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+  ACTIVE: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  CLOSED: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  PUBLISHED: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
 };
 
 export default function CampaignsPage() {
@@ -122,27 +122,27 @@ export default function CampaignsPage() {
   const templates = templatesData || [];
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6 lg:p-8 fade-in">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold">Campaigns</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Campaigns</h1>
+          <p className="text-muted-foreground mt-1">
             Manage KOL assessment campaigns
           </p>
         </div>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Campaign
-          </Button>
-        </div>
+        <Button onClick={() => setShowCreateDialog(true)} className="sm:w-auto">
+          <Plus className="w-4 h-4 mr-2" />
+          New Campaign
+        </Button>
+      </div>
 
         {/* Filters */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex flex-wrap gap-3 mb-6">
           <Select
             value={clientFilter}
             onValueChange={setClientFilter}
           >
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-48 bg-card">
               <SelectValue placeholder="Filter by client" />
             </SelectTrigger>
             <SelectContent>
@@ -158,7 +158,7 @@ export default function CampaignsPage() {
             value={statusFilter}
             onValueChange={(value) => setStatusFilter(value as CampaignStatus | 'ALL')}
           >
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-48 bg-card">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
             <SelectContent>
@@ -172,7 +172,22 @@ export default function CampaignsPage() {
         </div>
 
         {isLoading ? (
-          <div className="text-center py-12">Loading...</div>
+          <Card>
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-4">
+                    <div className="skeleton h-4 w-48 rounded" />
+                    <div className="skeleton h-4 w-32 rounded" />
+                    <div className="skeleton h-4 w-24 rounded" />
+                    <div className="skeleton h-6 w-20 rounded-full" />
+                    <div className="skeleton h-4 w-12 rounded" />
+                    <div className="skeleton h-4 w-12 rounded" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         ) : isError ? (
           <Card className="border-destructive">
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -228,7 +243,7 @@ export default function CampaignsPage() {
                       <TableCell>
                         <Link
                           href={`/admin/campaigns/${campaign.id}`}
-                          className="font-medium text-blue-600 hover:underline"
+                          className="font-medium text-primary hover:text-primary/80 transition-colors"
                         >
                           {campaign.name}
                         </Link>

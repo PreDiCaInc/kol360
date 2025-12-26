@@ -38,7 +38,7 @@ const questionTypes = [
   { value: 'NUMBER', label: 'Number', hasOptions: false },
   { value: 'RATING', label: 'Rating', hasOptions: false },
   { value: 'SINGLE_CHOICE', label: 'Radio', hasOptions: true },
-  { value: 'MULTI_CHOICE', label: 'Check Multiple', hasOptions: true },
+  { value: 'MULTI_CHOICE', label: 'Multi', hasOptions: true },
   { value: 'DROPDOWN', label: 'Dropdown', hasOptions: true },
   { value: 'MULTI_TEXT', label: 'Nominations', hasOptions: false },
 ];

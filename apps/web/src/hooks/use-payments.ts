@@ -77,9 +77,10 @@ export function useExportPayments() {
 
   return useMutation({
     mutationFn: async (campaignId: string) => {
-      // Use the api function which handles auth properly
+      // Use the api function with responseType: 'blob' for file downloads
       const blob = await api<Blob>(`/api/v1/campaigns/${campaignId}/export/payments`, {
         method: 'POST',
+        responseType: 'blob',
       });
 
       // Download the file
@@ -97,6 +98,30 @@ export function useExportPayments() {
     onSuccess: (_, campaignId) => {
       queryClient.invalidateQueries({ queryKey: ['payments', campaignId] });
       queryClient.invalidateQueries({ queryKey: ['payment-stats', campaignId] });
+    },
+  });
+}
+
+export function useReExportPayments() {
+  return useMutation({
+    mutationFn: async (campaignId: string) => {
+      // Re-export without changing status - just download the file again
+      const blob = await api<Blob>(`/api/v1/campaigns/${campaignId}/export/payments/reexport`, {
+        method: 'POST',
+        responseType: 'blob',
+      });
+
+      // Download the file
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payments-reexport-${campaignId}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      return { success: true };
     },
   });
 }

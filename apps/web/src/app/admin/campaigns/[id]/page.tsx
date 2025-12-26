@@ -11,6 +11,7 @@ import {
   useReopenCampaign,
   usePublishCampaign,
   useCampaignAuditLog,
+  useConfirmWorkflowStep,
 } from '@/hooks/use-campaigns';
 import { useScoreConfig, useUpdateScoreConfig, useResetScoreConfig } from '@/hooks/use-score-config';
 import { useSendReminders, useDistributionStats } from '@/hooks/use-distribution';
@@ -127,6 +128,7 @@ export default function CampaignDetailPage() {
   const { data: distributionStats } = useDistributionStats(campaignId);
   const { data: campaignScores } = useCampaignScores(campaignId);
   const { data: auditLogData } = useCampaignAuditLog(campaignId);
+  const confirmWorkflowStep = useConfirmWorkflowStep();
 
   const [activeStep, setActiveStep] = useState('overview');
   const [isEditingName, setIsEditingName] = useState(false);
@@ -212,20 +214,35 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const handleConfirmStep = async (step: 'scores' | 'templates') => {
+    try {
+      await confirmWorkflowStep.mutateAsync({ campaignId, step });
+      // Navigate to next step after confirmation
+      if (step === 'scores') {
+        setActiveStep('templates');
+      } else if (step === 'templates') {
+        setActiveStep('initiate');
+      }
+    } catch (error) {
+      console.error(`Failed to confirm ${step} step:`, error);
+    }
+  };
+
   // Calculate step completion status for DRAFT campaigns
   const getSetupStepStatuses = (): StepStatus[] => {
     if (!campaign) return [];
 
     const hasHcps = campaign._count.campaignHcps > 0;
-    const hasScoreConfig = !!scoreConfig; // Score config is auto-created, so this is always true
-    // For templates, we'd need to check if invitation template exists - assume true for now
-    const hasTemplates = true;
+    // Check if user explicitly confirmed the score config step
+    const hasConfirmedScoreConfig = !!campaign.scoreConfigConfirmedAt;
+    // Check if user explicitly confirmed the templates step
+    const hasConfirmedTemplates = !!campaign.templatesConfirmedAt;
 
     return [
       { id: 'overview', completed: true, label: 'Overview' }, // Always complete
       { id: 'hcps', completed: hasHcps, label: 'Assign HCPs' },
-      { id: 'scores', completed: hasScoreConfig, label: 'Score Config' },
-      { id: 'templates', completed: hasTemplates, label: 'Email Templates' },
+      { id: 'scores', completed: hasConfirmedScoreConfig, label: 'Score Config' },
+      { id: 'templates', completed: hasConfirmedTemplates, label: 'Email Templates' },
       { id: 'initiate', completed: false, label: 'Initiate Survey' }, // Complete when activated
     ];
   };
@@ -240,7 +257,9 @@ export default function CampaignDetailPage() {
   const isReadyToActivate = (): boolean => {
     if (!campaign || campaign.status !== 'DRAFT') return false;
     const hasHcps = campaign._count.campaignHcps > 0;
-    return hasHcps; // Minimum requirement: HCPs assigned
+    const hasConfirmedScoreConfig = !!campaign.scoreConfigConfirmedAt;
+    const hasConfirmedTemplates = !!campaign.templatesConfirmedAt;
+    return hasHcps && hasConfirmedScoreConfig && hasConfirmedTemplates;
   };
 
   // Get current workflow progress for visual display
@@ -688,16 +707,88 @@ export default function CampaignDetailPage() {
           )}
 
           {activeStep === 'scores' && scoreConfig && (
-            <ScoreConfigForm
-              config={scoreConfig}
-              onSave={handleSaveScoreConfig}
-              onReset={handleResetScoreConfig}
-              isLoading={updateScoreConfig.isPending || resetScoreConfig.isPending}
-            />
+            <div className="space-y-6">
+              <ScoreConfigForm
+                config={scoreConfig}
+                onSave={handleSaveScoreConfig}
+                onReset={handleResetScoreConfig}
+                isLoading={updateScoreConfig.isPending || resetScoreConfig.isPending}
+              />
+              {campaign.status === 'DRAFT' && (
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        {campaign.scoreConfigConfirmedAt ? (
+                          <div className="flex items-center gap-2 text-green-600">
+                            <CheckCircle2 className="w-5 h-5" />
+                            <span className="font-medium">Score configuration confirmed</span>
+                            <span className="text-sm text-muted-foreground">
+                              ({new Date(campaign.scoreConfigConfirmedAt).toLocaleDateString()})
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">
+                            Review the score weights above and confirm to continue to the next step.
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        onClick={() => handleConfirmStep('scores')}
+                        disabled={confirmWorkflowStep.isPending}
+                      >
+                        {confirmWorkflowStep.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 mr-2" />
+                        )}
+                        {campaign.scoreConfigConfirmedAt ? 'Continue to Templates' : 'Confirm & Continue'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           )}
 
           {activeStep === 'templates' && (
-            <CampaignTemplatesTab campaignId={campaignId} />
+            <div className="space-y-6">
+              <CampaignTemplatesTab campaignId={campaignId} />
+              {campaign.status === 'DRAFT' && (
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        {campaign.templatesConfirmedAt ? (
+                          <div className="flex items-center gap-2 text-green-600">
+                            <CheckCircle2 className="w-5 h-5" />
+                            <span className="font-medium">Email templates confirmed</span>
+                            <span className="text-sm text-muted-foreground">
+                              ({new Date(campaign.templatesConfirmedAt).toLocaleDateString()})
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">
+                            Review the email templates above and confirm to continue. Default templates will be used if not customized.
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        onClick={() => handleConfirmStep('templates')}
+                        disabled={confirmWorkflowStep.isPending}
+                      >
+                        {confirmWorkflowStep.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 mr-2" />
+                        )}
+                        {campaign.templatesConfirmedAt ? 'Continue to Launch' : 'Confirm & Continue'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           )}
 
           {activeStep === 'initiate' && (
@@ -712,21 +803,67 @@ export default function CampaignDetailPage() {
                 {campaign.status === 'DRAFT' ? (
                   <>
                     <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-                      <h4 className="font-medium text-blue-900 mb-2">Before activating, ensure:</h4>
-                      <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                        <li>HCPs have been assigned to this campaign</li>
-                        <li>Score configuration weights are set correctly</li>
-                        <li>Email templates (invitation & reminder) are configured</li>
+                      <h4 className="font-medium text-blue-900 mb-2">Setup Checklist:</h4>
+                      <ul className="text-sm space-y-2">
+                        <li className={`flex items-center gap-2 ${campaign._count.campaignHcps > 0 ? 'text-green-700' : 'text-blue-800'}`}>
+                          {campaign._count.campaignHcps > 0 ? (
+                            <CheckCircle2 className="w-4 h-4" />
+                          ) : (
+                            <Circle className="w-4 h-4" />
+                          )}
+                          HCPs assigned ({campaign._count.campaignHcps} assigned)
+                          {campaign._count.campaignHcps === 0 && (
+                            <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setActiveStep('hcps')}>
+                              Go to HCPs
+                            </Button>
+                          )}
+                        </li>
+                        <li className={`flex items-center gap-2 ${campaign.scoreConfigConfirmedAt ? 'text-green-700' : 'text-blue-800'}`}>
+                          {campaign.scoreConfigConfirmedAt ? (
+                            <CheckCircle2 className="w-4 h-4" />
+                          ) : (
+                            <Circle className="w-4 h-4" />
+                          )}
+                          Score configuration confirmed
+                          {!campaign.scoreConfigConfirmedAt && (
+                            <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setActiveStep('scores')}>
+                              Go to Score Config
+                            </Button>
+                          )}
+                        </li>
+                        <li className={`flex items-center gap-2 ${campaign.templatesConfirmedAt ? 'text-green-700' : 'text-blue-800'}`}>
+                          {campaign.templatesConfirmedAt ? (
+                            <CheckCircle2 className="w-4 h-4" />
+                          ) : (
+                            <Circle className="w-4 h-4" />
+                          )}
+                          Email templates confirmed
+                          {!campaign.templatesConfirmedAt && (
+                            <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setActiveStep('templates')}>
+                              Go to Templates
+                            </Button>
+                          )}
+                        </li>
                       </ul>
                     </div>
                     <div className="flex items-center gap-4">
-                      <Button onClick={() => setStatusAction('activate')} size="lg">
+                      <Button
+                        onClick={() => setStatusAction('activate')}
+                        size="lg"
+                        disabled={!isReadyToActivate()}
+                      >
                         <Play className="w-5 h-5 mr-2" />
                         Activate Campaign
                       </Button>
-                      <p className="text-sm text-muted-foreground">
-                        This will send invitation emails to all assigned HCPs
-                      </p>
+                      {isReadyToActivate() ? (
+                        <p className="text-sm text-muted-foreground">
+                          This will send invitation emails to all {campaign._count.campaignHcps} assigned HCPs
+                        </p>
+                      ) : (
+                        <p className="text-sm text-amber-600">
+                          Complete all setup steps above to activate the campaign
+                        </p>
+                      )}
                     </div>
                   </>
                 ) : campaign.status === 'ACTIVE' ? (
