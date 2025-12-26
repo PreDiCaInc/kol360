@@ -58,3 +58,5 @@ tech-spec/pdf/
 
 # Build info
 *.tsbuildinfo
+apps/api/lambda.zip
+apps/api/lambda-bundle/
