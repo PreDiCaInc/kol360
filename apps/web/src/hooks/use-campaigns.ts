@@ -34,6 +34,9 @@ interface Campaign {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  // Workflow step confirmations
+  scoreConfigConfirmedAt: string | null;
+  templatesConfirmedAt: string | null;
   _count: {
     campaignHcps: number;
     surveyResponses: number;
@@ -295,5 +298,21 @@ export function useCampaignAuditLog(campaignId: string) {
     queryKey: ['campaigns', campaignId, 'audit-log'],
     queryFn: () => apiClient.get<AuditLogResponse>(`/api/v1/campaigns/${campaignId}/audit-log`),
     enabled: !!campaignId,
+  });
+}
+
+// Confirm workflow step
+export function useConfirmWorkflowStep() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ campaignId, step }: { campaignId: string; step: 'scores' | 'templates' }) =>
+      apiClient.post<{ success: boolean; step: string; confirmedAt: string }>(
+        `/api/v1/campaigns/${campaignId}/confirm-step`,
+        { step }
+      ),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId] });
+    },
   });
 }

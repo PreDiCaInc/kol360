@@ -418,6 +418,106 @@ export class ExportService {
   }
 
   /**
+   * Re-export payments that were already exported (for failed downloads)
+   * This does NOT change payment status, just generates the Excel file again
+   */
+  async reExportPayments(campaignId: string): Promise<ExportResult> {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { name: true },
+    });
+
+    if (!campaign) {
+      throw new Error('Campaign not found');
+    }
+
+    // Get exported payments (not claimed/bounced/etc)
+    const payments = await prisma.payment.findMany({
+      where: {
+        campaignId,
+        status: 'EXPORTED',
+      },
+      include: {
+        hcp: {
+          select: {
+            npi: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        response: {
+          select: {
+            completedAt: true,
+          },
+        },
+      },
+    });
+
+    if (payments.length === 0) {
+      throw new Error('No exported payments to re-export');
+    }
+
+    // Create workbook (no status change, just regenerate the file)
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'KOL360';
+    workbook.created = new Date();
+
+    const worksheet = workbook.addWorksheet('Payments');
+
+    const headers = [
+      'Payment ID',
+      'NPI',
+      'First Name',
+      'Last Name',
+      'Email',
+      'Survey Completion Date',
+      'Payment Amount',
+      'Currency',
+    ];
+
+    worksheet.addRow(headers);
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' },
+    };
+
+    for (const payment of payments) {
+      const row = [
+        payment.id,
+        payment.hcp.npi,
+        payment.hcp.firstName,
+        payment.hcp.lastName,
+        payment.hcp.email || '',
+        payment.response.completedAt?.toISOString().split('T')[0] || '',
+        Number(payment.amount).toFixed(2),
+        payment.currency,
+      ];
+
+      worksheet.addRow(row);
+    }
+
+    worksheet.columns.forEach(column => {
+      column.width = 20;
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    const sanitizedName = campaign.name.replace(/[^a-zA-Z0-9]/g, '_');
+    const date = new Date().toISOString().split('T')[0];
+
+    return {
+      buffer: Buffer.from(buffer),
+      filename: `${sanitizedName}_Payments_ReExport_${date}.xlsx`,
+      recordCount: payments.length,
+    };
+  }
+
+  /**
    * Import payment status updates from Excel file
    */
   async importPaymentStatus(

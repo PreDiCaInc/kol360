@@ -95,6 +95,33 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // Re-export payments (download again without changing status) - platform admin only
+  fastify.post<{ Params: z.infer<typeof campaignIdSchema> }>(
+    '/:id/export/payments/reexport',
+    { preHandler: requirePlatformAdmin() },
+    async (request, reply) => {
+      const { id: campaignId } = campaignIdSchema.parse(request.params);
+
+      try {
+        const result = await exportService.reExportPayments(campaignId);
+
+        await createAuditLog(request.user!.sub, {
+          action: 'export.payments.reexport',
+          entityType: 'Campaign',
+          entityId: campaignId,
+          newValues: { recordCount: result.recordCount, filename: result.filename },
+        });
+
+        reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        reply.header('Content-Disposition', `attachment; filename="${result.filename}"`);
+        return reply.send(result.buffer);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Re-export failed';
+        return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
+      }
+    }
+  );
+
   // List payments
   fastify.get<{
     Params: z.infer<typeof campaignIdSchema>;

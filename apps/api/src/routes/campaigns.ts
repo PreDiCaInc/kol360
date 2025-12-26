@@ -532,6 +532,70 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
+  // Confirm workflow step (for DRAFT campaigns)
+  fastify.post<{ Params: { id: string }; Body: { step: 'scores' | 'templates' } }>(
+    '/:id/confirm-step',
+    async (request, reply) => {
+      const { step } = request.body as { step: 'scores' | 'templates' };
+
+      if (!step || !['scores', 'templates'].includes(step)) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'Invalid step. Must be "scores" or "templates"',
+          statusCode: 400,
+        });
+      }
+
+      const existing = await campaignService.getById(request.params.id);
+
+      if (!existing) {
+        return reply.status(404).send({
+          error: 'Not Found',
+          message: 'Campaign not found',
+          statusCode: 404,
+        });
+      }
+
+      // Only allow confirmation for DRAFT campaigns
+      if (existing.status !== 'DRAFT') {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'Can only confirm steps for DRAFT campaigns',
+          statusCode: 400,
+        });
+      }
+
+      // Client admins can only confirm steps for their tenant
+      if (request.user!.role !== 'PLATFORM_ADMIN' && existing.clientId !== request.user!.tenantId) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'Cannot update campaigns from other tenants',
+          statusCode: 403,
+        });
+      }
+
+      const now = new Date();
+      const updateData =
+        step === 'scores'
+          ? { scoreConfigConfirmedAt: now }
+          : { templatesConfirmedAt: now };
+
+      const campaign = await fastify.prisma.campaign.update({
+        where: { id: request.params.id },
+        data: updateData,
+      });
+
+      await createAuditLog(request.user!.sub, {
+        action: `campaign.${step}_confirmed`,
+        entityType: 'Campaign',
+        entityId: campaign.id,
+        newValues: { step, confirmedAt: now.toISOString() },
+      });
+
+      return { success: true, step, confirmedAt: now.toISOString() };
+    }
+  );
+
   // Get campaign audit log (status history)
   fastify.get<{ Params: { id: string } }>('/:id/audit-log', async (request, reply) => {
     const campaign = await campaignService.getById(request.params.id);
