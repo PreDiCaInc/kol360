@@ -26,12 +26,6 @@ import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
 import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 
 // Helper to get specialty display name
 function getSpecialtyDisplay(hcp: { specialty?: string | null; specialties?: { isPrimary: boolean; specialty: { name: string } }[] }) {
@@ -78,7 +72,6 @@ export default function HcpsPage() {
   };
 
   return (
-    <TooltipProvider>
     <div className="p-6 lg:p-8 fade-in">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
@@ -287,42 +280,16 @@ export default function HcpsPage() {
                   <TableCell>
                     {(() => {
                       const specialties = getSpecialtyDisplay(hcp);
-                      if (specialties.length === 0) {
-                        return <span className="text-muted-foreground">—</span>;
-                      }
-
-                      const primarySpecialty = specialties[0];
-                      const remainingCount = specialties.length - 1;
-
-                      return (
-                        <div className="flex items-center gap-1 max-w-[200px]">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Badge variant="outline" className="text-xs max-w-[140px] truncate cursor-default">
-                                {primarySpecialty}
-                              </Badge>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{primarySpecialty}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          {remainingCount > 0 && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Badge variant="secondary" className="text-xs shrink-0 cursor-default">
-                                  +{remainingCount}
-                                </Badge>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <div className="flex flex-col gap-1">
-                                  {specialties.slice(1).map((spec, idx) => (
-                                    <p key={idx}>{spec}</p>
-                                  ))}
-                                </div>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                      return specialties.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {specialties.map((spec, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs">
+                              {spec}
+                            </Badge>
+                          ))}
                         </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
                       );
                     })()}
                     {hcp.subSpecialty && (
@@ -389,6 +356,5 @@ export default function HcpsPage() {
       <AliasImportDialog open={showAliasImportDialog} onOpenChange={setShowAliasImportDialog} />
       <HcpFormDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
     </div>
-    </TooltipProvider>
   );
 }

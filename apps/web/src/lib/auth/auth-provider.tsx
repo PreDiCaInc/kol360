@@ -66,8 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function checkAuth() {
     try {
       // Add timeout to prevent hanging on slow/failed Cognito requests
+      // Reduced to 5 seconds for faster failure on network issues
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Auth check timeout')), 10000)
+        setTimeout(() => reject(new Error('Auth check timeout')), 5000)
       );
 
       const authCheck = async () => {
@@ -106,7 +107,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         firstName: attributes.given_name,
         lastName: attributes.family_name,
       });
-    } catch {
+    } catch (error) {
+      // Clear any stale auth state that might be causing issues
+      try {
+        await amplifySignOut();
+      } catch {
+        // Ignore sign out errors
+      }
       setUser(null);
     } finally {
       setIsLoading(false);
