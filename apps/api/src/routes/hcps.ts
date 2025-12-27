@@ -310,4 +310,29 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(204).send();
     }
   );
+
+  // Bulk import segment scores from Excel
+  fastify.post('/import-segment-scores', async (request, reply) => {
+    const file = await request.file();
+    if (!file) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'No file uploaded',
+        statusCode: 400,
+      });
+    }
+
+    const buffer = await file.toBuffer();
+    const result = await hcpService.importSegmentScores(buffer, request.user!.sub);
+
+    // Audit log
+    await createAuditLog(request.user!.sub, {
+      action: 'hcp.segment_scores_import',
+      entityType: 'HcpDiseaseAreaScore',
+      entityId: 'bulk',
+      newValues: { created: result.created, updated: result.updated, errors: result.errors.length },
+    });
+
+    return result;
+  });
 };

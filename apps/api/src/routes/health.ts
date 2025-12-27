@@ -1,7 +1,13 @@
 import { FastifyPluginAsync } from 'fastify';
+import { SESClient, GetSendQuotaCommand } from '@aws-sdk/client-ses';
 
 // Track process start time for uptime calculation
 const processStartTime = Date.now();
+
+// SES client for health checks
+const ses = new SESClient({
+  region: process.env.AWS_REGION || 'us-east-2',
+});
 
 interface HealthCheck {
   status: 'ok' | 'error';
@@ -75,6 +81,26 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
         error: error instanceof Error ? error.message : 'Unknown error',
       };
       overallStatus = 'error';
+    }
+
+    // Check SES (email service) with latency
+    const sesStart = Date.now();
+    try {
+      await ses.send(new GetSendQuotaCommand({}));
+      checks.ses = {
+        status: 'ok',
+        latency_ms: Date.now() - sesStart,
+      };
+    } catch (error) {
+      checks.ses = {
+        status: 'error',
+        latency_ms: Date.now() - sesStart,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+      // SES is non-critical, mark as degraded not error
+      if (overallStatus === 'ok') {
+        overallStatus = 'degraded';
+      }
     }
 
     // Check if any non-critical checks are slow (degraded)

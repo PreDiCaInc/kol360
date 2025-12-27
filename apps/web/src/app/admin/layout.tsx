@@ -14,10 +14,19 @@ interface AdminLayoutProps {
 
 function AdminLayoutContent({ children }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <SidebarContext.Provider value={{ collapsed, setCollapsed }}>
+    <SidebarContext.Provider value={{ collapsed, setCollapsed, mobileOpen, setMobileOpen }}>
       <div className="min-h-screen bg-background">
+        {/* Mobile Overlay */}
+        {mobileOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
         <Sidebar />
 
@@ -25,7 +34,9 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
         <div
           className={cn(
             'flex min-h-screen flex-col transition-all duration-300',
-            collapsed ? 'ml-16' : 'ml-64'
+            'lg:ml-64',
+            collapsed ? 'lg:ml-16' : 'lg:ml-64',
+            'ml-0' // No margin on mobile
           )}
         >
           {/* Header */}

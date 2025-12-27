@@ -1,41 +1,38 @@
 'use client';
 
-import { Heart } from 'lucide-react';
-
 export function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="border-t bg-card">
-      <div className="flex flex-col items-center justify-between gap-2 px-6 py-4 md:flex-row">
+    <footer className="border-t bg-card/50">
+      <div className="flex flex-col items-center justify-between gap-2 px-6 py-3 md:flex-row">
         {/* Left side - Copyright */}
-        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-          <span>© {currentYear} Bio-Exec. All rights reserved.</span>
+        <div className="text-xs text-muted-foreground/70">
+          © {currentYear} Bio-Exec KOL Research
         </div>
 
         {/* Center - Powered by */}
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <span>Powered by</span>
+        <div className="text-xs text-muted-foreground/50">
+          Powered by{' '}
           <a
             href="https://predica.care"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 font-semibold text-primary transition-colors hover:text-primary/80"
+            className="hover:text-muted-foreground transition-colors"
           >
-            <Heart className="h-3.5 w-3.5 fill-primary" />
             PreDiCa.care
           </a>
         </div>
 
         {/* Right side - Links */}
-        <div className="flex items-center gap-4 text-sm">
-          <a href="#" className="text-muted-foreground transition-colors hover:text-foreground">
+        <div className="flex items-center gap-4 text-xs">
+          <a href="#" className="text-muted-foreground/70 transition-colors hover:text-foreground">
             Privacy
           </a>
-          <a href="#" className="text-muted-foreground transition-colors hover:text-foreground">
+          <a href="#" className="text-muted-foreground/70 transition-colors hover:text-foreground">
             Terms
           </a>
-          <a href="#" className="text-muted-foreground transition-colors hover:text-foreground">
+          <a href="#" className="text-muted-foreground/70 transition-colors hover:text-foreground">
             Support
           </a>
         </div>

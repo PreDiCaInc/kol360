@@ -18,8 +18,11 @@ import {
   ChevronRight,
   ChevronDown,
   Megaphone,
+  Settings,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useSidebarContext } from './sidebar-context';
+import { X } from 'lucide-react';
 
 interface NavItem {
   title: string;
@@ -88,6 +91,12 @@ const platformAdminNavigation: NavItem[] = [
     title: 'Users',
     href: '/admin/users',
     icon: Users,
+    roles: ['PLATFORM_ADMIN'],
+  },
+  {
+    title: 'Settings',
+    href: '/admin/settings',
+    icon: Settings,
     roles: ['PLATFORM_ADMIN'],
   },
 ];
@@ -234,7 +243,7 @@ function NavItemComponent({
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
+  const { collapsed, setCollapsed, mobileOpen, setMobileOpen } = useSidebarContext();
 
   // Determine navigation based on role
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
@@ -245,19 +254,29 @@ export function Sidebar() {
     return item.roles.includes(user?.role || '');
   });
 
+  // Close mobile sidebar when route changes
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname, setMobileOpen]);
+
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-40 h-screen transition-all duration-300 ease-out',
+        'fixed left-0 top-0 z-50 h-screen transition-all duration-300 ease-out',
         'bg-[hsl(var(--sidebar-background))] text-[hsl(var(--sidebar-foreground))]',
         'border-r border-[hsl(var(--sidebar-border))]',
-        collapsed ? 'w-[72px]' : 'w-64'
+        // Desktop: always visible, respects collapsed state
+        'lg:translate-x-0',
+        collapsed ? 'lg:w-[72px]' : 'lg:w-64',
+        // Mobile: hidden by default, slides in when mobileOpen
+        'w-64',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}
     >
       {/* Logo Section */}
       <div className={cn(
         'flex h-[72px] items-center border-b border-[hsl(var(--sidebar-border))] transition-all duration-300',
-        collapsed ? 'justify-center px-2' : 'px-5'
+        collapsed ? 'justify-center px-2' : 'justify-between px-5'
       )}>
         <Link href="/admin" className="flex items-center">
           {!collapsed ? (
@@ -275,6 +294,15 @@ export function Sidebar() {
             </div>
           )}
         </Link>
+        {/* Mobile close button */}
+        {!collapsed && (
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="lg:hidden flex h-8 w-8 items-center justify-center rounded-lg text-[hsl(var(--sidebar-foreground))]/70 hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-foreground))] transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}

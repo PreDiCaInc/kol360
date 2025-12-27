@@ -10,11 +10,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, User, LogOut, Settings, ChevronDown, HelpCircle } from 'lucide-react';
+import { Bell, User, LogOut, Settings, ChevronDown, HelpCircle, Menu } from 'lucide-react';
 import { Breadcrumb } from './breadcrumb';
+import { useSidebarContext } from './sidebar-context';
 
 export function Header() {
   const { user, signOut } = useAuth();
+  const { setMobileOpen } = useSidebarContext();
 
   const getRoleDisplay = (role?: string) => {
     if (!role) return 'User';
@@ -40,8 +42,17 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/60 bg-card/95 backdrop-blur-sm px-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-4">
+      {/* Mobile menu button + Breadcrumb */}
+      <div className="flex items-center gap-3">
+        {/* Mobile hamburger menu */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
+          onClick={() => setMobileOpen(true)}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
         <Breadcrumb />
       </div>
 

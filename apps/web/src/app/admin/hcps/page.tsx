@@ -24,7 +24,7 @@ import {
 import { HcpImportDialog } from '@/components/hcps/hcp-import-dialog';
 import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
-import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin } from 'lucide-react';
+import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 // Helper to get specialty display name
@@ -80,6 +80,12 @@ export default function HcpsPage() {
           <p className="text-muted-foreground mt-1">Healthcare professional records and management</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href="/admin/hcps/scores">
+            <Button variant="outline">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              View Scores
+            </Button>
+          </Link>
           <Button variant="outline" onClick={() => setShowImportDialog(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Import HCPs
@@ -234,7 +240,7 @@ export default function HcpsPage() {
           </div>
           <h3 className="text-lg font-medium mb-2">No HCPs found</h3>
           <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-            {filters.query || filters.specialty || filters.state 
+            {filters.query || filters.specialty || filters.state
               ? 'Try adjusting your search filters to find more results.'
               : 'Import HCP data or add your first healthcare professional.'}
           </p>

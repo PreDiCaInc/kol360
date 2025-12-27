@@ -36,7 +36,7 @@ export class HcpService {
     }
     if (state) where.state = state;
 
-    const [total, items] = await Promise.all([
+    const [total, items, diseaseAreas] = await Promise.all([
       prisma.hcp.count({ where }),
       prisma.hcp.findMany({
         where,
@@ -46,16 +46,26 @@ export class HcpService {
             include: { specialty: true },
             orderBy: { isPrimary: 'desc' },
           },
+          diseaseAreaScores: {
+            where: { isCurrent: true },
+            include: { diseaseArea: { select: { id: true, name: true, code: true } } },
+          },
           _count: { select: { campaignHcps: true, nominationsReceived: true } },
         },
         skip: (page - 1) * limit,
         take: limit,
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       }),
+      prisma.diseaseArea.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: 'asc' },
+      }),
     ]);
 
     return {
       items,
+      diseaseAreas,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
@@ -361,5 +371,131 @@ export class HcpService {
       orderBy: { state: 'asc' },
     });
     return results.map((r: { state: string | null }) => r.state).filter(Boolean);
+  }
+
+  // Import segment scores from Excel
+  async importSegmentScores(buffer: Buffer, userId: string) {
+    const workbook = new ExcelJS.Workbook();
+    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    await workbook.xlsx.load(arrayBuffer);
+    const sheet = workbook.worksheets[0];
+
+    // Convert worksheet to array of objects with headers
+    const rows: Record<string, unknown>[] = [];
+    const headers: string[] = [];
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) {
+        row.eachCell((cell) => {
+          headers.push(String(cell.value || '').toLowerCase().trim());
+        });
+      } else {
+        const rowData: Record<string, unknown> = {};
+        row.eachCell((cell, colNumber) => {
+          const header = headers[colNumber - 1];
+          if (header) {
+            rowData[header] = cell.value;
+          }
+        });
+        rows.push(rowData);
+      }
+    });
+
+    const result = { total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
+
+    // Column name mappings (Excel column -> database field)
+    const columnMappings: Record<string, string> = {
+      'clinical experience': 'scoreClinicalTrials',
+      'clinical trials': 'scoreClinicalTrials',
+      'research & publications': 'scorePublications',
+      'research': 'scorePublications',
+      'publications': 'scorePublications',
+      'guidelines & policy': 'scoreOrgLeadership',
+      'guidelines': 'scoreOrgLeadership',
+      'congress & speaking': 'scoreConference',
+      'congress': 'scoreConference',
+      'conference': 'scoreConference',
+      'digital presence': 'scoreSocialMedia',
+      'social media': 'scoreSocialMedia',
+      'industry engagement': 'scoreTradePubs',
+      'trade pubs': 'scoreTradePubs',
+      'patient advocacy': 'scoreOrgAwareness',
+      'org awareness': 'scoreOrgAwareness',
+      'regional influence': 'scoreMediaPodcasts',
+      'media podcasts': 'scoreMediaPodcasts',
+    };
+
+    // Get default disease area (first active one)
+    const defaultDiseaseArea = await prisma.diseaseArea.findFirst({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    });
+
+    if (!defaultDiseaseArea) {
+      result.errors.push({ row: 0, error: 'No active disease area found. Please create one first.' });
+      return result;
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const npi = String(row['npi'] || '').trim();
+        if (!/^\d{10}$/.test(npi)) {
+          throw new Error('Invalid NPI format');
+        }
+
+        const hcp = await prisma.hcp.findUnique({ where: { npi } });
+        if (!hcp) {
+          throw new Error(`HCP not found: ${npi}`);
+        }
+
+        // Build score data from columns
+        const scoreData: Record<string, number | null> = {};
+        for (const [excelCol, dbField] of Object.entries(columnMappings)) {
+          const value = row[excelCol];
+          if (value !== undefined && value !== null && value !== '') {
+            const numValue = parseFloat(String(value));
+            if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
+              scoreData[dbField] = numValue;
+            }
+          }
+        }
+
+        // Check for existing score record
+        const existing = await prisma.hcpDiseaseAreaScore.findFirst({
+          where: {
+            hcpId: hcp.id,
+            diseaseAreaId: defaultDiseaseArea.id,
+            isCurrent: true,
+          },
+        });
+
+        if (existing) {
+          await prisma.hcpDiseaseAreaScore.update({
+            where: { id: existing.id },
+            data: {
+              ...scoreData,
+              lastCalculatedAt: new Date(),
+            },
+          });
+          result.updated++;
+        } else {
+          await prisma.hcpDiseaseAreaScore.create({
+            data: {
+              hcpId: hcp.id,
+              diseaseAreaId: defaultDiseaseArea.id,
+              ...scoreData,
+              isCurrent: true,
+              lastCalculatedAt: new Date(),
+            },
+          });
+          result.created++;
+        }
+      } catch (error) {
+        result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    }
+
+    return result;
   }
 }
