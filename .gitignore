@@ -60,3 +60,7 @@ tech-spec/pdf/
 *.tsbuildinfo
 apps/api/lambda.zip
 apps/api/lambda-bundle/
+
+# Claude Code config (dev only)
+CLAUDE.md
+.claude/
