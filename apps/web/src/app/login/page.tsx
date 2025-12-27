@@ -145,9 +145,9 @@ export default function LoginPage() {
             <Image
               src="/images/logo-white.png"
               alt="BioExec"
-              width={180}
-              height={54}
-              className="h-12 w-auto object-contain"
+              width={540}
+              height={162}
+              className="h-36 w-auto object-contain"
               priority
             />
           </div>
