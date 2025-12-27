@@ -64,3 +64,6 @@ apps/api/lambda-bundle/
 # Claude Code config (dev only)
 CLAUDE.md
 .claude/
+
+# Client repo staging folder (separate clone for Bio-Exec pushes)
+bioexec/
