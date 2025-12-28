@@ -63,8 +63,8 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
     preHandler: requirePlatformAdmin(),
   }, async (request, reply) => {
     const data = request.body as UpdateSettingsInput;
-    const oldValues: Record<string, unknown> = {};
-    const newValues: Record<string, unknown> = {};
+    const oldValues: Record<string, string | boolean | undefined> = {};
+    const newValues: Record<string, string | boolean | undefined> = {};
 
     // Track changes for audit log
     if (data.healthCheckToken !== undefined) {
@@ -102,8 +102,8 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       action: 'settings.updated',
       entityType: 'Settings',
       entityId: 'system',
-      oldValues,
-      newValues,
+      oldValues: oldValues as Record<string, string | boolean>,
+      newValues: newValues as Record<string, string | boolean>,
     });
 
     return reply.status(200).send({
