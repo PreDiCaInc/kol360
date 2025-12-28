@@ -47,13 +47,64 @@ This repository has two remotes:
 2. **Only push to `bioexec` (client) when explicitly instructed**
 3. Never push directly to `bioexec` without explicit approval
 
+### REQUIRED: Build Verification Before Any Push
+**NEVER push code to either PreDiCa or Bio-Exec without verifying the build passes first.**
+
+Before pushing to ANY repo, run:
+```bash
+# Verify API builds without TypeScript errors
+pnpm --filter @kol360/api build
+
+# Verify Web builds without TypeScript errors
+pnpm --filter @kol360/web build
+```
+
+If either build fails, fix the errors before pushing. This prevents deployment failures on App Runner.
+
 ### Client Repo Deployment Workflow
 When pushing to the client repo (Bio-Exec):
-1. Create/use the `bioexec/` folder in the project root
-2. Copy only the necessary files to `bioexec/` (excludes CLAUDE.md, dev configs, etc.)
-3. The `bioexec/` folder has its own `.gitignore` with additional exclusions
-4. Push from the `bioexec/` folder to avoid contaminating the dev environment
-5. This keeps dev files (like CLAUDE.md) separate from client deliverables
+
+1. The `bioexec/` folder contains a separate git clone of Bio-Exec/kol360
+2. Sync files from main dev folder to bioexec using rsync (excludes dev-only files)
+3. Create a feature branch, commit, and push to create a PR for review
+4. This keeps dev files (like CLAUDE.md) separate from client deliverables
+
+**Rsync command to sync files to bioexec:**
+```bash
+cd /Users/haranath/genai/kol360
+rsync -av \
+  --exclude='CLAUDE.md' \
+  --exclude='.claude/' \
+  --exclude='bioexec/' \
+  --exclude='node_modules/' \
+  --exclude='.next/' \
+  --exclude='dist/' \
+  --exclude='.turbo/' \
+  --exclude='.git/' \
+  --exclude='.env*' \
+  --exclude='*.pem' \
+  --exclude='tmp/' \
+  --exclude='func-spec/' \
+  --exclude='tech-spec/' \
+  --exclude='*.zip' \
+  --exclude='func_spec-KOL_Platform_vF.md' \
+  --exclude='DEPLOYMENT.md' \
+  --exclude='apps/api/dist-lambda/' \
+  --exclude='apps/api/lambda-bundle/' \
+  --exclude='apps/web/out/' \
+  --exclude='.DS_Store' \
+  . /Users/haranath/genai/kol360/bioexec/
+```
+
+**After syncing, in bioexec folder:**
+```bash
+cd /Users/haranath/genai/kol360/bioexec
+git checkout -b feature/your-feature-name
+git add .
+git commit -m "Your commit message"
+git push -u origin feature/your-feature-name
+# Then create PR on GitHub
+```
 
 ## Git Commit Guidelines
 
