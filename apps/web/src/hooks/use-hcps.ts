@@ -38,20 +38,25 @@ interface Hcp {
   updatedAt: string;
   aliases: HcpAlias[];
   specialties?: HcpSpecialty[];  // New multi-specialty relation
+  diseaseAreaScores?: {
+    compositeScore: number | null;
+    diseaseArea: { id: string; name: string; code: string };
+  }[];
   _count?: {
     campaignHcps: number;
     nominationsReceived: number;
   };
 }
 
-interface HcpDetail extends Hcp {
+interface HcpDetail extends Omit<Hcp, 'diseaseAreaScores'> {
   diseaseAreaScores: {
     id: string;
     awareness: number;
     adoption: number;
     sentiment: number;
     finalScore: number;
-    diseaseArea: { id: string; name: string };
+    compositeScore: number | null;
+    diseaseArea: { id: string; name: string; code: string };
   }[];
   campaignScores: {
     id: string;
@@ -67,8 +72,15 @@ interface HcpDetail extends Hcp {
   }[];
 }
 
+interface DiseaseArea {
+  id: string;
+  name: string;
+  code: string;
+}
+
 interface HcpsListResponse {
   items: Hcp[];
+  diseaseAreas: DiseaseArea[];
   pagination: {
     page: number;
     limit: number;

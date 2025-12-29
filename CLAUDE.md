@@ -72,7 +72,7 @@ When pushing to the client repo (Bio-Exec):
 **Rsync command to sync files to bioexec:**
 ```bash
 cd /Users/haranath/genai/kol360
-rsync -av \
+rsync -av --delete \
   --exclude='CLAUDE.md' \
   --exclude='.claude/' \
   --exclude='bioexec/' \
@@ -81,7 +81,6 @@ rsync -av \
   --exclude='dist/' \
   --exclude='.turbo/' \
   --exclude='.git/' \
-  --exclude='.env*' \
   --exclude='*.pem' \
   --exclude='tmp/' \
   --exclude='func-spec/' \
@@ -95,6 +94,8 @@ rsync -av \
   --exclude='.DS_Store' \
   . /Users/haranath/genai/kol360/bioexec/
 ```
+
+**Note:** `.env` files ARE synced (for local testing) but are in `.gitignore` so they won't be committed to the repo.
 
 **After syncing, in bioexec folder:**
 ```bash

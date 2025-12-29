@@ -1,3 +1,6 @@
+// Load environment variables first, before any other imports
+import 'dotenv/config';
+
 import { buildApp, configureApp } from './app';
 
 async function main() {

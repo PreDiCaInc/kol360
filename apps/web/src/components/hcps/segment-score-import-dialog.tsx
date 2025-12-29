@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Upload, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Download } from 'lucide-react';
-import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth/auth-provider';
 
 interface Props {
   open: boolean;
@@ -25,12 +25,15 @@ interface ImportResult {
   errors: { row: number; error: string }[];
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
 export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { getAccessToken } = useAuth();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -61,10 +64,22 @@ export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const response = await api.post('/hcps/import-segment-scores', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const token = await getAccessToken();
+      const response = await fetch(`${API_BASE}/api/v1/hcps/import-segment-scores`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
       });
-      setResult(response.data);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Import failed' }));
+        throw new Error(error.message || 'Import failed');
+      }
+
+      const data = await response.json() as ImportResult;
+      setResult(data);
       queryClient.invalidateQueries({ queryKey: ['hcps'] });
     } catch (error) {
       console.error('Import failed:', error);
@@ -72,7 +87,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
         total: 0,
         created: 0,
         updated: 0,
-        errors: [{ row: 0, error: 'Import failed. Please check the file format.' }],
+        errors: [{ row: 0, error: error instanceof Error ? error.message : 'Import failed. Please check the file format.' }],
       });
     } finally {
       setIsImporting(false);

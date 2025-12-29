@@ -159,14 +159,22 @@ export default function LoginPage() {
             <p className="text-xl text-white/80 leading-relaxed mb-8">
               The comprehensive platform for Key Opinion Leader identification, assessment, and engagement analytics.
             </p>
-            <div className="flex items-center gap-6 text-sm text-white/60">
+            <div className="flex flex-wrap items-center gap-4 text-sm text-white/60">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>HIPAA Compliant</span>
+                <span>National Leaders</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>Enterprise Security</span>
+                <span>Peer Advisors</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span>Rising Stars</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-white/40" />
+                <span>and more</span>
               </div>
             </div>
           </div>
