@@ -1,5 +1,35 @@
 # Claude Code Instructions for KOL360
 
+## Standard Operating Procedure (SOP) - IMPORTANT
+
+**Always work on the `dev` branch in the main kol360 folder.**
+
+When pushing changes:
+1. **Push to PreDiCa/kol360 main**: Commit and push from the dev branch to origin/main
+2. **Push to Bio-Exec/kol360**: Use rsync to copy to bioexec folder, then commit and push to bioexec/main
+
+**Never make changes directly in:**
+- The bioexec folder (only rsync from main dev folder)
+- Feature branches (unless explicitly decided for a specific situation)
+- Any other location
+
+**Workflow:**
+```bash
+# 1. Work on dev branch in main folder
+git checkout dev
+# ... make changes ...
+
+# 2. Commit and push to PreDiCa
+git add . && git commit -m "Your message"
+git push origin dev  # or merge to main
+
+# 3. Rsync to bioexec and push
+rsync -av --delete [excludes] . /Users/haranath/genai/kol360/bioexec/
+cd /Users/haranath/genai/kol360/bioexec
+git add . && git commit -m "Your message"
+git push origin main
+```
+
 ## Before Starting Any Work
 
 Always verify these are running:
