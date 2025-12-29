@@ -145,9 +145,9 @@ export default function LoginPage() {
             <Image
               src="/images/logo-white.png"
               alt="BioExec"
-              width={180}
-              height={54}
-              className="h-12 w-auto object-contain"
+              width={540}
+              height={162}
+              className="h-36 w-auto object-contain"
               priority
             />
           </div>
@@ -175,9 +175,22 @@ export default function LoginPage() {
             </div>
           </div>
           
-          <p className="text-sm text-white/40">
-            © {new Date().getFullYear()} K3H Research. All rights reserved.
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-white/40">
+              © {new Date().getFullYear()} Bio-Exec KOL Research. All rights reserved.
+            </p>
+            <p className="text-xs text-white/25">
+              Powered by{' '}
+              <a
+                href="https://predica.care"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white/40 transition-colors"
+              >
+                PreDiCa.care
+              </a>
+            </p>
+          </div>
         </div>
       </div>
 
