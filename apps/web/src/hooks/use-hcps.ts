@@ -23,6 +23,16 @@ interface HcpSpecialty {
   specialty: Specialty;
 }
 
+interface HcpDiseaseAreaScore {
+  id: string;
+  compositeScore: number | null;
+  diseaseArea: {
+    id: string;
+    name: string;
+    code: string | null;
+  };
+}
+
 interface Hcp {
   id: string;
   npi: string;
@@ -38,21 +48,22 @@ interface Hcp {
   updatedAt: string;
   aliases: HcpAlias[];
   specialties?: HcpSpecialty[];  // New multi-specialty relation
+  diseaseAreaScores?: HcpDiseaseAreaScore[];  // For scores page
   _count?: {
     campaignHcps: number;
     nominationsReceived: number;
   };
 }
 
-interface HcpDetail extends Hcp {
-  diseaseAreaScores: {
-    id: string;
-    awareness: number;
-    adoption: number;
-    sentiment: number;
-    finalScore: number;
-    diseaseArea: { id: string; name: string };
-  }[];
+interface HcpDetailDiseaseAreaScore extends HcpDiseaseAreaScore {
+  awareness: number;
+  adoption: number;
+  sentiment: number;
+  finalScore: number;
+}
+
+interface HcpDetail extends Omit<Hcp, 'diseaseAreaScores'> {
+  diseaseAreaScores: HcpDetailDiseaseAreaScore[];
   campaignScores: {
     id: string;
     totalScore: number;
@@ -238,6 +249,23 @@ export function useImportHcpAliases() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hcps'] });
     },
+  });
+}
+
+// Disease area hooks
+export interface DiseaseArea {
+  id: string;
+  name: string;
+  code: string | null;
+  therapeuticArea: string | null;
+  isActive: boolean;
+}
+
+export function useDiseaseAreas() {
+  return useQuery({
+    queryKey: ['disease-areas'],
+    queryFn: () => apiClient.get<{ items: DiseaseArea[] }>('/api/v1/disease-areas'),
+    select: (data) => data.items,
   });
 }
 
