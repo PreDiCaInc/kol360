@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/auth-provider';
+import { usePlatformStats } from '@/hooks/use-dashboards';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   Building2, 
@@ -90,8 +91,14 @@ function QuickActionCard({ href, icon, iconBg, title, description }: QuickAction
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const { data: stats, isLoading: statsLoading } = usePlatformStats();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
   const isClientAdmin = user?.role === 'CLIENT_ADMIN';
+
+  const formatNumber = (num: number | undefined) => {
+    if (num === undefined) return '—';
+    return num.toLocaleString();
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -125,31 +132,31 @@ export default function AdminDashboard() {
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 stagger-children">
         <StatCard
           title="Active Campaigns"
-          value="3"
-          change="+2 from last month"
-          changeType="positive"
+          value={statsLoading ? '...' : formatNumber(stats?.activeCampaigns)}
+          change="Currently running"
+          changeType="neutral"
           icon={<BarChart3 className="h-6 w-6 text-primary" />}
           accent="bg-primary/10"
         />
         <StatCard
           title="HCPs in Database"
-          value="1,284"
-          change="+89 new this week"
-          changeType="positive"
+          value={statsLoading ? '...' : formatNumber(stats?.totalHcps)}
+          change="Total healthcare professionals"
+          changeType="neutral"
           icon={<Stethoscope className="h-6 w-6 text-blue-600" />}
           accent="bg-blue-500/10"
         />
         <StatCard
           title="Survey Responses"
-          value="432"
-          change="78% completion rate"
+          value={statsLoading ? '...' : formatNumber(stats?.completedResponses)}
+          change="Completed surveys"
           changeType="neutral"
           icon={<FileText className="h-6 w-6 text-violet-600" />}
           accent="bg-violet-500/10"
         />
         <StatCard
           title="Pending Matches"
-          value="24"
+          value={statsLoading ? '...' : formatNumber(stats?.pendingNominations)}
           change="Nominations awaiting review"
           changeType="neutral"
           icon={<ClipboardList className="h-6 w-6 text-amber-600" />}
