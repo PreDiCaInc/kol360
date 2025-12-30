@@ -24,7 +24,7 @@ import {
 import { HcpImportDialog } from '@/components/hcps/hcp-import-dialog';
 import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
-import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin } from 'lucide-react';
+import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 // Helper to get specialty display name
@@ -80,6 +80,12 @@ export default function HcpsPage() {
           <p className="text-muted-foreground mt-1">Healthcare professional records and management</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href="/admin/hcps/scores">
+            <Button variant="outline">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              View Scores
+            </Button>
+          </Link>
           <Button variant="outline" onClick={() => setShowImportDialog(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Import HCPs
