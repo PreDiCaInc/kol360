@@ -46,6 +46,10 @@ export class HcpService {
             include: { specialty: true },
             orderBy: { isPrimary: 'desc' },
           },
+          diseaseAreaScores: {
+            where: { isCurrent: true },
+            include: { diseaseArea: { select: { id: true, name: true, code: true } } },
+          },
           _count: { select: { campaignHcps: true, nominationsReceived: true } },
         },
         skip: (page - 1) * limit,
@@ -361,5 +365,119 @@ export class HcpService {
       orderBy: { state: 'asc' },
     });
     return results.map((r: { state: string | null }) => r.state).filter(Boolean);
+  }
+
+  // Import segment scores from Excel
+  async importSegmentScores(buffer: Buffer, diseaseAreaId?: string) {
+    const workbook = new ExcelJS.Workbook();
+    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    await workbook.xlsx.load(arrayBuffer);
+    const sheet = workbook.worksheets[0];
+
+    // Convert worksheet to array of objects with headers
+    const rows: Record<string, unknown>[] = [];
+    const headers: string[] = [];
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) {
+        row.eachCell((cell) => {
+          headers.push(String(cell.value || ''));
+        });
+      } else {
+        const rowData: Record<string, unknown> = {};
+        row.eachCell((cell, colNumber) => {
+          const header = headers[colNumber - 1];
+          if (header) {
+            rowData[header] = cell.value;
+          }
+        });
+        rows.push(rowData);
+      }
+    });
+
+    const result = { total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
+
+    // Map column names to score fields
+    const scoreFieldMap: Record<string, string> = {
+      'Research & Publications': 'scorePublications',
+      'Clinical Trials': 'scoreClinicalTrials',
+      'Trade Pubs': 'scoreTradePubs',
+      'Org Leadership': 'scoreOrgLeadership',
+      'Org Awareness': 'scoreOrgAwareness',
+      'Conference': 'scoreConference',
+      'Social Media': 'scoreSocialMedia',
+      'Media/Podcasts': 'scoreMediaPodcasts',
+    };
+
+    // Get default disease area if not provided
+    let targetDiseaseAreaId = diseaseAreaId;
+    if (!targetDiseaseAreaId) {
+      const defaultDA = await prisma.diseaseArea.findFirst({ where: { isActive: true } });
+      if (!defaultDA) {
+        result.errors.push({ row: 0, error: 'No active disease area found' });
+        return result;
+      }
+      targetDiseaseAreaId = defaultDA.id;
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const npi = String(row['NPI'] || row['npi'] || '').trim();
+        if (!/^\d{10}$/.test(npi)) {
+          throw new Error('Invalid NPI format');
+        }
+
+        const hcp = await prisma.hcp.findUnique({ where: { npi } });
+        if (!hcp) {
+          throw new Error(`HCP not found: ${npi}`);
+        }
+
+        // Build score data
+        const scoreData: Record<string, number | null> = {};
+        for (const [colName, fieldName] of Object.entries(scoreFieldMap)) {
+          const value = row[colName];
+          if (value !== undefined && value !== null && value !== '') {
+            const numValue = parseFloat(String(value));
+            if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
+              scoreData[fieldName] = numValue;
+            }
+          }
+        }
+
+        // Check if existing score record exists for this HCP and disease area
+        const existing = await prisma.hcpDiseaseAreaScore.findFirst({
+          where: { hcpId: hcp.id, diseaseAreaId: targetDiseaseAreaId, isCurrent: true },
+        });
+
+        if (existing) {
+          // Update existing score
+          await prisma.hcpDiseaseAreaScore.update({
+            where: { id: existing.id },
+            data: {
+              ...scoreData,
+              lastCalculatedAt: new Date(),
+            },
+          });
+          result.updated++;
+        } else {
+          // Create new score
+          await prisma.hcpDiseaseAreaScore.create({
+            data: {
+              hcpId: hcp.id,
+              diseaseAreaId: targetDiseaseAreaId,
+              ...scoreData,
+              isCurrent: true,
+              effectiveFrom: new Date(),
+            },
+          });
+          result.created++;
+        }
+      } catch (error) {
+        result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    }
+
+    return result;
   }
 }
