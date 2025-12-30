@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useHcps, useHcpFilters, useDiseaseAreas } from '@/hooks/use-hcps';
+import { useHcps, useHcpFilters } from '@/hooks/use-hcps';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -21,9 +22,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, BarChart3, ArrowLeft, Upload } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Search, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, BarChart3, ArrowLeft, Upload, Settings2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
+
+// Segment score columns configuration
+const SEGMENT_COLUMNS = [
+  { key: 'scorePublications', label: 'Research & Publications', shortLabel: 'Pubs' },
+  { key: 'scoreClinicalTrials', label: 'Clinical Trials', shortLabel: 'Trials' },
+  { key: 'scoreTradePubs', label: 'Trade Pubs', shortLabel: 'Trade' },
+  { key: 'scoreOrgLeadership', label: 'Org Leadership', shortLabel: 'Leader' },
+  { key: 'scoreOrgAwareness', label: 'Org Awareness', shortLabel: 'Aware' },
+  { key: 'scoreConference', label: 'Conference', shortLabel: 'Conf' },
+  { key: 'scoreSocialMedia', label: 'Social Media', shortLabel: 'Social' },
+  { key: 'scoreMediaPodcasts', label: 'Media/Podcasts', shortLabel: 'Media' },
+  { key: 'compositeScore', label: 'Composite Score', shortLabel: 'Total' },
+] as const;
+
+type SegmentScoreKey = typeof SEGMENT_COLUMNS[number]['key'];
 
 // Helper to get specialty display name
 function getSpecialtyDisplay(hcp: { specialty?: string | null; specialties?: { isPrimary: boolean; specialty: { name: string } }[] }) {
@@ -36,9 +57,26 @@ function getSpecialtyDisplay(hcp: { specialty?: string | null; specialties?: { i
   return [];
 }
 
+interface DiseaseAreaScore {
+  id: string;
+  compositeScore: number | null;
+  scorePublications?: number | null;
+  scoreClinicalTrials?: number | null;
+  scoreTradePubs?: number | null;
+  scoreOrgLeadership?: number | null;
+  scoreOrgAwareness?: number | null;
+  scoreConference?: number | null;
+  scoreSocialMedia?: number | null;
+  scoreMediaPodcasts?: number | null;
+  diseaseArea: { id: string; name: string; code: string | null };
+}
+
 export default function HcpScoresPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibleColumns, setVisibleColumns] = useState<Set<SegmentScoreKey>>(
+    () => new Set<SegmentScoreKey>(['scorePublications', 'scoreClinicalTrials', 'scoreConference', 'scoreSocialMedia', 'compositeScore'])
+  );
   const [filters, setFilters] = useState<{
     query?: string;
     specialty?: string;
@@ -51,20 +89,32 @@ export default function HcpScoresPage() {
     query: filters.query,
   });
   const { data: filterOptions } = useHcpFilters();
-  const { data: diseaseAreas = [] } = useDiseaseAreas();
 
   const hcps = data?.items || [];
   const pagination = data?.pagination;
 
-  const getDiseaseAreaScore = (
-    hcp: { diseaseAreaScores?: { compositeScore: number | null; diseaseArea: { id: string } }[] },
-    diseaseAreaId: string
+  const getScoreValue = (
+    scores: DiseaseAreaScore[] | undefined,
+    scoreKey: SegmentScoreKey
   ): string => {
-    const score = hcp.diseaseAreaScores?.find((s) => s.diseaseArea.id === diseaseAreaId);
-    if (!score || score.compositeScore === null) {
-      return '—';
-    }
-    return Number(score.compositeScore).toFixed(1);
+    if (!scores || scores.length === 0) return '—';
+    // Get the first (current) score record
+    const score = scores[0];
+    const value = score[scoreKey as keyof DiseaseAreaScore];
+    if (value === null || value === undefined) return '—';
+    return Number(value).toFixed(1);
+  };
+
+  const toggleColumn = (key: SegmentScoreKey) => {
+    setVisibleColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
   };
 
   const handleSearch = () => {
@@ -76,6 +126,8 @@ export default function HcpScoresPage() {
       handleSearch();
     }
   };
+
+  const visibleSegmentColumns = SEGMENT_COLUMNS.filter(col => visibleColumns.has(col.key));
 
   return (
     <div className="p-6 lg:p-8 fade-in">
@@ -92,7 +144,7 @@ export default function HcpScoresPage() {
               </Link>
             </div>
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">HCP Scores</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Segment & sociometric scores by disease area</p>
+            <p className="text-muted-foreground text-sm mt-0.5">Segment & sociometric scores</p>
           </div>
           {/* Inline Stats Badges */}
           {!isLoading && pagination && (
@@ -101,17 +153,41 @@ export default function HcpScoresPage() {
                 <BarChart3 className="w-4 h-4 text-primary" />
                 <span className="text-sm font-medium">{pagination.total.toLocaleString()} HCPs</span>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                <BarChart3 className="w-4 h-4 text-emerald-600" />
-                <span className="text-sm font-medium">{diseaseAreas.length} Disease Areas</span>
-              </div>
             </div>
           )}
         </div>
-        <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-          <Upload className="w-4 h-4 mr-2" />
-          Import Scores
-        </Button>
+        <div className="flex gap-2">
+          {/* Column Selector */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Settings2 className="w-4 h-4 mr-2" />
+                Columns ({visibleColumns.size})
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-64" align="end">
+              <div className="p-2 space-y-1">
+                <p className="text-sm font-medium mb-3 px-2">Show Columns</p>
+                {SEGMENT_COLUMNS.map((col) => (
+                  <label
+                    key={col.key}
+                    className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={visibleColumns.has(col.key)}
+                      onCheckedChange={() => toggleColumn(col.key)}
+                    />
+                    <span className="text-sm">{col.label}</span>
+                  </label>
+                ))}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Import Scores
+          </Button>
+        </div>
       </div>
 
       {/* Search and Filters */}
@@ -220,7 +296,7 @@ export default function HcpScoresPage() {
           <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
             {filters.query || filters.specialty || filters.state
               ? 'Try adjusting your search filters.'
-              : 'Scores will appear after campaigns are completed and scores are calculated.'}
+              : 'Import segment scores using the Import Scores button above.'}
           </p>
         </div>
       ) : (
@@ -229,13 +305,13 @@ export default function HcpScoresPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="whitespace-nowrap">NPI</TableHead>
+                  <TableHead className="whitespace-nowrap sticky left-0 bg-card z-10">NPI</TableHead>
                   <TableHead className="whitespace-nowrap">Name</TableHead>
                   <TableHead className="whitespace-nowrap">Specialty</TableHead>
                   <TableHead className="whitespace-nowrap">Location</TableHead>
-                  {diseaseAreas.map((da) => (
-                    <TableHead key={da.id} className="text-center whitespace-nowrap min-w-[80px]">
-                      {da.code || da.name}
+                  {visibleSegmentColumns.map((col) => (
+                    <TableHead key={col.key} className="text-center whitespace-nowrap min-w-[70px]">
+                      {col.shortLabel}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -243,7 +319,7 @@ export default function HcpScoresPage() {
               <TableBody>
                 {hcps.map((hcp) => (
                   <TableRow key={hcp.id}>
-                    <TableCell className="font-mono text-muted-foreground">{hcp.npi}</TableCell>
+                    <TableCell className="font-mono text-muted-foreground sticky left-0 bg-card">{hcp.npi}</TableCell>
                     <TableCell>
                       <Link
                         href={`/admin/hcps/${hcp.id}`}
@@ -278,16 +354,20 @@ export default function HcpScoresPage() {
                         ? `${hcp.city}, ${hcp.state}`
                         : hcp.state || '—'}
                     </TableCell>
-                    {diseaseAreas.map((da) => {
-                      const scoreStr = getDiseaseAreaScore(hcp, da.id);
+                    {visibleSegmentColumns.map((col) => {
+                      const scoreStr = getScoreValue(hcp.diseaseAreaScores as DiseaseAreaScore[] | undefined, col.key);
                       const hasScore = scoreStr !== '—';
                       return (
                         <TableCell
-                          key={da.id}
+                          key={col.key}
                           className={`text-center ${hasScore ? 'font-medium' : 'text-muted-foreground'}`}
                         >
                           {hasScore ? (
-                            <span className="inline-flex items-center justify-center min-w-[40px] px-2 py-0.5 rounded bg-primary/10 text-primary">
+                            <span className={`inline-flex items-center justify-center min-w-[40px] px-2 py-0.5 rounded ${
+                              col.key === 'compositeScore'
+                                ? 'bg-emerald-500/10 text-emerald-600'
+                                : 'bg-primary/10 text-primary'
+                            }`}>
                               {scoreStr}
                             </span>
                           ) : (

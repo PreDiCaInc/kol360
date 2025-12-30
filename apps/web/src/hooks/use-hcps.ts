@@ -26,6 +26,14 @@ interface HcpSpecialty {
 interface HcpDiseaseAreaScore {
   id: string;
   compositeScore: number | null;
+  scorePublications?: number | null;
+  scoreClinicalTrials?: number | null;
+  scoreTradePubs?: number | null;
+  scoreOrgLeadership?: number | null;
+  scoreOrgAwareness?: number | null;
+  scoreConference?: number | null;
+  scoreSocialMedia?: number | null;
+  scoreMediaPodcasts?: number | null;
   diseaseArea: {
     id: string;
     name: string;
