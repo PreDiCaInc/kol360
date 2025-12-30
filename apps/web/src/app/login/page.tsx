@@ -159,21 +159,38 @@ export default function LoginPage() {
             <p className="text-xl text-white/80 leading-relaxed mb-8">
               The comprehensive platform for Key Opinion Leader identification, assessment, and engagement analytics.
             </p>
-            <div className="flex items-center gap-6 text-sm text-white/60">
+            <div className="flex flex-wrap items-center gap-4 text-sm text-white/60">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>HIPAA Compliant</span>
+                <span>National Leaders</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>Enterprise Security</span>
+                <span>Peer Advisors</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span>Rising Stars and more</span>
               </div>
             </div>
           </div>
           
-          <p className="text-sm text-white/40">
-            © {new Date().getFullYear()} K3H Research. All rights reserved.
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-white/40">
+              © {new Date().getFullYear()} Bio-Exec KOL Research. All rights reserved.
+            </p>
+            <p className="text-xs text-white/25">
+              Powered by{' '}
+              <a
+                href="https://predica.care"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white/40 transition-colors"
+              >
+                PreDiCa.care
+              </a>
+            </p>
+          </div>
         </div>
       </div>
 
