@@ -2,33 +2,33 @@
 
 ## Standard Operating Procedure (SOP) - IMPORTANT
 
-**Always work on the `dev` branch in the main kol360 folder.**
+**Single repo workflow - PreDiCa/kol360 only.**
 
-When pushing changes:
-1. **Push to PreDiCa/kol360 main**: Commit and push from the dev branch to origin/main
-2. **Push to Bio-Exec/kol360**: Use rsync to copy to bioexec folder, then commit and push to bioexec/main
-
-**Never make changes directly in:**
-- The bioexec folder (only rsync from main dev folder)
-- Feature branches (unless explicitly decided for a specific situation)
-- Any other location
+**Branches:**
+- `dev` - Local development and testing
+- `main` - AWS App Runner auto-deploys from this branch
 
 **Workflow:**
 ```bash
-# 1. Work on dev branch in main folder
+# 1. Work on dev branch
 git checkout dev
 # ... make changes ...
 
-# 2. Commit and push to PreDiCa
+# 2. Commit and push to dev
 git add . && git commit -m "Your message"
-git push origin dev  # or merge to main
+git push origin dev
 
-# 3. Rsync to bioexec and push
-rsync -av --delete [excludes] . /Users/haranath/genai/kol360/bioexec/
-cd /Users/haranath/genai/kol360/bioexec
-git add . && git commit -m "Your message"
+# 3. When ready to deploy to AWS, merge to main
+git checkout main
+git merge dev
 git push origin main
+# App Runner will auto-deploy both web and api services
 ```
+
+**Do NOT:**
+- Use the bioexec folder (deprecated)
+- Use rsync (deprecated)
+- Make changes directly on main branch
 
 ## Before Starting Any Work
 
@@ -56,8 +56,9 @@ If not running, start them:
 
 ## AWS Deployment
 
-- **Lambda API**: Profile `koluser`, Region `us-east-2`, Function `kol360-api`
-- **Web**: App Runner (auto-deploy from main)
+- **App Runner API**: Profile `koluser`, Region `us-east-2`, auto-deploys from PreDiCa/kol360 main
+- **App Runner Web**: Profile `koluser`, Region `us-east-2`, auto-deploys from PreDiCa/kol360 main
+- **Database**: RDS PostgreSQL via SSH tunnel through bastion (3.142.171.8)
 
 ## Key Files
 
