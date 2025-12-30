@@ -3,6 +3,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
 
+// Platform-wide stats for admin dashboard
+interface PlatformStats {
+  activeCampaigns: number;
+  totalHcps: number;
+  completedResponses: number;
+  pendingNominations: number;
+}
+
 // Type definitions for dashboard data
 interface DashboardStats {
   totalSent: number;
@@ -90,6 +98,14 @@ interface Dashboard {
   createdAt: string;
   updatedAt: string;
   components: DashboardComponent[];
+}
+
+// Platform-wide stats hook for admin dashboard
+export function usePlatformStats() {
+  return useQuery({
+    queryKey: ['platform-stats'],
+    queryFn: () => apiClient.get<PlatformStats>('/api/v1/stats'),
+  });
 }
 
 // Dashboard config hooks

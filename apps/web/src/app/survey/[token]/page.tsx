@@ -78,24 +78,20 @@ export default function SurveyPage() {
   const [currentStep, setCurrentStep] = useState(0);
 
   // Initialize answers from saved response
+  // Only skip welcome screen if user has actually started (IN_PROGRESS status or has answers)
   useEffect(() => {
-    if (survey?.response?.answers) {
-      setAnswers(survey.response.answers);
-      setStarted(true);
+    if (survey?.response) {
+      const hasAnswers = survey.response.answers && Object.keys(survey.response.answers).length > 0;
+      if (hasAnswers) {
+        setAnswers(survey.response.answers);
+        setStarted(true);
+      } else if (survey.response.status === 'IN_PROGRESS') {
+        // User clicked "Begin Survey" but hasn't answered anything yet
+        setStarted(true);
+      }
+      // For PENDING/OPENED status with no answers, keep started=false to show welcome screen
     }
   }, [survey]);
-
-  // Mark survey as OPENED when page loads (for tracking purposes)
-  useEffect(() => {
-    if (survey && !survey.response && !submitted) {
-      startSurvey.mutate(token, {
-        onError: (err) => {
-          console.log('Track survey open:', err);
-        },
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [survey, token]);
 
   // Auto-save every 30 seconds
   useEffect(() => {

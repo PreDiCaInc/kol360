@@ -8,6 +8,48 @@ import {
 } from '@kol360/shared';
 
 export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
+  // Platform-wide stats endpoint for admin dashboard
+  fastify.get('/stats', async (request, reply) => {
+    const user = request.user;
+
+    // Build tenant filter for non-platform admins
+    const tenantFilter = user?.role === 'PLATFORM_ADMIN' ? {} : { clientId: user?.tenantId };
+    const campaignTenantFilter = user?.role === 'PLATFORM_ADMIN' ? {} : { campaign: { clientId: user?.tenantId } };
+
+    // Run all count queries in parallel
+    const [
+      activeCampaigns,
+      totalHcps,
+      completedResponses,
+      pendingNominations,
+    ] = await Promise.all([
+      // Active campaigns count
+      fastify.prisma.campaign.count({
+        where: { status: 'ACTIVE', ...tenantFilter },
+      }),
+      // Total HCPs count (platform-wide, not tenant-specific)
+      fastify.prisma.hcp.count(),
+      // Completed survey responses
+      fastify.prisma.surveyResponse.count({
+        where: { status: 'COMPLETED', ...campaignTenantFilter },
+      }),
+      // Pending nominations (unmatched or needing review)
+      fastify.prisma.nomination.count({
+        where: {
+          matchStatus: { in: ['UNMATCHED', 'REVIEW_NEEDED'] },
+          response: campaignTenantFilter,
+        },
+      }),
+    ]);
+
+    return {
+      activeCampaigns,
+      totalHcps,
+      completedResponses,
+      pendingNominations,
+    };
+  });
+
   // Helper function to verify campaign tenant access
   async function verifyCampaignAccess(
     campaignId: string,
