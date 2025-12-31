@@ -25,15 +25,16 @@ interface StatCardProps {
   changeType: 'positive' | 'neutral';
   icon: React.ReactNode;
   accent: string;
+  href?: string;
 }
 
-function StatCard({ title, value, change, changeType, icon, accent }: StatCardProps) {
-  return (
-    <Card className="stat-card hover-lift">
+function StatCard({ title, value, change, changeType, icon, accent, href }: StatCardProps) {
+  const cardContent = (
+    <Card className="stat-card hover-lift group cursor-pointer">
       <CardContent className="p-6">
         <div className="flex items-start justify-between">
           <div className="space-y-3">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
+            <p className="text-sm font-medium text-muted-foreground group-hover:text-primary transition-colors">{title}</p>
             <p className="text-3xl font-semibold tracking-tight">{value}</p>
             <div className="flex items-center gap-1.5">
               {changeType === 'positive' && (
@@ -47,13 +48,19 @@ function StatCard({ title, value, change, changeType, icon, accent }: StatCardPr
               )}
             </div>
           </div>
-          <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent}`}>
+          <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent} transition-transform duration-300 group-hover:scale-110`}>
             {icon}
           </div>
         </div>
       </CardContent>
     </Card>
   );
+
+  if (href) {
+    return <Link href={href}>{cardContent}</Link>;
+  }
+
+  return cardContent;
 }
 
 interface QuickActionCardProps {
@@ -137,6 +144,7 @@ export default function AdminDashboard() {
           changeType="neutral"
           icon={<BarChart3 className="h-6 w-6 text-primary" />}
           accent="bg-primary/10"
+          href="/admin/campaigns"
         />
         <StatCard
           title="HCPs in Database"
@@ -145,6 +153,7 @@ export default function AdminDashboard() {
           changeType="neutral"
           icon={<Stethoscope className="h-6 w-6 text-blue-600" />}
           accent="bg-blue-500/10"
+          href="/admin/hcps"
         />
         <StatCard
           title="Survey Responses"
@@ -153,6 +162,7 @@ export default function AdminDashboard() {
           changeType="neutral"
           icon={<FileText className="h-6 w-6 text-violet-600" />}
           accent="bg-violet-500/10"
+          href="/admin/campaigns"
         />
         <StatCard
           title="Pending Matches"
@@ -161,6 +171,7 @@ export default function AdminDashboard() {
           changeType="neutral"
           icon={<ClipboardList className="h-6 w-6 text-amber-600" />}
           accent="bg-amber-500/10"
+          href="/admin/campaigns"
         />
       </div>
 

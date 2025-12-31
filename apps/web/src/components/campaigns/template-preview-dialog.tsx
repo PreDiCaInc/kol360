@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Mail, FileText, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { Eye, Mail, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 
 type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done';
 
@@ -299,13 +299,113 @@ export function TemplatePreviewDialog({
     const finalTitle = title || defaultTitle;
     const finalMessage = message || defaultMessage;
 
+    // Welcome page uses two-panel layout like login page
+    if (previewType === 'welcome') {
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FileText className="w-4 h-4" />
+            <span>Welcome Page Preview</span>
+            {!title && !message && <Badge variant="muted" className="text-xs">Using Defaults</Badge>}
+          </div>
+
+          {/* Two-panel layout preview */}
+          <div className="rounded-xl overflow-hidden border border-border/60 shadow-sm min-h-[450px] flex">
+            {/* Left Panel - Branding */}
+            <div className="w-1/2 relative overflow-hidden bg-gradient-to-br from-[hsl(187,85%,25%)] via-[hsl(187,80%,30%)] to-[hsl(200,75%,20%)]">
+              <div className="absolute inset-0 opacity-10">
+                <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <pattern id="grid-preview" width="40" height="40" patternUnits="userSpaceOnUse">
+                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="0.5" />
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#grid-preview)" />
+                </svg>
+              </div>
+              <div className="absolute top-1/4 -left-10 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
+              <div className="absolute bottom-1/4 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+
+              <div className="relative z-10 flex flex-col justify-between p-6 text-white h-full">
+                <div>
+                  <img
+                    src="/images/logo-white.png"
+                    alt="BioExec"
+                    className="h-16 w-auto object-contain"
+                  />
+                </div>
+
+                <div className="max-w-xs">
+                  <h1 className="text-2xl font-semibold leading-tight tracking-tight mb-3">
+                    KOL360
+                  </h1>
+                  <p className="text-sm text-white/80 leading-relaxed mb-4">
+                    The comprehensive platform for Key Opinion Leader identification and assessment.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>National Leaders</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>Rising Stars</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-white/40">
+                  © {new Date().getFullYear()} Bio-Exec KOL Research
+                </p>
+              </div>
+            </div>
+
+            {/* Right Panel - Welcome Content */}
+            <div className="w-1/2 flex items-center justify-center p-6 bg-gradient-to-br from-gray-50 to-gray-100">
+              <div className="w-full max-w-sm">
+                <Card className="border-0 shadow-xl shadow-black/5 bg-card/80 backdrop-blur-sm">
+                  <CardHeader className="space-y-1 pb-4">
+                    <CardTitle className="text-lg font-semibold tracking-tight">
+                      {finalTitle}
+                    </CardTitle>
+                    <CardDescription className="text-muted-foreground text-sm">
+                      Welcome, Dr. {SAMPLE_DATA.lastName}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-muted-foreground leading-relaxed text-sm">
+                      {finalMessage}
+                    </p>
+                    {honorariumAmount && (
+                      <div className="flex items-start gap-2 p-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg">
+                        <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span>
+                          Upon completion, you will receive a ${honorariumAmount} honorarium.
+                        </span>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Your progress will be saved automatically.
+                    </p>
+                    <Button className="w-full h-9 text-sm font-medium" size="sm" disabled>
+                      Begin Survey
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Thank you and Already Done pages use simple centered card
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <FileText className="w-4 h-4" />
           <span>
-            {previewType === 'welcome' ? 'Welcome Page' :
-             previewType === 'thankyou' ? 'Thank You Page' : 'Already Completed Page'} Preview
+            {previewType === 'thankyou' ? 'Thank You Page' : 'Already Completed Page'} Preview
           </span>
           {!title && !message && <Badge variant="muted" className="text-xs">Using Defaults</Badge>}
         </div>
@@ -313,50 +413,20 @@ export function TemplatePreviewDialog({
         {/* Landing Page Mock */}
         <div className="bg-gradient-to-b from-muted/30 to-muted/60 rounded-xl p-8 min-h-[400px] flex items-center justify-center">
           <Card className="max-w-md w-full shadow-lg border-border/60 overflow-hidden">
-            {previewType === 'welcome' ? (
-              <>
-                <div className="h-1.5 bg-gradient-to-r from-primary to-primary/60" />
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-xl tracking-tight">{finalTitle}</CardTitle>
-                  <CardDescription className="text-base">
-                    Welcome, Dr. {SAMPLE_DATA.lastName}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-muted-foreground leading-relaxed">{finalMessage}</p>
-                  {honorariumAmount && (
-                    <div className="flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800/30">
-                      <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-800/40 flex items-center justify-center shrink-0">
-                        <span className="text-lg font-semibold">$</span>
-                      </div>
-                      <p className="text-sm">
-                        Upon completion, you will receive a <strong>${honorariumAmount}</strong> honorarium.
-                      </p>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-4 py-3 rounded-lg">
-                    <Sparkles className="w-4 h-4 shrink-0" />
-                    <span>Your progress will be saved automatically.</span>
-                  </div>
-                  <Button className="w-full" size="lg" disabled>Begin Survey</Button>
-                </CardContent>
-              </>
-            ) : (
-              <CardContent className="pt-8 pb-8">
-                <div className="flex flex-col items-center text-center">
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${previewType === 'thankyou' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-primary/10'}`}>
-                    {icon}
-                  </div>
-                  <h2 className="text-2xl font-semibold mb-3 tracking-tight">{finalTitle}</h2>
-                  <p className="text-muted-foreground">{finalMessage}</p>
-                  {previewType === 'thankyou' && honorariumAmount && (
-                    <div className="mt-5 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm border border-emerald-200 dark:border-emerald-800/30">
-                      Your ${honorariumAmount} honorarium will be processed shortly.
-                    </div>
-                  )}
+            <CardContent className="pt-8 pb-8">
+              <div className="flex flex-col items-center text-center">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${previewType === 'thankyou' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-primary/10'}`}>
+                  {icon}
                 </div>
-              </CardContent>
-            )}
+                <h2 className="text-2xl font-semibold mb-3 tracking-tight">{finalTitle}</h2>
+                <p className="text-muted-foreground">{finalMessage}</p>
+                {previewType === 'thankyou' && honorariumAmount && (
+                  <div className="mt-5 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm border border-emerald-200 dark:border-emerald-800/30">
+                    Your ${honorariumAmount} honorarium will be processed shortly.
+                  </div>
+                )}
+              </div>
+            </CardContent>
           </Card>
         </div>
       </div>

@@ -373,43 +373,136 @@ export default function SurveyPage() {
   }).length;
   const progress = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
 
-  // Welcome screen
+  // Welcome screen - uses same layout as login page
   if (!started) {
     const welcomeTitle = survey.campaign.surveyWelcomeTitle || survey.campaign.name;
     const welcomeMessage = survey.campaign.surveyWelcomeMessage ||
       'Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.';
 
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4">
-        <div className="max-w-lg mx-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle>{welcomeTitle}</CardTitle>
-              <CardDescription>
-                Welcome, Dr. {survey.hcp.lastName}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p>
-                {welcomeMessage}
+      <div className="min-h-screen flex">
+        {/* Left Panel - Branding */}
+        <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-[hsl(187,85%,25%)] via-[hsl(187,80%,30%)] to-[hsl(200,75%,20%)]" />
+          <div className="absolute inset-0 opacity-10">
+            <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="0.5" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid)" />
+            </svg>
+          </div>
+          <div className="absolute top-1/4 -left-20 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-white/10 rounded-full blur-3xl" />
+
+          <div className="relative z-10 flex flex-col justify-between p-12 text-white">
+            <div>
+              <img
+                src="/images/logo-white.png"
+                alt="BioExec"
+                className="h-36 w-auto object-contain"
+              />
+            </div>
+
+            <div className="max-w-md">
+              <h1 className="text-4xl xl:text-5xl font-semibold leading-tight tracking-tight mb-6">
+                KOL360
+              </h1>
+              <p className="text-xl text-white/80 leading-relaxed mb-8">
+                The comprehensive platform for Key Opinion Leader identification, assessment, and engagement analytics.
               </p>
-              {survey.campaign.honorariumAmount && (
-                <p className="text-sm bg-green-50 text-green-800 p-3 rounded-md">
-                  Upon completion, you will receive a ${survey.campaign.honorariumAmount} honorarium.
+              <div className="flex flex-wrap items-center gap-4 text-sm text-white/60">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span>National Leaders</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span>Peer Advisors</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                  <span>Rising Stars and more</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-sm text-white/40">
+                © {new Date().getFullYear()} Bio-Exec KOL Research. All rights reserved.
+              </p>
+              <p className="text-xs text-white/25">
+                Powered by{' '}
+                <a
+                  href="https://predica.care"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white/40 transition-colors"
+                >
+                  PreDiCa.care
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Panel - Welcome Content */}
+        <div className="w-full lg:w-1/2 xl:w-[45%] flex items-center justify-center p-6 sm:p-12 bg-gradient-to-br from-gray-50 to-gray-100">
+          <div className="w-full max-w-md">
+            {/* Mobile Logo */}
+            <div className="lg:hidden flex justify-center mb-8">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/20">
+                  <span className="text-sm font-bold text-white">K3</span>
+                </div>
+                <span className="text-xl font-semibold">KOL360</span>
+              </div>
+            </div>
+
+            <Card className="border-0 shadow-xl shadow-black/5 bg-card/80 backdrop-blur-sm">
+              <CardHeader className="space-y-1 pb-6">
+                <CardTitle className="text-2xl font-semibold tracking-tight">
+                  {welcomeTitle}
+                </CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Welcome, Dr. {survey.hcp.lastName}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <p className="text-muted-foreground leading-relaxed">
+                  {welcomeMessage}
                 </p>
-              )}
-              <p className="text-sm text-muted-foreground">
-                This survey contains {totalQuestions} questions.
-                Your progress will be saved automatically.
-              </p>
-              <Button onClick={handleStart} className="w-full" size="lg" disabled={startSurvey.isPending}>
-                {startSurvey.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : null}
-                Begin Survey
-              </Button>
-            </CardContent>
-          </Card>
+                {survey.campaign.honorariumAmount && (
+                  <div className="flex items-start gap-3 p-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg">
+                    <CheckCircle2 className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                    <span>
+                      Upon completion, you will receive a ${survey.campaign.honorariumAmount} honorarium.
+                    </span>
+                  </div>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  This survey contains {totalQuestions} questions.
+                  Your progress will be saved automatically.
+                </p>
+                <Button onClick={handleStart} className="w-full h-11 text-base font-medium" size="lg" disabled={startSurvey.isPending}>
+                  {startSurvey.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Begin Survey
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Footer */}
+            <p className="text-center text-xs text-muted-foreground mt-8">
+              Protected by enterprise-grade security. Need help?{' '}
+              <a href="mailto:support@bio-exec.com" className="text-primary hover:underline">
+                Contact support
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     );
