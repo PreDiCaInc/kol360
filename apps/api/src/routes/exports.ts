@@ -10,6 +10,15 @@ const campaignIdSchema = z.object({
   id: z.string().cuid(),
 });
 
+// Sanitize filename to prevent path traversal attacks
+function sanitizeFilename(filename: string): string {
+  // Remove any path components and keep only safe characters
+  return filename
+    .replace(/[/\\]/g, '') // Remove path separators
+    .replace(/\.\./g, '') // Remove parent directory references
+    .replace(/[^a-zA-Z0-9._-]/g, '_'); // Replace unsafe characters
+}
+
 export const exportRoutes: FastifyPluginAsync = async (fastify) => {
   // Register multipart for file uploads
   await fastify.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
@@ -32,7 +41,7 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        reply.header('Content-Disposition', `attachment; filename="${result.filename}"`);
+        reply.header('Content-Disposition', `attachment; filename="${sanitizeFilename(result.filename)}"`);
         return reply.send(result.buffer);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Export failed';
@@ -59,7 +68,7 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        reply.header('Content-Disposition', `attachment; filename="${result.filename}"`);
+        reply.header('Content-Disposition', `attachment; filename="${sanitizeFilename(result.filename)}"`);
         return reply.send(result.buffer);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Export failed';
@@ -86,7 +95,7 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        reply.header('Content-Disposition', `attachment; filename="${result.filename}"`);
+        reply.header('Content-Disposition', `attachment; filename="${sanitizeFilename(result.filename)}"`);
         return reply.send(result.buffer);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Export failed';
@@ -113,7 +122,7 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        reply.header('Content-Disposition', `attachment; filename="${result.filename}"`);
+        reply.header('Content-Disposition', `attachment; filename="${sanitizeFilename(result.filename)}"`);
         return reply.send(result.buffer);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Re-export failed';
