@@ -50,7 +50,11 @@ If not running, start them:
 
 2. **API** (port 3001): `pnpm --filter @kol360/api dev`
 
-3. **Web** (port 3000): `pnpm --filter @kol360/web dev`
+3. **Web** (port 3000):
+   ```bash
+   # Always clear cache before starting to avoid ChunkLoadError
+   rm -rf apps/web/.next && pnpm --filter @kol360/web dev
+   ```
 
 4. **Prisma Studio** (port 5555): `pnpm --filter @kol360/api prisma studio`
 

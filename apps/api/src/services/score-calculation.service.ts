@@ -1,13 +1,14 @@
 import { prisma } from '../lib/prisma';
 import { NominationType } from '@prisma/client';
 
-// Mapping from NominationType enum to score field names
+// Mapping from NominationType enum to score field names (6 new nomination types)
 const NOMINATION_TYPE_FIELDS = {
-  NATIONAL_KOL: { score: 'scoreNationalKol', count: 'countNationalKol' },
+  DISCUSSION_LEADERS: { score: 'scoreDiscussionLeaders', count: 'countDiscussionLeaders' },
+  REFERRAL_LEADERS: { score: 'scoreReferralLeaders', count: 'countReferralLeaders' },
+  ADVICE_LEADERS: { score: 'scoreAdviceLeaders', count: 'countAdviceLeaders' },
+  NATIONAL_LEADER: { score: 'scoreNationalLeader', count: 'countNationalLeader' },
   RISING_STAR: { score: 'scoreRisingStar', count: 'countRisingStar' },
-  REGIONAL_EXPERT: { score: 'scoreRegionalExpert', count: 'countRegionalExpert' },
-  DIGITAL_INFLUENCER: { score: 'scoreDigitalInfluencer', count: 'countDigitalInfluencer' },
-  CLINICAL_EXPERT: { score: 'scoreClinicalExpert', count: 'countClinicalExpert' },
+  SOCIAL_LEADER: { score: 'scoreSocialLeader', count: 'countSocialLeader' },
 } as const;
 
 export class ScoreCalculationService {
