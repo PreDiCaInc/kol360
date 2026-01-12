@@ -10,12 +10,21 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Upload, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Download } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useDiseaseAreas } from '@/hooks/use-hcps';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  scoreType?: 'segment' | 'survey';
 }
 
 interface ImportResult {
@@ -25,12 +34,14 @@ interface ImportResult {
   errors: { row: number; error: string }[];
 }
 
-export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
+export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segment' }: Props) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedDiseaseAreaId, setSelectedDiseaseAreaId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { data: diseaseAreas = [] } = useDiseaseAreas();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -54,12 +65,14 @@ export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
   };
 
   const handleImport = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || !selectedDiseaseAreaId) return;
 
     setIsImporting(true);
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
+      formData.append('diseaseAreaId', selectedDiseaseAreaId);
+      formData.append('scoreType', scoreType);
 
       const result = await api<ImportResult>('/api/v1/hcps/import-segment-scores', {
         method: 'POST',
@@ -82,6 +95,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
 
   const handleClose = () => {
     setSelectedFile(null);
+    setSelectedDiseaseAreaId('');
     setResult(null);
     onOpenChange(false);
   };
@@ -98,18 +112,59 @@ export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
     { name: 'Media/Podcasts', field: 'scoreMediaPodcasts' },
   ];
 
+  // The 6 survey nomination type columns
+  const surveyColumns = [
+    { name: 'Discussion Leaders', field: 'scoreDiscussionLeaders' },
+    { name: 'Referral Leaders', field: 'scoreReferralLeaders' },
+    { name: 'Advice Leaders', field: 'scoreAdviceLeaders' },
+    { name: 'National Leader', field: 'scoreNationalLeader' },
+    { name: 'Rising Star', field: 'scoreRisingStar' },
+    { name: 'Social Leader', field: 'scoreSocialLeader' },
+  ];
+
+  const columns = scoreType === 'survey' ? surveyColumns : segmentColumns;
+  const title = scoreType === 'survey' ? 'Import Survey Scores' : 'Import Segment Scores';
+  const description = scoreType === 'survey'
+    ? 'Upload an Excel file with HCP survey nomination scores across 6 categories.'
+    : 'Upload an Excel file with HCP segment scores across 8 categories.';
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Import Segment Scores</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Upload an Excel file with HCP segment scores across 8 categories.
+            {description}
           </DialogDescription>
         </DialogHeader>
 
         {!result ? (
           <div className="space-y-4">
+            {/* Disease Area Selector */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Disease Area <span className="text-destructive">*</span></label>
+              <Select
+                value={selectedDiseaseAreaId}
+                onValueChange={setSelectedDiseaseAreaId}
+              >
+                <SelectTrigger className={!selectedDiseaseAreaId ? 'border-destructive/50' : ''}>
+                  <SelectValue placeholder="Select disease area for import" />
+                </SelectTrigger>
+                <SelectContent>
+                  {diseaseAreas.map((da) => (
+                    <SelectItem key={da.id} value={da.id}>
+                      {da.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!selectedDiseaseAreaId && (
+                <p className="text-xs text-muted-foreground">
+                  Scores will be imported for the selected disease area
+                </p>
+              )}
+            </div>
+
             {/* File Drop Zone */}
             <div
               className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
@@ -159,7 +214,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                   NPI (10 digits)
                 </div>
-                {segmentColumns.map((col) => (
+                {columns.map((col) => (
                   <div key={col.field} className="flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
                     {col.name}
@@ -175,7 +230,10 @@ export function SegmentScoreImportDialog({ open, onOpenChange }: Props) {
               <Button variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button onClick={handleImport} disabled={!selectedFile || isImporting}>
+              <Button
+                onClick={handleImport}
+                disabled={!selectedFile || !selectedDiseaseAreaId || isImporting}
+              >
                 {isImporting ? 'Importing...' : 'Import Scores'}
               </Button>
             </div>

@@ -34,24 +34,26 @@ export const questionTypeSchema = z.enum([
   'MULTI_TEXT',
 ]);
 
-// Nomination types for categorizing HCP nominations
+// Nomination types for categorizing HCP nominations (6 new categories)
 export const nominationTypeSchema = z.enum([
-  'NATIONAL_KOL',       // Nationally recognized thought leader
+  'DISCUSSION_LEADERS', // Who do you discuss challenging cases with?
+  'REFERRAL_LEADERS',   // Who do you refer patients to?
+  'ADVICE_LEADERS',     // Whose advice do you seek?
+  'NATIONAL_LEADER',    // National thought leaders
   'RISING_STAR',        // Emerging/up-and-coming KOL
-  'REGIONAL_EXPERT',    // Regional/local expert
-  'DIGITAL_INFLUENCER', // Social media/digital presence
-  'CLINICAL_EXPERT',    // Clinical trial/research expert
+  'SOCIAL_LEADER',      // Social media/digital presence leaders
 ]);
 
 export type NominationType = z.infer<typeof nominationTypeSchema>;
 
 // Human-readable labels for nomination types
 export const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
-  NATIONAL_KOL: 'National KOL',
+  DISCUSSION_LEADERS: 'Discussion Leaders',
+  REFERRAL_LEADERS: 'Referral Leaders',
+  ADVICE_LEADERS: 'Advice Leaders',
+  NATIONAL_LEADER: 'National Leader',
   RISING_STAR: 'Rising Star',
-  REGIONAL_EXPERT: 'Regional Expert',
-  DIGITAL_INFLUENCER: 'Digital Influencer',
-  CLINICAL_EXPERT: 'Clinical Expert',
+  SOCIAL_LEADER: 'Social Leader',
 };
 
 // Option object with text and optional requiresText flag

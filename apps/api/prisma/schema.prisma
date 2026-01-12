@@ -219,32 +219,32 @@ model HcpDiseaseAreaScore {
 }
 
 model HcpCampaignScore {
-  id              String    @id @default(cuid())
-  hcpId           String
-  campaignId      String
-
-  // Per-nomination-type scores (scaled 0-100)
-  scoreNationalKol       Decimal?  @db.Decimal(5, 2)
-  countNationalKol       Int       @default(0)
+  id                     String    @id @default(cuid())
+  hcpId                  String
+  campaignId             String
+  // 6 nomination type scores (matching database)
+  scoreDiscussionLeaders Decimal?  @db.Decimal(5, 2)
+  countDiscussionLeaders Int       @default(0)
+  scoreReferralLeaders   Decimal?  @db.Decimal(5, 2)
+  countReferralLeaders   Int       @default(0)
+  scoreAdviceLeaders     Decimal?  @db.Decimal(5, 2)
+  countAdviceLeaders     Int       @default(0)
+  scoreNationalLeader    Decimal?  @db.Decimal(5, 2)
+  countNationalLeader    Int       @default(0)
   scoreRisingStar        Decimal?  @db.Decimal(5, 2)
   countRisingStar        Int       @default(0)
-  scoreRegionalExpert    Decimal?  @db.Decimal(5, 2)
-  countRegionalExpert    Int       @default(0)
-  scoreDigitalInfluencer Decimal?  @db.Decimal(5, 2)
-  countDigitalInfluencer Int       @default(0)
-  scoreClinicalExpert    Decimal?  @db.Decimal(5, 2)
-  countClinicalExpert    Int       @default(0)
-
-  // Consolidated score (average of type scores)
-  scoreSurvey     Decimal?  @db.Decimal(5, 2)
-  nominationCount Int       @default(0)
-  compositeScore  Decimal?  @db.Decimal(5, 2)
-  calculatedAt    DateTime?
-  publishedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  campaign        Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  hcp             Hcp       @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+  scoreSocialLeader      Decimal?  @db.Decimal(5, 2)
+  countSocialLeader      Int       @default(0)
+  // Consolidated score
+  scoreSurvey            Decimal?  @db.Decimal(5, 2)
+  nominationCount        Int       @default(0)
+  compositeScore         Decimal?  @db.Decimal(5, 2)
+  calculatedAt           DateTime?
+  publishedAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  campaign               Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  hcp                    Hcp       @relation(fields: [hcpId], references: [id], onDelete: Cascade)
 
   @@unique([hcpId, campaignId])
   @@index([campaignId])
