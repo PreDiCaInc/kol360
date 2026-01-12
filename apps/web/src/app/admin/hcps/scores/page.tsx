@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useHcps, useHcpFilters } from '@/hooks/use-hcps';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useHcps, useHcpFilters, useDiseaseAreas } from '@/hooks/use-hcps';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -22,29 +22,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Search, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, BarChart3, ArrowLeft, Upload, Settings2 } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Search, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, BarChart3, ArrowLeft, Upload, ClipboardList } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
 
-// Segment score columns configuration
-const SEGMENT_COLUMNS = [
-  { key: 'scorePublications', label: 'Research & Publications', shortLabel: 'Pubs' },
-  { key: 'scoreClinicalTrials', label: 'Clinical Trials', shortLabel: 'Trials' },
-  { key: 'scoreTradePubs', label: 'Trade Pubs', shortLabel: 'Trade' },
-  { key: 'scoreOrgLeadership', label: 'Org Leadership', shortLabel: 'Leader' },
-  { key: 'scoreOrgAwareness', label: 'Org Awareness', shortLabel: 'Aware' },
-  { key: 'scoreConference', label: 'Conference', shortLabel: 'Conf' },
-  { key: 'scoreSocialMedia', label: 'Social Media', shortLabel: 'Social' },
-  { key: 'scoreMediaPodcasts', label: 'Media/Podcasts', shortLabel: 'Media' },
-  { key: 'compositeScore', label: 'Composite Score', shortLabel: 'Total' },
+// 8 segment score columns + Survey + Composite (Overview tab)
+const OVERVIEW_SCORE_COLUMNS = [
+  { key: 'scorePublications', label: 'Research & Pubs' },
+  { key: 'scoreClinicalTrials', label: 'Clinical Trials' },
+  { key: 'scoreTradePubs', label: 'Trade Pubs' },
+  { key: 'scoreOrgLeadership', label: 'Org Leadership' },
+  { key: 'scoreOrgAwareness', label: 'Org Awareness' },
+  { key: 'scoreConference', label: 'Conference' },
+  { key: 'scoreSocialMedia', label: 'Social Media' },
+  { key: 'scoreMediaPodcasts', label: 'Media/Podcasts' },
+  { key: 'scoreSurvey', label: 'Survey' },
+  { key: 'compositeScore', label: 'Composite' },
 ] as const;
 
-type SegmentScoreKey = typeof SEGMENT_COLUMNS[number]['key'];
+// 6 nomination type columns + Survey Score + Composite (Survey tab)
+const SURVEY_SCORE_COLUMNS = [
+  { key: 'scoreDiscussionLeaders', countKey: 'countDiscussionLeaders', label: 'Discussion Leaders' },
+  { key: 'scoreReferralLeaders', countKey: 'countReferralLeaders', label: 'Referral Leaders' },
+  { key: 'scoreAdviceLeaders', countKey: 'countAdviceLeaders', label: 'Advice Leaders' },
+  { key: 'scoreNationalLeader', countKey: 'countNationalLeader', label: 'National Leader' },
+  { key: 'scoreRisingStar', countKey: 'countRisingStar', label: 'Rising Star' },
+  { key: 'scoreSocialLeader', countKey: 'countSocialLeader', label: 'Social Leader' },
+  { key: 'scoreSurvey', countKey: 'totalNominationCount', label: 'Survey Score' },
+  { key: 'compositeScore', countKey: null, label: 'Composite' },
+] as const;
+
+type OverviewScoreKey = typeof OVERVIEW_SCORE_COLUMNS[number]['key'];
+type SurveyScoreKey = typeof SURVEY_SCORE_COLUMNS[number]['key'];
+type SurveyCountKey = typeof SURVEY_SCORE_COLUMNS[number]['countKey'];
 
 // Helper to get specialty display name
 function getSpecialtyDisplay(hcp: { specialty?: string | null; specialties?: { isPrimary: boolean; specialty: { name: string } }[] }) {
@@ -68,15 +79,32 @@ interface DiseaseAreaScore {
   scoreConference?: number | null;
   scoreSocialMedia?: number | null;
   scoreMediaPodcasts?: number | null;
+  scoreSurvey?: number | null;
+  totalNominationCount?: number;
+  scoreDiscussionLeaders?: number | null;
+  countDiscussionLeaders?: number;
+  scoreReferralLeaders?: number | null;
+  countReferralLeaders?: number;
+  scoreAdviceLeaders?: number | null;
+  countAdviceLeaders?: number;
+  scoreNationalLeader?: number | null;
+  countNationalLeader?: number;
+  scoreRisingStar?: number | null;
+  countRisingStar?: number;
+  scoreSocialLeader?: number | null;
+  countSocialLeader?: number;
   diseaseArea: { id: string; name: string; code: string | null };
 }
 
 export default function HcpScoresPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialTab = searchParams.get('tab') === 'survey' ? 'survey' : 'overview';
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'survey'>(initialTab);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [visibleColumns, setVisibleColumns] = useState<Set<SegmentScoreKey>>(
-    () => new Set<SegmentScoreKey>(['scorePublications', 'scoreClinicalTrials', 'scoreConference', 'scoreSocialMedia', 'compositeScore'])
-  );
+  const [selectedDiseaseAreaId, setSelectedDiseaseAreaId] = useState<string | null>(null);
   const [filters, setFilters] = useState<{
     query?: string;
     specialty?: string;
@@ -89,50 +117,67 @@ export default function HcpScoresPage() {
     query: filters.query,
   });
   const { data: filterOptions } = useHcpFilters();
+  const { data: diseaseAreas = [] } = useDiseaseAreas();
+
+  // Set default disease area when loaded
+  const activeDiseaseAreaId = selectedDiseaseAreaId || diseaseAreas[0]?.id;
 
   const hcps = data?.items || [];
   const pagination = data?.pagination;
 
-  const getScoreValue = (
+  const getOverviewScoreValue = (
     scores: DiseaseAreaScore[] | undefined,
-    scoreKey: SegmentScoreKey
+    scoreKey: OverviewScoreKey
   ): string => {
-    if (!scores || scores.length === 0) return '—';
-    // Get the first (current) score record
-    const score = scores[0];
-    const value = score[scoreKey as keyof DiseaseAreaScore];
+    if (!scores || !activeDiseaseAreaId) return '—';
+    const daScore = scores.find((s) => s.diseaseArea.id === activeDiseaseAreaId);
+    if (!daScore) return '—';
+    const value = daScore[scoreKey as keyof DiseaseAreaScore];
     if (value === null || value === undefined) return '—';
     return Number(value).toFixed(1);
   };
 
-  const toggleColumn = (key: SegmentScoreKey) => {
-    setVisibleColumns(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
+  const getSurveyScoreValue = (
+    scores: DiseaseAreaScore[] | undefined,
+    scoreKey: SurveyScoreKey,
+    countKey: SurveyCountKey
+  ): { score: string; count: number | null } => {
+    if (!scores || !activeDiseaseAreaId) return { score: '—', count: null };
+    const daScore = scores.find((s) => s.diseaseArea.id === activeDiseaseAreaId);
+    if (!daScore) return { score: '—', count: null };
+    const value = daScore[scoreKey as keyof DiseaseAreaScore];
+    const count = countKey ? (daScore[countKey as keyof DiseaseAreaScore] as number | undefined) : null;
+    if (value === null || value === undefined) return { score: '—', count: count ?? null };
+    return { score: Number(value).toFixed(1), count: count ?? null };
   };
 
   const handleSearch = () => {
     setFilters((prev) => ({ ...prev, query: searchQuery, page: 1 }));
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSearch();
     }
   };
 
-  const visibleSegmentColumns = SEGMENT_COLUMNS.filter(col => visibleColumns.has(col.key));
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab as 'overview' | 'survey');
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === 'survey') {
+      params.set('tab', 'survey');
+    } else {
+      params.delete('tab');
+    }
+    router.push(`/admin/hcps/scores?${params.toString()}`);
+  };
+
+  const selectedDiseaseArea = diseaseAreas.find(da => da.id === activeDiseaseAreaId);
 
   return (
     <div className="p-6 lg:p-8 fade-in">
-      {/* Page Header with Inline Stats */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div className="flex items-center gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-3 mb-1">
@@ -144,54 +189,63 @@ export default function HcpScoresPage() {
               </Link>
             </div>
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">HCP Scores</h1>
-            <p className="text-muted-foreground text-sm mt-0.5">Segment & sociometric scores</p>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              {activeTab === 'overview' ? 'Segment scores by disease area' : 'Nomination scores from survey responses'}
+            </p>
           </div>
-          {/* Inline Stats Badges */}
+          {/* Inline Stats */}
           {!isLoading && pagination && (
             <div className="flex items-center gap-3 ml-4">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
-                <BarChart3 className="w-4 h-4 text-primary" />
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
+                activeTab === 'survey'
+                  ? 'bg-amber-500/10 border-amber-500/20'
+                  : 'bg-primary/10 border-primary/20'
+              }`}>
+                <BarChart3 className={`w-4 h-4 ${activeTab === 'survey' ? 'text-amber-600' : 'text-primary'}`} />
                 <span className="text-sm font-medium">{pagination.total.toLocaleString()} HCPs</span>
               </div>
             </div>
           )}
         </div>
-        <div className="flex gap-2">
-          {/* Column Selector */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Settings2 className="w-4 h-4 mr-2" />
-                Columns ({visibleColumns.size})
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-64" align="end">
-              <div className="p-2 space-y-1">
-                <p className="text-sm font-medium mb-3 px-2">Show Columns</p>
-                {SEGMENT_COLUMNS.map((col) => (
-                  <label
-                    key={col.key}
-                    className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={visibleColumns.has(col.key)}
-                      onCheckedChange={() => toggleColumn(col.key)}
-                    />
-                    <span className="text-sm">{col.label}</span>
-                  </label>
-                ))}
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Import Scores
-          </Button>
-        </div>
+        <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+          <Upload className="w-4 h-4 mr-2" />
+          Import {activeTab === 'survey' ? 'Survey' : 'Segment'} Scores
+        </Button>
       </div>
 
-      {/* Search and Filters */}
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6">
+        <TabsList>
+          <TabsTrigger value="overview" className="gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="survey" className="gap-2">
+            <ClipboardList className="w-4 h-4" />
+            Survey Scores
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Disease Area Selector + Search and Filters */}
       <div className="flex flex-col md:flex-row gap-4 mb-6">
+        {/* Disease Area Selector - Primary Filter */}
+        <Select
+          value={activeDiseaseAreaId || ''}
+          onValueChange={(value) => setSelectedDiseaseAreaId(value)}
+        >
+          <SelectTrigger className={`w-56 bg-card ${activeTab === 'survey' ? 'border-amber-500/30' : 'border-primary/30'}`}>
+            <SelectValue placeholder="Select Disease Area" />
+          </SelectTrigger>
+          <SelectContent>
+            {diseaseAreas.map((da) => (
+              <SelectItem key={da.id} value={da.id}>
+                {da.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <div className="flex-1 flex gap-2">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -199,7 +253,7 @@ export default function HcpScoresPage() {
               placeholder="Search by NPI or name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               className="pl-9"
             />
           </div>
@@ -257,6 +311,13 @@ export default function HcpScoresPage() {
         </div>
       </div>
 
+      {/* Show selected disease area name */}
+      {selectedDiseaseArea && (
+        <div className="mb-4 text-sm text-muted-foreground">
+          Showing {activeTab === 'survey' ? 'survey ' : ''}scores for: <span className="font-medium text-foreground">{selectedDiseaseArea.name}</span>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="bg-card rounded-xl border border-border/60 overflow-hidden">
           <div className="p-4 border-b border-border/60">
@@ -287,6 +348,16 @@ export default function HcpScoresPage() {
             </Button>
           </CardContent>
         </Card>
+      ) : !activeDiseaseAreaId ? (
+        <div className="bg-card rounded-xl border border-border/60 p-12 text-center">
+          <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+            <BarChart3 className="w-8 h-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium mb-2">Select a Disease Area</h3>
+          <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+            Choose a disease area from the dropdown above to view HCP scores.
+          </p>
+        </div>
       ) : hcps.length === 0 ? (
         <div className="bg-card rounded-xl border border-border/60 p-12 text-center">
           <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
@@ -296,6 +367,8 @@ export default function HcpScoresPage() {
           <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
             {filters.query || filters.specialty || filters.state
               ? 'Try adjusting your search filters.'
+              : activeTab === 'survey'
+              ? 'Survey scores will appear here after surveys are completed.'
               : 'Import segment scores using the Import Scores button above.'}
           </p>
         </div>
@@ -309,11 +382,26 @@ export default function HcpScoresPage() {
                   <TableHead className="whitespace-nowrap">Name</TableHead>
                   <TableHead className="whitespace-nowrap">Specialty</TableHead>
                   <TableHead className="whitespace-nowrap">Location</TableHead>
-                  {visibleSegmentColumns.map((col) => (
-                    <TableHead key={col.key} className="text-center whitespace-nowrap min-w-[70px]">
-                      {col.shortLabel}
-                    </TableHead>
-                  ))}
+                  {/* Score columns based on active tab */}
+                  {activeTab === 'overview' ? (
+                    OVERVIEW_SCORE_COLUMNS.map((col) => (
+                      <TableHead
+                        key={col.key}
+                        className="text-center whitespace-nowrap min-w-[80px]"
+                      >
+                        {col.label}
+                      </TableHead>
+                    ))
+                  ) : (
+                    SURVEY_SCORE_COLUMNS.map((col) => (
+                      <TableHead
+                        key={col.key}
+                        className="text-center whitespace-nowrap min-w-[100px]"
+                      >
+                        {col.label}
+                      </TableHead>
+                    ))
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -354,28 +442,69 @@ export default function HcpScoresPage() {
                         ? `${hcp.city}, ${hcp.state}`
                         : hcp.state || '—'}
                     </TableCell>
-                    {visibleSegmentColumns.map((col) => {
-                      const scoreStr = getScoreValue(hcp.diseaseAreaScores as DiseaseAreaScore[] | undefined, col.key);
-                      const hasScore = scoreStr !== '—';
-                      return (
-                        <TableCell
-                          key={col.key}
-                          className={`text-center ${hasScore ? 'font-medium' : 'text-muted-foreground'}`}
-                        >
-                          {hasScore ? (
-                            <span className={`inline-flex items-center justify-center min-w-[40px] px-2 py-0.5 rounded ${
-                              col.key === 'compositeScore'
-                                ? 'bg-emerald-500/10 text-emerald-600'
-                                : 'bg-primary/10 text-primary'
-                            }`}>
-                              {scoreStr}
-                            </span>
-                          ) : (
-                            scoreStr
-                          )}
-                        </TableCell>
-                      );
-                    })}
+                    {/* Score values based on active tab */}
+                    {activeTab === 'overview' ? (
+                      OVERVIEW_SCORE_COLUMNS.map((col) => {
+                        const scoreStr = getOverviewScoreValue(hcp.diseaseAreaScores as DiseaseAreaScore[] | undefined, col.key);
+                        const hasScore = scoreStr !== '—';
+                        return (
+                          <TableCell
+                            key={col.key}
+                            className={`text-center ${hasScore ? 'font-medium' : 'text-muted-foreground'}`}
+                          >
+                            {hasScore ? (
+                              <span className={`inline-flex items-center justify-center min-w-[40px] px-2 py-0.5 rounded ${
+                                col.key === 'compositeScore'
+                                  ? 'bg-emerald-500/10 text-emerald-600'
+                                  : col.key === 'scoreSurvey'
+                                  ? 'bg-amber-500/10 text-amber-600'
+                                  : 'bg-primary/10 text-primary'
+                              }`}>
+                                {scoreStr}
+                              </span>
+                            ) : (
+                              scoreStr
+                            )}
+                          </TableCell>
+                        );
+                      })
+                    ) : (
+                      SURVEY_SCORE_COLUMNS.map((col) => {
+                        const { score, count } = getSurveyScoreValue(
+                          hcp.diseaseAreaScores as DiseaseAreaScore[] | undefined,
+                          col.key,
+                          col.countKey
+                        );
+                        const hasScore = score !== '—';
+                        return (
+                          <TableCell
+                            key={col.key}
+                            className={`text-center ${hasScore ? 'font-medium' : 'text-muted-foreground'}`}
+                          >
+                            {hasScore ? (
+                              <div className="flex flex-col items-center">
+                                <span className={`inline-flex items-center justify-center min-w-[40px] px-2 py-0.5 rounded ${
+                                  col.key === 'compositeScore'
+                                    ? 'bg-emerald-500/10 text-emerald-600'
+                                    : col.key === 'scoreSurvey'
+                                    ? 'bg-amber-500/10 text-amber-600'
+                                    : 'bg-primary/10 text-primary'
+                                }`}>
+                                  {score}
+                                </span>
+                                {count !== null && count > 0 && (
+                                  <span className="text-xs text-muted-foreground mt-0.5">
+                                    ({count})
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              score
+                            )}
+                          </TableCell>
+                        );
+                      })
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -416,7 +545,11 @@ export default function HcpScoresPage() {
         </>
       )}
 
-      <SegmentScoreImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
+      <SegmentScoreImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        scoreType={activeTab === 'survey' ? 'survey' : 'segment'}
+      />
     </div>
   );
 }
