@@ -60,3 +60,6 @@ tech-spec/pdf/
 *.tsbuildinfo
 apps/api/lambda.zip
 apps/api/lambda-bundle/
+
+# Deprecated folders
+bioexec/

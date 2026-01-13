@@ -711,11 +711,12 @@ enum QuestionType {
 
 // Nomination types for categorizing HCP nominations
 enum NominationType {
-  NATIONAL_KOL       // Nationally recognized thought leader
+  DISCUSSION_LEADERS // Discussion Leaders in the field
+  REFERRAL_LEADERS   // Referral Leaders / trusted colleagues
+  ADVICE_LEADERS     // Advice Leaders for clinical guidance
+  NATIONAL_LEADER    // National KOL / thought leader
   RISING_STAR        // Emerging/up-and-coming KOL
-  REGIONAL_EXPERT    // Regional/local expert
-  DIGITAL_INFLUENCER // Social media/digital presence
-  CLINICAL_EXPERT    // Clinical trial/research expert
+  SOCIAL_LEADER      // Social media / digital influencer
 }
 
 enum ActorType {
