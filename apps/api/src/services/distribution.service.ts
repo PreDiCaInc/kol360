@@ -172,6 +172,7 @@ export class DistributionService {
     const completed = statusCounts['COMPLETED'] || 0;
     const opened = statusCounts['OPENED'] || 0;
     const inProgress = statusCounts['IN_PROGRESS'] || 0;
+    const recentlySurveyed = statusCounts['RECENTLY_SURVEYED'] || 0;
 
     return {
       total,
@@ -180,6 +181,7 @@ export class DistributionService {
       opened,
       inProgress,
       completed,
+      recentlySurveyed,
       optedOut,
       completionRate: invited > 0 ? Math.round((completed / invited) * 100) : 0,
     };
