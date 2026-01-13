@@ -672,6 +672,7 @@ enum SurveyResponseStatus {
   IN_PROGRESS
   COMPLETED
   EXCLUDED
+  RECENTLY_SURVEYED  // HCP completed survey for same disease area within past year
 }
 
 enum NominationMatchStatus {

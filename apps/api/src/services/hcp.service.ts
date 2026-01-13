@@ -59,6 +59,8 @@ export class HcpService {
               scoreConference: true,
               scoreSocialMedia: true,
               scoreMediaPodcasts: true,
+              scoreSurvey: true,
+              totalNominationCount: true,
               diseaseArea: { select: { id: true, name: true, code: true } },
             },
           },

@@ -43,6 +43,9 @@ interface BulkSendResult {
   sent: number;
   failed: number;
   skipped: number;
+  skippedNoEmail?: number;
+  skippedOptedOut?: number;
+  skippedRecentlySurveyed?: number;
   skippedCompleted?: number;
   skippedRecentlyReminded?: number;
   skippedMaxReminders?: number;
@@ -449,6 +452,7 @@ BioExec Research | Confidential KOL Survey
       select: {
         name: true,
         status: true,
+        diseaseAreaId: true,
         honorariumAmount: true,
         invitationEmailSubject: true,
         invitationEmailBody: true,
@@ -481,19 +485,160 @@ BioExec Research | Confidential KOL Survey
       },
     });
 
+    // Check for HCPs who completed a survey for the same disease area in the past year
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    const hcpIds = uninvitedHcps.map(ch => ch.hcpId);
+    const recentlyCompletedSurveys = await prisma.surveyResponse.findMany({
+      where: {
+        respondentHcpId: { in: hcpIds },
+        status: 'COMPLETED',
+        completedAt: { gte: oneYearAgo },
+        campaign: {
+          diseaseAreaId: campaign.diseaseAreaId,
+          id: { not: campaignId }, // Exclude current campaign
+        },
+      },
+      select: {
+        respondentHcpId: true,
+        completedAt: true,
+        campaign: { select: { name: true } },
+      },
+    });
+
+    const recentlySurveyedHcpIds = new Set(recentlyCompletedSurveys.map(r => r.respondentHcpId));
+
+    // Check for opt-outs
+    const optOuts = await prisma.optOut.findMany({
+      where: {
+        email: { in: uninvitedHcps.filter(ch => ch.hcp.email).map(ch => ch.hcp.email!) },
+        resubscribedAt: null,
+        OR: [
+          { scope: 'GLOBAL' },
+          { scope: 'CAMPAIGN', campaignId },
+        ],
+      },
+      select: { email: true },
+    });
+    const optedOutEmails = new Set(optOuts.map(o => o.email.toLowerCase()));
+
     const result: BulkSendResult = {
       sent: 0,
       failed: 0,
       skipped: 0,
+      skippedNoEmail: 0,
+      skippedOptedOut: 0,
+      skippedRecentlySurveyed: 0,
       errors: [],
     };
 
     for (const campaignHcp of uninvitedHcps) {
       const { hcp, surveyToken } = campaignHcp;
 
+      // Check: No email
       if (!hcp.email) {
         result.skipped++;
+        result.skippedNoEmail = (result.skippedNoEmail || 0) + 1;
         result.errors.push({ email: 'N/A', error: `HCP ${hcp.firstName} ${hcp.lastName} has no email` });
+        continue;
+      }
+
+      // Check: Opted out
+      if (optedOutEmails.has(hcp.email.toLowerCase())) {
+        result.skipped++;
+        result.skippedOptedOut = (result.skippedOptedOut || 0) + 1;
+        result.errors.push({ email: hcp.email, error: 'Opted out' });
+        continue;
+      }
+
+      // Check: Recently surveyed in same disease area
+      if (recentlySurveyedHcpIds.has(hcp.id)) {
+        result.skipped++;
+        result.skippedRecentlySurveyed = (result.skippedRecentlySurveyed || 0) + 1;
+
+        // Find the most recent completed survey for this HCP in same disease area
+        const previousSurvey = recentlyCompletedSurveys.find(r => r.respondentHcpId === hcp.id);
+
+        // Create a SurveyResponse with RECENTLY_SURVEYED status
+        await prisma.surveyResponse.upsert({
+          where: {
+            surveyToken: surveyToken,
+          },
+          create: {
+            campaignId,
+            respondentHcpId: hcp.id,
+            surveyToken,
+            status: 'RECENTLY_SURVEYED',
+            completedAt: previousSurvey?.completedAt, // Carry over completion date for reference
+          },
+          update: {
+            status: 'RECENTLY_SURVEYED',
+            completedAt: previousSurvey?.completedAt,
+          },
+        });
+
+        // Copy HcpCampaignScore from the previous campaign to current campaign
+        const previousCampaignScore = await prisma.hcpCampaignScore.findFirst({
+          where: {
+            hcpId: hcp.id,
+            campaign: {
+              diseaseAreaId: campaign.diseaseAreaId,
+              id: { not: campaignId },
+            },
+            scoreSurvey: { not: null },
+          },
+          orderBy: { calculatedAt: 'desc' },
+        });
+
+        if (previousCampaignScore) {
+          // Copy the scores to the current campaign
+          await prisma.hcpCampaignScore.upsert({
+            where: {
+              hcpId_campaignId: { hcpId: hcp.id, campaignId },
+            },
+            create: {
+              hcpId: hcp.id,
+              campaignId,
+              scoreDiscussionLeaders: previousCampaignScore.scoreDiscussionLeaders,
+              countDiscussionLeaders: previousCampaignScore.countDiscussionLeaders,
+              scoreReferralLeaders: previousCampaignScore.scoreReferralLeaders,
+              countReferralLeaders: previousCampaignScore.countReferralLeaders,
+              scoreAdviceLeaders: previousCampaignScore.scoreAdviceLeaders,
+              countAdviceLeaders: previousCampaignScore.countAdviceLeaders,
+              scoreNationalLeader: previousCampaignScore.scoreNationalLeader,
+              countNationalLeader: previousCampaignScore.countNationalLeader,
+              scoreRisingStar: previousCampaignScore.scoreRisingStar,
+              countRisingStar: previousCampaignScore.countRisingStar,
+              scoreSocialLeader: previousCampaignScore.scoreSocialLeader,
+              countSocialLeader: previousCampaignScore.countSocialLeader,
+              scoreSurvey: previousCampaignScore.scoreSurvey,
+              nominationCount: previousCampaignScore.nominationCount,
+              compositeScore: previousCampaignScore.compositeScore,
+              calculatedAt: previousCampaignScore.calculatedAt,
+            },
+            update: {
+              scoreDiscussionLeaders: previousCampaignScore.scoreDiscussionLeaders,
+              countDiscussionLeaders: previousCampaignScore.countDiscussionLeaders,
+              scoreReferralLeaders: previousCampaignScore.scoreReferralLeaders,
+              countReferralLeaders: previousCampaignScore.countReferralLeaders,
+              scoreAdviceLeaders: previousCampaignScore.scoreAdviceLeaders,
+              countAdviceLeaders: previousCampaignScore.countAdviceLeaders,
+              scoreNationalLeader: previousCampaignScore.scoreNationalLeader,
+              countNationalLeader: previousCampaignScore.countNationalLeader,
+              scoreRisingStar: previousCampaignScore.scoreRisingStar,
+              countRisingStar: previousCampaignScore.countRisingStar,
+              scoreSocialLeader: previousCampaignScore.scoreSocialLeader,
+              countSocialLeader: previousCampaignScore.countSocialLeader,
+              scoreSurvey: previousCampaignScore.scoreSurvey,
+              nominationCount: previousCampaignScore.nominationCount,
+              compositeScore: previousCampaignScore.compositeScore,
+              calculatedAt: previousCampaignScore.calculatedAt,
+            },
+          });
+        }
+
+        result.errors.push({ email: hcp.email, error: 'Recently surveyed in same disease area - scores copied' });
         continue;
       }
 
