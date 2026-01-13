@@ -18,10 +18,9 @@ git checkout dev
 git add . && git commit -m "Your message"
 git push origin dev
 
-# 3. When ready to deploy to AWS, merge to main
-git checkout main
-git merge dev
-git push origin main
+# 3. When ready to deploy to AWS, create a PR (do NOT merge locally)
+gh pr create --base main --head dev --title "Your PR title" --body "Description"
+# Then merge the PR on GitHub (or use: gh pr merge --merge)
 # App Runner will auto-deploy both web and api services
 ```
 
@@ -29,6 +28,7 @@ git push origin main
 - Use the bioexec folder (deprecated)
 - Use rsync (deprecated)
 - Make changes directly on main branch
+- Merge dev to main locally (always use a PR)
 
 ## Before Starting Any Work
 
@@ -60,9 +60,24 @@ If not running, start them:
 
 ## AWS Deployment
 
-- **App Runner API**: Profile `koluser`, Region `us-east-2`, auto-deploys from PreDiCa/kol360 main
-- **App Runner Web**: Profile `koluser`, Region `us-east-2`, auto-deploys from PreDiCa/kol360 main
-- **Database**: RDS PostgreSQL via SSH tunnel through bastion (3.142.171.8)
+**AWS Profile:** `koluser`, **Region:** `us-east-2`
+
+**App Runner Services (auto-deploy from PreDiCa/kol360 main):**
+- **kol360-api**
+  - Service ARN: `arn:aws:apprunner:us-east-2:163859990568:service/kol360-api/7eb09ba9317d46d681d004d999663ffd`
+  - URL: `https://ik6dmnn2ra.us-east-2.awsapprunner.com`
+  - GitHub Connection: `kol360-predica-git`
+- **kol360-web**
+  - Service ARN: `arn:aws:apprunner:us-east-2:163859990568:service/kol360-web/9fe5595685ad4ab89cdb29333ab1f5f6`
+  - URL: `https://y6empq5whm.us-east-2.awsapprunner.com`
+  - GitHub Connection: `kol360-predica-git`
+
+**Database:** RDS PostgreSQL via SSH tunnel through bastion (3.142.171.8)
+
+**Cognito:**
+- User Pool ID: `us-east-2_63CJVTAV9`
+- Client ID: `7tqkritsrh3dgmaj6oq8va46vj`
+- Region: `us-east-2`
 
 ## Key Files
 

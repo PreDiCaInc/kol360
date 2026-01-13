@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   useNominations,
@@ -13,7 +13,7 @@ import {
   useBulkAutoMatch,
   useUpdateNominationRawName,
 } from '@/hooks/use-nominations';
-import { useCampaign } from '@/hooks/use-campaigns';
+import { useCampaign, useCloseCampaign } from '@/hooks/use-campaigns';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -63,7 +63,18 @@ import {
   Pencil,
   HelpCircle,
   X,
+  ChevronRight,
 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const STATUS_COLORS: Record<string, string> = {
   UNMATCHED: 'bg-yellow-100 text-yellow-700',
@@ -82,6 +93,7 @@ const MATCH_TYPE_LABELS: Record<string, string> = {
 
 export default function NominationsPage() {
   const params = useParams();
+  const router = useRouter();
   const campaignId = params.id as string;
 
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -96,8 +108,10 @@ export default function NominationsPage() {
     errors: string[];
   } | null>(null);
   const [showHelp, setShowHelp] = useState(true);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const { data: campaign } = useCampaign(campaignId);
+  const closeCampaign = useCloseCampaign();
   const { data: nominations, isLoading } = useNominations(campaignId, {
     status: statusFilter || undefined,
     page,
@@ -116,15 +130,29 @@ export default function NominationsPage() {
     }
   };
 
+  const handleCloseSurvey = async () => {
+    try {
+      await closeCampaign.mutateAsync(campaignId);
+      setShowCloseConfirm(false);
+      router.push(`/admin/campaigns/${campaignId}/scores`);
+    } catch (error) {
+      console.error('Failed to close campaign:', error);
+    }
+  };
+
   const totalNominations = stats
     ? Object.values(stats).reduce((a, b) => a + b, 0)
     : 0;
   const matchedCount = (stats?.MATCHED || 0) + (stats?.NEW_HCP || 0);
   const excludedCount = stats?.EXCLUDED || 0;
-  const reviewCount = stats?.REVIEW_NEEDED || 0;
+  const unresolvedCount = (stats?.UNMATCHED || 0) + (stats?.REVIEW_NEEDED || 0);
   // Progress includes matched, new HCP, and excluded (all are "resolved")
   const resolvedCount = matchedCount + excludedCount;
   const progress = totalNominations > 0 ? Math.round((resolvedCount / totalNominations) * 100) : 0;
+
+  // Check if all nominations are resolved and campaign is still ACTIVE
+  const allResolved = totalNominations > 0 && unresolvedCount === 0;
+  const canCloseSurvey = allResolved && campaign?.status === 'ACTIVE';
 
   return (
     <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
@@ -177,6 +205,29 @@ export default function NominationsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Completion Banner - Show when all nominations are resolved */}
+        {canCloseSurvey && (
+          <Card className="border-green-200 bg-green-50">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="w-6 h-6 text-green-600" />
+                  <div>
+                    <h4 className="font-medium text-green-900">All nominations reviewed!</h4>
+                    <p className="text-sm text-green-700">
+                      {matchedCount} matched, {excludedCount} excluded. Ready to close survey and calculate scores.
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={() => setShowCloseConfirm(true)}>
+                  Close Survey & Continue
+                  <ChevronRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats */}
         {stats && (
@@ -561,6 +612,31 @@ export default function NominationsPage() {
             </DialogContent>
           </Dialog>
         )}
+
+        {/* Close Survey Confirmation Dialog */}
+        <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Close Survey & Calculate Scores</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will close the survey for new responses and proceed to score calculation.
+                You can reopen the survey later if needed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleCloseSurvey}
+                disabled={closeCampaign.isPending}
+              >
+                {closeCampaign.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : null}
+                Close Survey & Continue
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </RequireAuth>
   );
