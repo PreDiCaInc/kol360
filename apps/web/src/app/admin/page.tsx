@@ -1,22 +1,140 @@
 'use client';
 
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { usePlatformStats } from '@/hooks/use-dashboards';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Building2, 
-  Users, 
-  BarChart3, 
-  Stethoscope, 
-  TrendingUp, 
-  Activity, 
-  FileText, 
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Building2,
+  Users,
+  BarChart3,
+  Stethoscope,
+  TrendingUp,
+  Activity,
+  FileText,
   ClipboardList,
   ArrowUpRight,
   ArrowRight,
   Sparkles,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
+
+interface HealthCheck {
+  name: string;
+  status: 'ok' | 'error';
+  latency_ms?: number;
+  error?: string;
+}
+
+interface HealthStatus {
+  status: 'ok' | 'degraded' | 'error';
+  checks: HealthCheck[];
+}
+
+function SystemStatus() {
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHealth = async () => {
+      try {
+        const response = await fetch('/api/health/status');
+        const data = await response.json();
+        setHealth(data);
+      } catch {
+        setHealth({ status: 'error', checks: [{ name: 'Frontend', status: 'error', error: 'Failed to check' }] });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHealth();
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchHealth, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const getStatusIcon = () => {
+    if (loading) return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
+    if (!health) return <AlertCircle className="h-4 w-4 text-amber-500" />;
+    if (health.status === 'ok') return <Activity className="h-4 w-4 text-emerald-500" />;
+    if (health.status === 'degraded') return <AlertCircle className="h-4 w-4 text-amber-500" />;
+    return <XCircle className="h-4 w-4 text-red-500" />;
+  };
+
+  const getStatusText = () => {
+    if (loading) return 'Checking systems...';
+    if (!health) return 'Status unknown';
+    if (health.status === 'ok') return 'All systems operational';
+    if (health.status === 'degraded') return 'Some systems degraded';
+    return 'System issues detected';
+  };
+
+  const getStatusColor = () => {
+    if (loading || !health) return 'text-muted-foreground';
+    if (health.status === 'ok') return 'text-emerald-600 dark:text-emerald-400';
+    if (health.status === 'degraded') return 'text-amber-600 dark:text-amber-400';
+    return 'text-red-600 dark:text-red-400';
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button className={`flex items-center gap-2 text-sm ${getStatusColor()} hover:opacity-80 transition-opacity cursor-pointer`}>
+          {getStatusIcon()}
+          <span>{getStatusText()}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-0">
+        <div className="px-4 py-3 border-b">
+          <h4 className="font-medium text-sm">System Status</h4>
+          <p className="text-xs text-muted-foreground mt-0.5">Real-time health checks</p>
+        </div>
+        <div className="p-2">
+          {loading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : health?.checks ? (
+            <div className="space-y-1">
+              {health.checks.map((check) => (
+                <div
+                  key={check.name}
+                  className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-muted/50"
+                >
+                  <div className="flex items-center gap-2">
+                    {check.status === 'ok' ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-red-500" />
+                    )}
+                    <span className="text-sm">{check.name}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {check.status === 'ok' && check.latency_ms
+                      ? `${check.latency_ms}ms`
+                      : check.error || (check.status === 'ok' ? 'OK' : 'Error')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">Unable to fetch status</p>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 interface StatCardProps {
   title: string;
@@ -128,10 +246,7 @@ export default function AdminDashboard() {
               Here&apos;s an overview of your KOL assessment activities
             </p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Activity className="h-4 w-4 text-emerald-500" />
-            <span>All systems operational</span>
-          </div>
+          <SystemStatus />
         </div>
       </div>
 
