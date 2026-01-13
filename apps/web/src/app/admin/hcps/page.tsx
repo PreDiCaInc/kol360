@@ -24,7 +24,7 @@ import {
 import { HcpImportDialog } from '@/components/hcps/hcp-import-dialog';
 import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
-import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3 } from 'lucide-react';
+import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 // Helper to get specialty display name
@@ -71,6 +71,50 @@ export default function HcpsPage() {
     }
   };
 
+  const handleExport = () => {
+    if (!hcps.length) return;
+
+    // Build CSV content
+    const headers = ['NPI', 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-Specialty', 'City', 'State', 'Aliases', 'Campaigns'];
+    const rows = hcps.map((hcp) => {
+      const specialties = getSpecialtyDisplay(hcp);
+      return [
+        hcp.npi,
+        hcp.firstName,
+        hcp.lastName,
+        hcp.email || '',
+        specialties.join('; '),
+        hcp.subSpecialty || '',
+        hcp.city || '',
+        hcp.state || '',
+        hcp.aliases.map((a) => a.aliasName).join('; '),
+        hcp._count?.campaignHcps || 0,
+      ];
+    });
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) =>
+        row.map((cell) => {
+          const str = String(cell);
+          // Escape quotes and wrap in quotes if contains comma or quote
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        }).join(',')
+      ),
+    ].join('\n');
+
+    // Download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `hcps-export-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   return (
     <div className="p-6 lg:p-8 fade-in">
       {/* Page Header */}
@@ -86,6 +130,10 @@ export default function HcpsPage() {
               View Scores
             </Button>
           </Link>
+          <Button variant="outline" onClick={handleExport} disabled={hcps.length === 0}>
+            <Download className="w-4 h-4 mr-2" />
+            Export
+          </Button>
           <Button variant="outline" onClick={() => setShowImportDialog(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Import HCPs
