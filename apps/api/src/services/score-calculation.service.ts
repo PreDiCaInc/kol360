@@ -293,12 +293,31 @@ export class ScoreCalculationService {
   async publishScores(campaignId: string, _publishedBy: string): Promise<{ processed: number }> {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      include: { diseaseArea: true },
+      include: {
+        diseaseArea: true,
+        compositeScoreConfig: true,
+      },
     });
 
     if (!campaign) {
       throw new Error('Campaign not found');
     }
+
+    // Get weights from campaign config or use defaults
+    const weights = campaign.compositeScoreConfig || {
+      weightPublications: 10,
+      weightClinicalTrials: 15,
+      weightTradePubs: 10,
+      weightOrgLeadership: 10,
+      weightOrgAwareness: 10,
+      weightConference: 10,
+      weightSocialMedia: 5,
+      weightMediaPodcasts: 5,
+      weightSurvey: 25,
+    };
+
+    // Helper to safely get number from Decimal or null
+    const toNum = (val: unknown): number => val ? Number(val) : 0;
 
     // Get all campaign scores
     const campaignScores = await prisma.hcpCampaignScore.findMany({
@@ -346,6 +365,18 @@ export class ScoreCalculationService {
             ) / allCampaignScores.length
           : Number(score.scoreSurvey || 0);
 
+        // Calculate composite score using weights
+        const compositeScore =
+          (toNum(currentDaScore.scorePublications) * toNum(weights.weightPublications) / 100) +
+          (toNum(currentDaScore.scoreClinicalTrials) * toNum(weights.weightClinicalTrials) / 100) +
+          (toNum(currentDaScore.scoreTradePubs) * toNum(weights.weightTradePubs) / 100) +
+          (toNum(currentDaScore.scoreOrgLeadership) * toNum(weights.weightOrgLeadership) / 100) +
+          (toNum(currentDaScore.scoreOrgAwareness) * toNum(weights.weightOrgAwareness) / 100) +
+          (toNum(currentDaScore.scoreConference) * toNum(weights.weightConference) / 100) +
+          (toNum(currentDaScore.scoreSocialMedia) * toNum(weights.weightSocialMedia) / 100) +
+          (toNum(currentDaScore.scoreMediaPodcasts) * toNum(weights.weightMediaPodcasts) / 100) +
+          (toNum(avgSurveyScore) * toNum(weights.weightSurvey) / 100);
+
         await prisma.hcpDiseaseAreaScore.create({
           data: {
             hcpId: score.hcpId,
@@ -363,8 +394,8 @@ export class ScoreCalculationService {
             scoreSurvey: avgSurveyScore,
             totalNominationCount: currentDaScore.totalNominationCount + score.nominationCount,
             campaignCount: currentDaScore.campaignCount + 1,
-            // Recalculate composite (would need weights - use default or campaign-specific)
-            compositeScore: currentDaScore.compositeScore, // TODO: recalculate
+            // Calculated composite score
+            compositeScore,
             isCurrent: true,
             effectiveFrom: now,
             lastCalculatedAt: now,
@@ -372,6 +403,9 @@ export class ScoreCalculationService {
         });
       } else {
         // No existing disease area score - create first record
+        // Calculate composite with just survey score (no segment scores yet)
+        const compositeScore = toNum(score.scoreSurvey) * toNum(weights.weightSurvey) / 100;
+
         await prisma.hcpDiseaseAreaScore.create({
           data: {
             hcpId: score.hcpId,
@@ -379,6 +413,7 @@ export class ScoreCalculationService {
             scoreSurvey: score.scoreSurvey,
             totalNominationCount: score.nominationCount,
             campaignCount: 1,
+            compositeScore,
             isCurrent: true,
             effectiveFrom: now,
             lastCalculatedAt: now,
