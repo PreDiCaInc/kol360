@@ -91,3 +91,106 @@ If not running, start them:
 - **Do NOT include** the "🤖 Generated with [Claude Code]" line in commit messages
 - **Do NOT include** the "Co-Authored-By: Claude" line in commit messages
 - Keep commit messages concise and descriptive of the actual changes
+
+## Change Management Process (CRITICAL)
+
+### Before Making ANY Changes
+1. Run `git status` to see current state
+2. Run `git diff` to review any uncommitted changes
+3. If there are uncommitted changes, decide: commit them first or stash them
+
+### Database Schema Changes (Prisma)
+Database changes require coordinated updates across multiple files. **NEVER** change just one without the others:
+
+1. **schema.prisma** - The Prisma schema definition
+2. **Shared schemas** - Zod schemas in `packages/shared/src/schemas/`
+3. **Service files** - Any services using the changed models
+4. **API routes** - Routes that use the changed data
+
+**Process for DB changes:**
+```bash
+# 1. Update schema.prisma with new columns/enums/models
+# 2. Generate Prisma client to verify
+cd apps/api && npx prisma generate
+
+# 3. Update shared Zod schemas to match
+# 4. Update any service files using the models
+# 5. Build to verify no type errors
+pnpm --filter @kol360/api build
+
+# 6. If schema changes actual DB structure, create migration
+npx prisma migrate dev --name descriptive_name
+
+# 7. Commit ALL related files together
+git add apps/api/prisma/schema.prisma packages/shared/src/schemas/*.ts apps/api/src/services/*.ts
+git commit -m "Add new field X - schema, types, and services"
+```
+
+### Before Creating a PR
+**ALWAYS run this checklist:**
+```bash
+# 1. Check ALL modified files (not just staged)
+git status
+
+# 2. Review what's being committed
+git diff --cached
+
+# 3. Review what's NOT being committed (might be forgotten)
+git diff
+
+# 4. Build both packages to catch type errors
+pnpm --filter @kol360/shared build
+pnpm --filter @kol360/api build
+pnpm --filter @kol360/web build
+
+# 5. Only after all builds pass, push and create PR
+```
+
+### After PR is Merged
+1. Check App Runner deployment status
+2. If deployment fails, check CloudWatch logs:
+   ```bash
+   aws logs filter-log-events \
+     --log-group-name "/aws/apprunner/kol360-api/7eb09ba9317d46d681d004d999663ffd/service" \
+     --start-time $(( $(date +%s) - 600 ))000 \
+     --region us-east-2 --profile koluser \
+     --query 'events[*].message' --output text | tail -50
+   ```
+
+### Common Mistakes to Avoid
+- ❌ Changing database via direct SQL without updating schema.prisma
+- ❌ Updating schema.prisma without updating shared Zod schemas
+- ❌ Committing only some files from a related set of changes
+- ❌ Creating PR without running builds locally first
+- ❌ Assuming changes from previous sessions are committed
+
+### Session Start Checklist
+At the START of every session, Claude should:
+```bash
+# 1. Check for uncommitted changes from previous sessions
+git status
+
+# 2. If there are uncommitted changes, LIST them and ASK:
+#    "I found uncommitted changes to X, Y, Z. Should I:
+#     a) Commit these changes first
+#     b) Stash them for later
+#     c) Discard them"
+
+# 3. Never proceed with new work until previous changes are addressed
+```
+
+### Session End Checklist
+Before ending a session or switching tasks:
+```bash
+# 1. Check what's been modified
+git status
+
+# 2. Commit all completed work
+git add <relevant-files>
+git commit -m "Description of changes"
+
+# 3. Push to remote
+git push origin dev
+
+# 4. If work is incomplete, document what's left in a comment or TODO
+```
