@@ -116,7 +116,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
             Import HCPs to Campaign
           </DialogTitle>
           <DialogDescription>
-            Upload an Excel file to add HCPs to this campaign. New HCPs will be created in the central database.
+            Upload an Excel or CSV file to add HCPs to this campaign. New HCPs will be created in the central database.
           </DialogDescription>
         </DialogHeader>
 
