@@ -46,7 +46,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
-    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv'))) {
       setSelectedFile(file);
       setResult(null);
     }
@@ -116,7 +116,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
             Import HCPs to Campaign
           </DialogTitle>
           <DialogDescription>
-            Upload an Excel file to add HCPs to this campaign. New HCPs will be created in the central database.
+            Upload an Excel or CSV file to add HCPs to this campaign. New HCPs will be created in the central database.
           </DialogDescription>
         </DialogHeader>
 
@@ -133,7 +133,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileChange}
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 className="hidden"
               />
               {selectedFile ? (
@@ -149,9 +149,9 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
               ) : (
                 <div>
                   <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-                  <p className="font-medium">Drop Excel file here or click to browse</p>
+                  <p className="font-medium">Drop file here or click to browse</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Supports .xlsx and .xls files
+                    Supports .xlsx, .xls, and .csv files
                   </p>
                 </div>
               )}
