@@ -28,16 +28,18 @@ describe('Question Schemas', () => {
 
   describe('nominationTypeSchema', () => {
     it('should accept valid nomination types', () => {
-      expect(nominationTypeSchema.parse('NATIONAL_KOL')).toBe('NATIONAL_KOL');
+      expect(nominationTypeSchema.parse('DISCUSSION_LEADERS')).toBe('DISCUSSION_LEADERS');
+      expect(nominationTypeSchema.parse('REFERRAL_LEADERS')).toBe('REFERRAL_LEADERS');
+      expect(nominationTypeSchema.parse('ADVICE_LEADERS')).toBe('ADVICE_LEADERS');
+      expect(nominationTypeSchema.parse('NATIONAL_LEADER')).toBe('NATIONAL_LEADER');
       expect(nominationTypeSchema.parse('RISING_STAR')).toBe('RISING_STAR');
-      expect(nominationTypeSchema.parse('REGIONAL_EXPERT')).toBe('REGIONAL_EXPERT');
-      expect(nominationTypeSchema.parse('DIGITAL_INFLUENCER')).toBe('DIGITAL_INFLUENCER');
-      expect(nominationTypeSchema.parse('CLINICAL_EXPERT')).toBe('CLINICAL_EXPERT');
+      expect(nominationTypeSchema.parse('SOCIAL_LEADER')).toBe('SOCIAL_LEADER');
     });
 
     it('should reject invalid nomination types', () => {
       expect(() => nominationTypeSchema.parse('EXPERT')).toThrow();
       expect(() => nominationTypeSchema.parse('')).toThrow();
+      expect(() => nominationTypeSchema.parse('NATIONAL_KOL')).toThrow(); // old type
     });
   });
 
@@ -166,13 +168,13 @@ describe('Question Schemas', () => {
         const question = {
           text: 'Nominate healthcare professionals',
           type: 'MULTI_TEXT',
-          nominationType: 'NATIONAL_KOL',
+          nominationType: 'DISCUSSION_LEADERS',
           minEntries: 3,
           defaultEntries: 5,
         };
 
         const result = createQuestionSchema.parse(question);
-        expect(result.nominationType).toBe('NATIONAL_KOL');
+        expect(result.nominationType).toBe('DISCUSSION_LEADERS');
         expect(result.minEntries).toBe(3);
         expect(result.defaultEntries).toBe(5);
       });
@@ -187,7 +189,7 @@ describe('Question Schemas', () => {
       });
 
       it('should accept all nomination types', () => {
-        const types = ['NATIONAL_KOL', 'RISING_STAR', 'REGIONAL_EXPERT', 'DIGITAL_INFLUENCER', 'CLINICAL_EXPERT'];
+        const types = ['DISCUSSION_LEADERS', 'REFERRAL_LEADERS', 'ADVICE_LEADERS', 'NATIONAL_LEADER', 'RISING_STAR', 'SOCIAL_LEADER'];
 
         types.forEach((type) => {
           const result = createQuestionSchema.parse({
@@ -261,11 +263,12 @@ describe('Question Schemas', () => {
     });
 
     it('should have labels for all nomination types', () => {
-      expect(NOMINATION_TYPE_LABELS.NATIONAL_KOL).toBe('National KOL');
+      expect(NOMINATION_TYPE_LABELS.DISCUSSION_LEADERS).toBe('Discussion Leaders');
+      expect(NOMINATION_TYPE_LABELS.REFERRAL_LEADERS).toBe('Referral Leaders');
+      expect(NOMINATION_TYPE_LABELS.ADVICE_LEADERS).toBe('Advice Leaders');
+      expect(NOMINATION_TYPE_LABELS.NATIONAL_LEADER).toBe('National Leader');
       expect(NOMINATION_TYPE_LABELS.RISING_STAR).toBe('Rising Star');
-      expect(NOMINATION_TYPE_LABELS.REGIONAL_EXPERT).toBe('Regional Expert');
-      expect(NOMINATION_TYPE_LABELS.DIGITAL_INFLUENCER).toBe('Digital Influencer');
-      expect(NOMINATION_TYPE_LABELS.CLINICAL_EXPERT).toBe('Clinical Expert');
+      expect(NOMINATION_TYPE_LABELS.SOCIAL_LEADER).toBe('Social Leader');
     });
   });
 });
