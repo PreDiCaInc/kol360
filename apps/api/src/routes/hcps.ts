@@ -106,7 +106,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     return hcp;
   });
 
-  // Bulk import HCPs from Excel
+  // Bulk import HCPs from Excel or CSV
   fastify.post('/import', async (request, reply) => {
     const file = await request.file();
     if (!file) {
@@ -117,8 +117,17 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    const filename = file.filename.toLowerCase();
+    if (!filename.endsWith('.xlsx') && !filename.endsWith('.xls') && !filename.endsWith('.csv')) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'Unsupported file format. Please use .xlsx, .xls, or .csv files.',
+        statusCode: 400,
+      });
+    }
+
     const buffer = await file.toBuffer();
-    const result = await hcpService.importFromExcel(buffer, request.user!.sub);
+    const result = await hcpService.importFromFile(buffer, request.user!.sub, file.filename);
 
     // Audit log
     await createAuditLog(request.user!.sub, {
@@ -187,7 +196,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // Bulk import aliases from Excel
+  // Bulk import aliases from Excel or CSV
   fastify.post('/aliases/import', async (request, reply) => {
     const file = await request.file();
     if (!file) {
@@ -198,8 +207,17 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    const filename = file.filename.toLowerCase();
+    if (!filename.endsWith('.xlsx') && !filename.endsWith('.xls') && !filename.endsWith('.csv')) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'Unsupported file format. Please use .xlsx, .xls, or .csv files.',
+        statusCode: 400,
+      });
+    }
+
     const buffer = await file.toBuffer();
-    const result = await hcpService.importAliases(buffer, request.user!.sub);
+    const result = await hcpService.importAliases(buffer, request.user!.sub, file.filename);
 
     // Audit log
     await createAuditLog(request.user!.sub, {
@@ -311,7 +329,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // Import segment scores from Excel
+  // Import segment scores from Excel or CSV
   fastify.post('/import-segment-scores', async (request, reply) => {
     const file = await request.file();
     if (!file) {
@@ -322,9 +340,18 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    const filename = file.filename.toLowerCase();
+    if (!filename.endsWith('.xlsx') && !filename.endsWith('.xls') && !filename.endsWith('.csv')) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'Unsupported file format. Please use .xlsx, .xls, or .csv files.',
+        statusCode: 400,
+      });
+    }
+
     const buffer = await file.toBuffer();
     const { diseaseAreaId } = request.query as { diseaseAreaId?: string };
-    const result = await hcpService.importSegmentScores(buffer, diseaseAreaId);
+    const result = await hcpService.importSegmentScores(buffer, diseaseAreaId, file.filename);
 
     // Audit log
     await createAuditLog(request.user!.sub, {

@@ -31,6 +31,7 @@
     "@kol360/shared": "workspace:*",
     "@prisma/client": "^5.14.0",
     "aws-jwt-verify": "^4.0.0",
+    "csv-parse": "^6.1.0",
     "exceljs": "^4.4.0",
     "fastify": "^4.27.0",
     "fastify-plugin": "^4.5.0",

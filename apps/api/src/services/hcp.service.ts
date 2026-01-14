@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import ExcelJS from 'exceljs';
+import { parse as parseCsv } from 'csv-parse/sync';
 import { CreateHcpInput, UpdateHcpInput } from '@kol360/shared';
 
 interface SearchParams {
@@ -119,34 +120,8 @@ export class HcpService {
     return prisma.hcp.update({ where: { id }, data });
   }
 
-  async importFromExcel(buffer: Buffer, userId: string) {
-    const workbook = new ExcelJS.Workbook();
-    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-    await workbook.xlsx.load(arrayBuffer);
-    const sheet = workbook.worksheets[0];
-
-    // Convert worksheet to array of objects with headers
-    const rows: Record<string, unknown>[] = [];
-    const headers: string[] = [];
-
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) {
-        // First row is headers
-        row.eachCell((cell) => {
-          headers.push(String(cell.value || ''));
-        });
-      } else {
-        // Data rows
-        const rowData: Record<string, unknown> = {};
-        row.eachCell((cell, colNumber) => {
-          const header = headers[colNumber - 1];
-          if (header) {
-            rowData[header] = cell.value;
-          }
-        });
-        rows.push(rowData);
-      }
-    });
+  async importFromFile(buffer: Buffer, userId: string, filename: string = 'file.xlsx') {
+    const rows = await this.parseFileToRows(buffer, filename);
 
     const result = { total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
 
@@ -233,32 +208,8 @@ export class HcpService {
     return prisma.hcpAlias.delete({ where: { id: aliasId } });
   }
 
-  async importAliases(buffer: Buffer, userId: string) {
-    const workbook = new ExcelJS.Workbook();
-    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-    await workbook.xlsx.load(arrayBuffer);
-    const sheet = workbook.worksheets[0];
-
-    // Convert worksheet to array of objects with headers
-    const rows: Record<string, unknown>[] = [];
-    const headers: string[] = [];
-
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) {
-        row.eachCell((cell) => {
-          headers.push(String(cell.value || ''));
-        });
-      } else {
-        const rowData: Record<string, unknown> = {};
-        row.eachCell((cell, colNumber) => {
-          const header = headers[colNumber - 1];
-          if (header) {
-            rowData[header] = cell.value;
-          }
-        });
-        rows.push(rowData);
-      }
-    });
+  async importAliases(buffer: Buffer, userId: string, filename: string = 'file.xlsx') {
+    const rows = await this.parseFileToRows(buffer, filename);
 
     const result = { total: rows.length, created: 0, skipped: 0, errors: [] as { row: number; error: string }[] };
 
@@ -381,33 +332,10 @@ export class HcpService {
     return results.map((r: { state: string | null }) => r.state).filter(Boolean);
   }
 
-  // Import segment scores from Excel
-  async importSegmentScores(buffer: Buffer, diseaseAreaId?: string) {
-    const workbook = new ExcelJS.Workbook();
-    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-    await workbook.xlsx.load(arrayBuffer);
-    const sheet = workbook.worksheets[0];
+  // Import segment scores from Excel or CSV
+  async importSegmentScores(buffer: Buffer, diseaseAreaId?: string, filename?: string) {
+    const rows = await this.parseFileToRows(buffer, filename || 'file.xlsx');
 
-    // Convert worksheet to array of objects with headers
-    const rows: Record<string, unknown>[] = [];
-    const headers: string[] = [];
-
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) {
-        row.eachCell((cell) => {
-          headers.push(String(cell.value || ''));
-        });
-      } else {
-        const rowData: Record<string, unknown> = {};
-        row.eachCell((cell, colNumber) => {
-          const header = headers[colNumber - 1];
-          if (header) {
-            rowData[header] = cell.value;
-          }
-        });
-        rows.push(rowData);
-      }
-    });
 
     const result = { total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
 
@@ -493,5 +421,63 @@ export class HcpService {
     }
 
     return result;
+  }
+
+  /**
+   * Parse file buffer (Excel or CSV) to array of row objects
+   */
+  private async parseFileToRows(buffer: Buffer, filename: string): Promise<Record<string, unknown>[]> {
+    const isExcel = filename.endsWith('.xlsx') || filename.endsWith('.xls');
+    const isCsv = filename.endsWith('.csv');
+
+    if (!isExcel && !isCsv) {
+      throw new Error('Unsupported file format. Please use .xlsx, .xls, or .csv files.');
+    }
+
+    if (isCsv) {
+      return this.parseCsvToRows(buffer);
+    } else {
+      return this.parseExcelToRows(buffer);
+    }
+  }
+
+  private parseCsvToRows(buffer: Buffer): Record<string, unknown>[] {
+    const content = buffer.toString('utf-8');
+    const records = parseCsv(content, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      bom: true,
+    });
+    return records as Record<string, unknown>[];
+  }
+
+  private async parseExcelToRows(buffer: Buffer): Promise<Record<string, unknown>[]> {
+    const workbook = new ExcelJS.Workbook();
+    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    await workbook.xlsx.load(arrayBuffer);
+    const sheet = workbook.worksheets[0];
+
+    const rows: Record<string, unknown>[] = [];
+    const headers: string[] = [];
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) {
+        row.eachCell((cell) => {
+          headers.push(String(cell.value || ''));
+        });
+      } else {
+        const rowData: Record<string, unknown> = {};
+        row.eachCell((cell, colNumber) => {
+          const header = headers[colNumber - 1];
+          if (header) {
+            rowData[header] = cell.value;
+          }
+        });
+        rows.push(rowData);
+      }
+    });
+
+    return rows;
   }
 }

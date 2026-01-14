@@ -4,12 +4,14 @@ import { assignHcpsSchema } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { distributionService } from '../services/distribution.service';
 import { createAuditLog } from '../lib/audit';
+import multipart from '@fastify/multipart';
 
 const campaignIdSchema = z.object({
   campaignId: z.string().cuid(),
 });
 
 export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
   fastify.addHook('preHandler', requireClientAdmin());
 
   // Helper function to verify campaign tenant access
@@ -297,6 +299,63 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
         return { success: true, messageId: result.messageId };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to send invitation';
+        return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
+      }
+    }
+  );
+
+  // Import HCPs from Excel/CSV file and assign to campaign
+  fastify.post<{ Params: { campaignId: string } }>(
+    '/campaigns/:campaignId/import-hcps',
+    async (request, reply) => {
+      const { campaignId } = request.params;
+
+      const hasAccess = await verifyCampaignAccess(campaignId, request.user!, reply);
+      if (!hasAccess) return;
+
+      const file = await request.file();
+      if (!file) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'No file uploaded',
+          statusCode: 400,
+        });
+      }
+
+      const filename = file.filename.toLowerCase();
+      if (!filename.endsWith('.xlsx') && !filename.endsWith('.xls') && !filename.endsWith('.csv')) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: 'Unsupported file format. Please use .xlsx, .xls, or .csv files.',
+          statusCode: 400,
+        });
+      }
+
+      try {
+        const buffer = await file.toBuffer();
+        const result = await distributionService.importHcpsFromFile(
+          campaignId,
+          buffer,
+          file.filename,
+          request.user!.sub
+        );
+
+        await createAuditLog(request.user!.sub, {
+          action: 'campaign.hcps_imported',
+          entityType: 'Campaign',
+          entityId: campaignId,
+          newValues: {
+            hcpsCreated: result.hcpsCreated,
+            hcpsExisting: result.hcpsExisting,
+            addedToCampaign: result.addedToCampaign,
+            skipped: result.skipped,
+            errors: result.errors.length,
+          },
+        });
+
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Import failed';
         return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
       }
     }
