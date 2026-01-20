@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { createHcpSchema, updateHcpSchema } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { HcpService } from '../services/hcp.service';
+import { scoreCalculationService } from '../services/score-calculation.service';
 import { createAuditLog } from '../lib/audit';
 import multipart from '@fastify/multipart';
 
@@ -362,5 +363,35 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     return result;
+  });
+
+  // Recalculate composite scores for a disease area
+  fastify.post('/recalculate-composites', async (request, reply) => {
+    const { diseaseAreaId } = request.query as { diseaseAreaId?: string };
+
+    if (!diseaseAreaId) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'diseaseAreaId query parameter is required',
+        statusCode: 400,
+      });
+    }
+
+    try {
+      const result = await scoreCalculationService.recalculateDiseaseAreaComposites(diseaseAreaId);
+
+      // Audit log
+      await createAuditLog(request.user!.sub, {
+        action: 'hcp.composite_scores_recalculated',
+        entityType: 'HcpDiseaseAreaScore',
+        entityId: diseaseAreaId,
+        newValues: { processed: result.processed, updated: result.updated },
+      });
+
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to recalculate composite scores';
+      return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
+    }
   });
 };

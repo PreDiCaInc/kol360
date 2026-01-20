@@ -1,6 +1,7 @@
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { nominationService } from '../services/nomination.service';
+import { scoreCalculationService } from '../services/score-calculation.service';
 import {
   nominationListQuerySchema,
   matchNominationSchema,
@@ -111,6 +112,16 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const result = await nominationService.bulkAutoMatch(campaignId, request.user.sub);
+
+      // Auto-calculate survey and composite scores after matching
+      try {
+        await scoreCalculationService.calculateSurveyScores(campaignId);
+        await scoreCalculationService.calculateCompositeScores(campaignId);
+      } catch (scoreError) {
+        // Log but don't fail - matching was successful
+        fastify.log.warn({ campaignId, error: scoreError }, 'Auto score calculation failed after bulk match');
+      }
+
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to bulk match';
@@ -162,6 +173,15 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
         matchType,
         matchConfidence
       );
+
+      // Auto-calculate survey and composite scores after matching
+      try {
+        await scoreCalculationService.calculateSurveyScores(campaignId);
+        await scoreCalculationService.calculateCompositeScores(campaignId);
+      } catch (scoreError) {
+        fastify.log.warn({ campaignId, error: scoreError }, 'Auto score calculation failed after match');
+      }
+
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to match nomination';
@@ -192,6 +212,15 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
         hcpData,
         request.user.sub
       );
+
+      // Auto-calculate survey and composite scores after matching
+      try {
+        await scoreCalculationService.calculateSurveyScores(campaignId);
+        await scoreCalculationService.calculateCompositeScores(campaignId);
+      } catch (scoreError) {
+        fastify.log.warn({ campaignId, error: scoreError }, 'Auto score calculation failed after create-hcp');
+      }
+
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create HCP';

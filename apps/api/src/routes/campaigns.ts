@@ -8,6 +8,7 @@ import {
 } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { CampaignService } from '../services/campaign.service';
+import { scoreCalculationService } from '../services/score-calculation.service';
 import { createAuditLog } from '../lib/audit';
 
 const campaignService = new CampaignService();
@@ -300,6 +301,17 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const campaign = await campaignService.publish(request.params.id, request.user!.sub);
+
+      // Auto-publish scores to disease area level (SCD Type 2 pattern)
+      try {
+        const publishResult = await scoreCalculationService.publishScores(
+          request.params.id,
+          request.user!.sub
+        );
+        fastify.log.info({ campaignId: request.params.id, processed: publishResult.processed }, 'Scores published to disease area');
+      } catch (scoreError) {
+        fastify.log.warn({ campaignId: request.params.id, error: scoreError }, 'Auto score publishing failed');
+      }
 
       await createAuditLog(request.user!.sub, {
         action: 'campaign.published',

@@ -52,7 +52,6 @@ import {
   Send,
   Bell,
   Trash2,
-  Mail,
   MailCheck,
   Search,
   AlertCircle,
@@ -60,7 +59,9 @@ import {
   Clock,
   Eye,
   Loader2,
+  Upload,
 } from 'lucide-react';
+import { CampaignHcpImportDialog } from './campaign-hcp-import-dialog';
 
 interface CampaignHcpsTabProps {
   campaignId: string;
@@ -74,6 +75,7 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
   const { data: allHcps } = useHcps({ query: searchQuery, limit: 100 });
 
   const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [selectedHcpIds, setSelectedHcpIds] = useState<string[]>([]);
   const [hcpToRemove, setHcpToRemove] = useState<{ id: string; name: string } | null>(null);
   const [showSendConfirm, setShowSendConfirm] = useState<'invitations' | 'reminders' | null>(null);
@@ -183,10 +185,16 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
             </div>
             <div className="flex gap-2">
               {canModify && (
-                <Button onClick={() => setShowAssignDialog(true)}>
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Assign HCPs
-                </Button>
+                <>
+                  <Button onClick={() => setShowImportDialog(true)} variant="outline">
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import HCPs
+                  </Button>
+                  <Button onClick={() => setShowAssignDialog(true)}>
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Assign HCPs
+                  </Button>
+                </>
               )}
               {isActive && stats && stats.notInvited > 0 && (
                 <Button onClick={() => setShowSendConfirm('invitations')} variant="outline">
@@ -452,6 +460,13 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import HCPs Dialog */}
+      <CampaignHcpImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        campaignId={campaignId}
+      />
     </div>
   );
 }
