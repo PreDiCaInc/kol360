@@ -434,6 +434,60 @@ export class ScoreCalculationService {
   }
 
   /**
+   * Recalculate composite scores for all HCPs in a disease area.
+   * Uses default weights if no campaign-specific config exists.
+   */
+  async recalculateDiseaseAreaComposites(diseaseAreaId: string): Promise<{ processed: number; updated: number }> {
+    // Default weights
+    const weights = {
+      weightPublications: 10,
+      weightClinicalTrials: 15,
+      weightTradePubs: 10,
+      weightOrgLeadership: 10,
+      weightOrgAwareness: 10,
+      weightConference: 10,
+      weightSocialMedia: 5,
+      weightMediaPodcasts: 5,
+      weightSurvey: 25,
+    };
+
+    const toNum = (val: unknown): number => val ? Number(val) : 0;
+
+    // Get all current disease area scores
+    const daScores = await prisma.hcpDiseaseAreaScore.findMany({
+      where: {
+        diseaseAreaId,
+        isCurrent: true,
+      },
+    });
+
+    let updated = 0;
+    for (const daScore of daScores) {
+      const composite =
+        (toNum(daScore.scorePublications) * toNum(weights.weightPublications) / 100) +
+        (toNum(daScore.scoreClinicalTrials) * toNum(weights.weightClinicalTrials) / 100) +
+        (toNum(daScore.scoreTradePubs) * toNum(weights.weightTradePubs) / 100) +
+        (toNum(daScore.scoreOrgLeadership) * toNum(weights.weightOrgLeadership) / 100) +
+        (toNum(daScore.scoreOrgAwareness) * toNum(weights.weightOrgAwareness) / 100) +
+        (toNum(daScore.scoreConference) * toNum(weights.weightConference) / 100) +
+        (toNum(daScore.scoreSocialMedia) * toNum(weights.weightSocialMedia) / 100) +
+        (toNum(daScore.scoreMediaPodcasts) * toNum(weights.weightMediaPodcasts) / 100) +
+        (toNum(daScore.scoreSurvey) * toNum(weights.weightSurvey) / 100);
+
+      await prisma.hcpDiseaseAreaScore.update({
+        where: { id: daScore.id },
+        data: {
+          compositeScore: composite,
+          lastCalculatedAt: new Date(),
+        },
+      });
+      updated++;
+    }
+
+    return { processed: daScores.length, updated };
+  }
+
+  /**
    * Get score calculation status for a campaign
    */
   async getCalculationStatus(campaignId: string) {

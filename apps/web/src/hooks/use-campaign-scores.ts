@@ -90,3 +90,23 @@ export function useCalculateSurveyScores() {
     },
   });
 }
+
+interface CalculateAllScoresResult {
+  surveyScores: { processed: number; updated: number };
+  compositeScores: { processed: number; updated: number };
+}
+
+export function useCalculateAllScores() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (campaignId: string) =>
+      apiClient.post<CalculateAllScoresResult>(
+        `/api/v1/campaigns/${campaignId}/scores/calculate-all`,
+        {}
+      ),
+    onSuccess: (_, campaignId) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'scores'] });
+    },
+  });
+}

@@ -53,7 +53,8 @@ import {
   ArrowLeft,
   Plus,
   Trash2,
-  GripVertical,
+  ChevronUp,
+  ChevronDown,
   Lock,
   Search,
   Eye,
@@ -340,7 +341,7 @@ export default function SectionDetailPage() {
                           disabled={index === 0}
                           onClick={() => handleMoveQuestion(index, 'up')}
                         >
-                          <GripVertical className="w-4 h-4 rotate-90" />
+                          <ChevronUp className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
@@ -349,7 +350,7 @@ export default function SectionDetailPage() {
                           disabled={index === section.questions.length - 1}
                           onClick={() => handleMoveQuestion(index, 'down')}
                         >
-                          <GripVertical className="w-4 h-4 -rotate-90" />
+                          <ChevronDown className="w-4 h-4" />
                         </Button>
                       </div>
                       <div className="flex-1 min-w-0">

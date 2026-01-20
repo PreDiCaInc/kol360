@@ -346,6 +346,27 @@ export function useRemoveHcpSpecialty() {
   });
 }
 
+// Recalculate composite scores for a disease area
+interface RecalculateCompositesResult {
+  processed: number;
+  updated: number;
+}
+
+export function useRecalculateDiseaseAreaComposites() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (diseaseAreaId: string) =>
+      apiClient.post<RecalculateCompositesResult>(
+        `/api/v1/hcps/recalculate-composites?diseaseAreaId=${diseaseAreaId}`,
+        {}
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hcps'] });
+    },
+  });
+}
+
 // Helper to get auth token
 let tokenFn: (() => Promise<string | null>) | null = null;
 

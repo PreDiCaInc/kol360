@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   useCampaignScores,
-  useCalculateSurveyScores,
+  useCalculateAllScores,
 } from '@/hooks/use-campaign-scores';
 import { useNominationStats } from '@/hooks/use-nominations';
 import { useCampaign, usePublishCampaign } from '@/hooks/use-campaigns';
@@ -81,8 +81,8 @@ export default function CampaignScoresPage() {
   const campaignId = params.id as string;
 
   const [showCalculateResult, setShowCalculateResult] = useState<{
-    processed: number;
-    updated: number;
+    surveyScores: { processed: number; updated: number };
+    compositeScores: { processed: number; updated: number };
   } | null>(null);
   const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
@@ -90,12 +90,12 @@ export default function CampaignScoresPage() {
   const { data: scores, isLoading } = useCampaignScores(campaignId);
   const { data: nominationStats } = useNominationStats(campaignId);
 
-  const calculateSurveyScores = useCalculateSurveyScores();
+  const calculateAllScores = useCalculateAllScores();
   const publishCampaign = usePublishCampaign();
 
   const handleCalculateScores = async () => {
     try {
-      const result = await calculateSurveyScores.mutateAsync(campaignId);
+      const result = await calculateAllScores.mutateAsync(campaignId);
       setShowCalculateResult(result);
     } catch (error) {
       console.error('Score calculation failed:', error);
@@ -147,15 +147,15 @@ export default function CampaignScoresPage() {
           <div className="flex gap-2">
             <Button
               onClick={handleCalculateScores}
-              disabled={calculateSurveyScores.isPending || !canCalculate}
+              disabled={calculateAllScores.isPending || !canCalculate}
               variant={hasExistingScores ? 'outline' : 'default'}
             >
-              {calculateSurveyScores.isPending ? (
+              {calculateAllScores.isPending ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Calculator className="w-4 h-4 mr-2" />
               )}
-              {hasExistingScores ? 'Recalculate Scores' : 'Calculate Survey Scores'}
+              {hasExistingScores ? 'Recalculate Scores' : 'Calculate Scores'}
             </Button>
             {hasExistingScores && campaign?.status === 'CLOSED' && (
               <Button onClick={() => setShowPublishConfirm(true)}>
@@ -431,39 +431,65 @@ export default function CampaignScoresPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-green-500" />
-                Survey Scores Calculated
+                Scores Calculated
               </DialogTitle>
               <DialogDescription>
-                Survey scores have been calculated based on matched nominations.
+                Survey and composite scores have been calculated based on matched nominations.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Card>
-                  <CardContent className="pt-4">
-                    <div className="text-2xl font-bold">
-                      {showCalculateResult?.processed || 0}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      HCPs processed
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-4">
-                    <div className="text-2xl font-bold text-green-600">
-                      {showCalculateResult?.updated || 0}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Scores updated
-                    </p>
-                  </CardContent>
-                </Card>
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Survey Scores</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">
+                        {showCalculateResult?.surveyScores?.processed || 0}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        HCPs processed
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold text-green-600">
+                        {showCalculateResult?.surveyScores?.updated || 0}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Survey scores updated
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Composite Scores</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">
+                        {showCalculateResult?.compositeScores?.processed || 0}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        HCPs processed
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {showCalculateResult?.compositeScores?.updated || 0}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Composite scores updated
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
               <p className="text-sm text-muted-foreground">
-                The survey score is calculated as: (nomination count / max
-                nominations) x 100. HCPs with the most nominations receive a
-                score of 100.
+                Survey scores are calculated from nominations. Composite scores combine survey scores with segment scores using configured weights.
               </p>
             </div>
             <DialogFooter>
