@@ -215,6 +215,9 @@ export class NominationService {
   ) {
     const nomination = await prisma.nomination.findUnique({
       where: { id: nominationId },
+      include: {
+        response: { select: { campaignId: true } },
+      },
     });
 
     if (!nomination) {
@@ -225,16 +228,48 @@ export class NominationService {
     if (addAlias) {
       const normalizedAlias = nomination.rawNameEntered.trim();
 
-      // Check if alias already exists (case-insensitive)
-      const existingAlias = await prisma.hcpAlias.findFirst({
+      // Check if alias already exists on ANY HCP (case-insensitive)
+      const existingAliasOnTarget = await prisma.hcpAlias.findFirst({
         where: {
           hcpId,
           aliasName: { equals: normalizedAlias, mode: 'insensitive' },
         },
       });
 
-      // Only add if no matching alias exists
-      if (!existingAlias) {
+      // Only add if no matching alias exists on target HCP
+      if (!existingAliasOnTarget) {
+        // Check if this alias exists on a different HCP
+        const existingAliasOnOtherHcp = await prisma.hcpAlias.findFirst({
+          where: {
+            aliasName: { equals: normalizedAlias, mode: 'insensitive' },
+            hcpId: { not: hcpId },
+          },
+        });
+
+        // If alias exists on another HCP, we need to clear nominations
+        // that were matched to that HCP via this alias
+        if (existingAliasOnOtherHcp) {
+          // Clear other nominations in the same campaign that have the same raw name
+          // and were matched to a different HCP (likely via this alias)
+          await prisma.nomination.updateMany({
+            where: {
+              id: { not: nominationId },
+              response: { campaignId: nomination.response.campaignId },
+              rawNameEntered: { equals: normalizedAlias, mode: 'insensitive' },
+              matchedHcpId: { not: hcpId }, // Matched to a different HCP
+              matchStatus: { in: ['MATCHED', 'REVIEW_NEEDED'] },
+            },
+            data: {
+              matchedHcpId: null,
+              matchStatus: 'UNMATCHED',
+              matchType: null,
+              matchConfidence: null,
+              matchedBy: null,
+              matchedAt: null,
+            },
+          });
+        }
+
         await prisma.hcpAlias.create({
           data: {
             hcpId,
@@ -393,7 +428,78 @@ export class NominationService {
     );
   }
 
+  /**
+   * Clear nominations that have stale alias matches.
+   * This handles the case where:
+   * 1. A nomination was matched to HCP A via an alias
+   * 2. The same alias was later added to HCP B (or removed from A)
+   * 3. We need to reset those nominations so they can be re-matched correctly
+   */
+  async clearStaleAliasMatches(campaignId: string) {
+    // Get all matched/review-needed nominations that were matched via alias
+    const aliasMatchedNominations = await prisma.nomination.findMany({
+      where: {
+        response: { campaignId },
+        matchStatus: { in: ['MATCHED', 'REVIEW_NEEDED'] },
+        matchType: 'alias',
+        matchedHcpId: { not: null },
+      },
+      include: {
+        matchedHcp: {
+          include: { aliases: true },
+        },
+      },
+    });
+
+    let cleared = 0;
+
+    for (const nomination of aliasMatchedNominations) {
+      const rawNameLower = nomination.rawNameEntered.toLowerCase().trim();
+      const matchedHcp = nomination.matchedHcp;
+
+      if (!matchedHcp) continue;
+
+      // Check if the alias still exists on the matched HCP
+      const aliasStillExists = matchedHcp.aliases.some(
+        (a: { aliasName: string }) => a.aliasName.toLowerCase() === rawNameLower
+      );
+
+      // Also check if there's now a better match (exact alias on a different HCP)
+      const betterAliasMatch = await prisma.hcpAlias.findFirst({
+        where: {
+          aliasName: { equals: rawNameLower, mode: 'insensitive' },
+          hcpId: { not: matchedHcp.id },
+        },
+      });
+
+      // If alias no longer exists on matched HCP, or there's a better match elsewhere
+      if (!aliasStillExists || betterAliasMatch) {
+        await prisma.nomination.update({
+          where: { id: nomination.id },
+          data: {
+            matchedHcpId: null,
+            matchStatus: 'UNMATCHED',
+            matchType: null,
+            matchConfidence: null,
+            matchedBy: null,
+            matchedAt: null,
+          },
+        });
+        cleared++;
+      }
+    }
+
+    return { cleared };
+  }
+
   async bulkAutoMatch(campaignId: string, matchedBy: string) {
+    // First, clear nominations that might have stale alias matches
+    // This handles the case where:
+    // 1. A nomination was matched to HCP A via an alias
+    // 2. The same alias was later added to HCP B
+    // 3. We want to re-match to the correct HCP B
+    await this.clearStaleAliasMatches(campaignId);
+
     // Get all unmatched nominations for this campaign
     const unmatched = await prisma.nomination.findMany({
       where: {
