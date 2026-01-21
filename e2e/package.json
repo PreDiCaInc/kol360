@@ -1,0 +1,30 @@
+{
+  "name": "@kol360/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "auth": "npx tsx auth.ts",
+    "test:api": "vitest run --config vitest.config.ts api/",
+    "test:api:local": "E2E_API_URL=http://localhost:3001 vitest run --config vitest.config.ts api/",
+    "test:api:aws": "E2E_API_URL=https://ik6dmnn2ra.us-east-2.awsapprunner.com vitest run --config vitest.config.ts api/",
+    "test:api:aws:auth": "E2E_API_URL=https://ik6dmnn2ra.us-east-2.awsapprunner.com npx tsx run-with-auth.ts api",
+    "test:web": "playwright test",
+    "test:web:local": "E2E_WEB_URL=http://localhost:3000 playwright test",
+    "test:web:aws": "E2E_WEB_URL=https://y6empq5whm.us-east-2.awsapprunner.com playwright test",
+    "test:all": "pnpm test:api && pnpm test:web",
+    "test:all:local": "pnpm test:api:local && pnpm test:web:local",
+    "test:all:aws": "pnpm test:api:aws && pnpm test:web:aws",
+    "test:all:aws:auth": "E2E_API_URL=https://ik6dmnn2ra.us-east-2.awsapprunner.com npx tsx run-with-auth.ts all",
+    "seed": "cd ../apps/api && npx tsx ../../e2e/seed-test-data.ts",
+    "cleanup": "cd ../apps/api && npx tsx ../../e2e/cleanup-test-data.ts",
+    "cleanup:all": "cd ../apps/api && npx tsx ../../e2e/cleanup-test-data.ts --all"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.600.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.42.0",
+    "tsx": "^4.10.0",
+    "vitest": "^2.0.0"
+  }
+}
