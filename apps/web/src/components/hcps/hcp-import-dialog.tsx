@@ -10,7 +10,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Upload, FileSpreadsheet, CheckCircle, XCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, XCircle, Merge } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -23,6 +23,7 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
     total: number;
     created: number;
     updated: number;
+    merged?: number;
     errors: { row: number; error: string }[];
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -143,7 +144,7 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
         ) : (
           <div className="space-y-4">
             {/* Results */}
-            <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
               <div className="bg-green-50 rounded-lg p-4">
                 <CheckCircle className="w-8 h-8 mx-auto text-green-600 mb-2" />
                 <p className="text-2xl font-bold text-green-600">{result.created}</p>
@@ -154,6 +155,13 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
                 <p className="text-2xl font-bold text-blue-600">{result.updated}</p>
                 <p className="text-sm text-muted-foreground">Updated</p>
               </div>
+              {(result.merged ?? 0) > 0 && (
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <Merge className="w-8 h-8 mx-auto text-purple-600 mb-2" />
+                  <p className="text-2xl font-bold text-purple-600">{result.merged}</p>
+                  <p className="text-sm text-muted-foreground">Merged</p>
+                </div>
+              )}
               <div className="bg-red-50 rounded-lg p-4">
                 <XCircle className="w-8 h-8 mx-auto text-red-600 mb-2" />
                 <p className="text-2xl font-bold text-red-600">{result.errors.length}</p>

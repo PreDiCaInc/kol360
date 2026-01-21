@@ -123,7 +123,13 @@ export class HcpService {
   async importFromFile(buffer: Buffer, userId: string, filename: string = 'file.xlsx') {
     const rows = await this.parseFileToRows(buffer, filename);
 
-    const result = { total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
+    const result = {
+      total: rows.length,
+      created: 0,
+      updated: 0,
+      merged: 0, // New: count of HCPs merged via alias match
+      errors: [] as { row: number; error: string }[],
+    };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -153,6 +159,7 @@ export class HcpService {
         const existing = await prisma.hcp.findUnique({ where: { npi } });
 
         if (existing) {
+          // HCP with this NPI exists - update it
           await prisma.hcp.update({
             where: { npi },
             data: {
@@ -168,8 +175,39 @@ export class HcpService {
           });
           result.updated++;
         } else {
-          await prisma.hcp.create({ data: { ...data, createdBy: userId } });
-          result.created++;
+          // Check for 100% alias match before creating new HCP
+          const fullName = `${data.firstName} ${data.lastName}`;
+          const aliasMatch = await prisma.hcpAlias.findFirst({
+            where: {
+              aliasName: { equals: fullName, mode: 'insensitive' },
+            },
+            include: { hcp: true },
+          });
+
+          if (aliasMatch && aliasMatch.hcp) {
+            // Found an exact alias match - auto-merge by updating the existing HCP's NPI
+            // This handles the case where the same person was nominated under an alias
+            // and now we have their real NPI from an import
+            await prisma.hcp.update({
+              where: { id: aliasMatch.hcp.id },
+              data: {
+                npi: data.npi,
+                firstName: data.firstName,
+                lastName: data.lastName,
+                email: data.email || aliasMatch.hcp.email,
+                specialty: data.specialty || aliasMatch.hcp.specialty,
+                subSpecialty: data.subSpecialty || aliasMatch.hcp.subSpecialty,
+                city: data.city || aliasMatch.hcp.city,
+                state: data.state || aliasMatch.hcp.state,
+                yearsInPractice: data.yearsInPractice ?? aliasMatch.hcp.yearsInPractice,
+              },
+            });
+            result.merged++;
+          } else {
+            // No NPI match and no alias match - create new HCP
+            await prisma.hcp.create({ data: { ...data, createdBy: userId } });
+            result.created++;
+          }
         }
       } catch (error) {
         result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
