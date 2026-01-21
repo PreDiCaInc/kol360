@@ -128,12 +128,12 @@ describe('ClientService', () => {
       });
     });
 
-    it('should create client with minimal data', async () => {
-      const mockClient = { id: 'client-1', name: 'Minimal Client' };
+    it('should create client with required data', async () => {
+      const mockClient = { id: 'client-1', name: 'Minimal Client', type: 'LITE', primaryColor: '#000000' };
 
       (prisma.client.create as Mock).mockResolvedValue(mockClient);
 
-      const result = await clientService.create({ name: 'Minimal Client' }, 'admin-user');
+      const result = await clientService.create({ name: 'Minimal Client', type: 'LITE', primaryColor: '#000000' }, 'admin-user');
 
       expect(result).toEqual(mockClient);
     });

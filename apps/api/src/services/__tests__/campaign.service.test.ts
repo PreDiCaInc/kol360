@@ -173,6 +173,7 @@ describe('CampaignService', () => {
         {
           clientId: 'client-1',
           name: 'New Campaign',
+          diseaseAreaId: 'disease-area-1',
         },
         'user-1'
       );
@@ -188,7 +189,7 @@ describe('CampaignService', () => {
       (prisma.compositeScoreConfig.create as Mock).mockResolvedValue({});
 
       await campaignService.create(
-        { clientId: 'client-1', name: 'Test' },
+        { clientId: 'client-1', name: 'Test', diseaseAreaId: 'disease-area-1' },
         'user-1'
       );
 

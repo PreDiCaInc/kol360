@@ -144,15 +144,17 @@ describe('QuestionService', () => {
       (prisma.question.create as Mock).mockResolvedValue(mockQuestion);
 
       const result = await questionService.create({
-        text: 'New question?',
+        text: 'New question that is long enough?',
         type: 'TEXT',
         category: 'general',
+        isRequired: false,
+        tags: [],
       });
 
       expect(result).toEqual(mockQuestion);
       expect(prisma.question.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          text: 'New question?',
+          text: 'New question that is long enough?',
           type: 'TEXT',
           category: 'general',
           status: 'active',
@@ -163,14 +165,20 @@ describe('QuestionService', () => {
     });
 
     it('should create question with options', async () => {
-      const options = ['Option A', 'Option B', 'Option C'];
+      const options = [
+        { text: 'Option A', requiresText: false },
+        { text: 'Option B', requiresText: false },
+        { text: 'Option C', requiresText: false },
+      ];
 
       (prisma.question.create as Mock).mockResolvedValue({ id: 'q-1' });
 
       await questionService.create({
-        text: 'Select one',
-        type: 'SINGLE_SELECT',
+        text: 'Select one option from the list',
+        type: 'SINGLE_CHOICE',
         category: 'general',
+        isRequired: false,
+        tags: [],
         options,
       });
 
@@ -185,19 +193,21 @@ describe('QuestionService', () => {
       (prisma.question.create as Mock).mockResolvedValue({ id: 'q-1' });
 
       await questionService.create({
-        text: 'Nominate HCPs',
-        type: 'NOMINATION',
+        text: 'Nominate HCPs you would refer patients to',
+        type: 'MULTI_TEXT',
         category: 'nomination',
+        isRequired: false,
+        tags: [],
         minEntries: 3,
         defaultEntries: 5,
-        nominationType: 'HCP',
+        nominationType: 'REFERRAL_LEADERS',
       });
 
       expect(prisma.question.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           minEntries: 3,
           defaultEntries: 5,
-          nominationType: 'HCP',
+          nominationType: 'REFERRAL_LEADERS',
         }),
       });
     });
