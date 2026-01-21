@@ -14,7 +14,7 @@ import {
   useConfirmWorkflowStep,
 } from '@/hooks/use-campaigns';
 import { useScoreConfig, useUpdateScoreConfig, useResetScoreConfig } from '@/hooks/use-score-config';
-import { useSendReminders, useDistributionStats } from '@/hooks/use-distribution';
+import { useSendReminders, useSendInvitations, useDistributionStats } from '@/hooks/use-distribution';
 import { useCampaignScores } from '@/hooks/use-campaign-scores';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { ScoreConfigForm } from '@/components/campaigns/score-config-form';
@@ -125,6 +125,7 @@ export default function CampaignDetailPage() {
   const reopenCampaign = useReopenCampaign();
   const publishCampaign = usePublishCampaign();
   const sendReminders = useSendReminders();
+  const sendInvitations = useSendInvitations();
   const { data: distributionStats } = useDistributionStats(campaignId);
   const { data: campaignScores } = useCampaignScores(campaignId);
   const { data: auditLogData } = useCampaignAuditLog(campaignId);
@@ -135,6 +136,8 @@ export default function CampaignDetailPage() {
   const [editData, setEditData] = useState({ name: '', description: '' });
   const [statusAction, setStatusAction] = useState<'activate' | 'close' | 'reopen' | 'publish' | null>(null);
   const [showReminderConfirm, setShowReminderConfirm] = useState(false);
+  const [showInvitationConfirm, setShowInvitationConfirm] = useState(false);
+  const [invitationResult, setInvitationResult] = useState<{ sent: number; failed?: number; skipped?: number; errors: Array<{ email: string; error: string }> } | null>(null);
   const [reminderResult, setReminderResult] = useState<{ sent: number; failed?: number; skipped?: number; skippedCompleted?: number; skippedRecentlyReminded?: number; skippedMaxReminders?: number; errors: Array<{ email: string; error: string }> } | null>(null);
 
   const handleStartEdit = () => {
@@ -211,6 +214,16 @@ export default function CampaignDetailPage() {
       setShowReminderConfirm(false);
     } catch (error) {
       console.error('Failed to send reminders:', error);
+    }
+  };
+
+  const handleSendInvitations = async () => {
+    try {
+      const result = await sendInvitations.mutateAsync(campaignId);
+      setInvitationResult(result);
+      setShowInvitationConfirm(false);
+    } catch (error) {
+      console.error('Failed to send invitations:', error);
     }
   };
 
@@ -857,7 +870,7 @@ export default function CampaignDetailPage() {
                       </Button>
                       {isReadyToActivate() ? (
                         <p className="text-sm text-muted-foreground">
-                          This will send invitation emails to all {campaign._count.campaignHcps} assigned HCPs
+                          This will activate the campaign. You can then send invitation emails to HCPs.
                         </p>
                       ) : (
                         <p className="text-sm text-amber-600">
@@ -873,9 +886,15 @@ export default function CampaignDetailPage() {
                         <CheckCircle2 className="w-5 h-5" />
                         <span className="font-medium">Campaign is active</span>
                       </div>
-                      <p className="text-sm text-green-700 mt-1">
-                        Survey invitations have been sent. HCPs can now respond.
-                      </p>
+                      {distributionStats && distributionStats.invited > 0 ? (
+                        <p className="text-sm text-green-700 mt-1">
+                          Survey invitations have been sent to {distributionStats.invited} HCPs. They can now respond.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-amber-600 mt-1">
+                          Campaign is active but no invitations have been sent yet. Click &quot;Send Invitations&quot; below to email HCPs.
+                        </p>
+                      )}
                     </div>
 
                     {/* Survey Response Stats */}
@@ -910,8 +929,14 @@ export default function CampaignDetailPage() {
                       </div>
                     )}
 
-                    <div className="flex gap-3">
-                      <Button onClick={() => setShowReminderConfirm(true)} variant="outline">
+                    <div className="flex gap-3 flex-wrap">
+                      {distributionStats && distributionStats.notInvited > 0 && (
+                        <Button onClick={() => setShowInvitationConfirm(true)} variant="default">
+                          <Mail className="w-4 h-4 mr-2" />
+                          Send Invitations ({distributionStats.notInvited})
+                        </Button>
+                      )}
+                      <Button onClick={() => setShowReminderConfirm(true)} variant="outline" disabled={!distributionStats || distributionStats.invited === 0}>
                         <Bell className="w-4 h-4 mr-2" />
                         Send Reminders
                       </Button>
@@ -972,6 +997,75 @@ export default function CampaignDetailPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Send Invitations Confirmation */}
+        <AlertDialog open={showInvitationConfirm} onOpenChange={setShowInvitationConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Send Survey Invitations</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will send invitation emails to {distributionStats?.notInvited || 0} HCPs who have not yet received an invitation.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleSendInvitations} disabled={sendInvitations.isPending}>
+                {sendInvitations.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  'Send Invitations'
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Invitation Result Dialog */}
+        <Dialog open={!!invitationResult} onOpenChange={() => setInvitationResult(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {invitationResult?.failed === 0 ? (
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-yellow-500" />
+                )}
+                Invitations Sent
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-4 space-y-2">
+              <p className="text-lg">
+                Successfully sent: <strong className="text-green-600">{invitationResult?.sent || 0}</strong>
+              </p>
+              {(invitationResult?.failed ?? 0) > 0 && (
+                <p className="text-lg">
+                  Failed: <strong className="text-red-600">{invitationResult?.failed}</strong>
+                </p>
+              )}
+              {(invitationResult?.skipped ?? 0) > 0 && (
+                <p className="text-lg">
+                  Skipped: <strong className="text-muted-foreground">{invitationResult?.skipped}</strong>
+                </p>
+              )}
+              {invitationResult?.errors && invitationResult.errors.length > 0 && (
+                <div className="mt-4">
+                  <p className="font-medium mb-2">Errors:</p>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    {invitationResult.errors.map((err, i) => (
+                      <li key={i}>{err.email}: {err.error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setInvitationResult(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Send Reminders Confirmation */}
         <AlertDialog open={showReminderConfirm} onOpenChange={setShowReminderConfirm}>
