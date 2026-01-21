@@ -55,8 +55,25 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
-  // Full health check - detailed status (admin only in production)
+  // Full health check - detailed status (requires auth token in production)
   fastify.get('/full', async (request, reply) => {
+    // Require authentication for detailed health checks in production
+    if (process.env.NODE_ENV === 'production') {
+      const authHeader = request.headers['x-health-token'] || request.headers.authorization;
+      const expectedToken = process.env.HEALTH_CHECK_TOKEN;
+
+      if (!expectedToken) {
+        return reply.status(503).send({ error: 'Health check not configured' });
+      }
+
+      const providedToken = typeof authHeader === 'string'
+        ? authHeader.replace('Bearer ', '')
+        : '';
+
+      if (providedToken !== expectedToken) {
+        return reply.status(401).send({ error: 'Unauthorized' });
+      }
+    }
     const checks: Record<string, HealthCheck> = {};
     let overallStatus: 'ok' | 'degraded' | 'error' = 'ok';
 

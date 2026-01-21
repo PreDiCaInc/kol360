@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,18 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Eye, Mail, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+
+// Configure DOMPurify to allow safe HTML for email templates
+const sanitizeHtml = (html: string): string => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['div', 'span', 'p', 'a', 'img', 'table', 'tr', 'td', 'th', 'tbody', 'thead',
+                   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 'u', 'br', 'hr',
+                   'ul', 'ol', 'li', 'blockquote', 'pre', 'code'],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'style', 'class', 'width', 'height', 'target', 'rel'],
+    ALLOW_DATA_ATTR: false,
+    ADD_ATTR: ['target'],
+  });
+};
 
 type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done';
 
@@ -253,10 +266,10 @@ export function TemplatePreviewDialog({
             </div>
           </div>
 
-          {/* Email Body */}
+          {/* Email Body - sanitized to prevent XSS */}
           <div
             className="bg-slate-100 p-4"
-            dangerouslySetInnerHTML={{ __html: finalBody }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(finalBody) }}
           />
         </div>
       </div>
