@@ -11,7 +11,10 @@
     "test:web:aws": "E2E_WEB_URL=https://y6empq5whm.us-east-2.awsapprunner.com playwright test",
     "test:all": "pnpm test:api && pnpm test:web",
     "test:all:local": "pnpm test:api:local && pnpm test:web:local",
-    "test:all:aws": "pnpm test:api:aws && pnpm test:web:aws"
+    "test:all:aws": "pnpm test:api:aws && pnpm test:web:aws",
+    "seed": "cd ../apps/api && npx tsx ../../e2e/seed-test-data.ts",
+    "cleanup": "cd ../apps/api && npx tsx ../../e2e/cleanup-test-data.ts",
+    "cleanup:all": "cd ../apps/api && npx tsx ../../e2e/cleanup-test-data.ts --all"
   },
   "devDependencies": {
     "@playwright/test": "^1.42.0",
