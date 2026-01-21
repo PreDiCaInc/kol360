@@ -63,3 +63,6 @@ apps/api/lambda-bundle/
 
 # Deprecated folders
 bioexec/
+
+# Claude Code local settings
+.claude/settings.local.json
