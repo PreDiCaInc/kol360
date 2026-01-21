@@ -52,7 +52,7 @@ export const TEST_IDS = {
 
   // Test User (for authentication)
   USER_ID: 'e2e_test_user_001',
-  USER_EMAIL: 'e2e.testuser@e2etest.example.com',
+  USER_EMAIL: 'e2e.testuser@bio-exec.com',
   USER_COGNITO_SUB: 'e2e-test-cognito-sub-001',
 
   // Campaign prefix (campaigns are created dynamically)
