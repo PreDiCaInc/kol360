@@ -38,9 +38,26 @@ pnpm e2e:seed
 cd e2e && pnpm seed
 ```
 
-### 3. Get Auth Token
+### 3. Run Authenticated Tests
 
-For authenticated tests (campaign workflows), you need a valid JWT token:
+For authenticated tests (campaign workflows), you have two options:
+
+**Option A: Automatic authentication (recommended)**
+
+Set the test user password and run tests with auto-auth:
+
+```bash
+# Set password (get from team or create test user in Cognito)
+export E2E_TEST_PASSWORD="your-test-user-password"
+
+# Run API tests with auto-auth against AWS
+pnpm --filter @kol360/e2e test:api:aws:auth
+
+# Run all tests with auto-auth against AWS
+pnpm --filter @kol360/e2e test:all:aws:auth
+```
+
+**Option B: Manual token**
 
 1. Log into the app in your browser
 2. Open DevTools → Application → Local Storage

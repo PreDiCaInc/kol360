@@ -6,24 +6,24 @@
  */
 
 export const TEST_IDS = {
-  // Test Client (Tenant)
-  CLIENT_ID: 'e2e_test_client_001',
+  // Test Client (Tenant) - CUID format required by API schema
+  CLIENT_ID: 'cme2e0test0client00001',
   CLIENT_NAME: 'E2E Test Pharma',
 
-  // Test Disease Area / Therapeutic Area
-  DISEASE_AREA_ID: 'e2e_test_disease_area_001',
+  // Test Disease Area / Therapeutic Area - CUID format required
+  DISEASE_AREA_ID: 'cme2e0test0disease0001',
   DISEASE_AREA_NAME: 'E2E Test Oncology',
   DISEASE_AREA_CODE: 'E2E_ONCOLOGY',
   THERAPEUTIC_AREA: 'E2E Test Therapeutic Area',
 
-  // Test Specialty
-  SPECIALTY_ID: 'e2e_test_specialty_001',
+  // Test Specialty - CUID format required
+  SPECIALTY_ID: 'cme2e0test0special0001',
   SPECIALTY_NAME: 'E2E Test Oncology Specialist',
   SPECIALTY_CODE: 'E2E_ONC',
 
-  // Test HCPs (3 test HCPs)
+  // Test HCPs (3 test HCPs) - CUID format required
   HCP_1: {
-    id: 'e2e_test_hcp_001',
+    id: 'cme2e0test0hcp0000001',
     npi: '9990000001',
     firstName: 'Alice',
     lastName: 'TestDoctor',
@@ -32,7 +32,7 @@ export const TEST_IDS = {
     state: 'MA',
   },
   HCP_2: {
-    id: 'e2e_test_hcp_002',
+    id: 'cme2e0test0hcp0000002',
     npi: '9990000002',
     firstName: 'Bob',
     lastName: 'TestPhysician',
@@ -41,7 +41,7 @@ export const TEST_IDS = {
     state: 'NY',
   },
   HCP_3: {
-    id: 'e2e_test_hcp_003',
+    id: 'cme2e0test0hcp0000003',
     npi: '9990000003',
     firstName: 'Carol',
     lastName: 'TestSpecialist',
@@ -50,10 +50,10 @@ export const TEST_IDS = {
     state: 'IL',
   },
 
-  // Test User (for authentication)
-  USER_ID: 'e2e_test_user_001',
+  // Test User (for authentication) - CUID format required
+  USER_ID: 'cme2e0test0user000001',
   USER_EMAIL: 'e2e.testuser@bio-exec.com',
-  USER_COGNITO_SUB: 'e2e-test-cognito-sub-001',
+  USER_COGNITO_SUB: 'd11b2570-8051-7098-327c-3d660a97d7a0',
 
   // Campaign prefix (campaigns are created dynamically)
   CAMPAIGN_PREFIX: 'E2E_TEST_CAMPAIGN_',
@@ -70,7 +70,7 @@ export function getTestHcps() {
  * Check if an ID belongs to test data
  */
 export function isTestData(id: string): boolean {
-  return id.startsWith('e2e_test_') || id.startsWith('E2E_TEST_');
+  return id.startsWith('cme2e0test') || id.startsWith('E2E_TEST_');
 }
 
 /**

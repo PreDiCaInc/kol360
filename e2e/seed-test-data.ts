@@ -10,6 +10,8 @@
  *
  * Or via pnpm from root:
  *   pnpm --filter @kol360/api exec tsx ../../e2e/seed-test-data.ts
+ *
+ * Note: Requires DATABASE_URL to be set via environment or .env file
  */
 
 import { PrismaClient } from '@prisma/client';

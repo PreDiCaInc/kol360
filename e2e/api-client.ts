@@ -54,38 +54,38 @@ export class ApiClient {
   // ==================== Campaigns ====================
 
   async listCampaigns() {
-    return this.request<{ campaigns: Campaign[] }>('GET', '/api/campaigns');
+    return this.request<{ items: Campaign[]; pagination: Pagination }>('GET', '/api/v1/campaigns');
   }
 
   async getCampaign(id: string) {
-    return this.request<Campaign>('GET', `/api/campaigns/${id}`);
+    return this.request<Campaign>('GET', `/api/v1/campaigns/${id}`);
   }
 
   async createCampaign(data: CreateCampaignInput) {
-    return this.request<Campaign>('POST', '/api/campaigns', data);
+    return this.request<Campaign>('POST', '/api/v1/campaigns', data);
   }
 
   async updateCampaign(id: string, data: Partial<CreateCampaignInput>) {
-    return this.request<Campaign>('PUT', `/api/campaigns/${id}`, data);
+    return this.request<Campaign>('PUT', `/api/v1/campaigns/${id}`, data);
   }
 
   async deleteCampaign(id: string) {
-    return this.request<void>('DELETE', `/api/campaigns/${id}`);
+    return this.request<void>('DELETE', `/api/v1/campaigns/${id}`);
   }
 
   // ==================== Distribution (Campaign HCPs) ====================
 
   async listCampaignHcps(campaignId: string) {
-    return this.request<{ hcps: CampaignHcp[] }>(
+    return this.request<{ items: CampaignHcp[]; pagination: Pagination }>(
       'GET',
-      `/api/campaigns/${campaignId}/distribution`
+      `/api/v1/campaigns/${campaignId}/distribution`
     );
   }
 
   async assignHcpsToCampaign(campaignId: string, hcpIds: string[]) {
-    return this.request<{ assigned: number }>(
+    return this.request<{ added: number; skipped: number }>(
       'POST',
-      `/api/campaigns/${campaignId}/distribution/assign`,
+      `/api/v1/campaigns/${campaignId}/hcps`,
       { hcpIds }
     );
   }
@@ -93,21 +93,21 @@ export class ApiClient {
   async removeHcpFromCampaign(campaignId: string, hcpId: string) {
     return this.request<void>(
       'DELETE',
-      `/api/campaigns/${campaignId}/distribution/${hcpId}`
+      `/api/v1/campaigns/${campaignId}/hcps/${hcpId}`
     );
   }
 
   async getDistributionStats(campaignId: string) {
     return this.request<DistributionStats>(
       'GET',
-      `/api/campaigns/${campaignId}/distribution/stats`
+      `/api/v1/campaigns/${campaignId}/distribution/stats`
     );
   }
 
   async sendInvitations(campaignId: string, hcpIds?: string[]) {
     return this.request<{ sent: number }>(
       'POST',
-      `/api/campaigns/${campaignId}/distribution/send-invitations`,
+      `/api/v1/campaigns/${campaignId}/distribution/send-invitations`,
       { hcpIds }
     );
   }
@@ -119,11 +119,11 @@ export class ApiClient {
     if (params?.search) query.set('search', params.search);
     if (params?.limit) query.set('limit', params.limit.toString());
     const queryStr = query.toString() ? `?${query.toString()}` : '';
-    return this.request<{ hcps: Hcp[] }>('GET', `/api/hcps${queryStr}`);
+    return this.request<{ items: Hcp[]; pagination: Pagination }>('GET', `/api/v1/hcps${queryStr}`);
   }
 
   async getHcp(id: string) {
-    return this.request<Hcp>('GET', `/api/hcps/${id}`);
+    return this.request<Hcp>('GET', `/api/v1/hcps/${id}`);
   }
 
   // ==================== Test Helpers ====================
@@ -162,8 +162,8 @@ export class ApiClient {
   async cleanupTestCampaign(campaignId: string) {
     // Remove HCPs first
     const { data } = await this.listCampaignHcps(campaignId);
-    if (data?.hcps) {
-      for (const hcp of data.hcps) {
+    if (data?.items) {
+      for (const hcp of data.items) {
         await this.removeHcpFromCampaign(campaignId, hcp.hcpId);
       }
     }
@@ -219,7 +219,18 @@ interface Hcp {
 interface DistributionStats {
   total: number;
   invited: number;
-  pending: number;
-  completed: number;
+  notInvited: number;
+  opened: number;
   inProgress: number;
+  completed: number;
+  recentlySurveyed: number;
+  optedOut: number;
+  completionRate: number;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
 }
