@@ -24,10 +24,11 @@ describe('API Health Checks', () => {
   });
 
   describe('API Root', () => {
-    it('should return API info at root path', async () => {
+    it('should require authentication at root path', async () => {
       const response = await fetch(getApiUrl('/'));
 
-      expect(response.ok).toBe(true);
+      // Root path requires authentication
+      expect(response.status).toBe(401);
     });
   });
 
