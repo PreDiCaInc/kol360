@@ -59,8 +59,15 @@ import {
 
 // Nomination type labels for display
 const NOMINATION_TYPE_LABELS: Record<string, string> = {
-  NATIONAL_KOL: 'National KOL',
+  // New nomination types (6 types)
+  DISCUSSION_LEADERS: 'Discussion Leaders',
+  REFERRAL_LEADERS: 'Referral Leaders',
+  ADVICE_LEADERS: 'Advice Leaders',
+  NATIONAL_LEADER: 'National Leader',
   RISING_STAR: 'Rising Star',
+  SOCIAL_LEADER: 'Social Leader',
+  // Legacy nomination types (for backwards compatibility)
+  NATIONAL_KOL: 'National KOL',
   REGIONAL_EXPERT: 'Regional Expert',
   DIGITAL_INFLUENCER: 'Digital Influencer',
   CLINICAL_EXPERT: 'Clinical Expert',
@@ -68,8 +75,15 @@ const NOMINATION_TYPE_LABELS: Record<string, string> = {
 
 // Field name mapping for accessing score data
 const NOMINATION_TYPE_FIELDS: Record<string, { score: string; count: string }> = {
-  NATIONAL_KOL: { score: 'scoreNationalKol', count: 'countNationalKol' },
+  // New nomination types (6 types)
+  DISCUSSION_LEADERS: { score: 'scoreDiscussionLeaders', count: 'countDiscussionLeaders' },
+  REFERRAL_LEADERS: { score: 'scoreReferralLeaders', count: 'countReferralLeaders' },
+  ADVICE_LEADERS: { score: 'scoreAdviceLeaders', count: 'countAdviceLeaders' },
+  NATIONAL_LEADER: { score: 'scoreNationalLeader', count: 'countNationalLeader' },
   RISING_STAR: { score: 'scoreRisingStar', count: 'countRisingStar' },
+  SOCIAL_LEADER: { score: 'scoreSocialLeader', count: 'countSocialLeader' },
+  // Legacy nomination types (for backwards compatibility)
+  NATIONAL_KOL: { score: 'scoreNationalKol', count: 'countNationalKol' },
   REGIONAL_EXPERT: { score: 'scoreRegionalExpert', count: 'countRegionalExpert' },
   DIGITAL_INFLUENCER: { score: 'scoreDigitalInfluencer', count: 'countDigitalInfluencer' },
   CLINICAL_EXPERT: { score: 'scoreClinicalExpert', count: 'countClinicalExpert' },
