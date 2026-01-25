@@ -322,20 +322,20 @@ export class ApiClient {
   // ==================== Survey Taking (Public) ====================
 
   async getSurveyByToken(token: string) {
-    return this.request<SurveyData>('GET', `/survey/take/${token}`);
+    return this.request<SurveyData>('GET', `/api/v1/survey/take/${token}`);
   }
 
   async startSurvey(token: string) {
     return this.request<{ status: string; startedAt: string }>(
       'POST',
-      `/survey/take/${token}/start`
+      `/api/v1/survey/take/${token}/start`
     );
   }
 
   async saveSurveyProgress(token: string, answers: SurveyAnswer[]) {
     return this.request<{ saved: boolean }>(
       'POST',
-      `/survey/take/${token}/save`,
+      `/api/v1/survey/take/${token}/save`,
       { answers }
     );
   }
@@ -343,7 +343,7 @@ export class ApiClient {
   async submitSurvey(token: string, answers: SurveyAnswer[]) {
     return this.request<{ status: string; completedAt: string }>(
       'POST',
-      `/survey/take/${token}/submit`,
+      `/api/v1/survey/take/${token}/submit`,
       { answers }
     );
   }
