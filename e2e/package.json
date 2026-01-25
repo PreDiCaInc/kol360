@@ -8,6 +8,8 @@
     "test:api:local": "E2E_API_URL=http://localhost:3001 vitest run --config vitest.config.ts api/",
     "test:api:aws": "E2E_API_URL=https://ik6dmnn2ra.us-east-2.awsapprunner.com vitest run --config vitest.config.ts api/",
     "test:api:aws:auth": "E2E_API_URL=https://ik6dmnn2ra.us-east-2.awsapprunner.com npx tsx run-with-auth.ts api",
+    "test:workflow": "vitest run --config vitest.config.ts api/full-workflow.test.ts",
+    "test:workflow:aws": "E2E_API_URL=https://ik6dmnn2ra.us-east-2.awsapprunner.com npx tsx run-with-auth.ts api -- --testNamePattern='Full Workflow'",
     "test:web": "playwright test",
     "test:web:local": "E2E_WEB_URL=http://localhost:3000 playwright test",
     "test:web:aws": "E2E_WEB_URL=https://y6empq5whm.us-east-2.awsapprunner.com playwright test",

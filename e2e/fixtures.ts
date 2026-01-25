@@ -21,7 +21,8 @@ export const TEST_IDS = {
   SPECIALTY_NAME: 'E2E Test Oncology Specialist',
   SPECIALTY_CODE: 'E2E_ONC',
 
-  // Test HCPs (3 test HCPs) - CUID format required
+  // Test HCPs - CUID format required
+  // HCP_1: Generic test HCP (fake email)
   HCP_1: {
     id: 'cme2e0test0hcp0000001',
     npi: '9990000001',
@@ -31,15 +32,19 @@ export const TEST_IDS = {
     city: 'Boston',
     state: 'MA',
   },
+
+  // HCP_2: Real email for testing email delivery (bio-exec.com inbox)
   HCP_2: {
     id: 'cme2e0test0hcp0000002',
     npi: '9990000002',
-    firstName: 'Bob',
-    lastName: 'TestPhysician',
-    email: 'bob.test@e2etest.example.com',
+    firstName: 'E2E',
+    lastName: 'TestHCP',
+    email: 'hcp2@bio-exec.com', // Real email - can check inbox
     city: 'New York',
     state: 'NY',
   },
+
+  // HCP_3: Generic test HCP (fake email)
   HCP_3: {
     id: 'cme2e0test0hcp0000003',
     npi: '9990000003',
@@ -67,6 +72,13 @@ export function getTestHcps() {
 }
 
 /**
+ * Get the HCP with the real email for email delivery testing
+ */
+export function getRealEmailHcp() {
+  return TEST_IDS.HCP_2;
+}
+
+/**
  * Check if an ID belongs to test data
  */
 export function isTestData(id: string): boolean {
@@ -79,4 +91,43 @@ export function isTestData(id: string): boolean {
 export function generateTestCampaignName(): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   return `${TEST_IDS.CAMPAIGN_PREFIX}${timestamp}`;
+}
+
+/**
+ * Generate a unique CUID-like ID for test data
+ * Format: cme2e + random suffix (must be 25 chars total)
+ */
+export function generateTestId(prefix: string = 'test'): string {
+  const random = Math.random().toString(36).substring(2, 15);
+  const id = `cme2e0${prefix}0${random}`.substring(0, 25);
+  return id.padEnd(25, '0');
+}
+
+/**
+ * Sample survey answers for testing
+ * These match the expected format for survey submission
+ */
+export function generateSampleAnswers(questions: { id: string; type: string }[]) {
+  return questions.map((q) => {
+    switch (q.type) {
+      case 'SINGLE_SELECT':
+        return { questionId: q.id, value: 0 }; // First option
+      case 'MULTI_SELECT':
+        return { questionId: q.id, value: [0] }; // First option selected
+      case 'RATING':
+        return { questionId: q.id, value: 4 }; // Rating of 4
+      case 'TEXT':
+        return { questionId: q.id, value: 'E2E test response' };
+      case 'NOMINATION':
+        return {
+          questionId: q.id,
+          value: [
+            { name: 'Dr. John Smith', institution: 'Test Hospital' },
+            { name: 'Dr. Jane Doe', institution: 'Test Clinic' },
+          ],
+        };
+      default:
+        return { questionId: q.id, value: 'test' };
+    }
+  });
 }
