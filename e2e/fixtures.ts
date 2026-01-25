@@ -21,6 +21,19 @@ export const TEST_IDS = {
   SPECIALTY_NAME: 'E2E Test Oncology Specialist',
   SPECIALTY_CODE: 'E2E_ONC',
 
+  // Test Survey Template - CUID format required
+  SURVEY_TEMPLATE_ID: 'cme2e0test0template001',
+  SURVEY_TEMPLATE_NAME: 'E2E Test Survey Template',
+
+  // Test Section - CUID format required
+  SECTION_ID: 'cme2e0test0section0001',
+  SECTION_NAME: 'E2E Test Section',
+
+  // Test Questions - CUID format required
+  QUESTION_1_ID: 'cme2e0test0question001',
+  QUESTION_2_ID: 'cme2e0test0question002',
+  QUESTION_3_ID: 'cme2e0test0question003',
+
   // Test HCPs - CUID format required
   // HCP_1: Generic test HCP (fake email)
   HCP_1: {

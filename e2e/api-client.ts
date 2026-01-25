@@ -420,16 +420,27 @@ export class ApiClient {
     return this.request<{ items: DiseaseArea[]; pagination: Pagination }>('GET', '/api/v1/disease-areas');
   }
 
+  // ==================== Survey Templates ====================
+
+  async listSurveyTemplates() {
+    return this.request<{ items: SurveyTemplate[] }>('GET', '/api/v1/survey-templates');
+  }
+
+  async getSurveyTemplate(id: string) {
+    return this.request<SurveyTemplate>('GET', `/api/v1/survey-templates/${id}`);
+  }
+
   // ==================== Test Helpers ====================
 
   /**
-   * Create a test campaign with default values
+   * Create a test campaign with default values (including survey template)
    */
   async createTestCampaign(overrides?: Partial<CreateCampaignInput>) {
     return this.createCampaign({
       name: generateTestCampaignName(),
       clientId: TEST_IDS.CLIENT_ID,
       diseaseAreaId: TEST_IDS.DISEASE_AREA_ID,
+      surveyTemplateId: TEST_IDS.SURVEY_TEMPLATE_ID, // Required for activation
       description: 'E2E Test Campaign - auto-generated',
       honorariumAmount: 150,
       ...overrides,
@@ -539,6 +550,7 @@ export interface CreateCampaignInput {
   name: string;
   clientId: string;
   diseaseAreaId: string;
+  surveyTemplateId?: string;
   description?: string;
   honorariumAmount?: number;
   surveyOpenDate?: string;
@@ -726,6 +738,32 @@ export interface DiseaseArea {
   name: string;
   code: string;
   therapeuticArea?: string;
+}
+
+export interface SurveyTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  sections?: Array<{
+    id: string;
+    sectionId: string;
+    sortOrder: number;
+    section?: {
+      id: string;
+      name: string;
+      questions?: Array<{
+        questionId: string;
+        question?: {
+          id: string;
+          text: string;
+          type: string;
+        };
+      }>;
+    };
+  }>;
+  _count?: {
+    campaigns: number;
+  };
 }
 
 export interface Pagination {

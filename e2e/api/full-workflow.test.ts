@@ -89,7 +89,22 @@ describe('Full Workflow E2E Tests', () => {
       }
     });
 
-    it('should create a new test campaign', async () => {
+    it('should verify test survey template exists', async () => {
+      const { status, data } = await client.listSurveyTemplates();
+
+      expect(status).toBe(200);
+      expect(data.items).toBeDefined();
+
+      const testTemplate = data.items.find((t: { id: string }) => t.id === TEST_IDS.SURVEY_TEMPLATE_ID);
+      if (!testTemplate) {
+        console.log('⚠️ Test survey template not found. Run seed script first: pnpm --filter @kol360/e2e seed');
+        console.log('   The seed script creates a survey template with questions required for campaign activation.');
+      } else {
+        console.log(`✅ Found survey template: ${testTemplate.name}`);
+      }
+    });
+
+    it('should create a new test campaign with survey template', async () => {
       const { status, data } = await client.createTestCampaign({
         honorariumAmount: 200,
         description: 'E2E Full Workflow Test Campaign',
@@ -542,9 +557,12 @@ describe('Individual Workflow Steps', () => {
 
   describe('Campaign Lifecycle States', () => {
     it.skipIf(!config.authToken)('should enforce valid state transitions', async () => {
-      // Create a test campaign
+      // Create a test campaign (includes survey template via createTestCampaign)
       const { data: campaign } = await client.createTestCampaign();
       createdCampaignIds.push(campaign.id);
+
+      // Assign HCPs (required for activation)
+      await client.assignHcpsToCampaign(campaign.id, [TEST_IDS.HCP_1.id]);
 
       // DRAFT -> Cannot close directly
       const { status: closeStatus } = await client.closeCampaign(campaign.id);
@@ -554,7 +572,7 @@ describe('Individual Workflow Steps', () => {
       const { status: publishStatus } = await client.publishCampaign(campaign.id);
       expect(publishStatus).toBe(400);
 
-      // DRAFT -> ACTIVE (valid)
+      // DRAFT -> ACTIVE (valid - requires HCPs and survey questions)
       const { status: activateStatus } = await client.activateCampaign(campaign.id);
       expect(activateStatus).toBe(200);
 
