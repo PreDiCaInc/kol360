@@ -32,6 +32,11 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
 
   afterAll(async () => {
     // Cleanup: delete test campaign if it was created
+    // Skip cleanup if SKIP_CLEANUP=true (to inspect test data)
+    if (process.env.SKIP_CLEANUP === 'true') {
+      console.log(`Skipping cleanup - campaign ${testCampaignId} left for inspection`);
+      return;
+    }
     if (testCampaignId) {
       try {
         await api.cleanupTestCampaign(testCampaignId);
