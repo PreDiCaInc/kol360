@@ -164,14 +164,11 @@ async function seedTestData() {
     },
     {
       id: TEST_IDS.QUESTION_3_ID,
-      text: 'Please nominate other KOLs you would recommend',
-      type: 'NOMINATION' as const,
+      text: 'Please provide any additional comments or feedback',
+      type: 'MULTI_TEXT' as const,
       category: 'E2E Test',
       isRequired: false,
       status: 'ACTIVE' as const,
-      nominationType: 'SCIENTIFIC_EXPERT' as const,
-      minEntries: 1,
-      defaultEntries: 3,
     },
   ];
 
@@ -190,9 +187,9 @@ async function seedTestData() {
     console.log(`  ✓ Question: ${question.text.substring(0, 40)}...`);
   }
 
-  // 7. Create test section
-  console.log('Creating test section...');
-  const section = await prisma.section.upsert({
+  // 7. Create test section template
+  console.log('Creating test section template...');
+  const section = await prisma.sectionTemplate.upsert({
     where: { id: TEST_IDS.SECTION_ID },
     update: {
       name: 'E2E Test Section',
@@ -204,7 +201,7 @@ async function seedTestData() {
       description: 'Section for E2E testing',
     },
   });
-  console.log(`  ✓ Section: ${section.name} (${section.id})`);
+  console.log(`  ✓ Section Template: ${section.name} (${section.id})`);
 
   // 8. Link questions to section
   console.log('Linking questions to section...');

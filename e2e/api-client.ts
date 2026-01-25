@@ -24,9 +24,12 @@ export class ApiClient {
     options?: { timeout?: number; rawResponse?: boolean }
   ): Promise<{ status: number; data: T; headers?: Headers }> {
     const url = `${this.baseUrl}${path}`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    const headers: Record<string, string> = {};
+
+    // Only set Content-Type if we have a body
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     if (this.authToken) {
       headers['Authorization'] = `Bearer ${this.authToken}`;
@@ -40,7 +43,7 @@ export class ApiClient {
       const response = await fetch(url, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
 
@@ -423,7 +426,13 @@ export class ApiClient {
   // ==================== Survey Templates ====================
 
   async listSurveyTemplates() {
-    return this.request<{ items: SurveyTemplate[] }>('GET', '/api/v1/survey-templates');
+    // API returns array directly, wrap it in items for consistency
+    const result = await this.request<SurveyTemplate[]>('GET', '/api/v1/survey-templates');
+    return {
+      status: result.status,
+      data: { items: result.data },
+      headers: result.headers,
+    };
   }
 
   async getSurveyTemplate(id: string) {
