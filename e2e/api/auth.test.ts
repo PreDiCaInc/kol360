@@ -4,7 +4,7 @@ import { config, getApiUrl, getAuthHeaders } from '../config';
 describe('API Authentication', () => {
   describe('Protected Endpoints', () => {
     it('should reject requests without auth token', async () => {
-      const response = await fetch(getApiUrl('/api/campaigns'), {
+      const response = await fetch(getApiUrl('/api/v1/campaigns'), {
         headers: {
           'Content-Type': 'application/json',
         },
@@ -15,7 +15,7 @@ describe('API Authentication', () => {
     });
 
     it('should reject requests with invalid auth token', async () => {
-      const response = await fetch(getApiUrl('/api/campaigns'), {
+      const response = await fetch(getApiUrl('/api/v1/campaigns'), {
         headers: {
           'Content-Type': 'application/json',
           Authorization: 'Bearer invalid-token-12345',
@@ -29,7 +29,7 @@ describe('API Authentication', () => {
 
   describe('Authenticated Requests', () => {
     it.skipIf(!config.authToken)('should accept valid auth token', async () => {
-      const response = await fetch(getApiUrl('/api/campaigns'), {
+      const response = await fetch(getApiUrl('/api/v1/campaigns'), {
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders(),
@@ -40,21 +40,10 @@ describe('API Authentication', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data).toHaveProperty('campaigns');
+      expect(data).toHaveProperty('items');
     });
 
-    it.skipIf(!config.authToken)('should return user info', async () => {
-      const response = await fetch(getApiUrl('/api/users/me'), {
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
-      });
-
-      expect(response.status).toBe(200);
-
-      const data = await response.json();
-      expect(data).toHaveProperty('email');
-    });
+    // Note: /users/me endpoint doesn't exist. The app uses Cognito token claims for user info.
+    // Users are looked up by cognitoSub in the database when needed.
   });
 });

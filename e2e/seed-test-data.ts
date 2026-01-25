@@ -1,8 +1,9 @@
 /**
  * E2E Test Data Seed Script
  *
- * This script creates/updates the test client, disease area, and HCPs
- * needed for e2e testing. It's idempotent - safe to run multiple times.
+ * This script creates/updates the test client, disease area, HCPs,
+ * survey template with questions - everything needed for e2e testing.
+ * It's idempotent - safe to run multiple times.
  *
  * Usage:
  *   cd apps/api
@@ -10,6 +11,8 @@
  *
  * Or via pnpm from root:
  *   pnpm --filter @kol360/api exec tsx ../../e2e/seed-test-data.ts
+ *
+ * Note: Requires DATABASE_URL to be set via environment or .env file
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -140,10 +143,126 @@ async function seedTestData() {
   });
   console.log(`  ✓ User: ${user.email} (${user.id})`);
 
+  // 6. Create test questions
+  console.log('Creating test questions...');
+  const questions = [
+    {
+      id: TEST_IDS.QUESTION_1_ID,
+      text: 'How would you rate this KOL overall?',
+      type: 'RATING' as const,
+      category: 'E2E Test',
+      isRequired: true,
+      status: 'ACTIVE' as const,
+    },
+    {
+      id: TEST_IDS.QUESTION_2_ID,
+      text: 'What are the key strengths of this KOL?',
+      type: 'TEXT' as const,
+      category: 'E2E Test',
+      isRequired: false,
+      status: 'ACTIVE' as const,
+    },
+    {
+      id: TEST_IDS.QUESTION_3_ID,
+      text: 'Please provide any additional comments or feedback',
+      type: 'MULTI_TEXT' as const,
+      category: 'E2E Test',
+      isRequired: false,
+      status: 'ACTIVE' as const,
+    },
+  ];
+
+  for (const q of questions) {
+    const question = await prisma.question.upsert({
+      where: { id: q.id },
+      update: {
+        text: q.text,
+        type: q.type,
+        category: q.category,
+        isRequired: q.isRequired,
+        status: q.status,
+      },
+      create: q,
+    });
+    console.log(`  ✓ Question: ${question.text.substring(0, 40)}...`);
+  }
+
+  // 7. Create test section template
+  console.log('Creating test section template...');
+  const section = await prisma.sectionTemplate.upsert({
+    where: { id: TEST_IDS.SECTION_ID },
+    update: {
+      name: 'E2E Test Section',
+      description: 'Section for E2E testing',
+    },
+    create: {
+      id: TEST_IDS.SECTION_ID,
+      name: 'E2E Test Section',
+      description: 'Section for E2E testing',
+    },
+  });
+  console.log(`  ✓ Section Template: ${section.name} (${section.id})`);
+
+  // 8. Link questions to section
+  console.log('Linking questions to section...');
+  for (let i = 0; i < questions.length; i++) {
+    await prisma.sectionQuestion.upsert({
+      where: {
+        sectionId_questionId: {
+          sectionId: TEST_IDS.SECTION_ID,
+          questionId: questions[i].id,
+        },
+      },
+      update: { sortOrder: i },
+      create: {
+        sectionId: TEST_IDS.SECTION_ID,
+        questionId: questions[i].id,
+        sortOrder: i,
+      },
+    });
+  }
+  console.log(`  ✓ Linked ${questions.length} questions to section`);
+
+  // 9. Create test survey template
+  console.log('Creating test survey template...');
+  const template = await prisma.surveyTemplate.upsert({
+    where: { id: TEST_IDS.SURVEY_TEMPLATE_ID },
+    update: {
+      name: 'E2E Test Survey Template',
+      description: 'Survey template for E2E testing',
+    },
+    create: {
+      id: TEST_IDS.SURVEY_TEMPLATE_ID,
+      name: 'E2E Test Survey Template',
+      description: 'Survey template for E2E testing',
+    },
+  });
+  console.log(`  ✓ Survey Template: ${template.name} (${template.id})`);
+
+  // 10. Link section to template
+  console.log('Linking section to template...');
+  await prisma.templateSection.upsert({
+    where: {
+      templateId_sectionId: {
+        templateId: TEST_IDS.SURVEY_TEMPLATE_ID,
+        sectionId: TEST_IDS.SECTION_ID,
+      },
+    },
+    update: { sortOrder: 0 },
+    create: {
+      templateId: TEST_IDS.SURVEY_TEMPLATE_ID,
+      sectionId: TEST_IDS.SECTION_ID,
+      sortOrder: 0,
+      isLocked: false,
+    },
+  });
+  console.log(`  ✓ Linked section to template`);
+
   console.log('\n✅ E2E test data seeded successfully!');
   console.log('\nTest data summary:');
   console.log(`  - Client ID: ${TEST_IDS.CLIENT_ID}`);
   console.log(`  - Disease Area ID: ${TEST_IDS.DISEASE_AREA_ID}`);
+  console.log(`  - Survey Template ID: ${TEST_IDS.SURVEY_TEMPLATE_ID}`);
   console.log(`  - HCP IDs: ${testHcps.map((h) => h.id).join(', ')}`);
   console.log(`  - User ID: ${TEST_IDS.USER_ID}`);
 }

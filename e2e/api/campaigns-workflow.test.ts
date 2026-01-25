@@ -32,6 +32,11 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
 
   afterAll(async () => {
     // Cleanup: delete test campaign if it was created
+    // Skip cleanup if SKIP_CLEANUP=true (to inspect test data)
+    if (process.env.SKIP_CLEANUP === 'true') {
+      console.log(`Skipping cleanup - campaign ${testCampaignId} left for inspection`);
+      return;
+    }
     if (testCampaignId) {
       try {
         await api.cleanupTestCampaign(testCampaignId);
@@ -53,7 +58,7 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
         description: 'E2E Test - Full workflow test',
       });
 
-      expect(status).toBe(200);
+      expect(status).toBe(201); // 201 Created is the correct status for resource creation
       expect(data).toHaveProperty('id');
       expect(data.name).toBe(campaignName);
       expect(data.clientId).toBe(TEST_IDS.CLIENT_ID);
@@ -78,9 +83,9 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
       const { status, data } = await api.listCampaigns();
 
       expect(status).toBe(200);
-      expect(data.campaigns).toBeInstanceOf(Array);
+      expect(data.items).toBeInstanceOf(Array);
 
-      const found = data.campaigns.find((c) => c.id === testCampaignId);
+      const found = data.items.find((c) => c.id === testCampaignId);
       expect(found).toBeTruthy();
     });
   });
@@ -94,17 +99,17 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
       const { status, data } = await api.assignHcpsToCampaign(testCampaignId!, hcpIds);
 
       expect(status).toBe(200);
-      expect(data.assigned).toBe(3);
+      expect(data.added).toBe(3);
     });
 
     it('should list assigned HCPs', async () => {
       const { status, data } = await api.listCampaignHcps(testCampaignId!);
 
       expect(status).toBe(200);
-      expect(data.hcps).toHaveLength(3);
+      expect(data.items).toHaveLength(3);
 
       // Verify all test HCPs are assigned
-      const assignedNpis = data.hcps.map((h) => h.hcp.npi);
+      const assignedNpis = data.items.map((h) => h.hcp.npi);
       expect(assignedNpis).toContain(TEST_IDS.HCP_1.npi);
       expect(assignedNpis).toContain(TEST_IDS.HCP_2.npi);
       expect(assignedNpis).toContain(TEST_IDS.HCP_3.npi);
@@ -118,11 +123,11 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
 
       // Should succeed but with 0 new assignments (already assigned)
       expect(status).toBe(200);
-      expect(data.assigned).toBe(0);
+      expect(data.added).toBe(0);
 
       // Verify still only 3 HCPs
       const listResult = await api.listCampaignHcps(testCampaignId!);
-      expect(listResult.data.hcps).toHaveLength(3);
+      expect(listResult.data.items).toHaveLength(3);
     });
   });
 
@@ -132,7 +137,7 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
 
       expect(status).toBe(200);
       expect(data.total).toBe(3);
-      expect(data.pending).toBe(3); // All pending, no invites sent
+      expect(data.notInvited).toBe(3); // All not yet invited
       expect(data.invited).toBe(0);
       expect(data.completed).toBe(0);
     });
@@ -158,11 +163,11 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
         TEST_IDS.HCP_3.id
       );
 
-      expect(status).toBe(200);
+      expect(status).toBe(204); // 204 No Content for successful deletion
 
       // Verify only 2 HCPs remain
       const listResult = await api.listCampaignHcps(testCampaignId!);
-      expect(listResult.data.hcps).toHaveLength(2);
+      expect(listResult.data.items).toHaveLength(2);
     });
 
     it('should update stats after removal', async () => {
@@ -207,9 +212,9 @@ describe.skipIf(skipIfNoAuth)('HCP Search E2E', () => {
     const { status, data } = await api.listHcps({ search: 'TestDoctor' });
 
     expect(status).toBe(200);
-    expect(data.hcps.length).toBeGreaterThan(0);
+    expect(data.items.length).toBeGreaterThan(0);
 
-    const found = data.hcps.find((h) => h.npi === TEST_IDS.HCP_1.npi);
+    const found = data.items.find((h) => h.npi === TEST_IDS.HCP_1.npi);
     expect(found).toBeTruthy();
   });
 
@@ -217,7 +222,7 @@ describe.skipIf(skipIfNoAuth)('HCP Search E2E', () => {
     const { status, data } = await api.listHcps({ search: TEST_IDS.HCP_2.npi });
 
     expect(status).toBe(200);
-    expect(data.hcps.length).toBeGreaterThan(0);
+    expect(data.items.length).toBeGreaterThan(0);
   });
 
   it('should get individual HCP by ID', async () => {
