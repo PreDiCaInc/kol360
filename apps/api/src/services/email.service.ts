@@ -11,6 +11,7 @@ const FROM_NAME = process.env.SES_FROM_NAME || 'BioExec KOL Research';
 const MOCK_MODE = process.env.EMAIL_MOCK_MODE === 'true';
 const SEND_EXTERNAL_EMAIL = process.env.SEND_EXTERNAL_EMAIL === 'true';
 const ALLOWED_EMAIL_DOMAIN = 'bio-exec.com';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 // Base URL for survey links
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://kol360.bio-exec.com';
@@ -486,26 +487,33 @@ BioExec Research | Confidential KOL Survey
     });
 
     // Check for HCPs who completed a survey for the same disease area in the past year
+    // Only enforce this rule in production - allow re-surveying in dev/test environments
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
     const hcpIds = uninvitedHcps.map(ch => ch.hcpId);
-    const recentlyCompletedSurveys = await prisma.surveyResponse.findMany({
-      where: {
-        respondentHcpId: { in: hcpIds },
-        status: 'COMPLETED',
-        completedAt: { gte: oneYearAgo },
-        campaign: {
-          diseaseAreaId: campaign.diseaseAreaId,
-          id: { not: campaignId }, // Exclude current campaign
+    let recentlyCompletedSurveys: Array<{ respondentHcpId: string; completedAt: Date | null; campaign: { name: string } }> = [];
+
+    if (IS_PRODUCTION) {
+      recentlyCompletedSurveys = await prisma.surveyResponse.findMany({
+        where: {
+          respondentHcpId: { in: hcpIds },
+          status: 'COMPLETED',
+          completedAt: { gte: oneYearAgo },
+          campaign: {
+            diseaseAreaId: campaign.diseaseAreaId,
+            id: { not: campaignId }, // Exclude current campaign
+          },
         },
-      },
-      select: {
-        respondentHcpId: true,
-        completedAt: true,
-        campaign: { select: { name: true } },
-      },
-    });
+        select: {
+          respondentHcpId: true,
+          completedAt: true,
+          campaign: { select: { name: true } },
+        },
+      });
+    } else {
+      logger.info('12-month survey cooldown bypassed (non-production environment)', { campaignId });
+    }
 
     const recentlySurveyedHcpIds = new Set(recentlyCompletedSurveys.map(r => r.respondentHcpId));
 
