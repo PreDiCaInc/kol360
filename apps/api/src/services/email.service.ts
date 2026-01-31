@@ -586,67 +586,76 @@ BioExec Research | Confidential KOL Survey
           },
         });
 
-        // Copy HcpCampaignScore from the previous campaign to current campaign
-        const previousCampaignScore = await prisma.hcpCampaignScore.findFirst({
+        // Copy nominations (survey responses) from the previous campaign to current campaign
+        // This copies how the HCP rated/nominated others, not the scores they received
+        const previousResponse = await prisma.surveyResponse.findFirst({
           where: {
-            hcpId: hcp.id,
+            respondentHcpId: hcp.id,
+            status: 'COMPLETED',
+            completedAt: { gte: oneYearAgo },
             campaign: {
               diseaseAreaId: campaign.diseaseAreaId,
               id: { not: campaignId },
             },
-            scoreSurvey: { not: null },
           },
-          orderBy: { calculatedAt: 'desc' },
+          include: {
+            nominations: {
+              include: {
+                question: { select: { nominationType: true } },
+              },
+            },
+          },
+          orderBy: { completedAt: 'desc' },
         });
 
-        if (previousCampaignScore) {
-          // Copy the scores to the current campaign
-          await prisma.hcpCampaignScore.upsert({
-            where: {
-              hcpId_campaignId: { hcpId: hcp.id, campaignId },
-            },
-            create: {
-              hcpId: hcp.id,
-              campaignId,
-              scoreDiscussionLeaders: previousCampaignScore.scoreDiscussionLeaders,
-              countDiscussionLeaders: previousCampaignScore.countDiscussionLeaders,
-              scoreReferralLeaders: previousCampaignScore.scoreReferralLeaders,
-              countReferralLeaders: previousCampaignScore.countReferralLeaders,
-              scoreAdviceLeaders: previousCampaignScore.scoreAdviceLeaders,
-              countAdviceLeaders: previousCampaignScore.countAdviceLeaders,
-              scoreNationalLeader: previousCampaignScore.scoreNationalLeader,
-              countNationalLeader: previousCampaignScore.countNationalLeader,
-              scoreRisingStar: previousCampaignScore.scoreRisingStar,
-              countRisingStar: previousCampaignScore.countRisingStar,
-              scoreSocialLeader: previousCampaignScore.scoreSocialLeader,
-              countSocialLeader: previousCampaignScore.countSocialLeader,
-              scoreSurvey: previousCampaignScore.scoreSurvey,
-              nominationCount: previousCampaignScore.nominationCount,
-              compositeScore: previousCampaignScore.compositeScore,
-              calculatedAt: previousCampaignScore.calculatedAt,
-            },
-            update: {
-              scoreDiscussionLeaders: previousCampaignScore.scoreDiscussionLeaders,
-              countDiscussionLeaders: previousCampaignScore.countDiscussionLeaders,
-              scoreReferralLeaders: previousCampaignScore.scoreReferralLeaders,
-              countReferralLeaders: previousCampaignScore.countReferralLeaders,
-              scoreAdviceLeaders: previousCampaignScore.scoreAdviceLeaders,
-              countAdviceLeaders: previousCampaignScore.countAdviceLeaders,
-              scoreNationalLeader: previousCampaignScore.scoreNationalLeader,
-              countNationalLeader: previousCampaignScore.countNationalLeader,
-              scoreRisingStar: previousCampaignScore.scoreRisingStar,
-              countRisingStar: previousCampaignScore.countRisingStar,
-              scoreSocialLeader: previousCampaignScore.scoreSocialLeader,
-              countSocialLeader: previousCampaignScore.countSocialLeader,
-              scoreSurvey: previousCampaignScore.scoreSurvey,
-              nominationCount: previousCampaignScore.nominationCount,
-              compositeScore: previousCampaignScore.compositeScore,
-              calculatedAt: previousCampaignScore.calculatedAt,
-            },
+        let nominationsCopied = 0;
+        if (previousResponse && previousResponse.nominations.length > 0) {
+          // Get the SurveyResponse we just created for the new campaign
+          const newResponse = await prisma.surveyResponse.findUnique({
+            where: { surveyToken },
           });
+
+          if (newResponse) {
+            // Get survey questions for the current campaign (mapped by nominationType)
+            const currentCampaignQuestions = await prisma.surveyQuestion.findMany({
+              where: { campaignId, nominationType: { not: null } },
+            });
+            const questionByType = new Map(
+              currentCampaignQuestions.map(q => [q.nominationType, q.id])
+            );
+
+            // Copy each nomination to the new campaign
+            for (const nomination of previousResponse.nominations) {
+              const nominationType = nomination.question?.nominationType;
+              if (!nominationType) continue;
+
+              const targetQuestionId = questionByType.get(nominationType);
+              if (!targetQuestionId) continue;
+
+              await prisma.nomination.create({
+                data: {
+                  responseId: newResponse.id,
+                  questionId: targetQuestionId,
+                  nominatorHcpId: hcp.id,
+                  rawNameEntered: nomination.rawNameEntered,
+                  matchedHcpId: nomination.matchedHcpId,
+                  matchStatus: nomination.matchStatus,
+                  matchedBy: nomination.matchedBy,
+                  matchedAt: nomination.matchedAt,
+                  matchConfidence: nomination.matchConfidence,
+                  matchType: nomination.matchType,
+                  excludeReason: nomination.excludeReason,
+                },
+              });
+              nominationsCopied++;
+            }
+          }
         }
 
-        result.errors.push({ email: hcp.email, error: 'Recently surveyed in same disease area - scores copied' });
+        result.errors.push({
+          email: hcp.email,
+          error: `Recently surveyed in same disease area - ${nominationsCopied} nominations copied`,
+        });
         continue;
       }
 
