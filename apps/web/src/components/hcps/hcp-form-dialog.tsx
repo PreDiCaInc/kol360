@@ -68,7 +68,7 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
   useEffect(() => {
     if (hcp) {
       form.reset({
-        npi: hcp.npi,
+        npi: hcp.npi || "",
         firstName: hcp.firstName,
         lastName: hcp.lastName,
         email: hcp.email,

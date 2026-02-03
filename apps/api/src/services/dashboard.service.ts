@@ -397,7 +397,7 @@ export class DashboardService {
       nominationCount: number;
       hcp: {
         id: string;
-        npi: string;
+        npi: string | null;
         firstName: string;
         lastName: string;
         specialty: string | null;

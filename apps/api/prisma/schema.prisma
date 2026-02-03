@@ -146,7 +146,10 @@ model CampaignHcpExclusion {
 
 model Hcp {
   id                  String                  @id @default(cuid())
-  npi                 String                  @unique
+  beId                String                  @unique
+  npi                 String?                 @unique
+  isSurveyTaker       Boolean                 @default(false)
+  isNominated         Boolean                 @default(false)
   firstName           String
   lastName            String
   email               String?
@@ -170,10 +173,13 @@ model Hcp {
   clientExclusions    ClientHcpExclusion[]
   campaignExclusions  CampaignHcpExclusion[]
 
+  @@index([beId])
   @@index([npi])
   @@index([lastName, firstName])
   @@index([specialty])
   @@index([state])
+  @@index([isSurveyTaker])
+  @@index([isNominated])
 }
 
 model HcpAlias {
