@@ -243,22 +243,57 @@ interface PreviewQuestionProps {
 }
 
 function PreviewQuestion({ question, index }: PreviewQuestionProps) {
+  const [radioValue, setRadioValue] = useState('');
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+  const [ratingValue, setRatingValue] = useState<number | null>(null);
+  const [textValue, setTextValue] = useState('');
+  const [numberValue, setNumberValue] = useState('');
+  const [dropdownValue, setDropdownValue] = useState('');
+  const [multiTextValues, setMultiTextValues] = useState<string[]>(() => {
+    const count = question.defaultEntries ?? question.minEntries ?? 3;
+    return Array.from({ length: Math.min(count, 5) }, () => '');
+  });
+  const [optionTextValues, setOptionTextValues] = useState<Record<string, string>>({});
+
+  const handleCheckboxChange = (optionText: string, checked: boolean) => {
+    setCheckedItems((prev) => ({ ...prev, [optionText]: checked }));
+  };
+
+  const handleMultiTextChange = (idx: number, value: string) => {
+    setMultiTextValues((prev) => {
+      const updated = [...prev];
+      updated[idx] = value;
+      return updated;
+    });
+  };
+
+  const addMultiTextEntry = () => {
+    setMultiTextValues((prev) => [...prev, '']);
+  };
+
+  const removeMultiTextEntry = (idx: number) => {
+    setMultiTextValues((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const renderInput = () => {
     switch (question.type) {
       case 'SINGLE_CHOICE':
         return (
-          <RadioGroup className="space-y-2" disabled>
+          <RadioGroup className="space-y-2" value={radioValue} onValueChange={setRadioValue}>
             {question.options?.map((option) => (
               <div key={option.text} className="flex items-center gap-2">
-                <RadioGroupItem value={option.text} id={`preview-${question.id}-${option.text}`} disabled />
-                <Label htmlFor={`preview-${question.id}-${option.text}`} className="text-sm font-normal">
+                <RadioGroupItem value={option.text} id={`preview-${question.id}-${option.text}`} />
+                <Label htmlFor={`preview-${question.id}-${option.text}`} className="text-sm font-normal cursor-pointer">
                   {option.text}
                 </Label>
                 {option.requiresText && (
                   <Input
                     placeholder="Please specify..."
                     className="flex-1 max-w-xs h-8 text-sm"
-                    disabled
+                    value={optionTextValues[option.text] || ''}
+                    onChange={(e) =>
+                      setOptionTextValues((prev) => ({ ...prev, [option.text]: e.target.value }))
+                    }
                   />
                 )}
               </div>
@@ -271,15 +306,22 @@ function PreviewQuestion({ question, index }: PreviewQuestionProps) {
           <div className="space-y-2">
             {question.options?.map((option) => (
               <div key={option.text} className="flex items-center gap-2">
-                <Checkbox id={`preview-${question.id}-${option.text}`} disabled />
-                <Label htmlFor={`preview-${question.id}-${option.text}`} className="text-sm font-normal">
+                <Checkbox
+                  id={`preview-${question.id}-${option.text}`}
+                  checked={checkedItems[option.text] || false}
+                  onCheckedChange={(checked) => handleCheckboxChange(option.text, checked === true)}
+                />
+                <Label htmlFor={`preview-${question.id}-${option.text}`} className="text-sm font-normal cursor-pointer">
                   {option.text}
                 </Label>
                 {option.requiresText && (
                   <Input
                     placeholder="Please specify..."
                     className="flex-1 max-w-xs h-8 text-sm"
-                    disabled
+                    value={optionTextValues[option.text] || ''}
+                    onChange={(e) =>
+                      setOptionTextValues((prev) => ({ ...prev, [option.text]: e.target.value }))
+                    }
                   />
                 )}
               </div>
@@ -294,10 +336,10 @@ function PreviewQuestion({ question, index }: PreviewQuestionProps) {
               <Button
                 key={n}
                 type="button"
-                variant="outline"
+                variant={ratingValue === n ? 'default' : 'outline'}
                 size="sm"
                 className="w-10 h-10"
-                disabled
+                onClick={() => setRatingValue(n)}
               >
                 {n}
               </Button>
@@ -309,33 +351,39 @@ function PreviewQuestion({ question, index }: PreviewQuestionProps) {
         return (
           <Input
             placeholder="Enter your response..."
-            disabled
             className="max-w-md"
+            value={textValue}
+            onChange={(e) => setTextValue(e.target.value)}
           />
         );
 
       case 'MULTI_TEXT':
-        const defaultCount = question.defaultEntries ?? question.minEntries ?? 3;
         return (
           <div className="space-y-2">
-            {Array.from({ length: Math.min(defaultCount, 5) }).map((_, i) => (
+            {multiTextValues.map((val, i) => (
               <div key={i} className="flex gap-2 items-center">
                 <Input
                   placeholder={`Name ${i + 1}`}
-                  disabled
                   className="max-w-md"
+                  value={val}
+                  onChange={(e) => handleMultiTextChange(i, e.target.value)}
                 />
                 {i < (question.minEntries ?? 1) && (
                   <span className="text-red-500 text-sm">*</span>
                 )}
                 {i >= (question.minEntries ?? 1) && (
-                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => removeMultiTextEntry(i)}
+                  >
                     <X className="w-4 h-4" />
                   </Button>
                 )}
               </div>
             ))}
-            <Button type="button" variant="outline" size="sm" disabled>
+            <Button type="button" variant="outline" size="sm" onClick={addMultiTextEntry}>
               <Plus className="w-4 h-4 mr-1" />
               Add Another
             </Button>
@@ -352,14 +400,15 @@ function PreviewQuestion({ question, index }: PreviewQuestionProps) {
           <Input
             type="number"
             placeholder="Enter a number..."
-            disabled
             className="max-w-xs"
+            value={numberValue}
+            onChange={(e) => setNumberValue(e.target.value)}
           />
         );
 
       case 'DROPDOWN':
         return (
-          <Select disabled>
+          <Select value={dropdownValue} onValueChange={setDropdownValue}>
             <SelectTrigger className="max-w-xs">
               <SelectValue placeholder="Select an option..." />
             </SelectTrigger>
