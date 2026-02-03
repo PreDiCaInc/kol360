@@ -18,9 +18,9 @@ describe('API Health Checks', () => {
       await fetch(getApiUrl('/health'));
       const duration = Date.now() - start;
 
-      // Health check should respond in under 10 seconds (cold starts can be slow)
-      expect(duration).toBeLessThan(10000);
-    }, 15000); // 15 second test timeout
+      // Health check should respond in under 2 seconds
+      expect(duration).toBeLessThan(2000);
+    });
   });
 
   describe('API Root', () => {

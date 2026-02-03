@@ -75,11 +75,12 @@ export default function HcpsPage() {
     if (!hcps.length) return;
 
     // Build CSV content
-    const headers = ['NPI', 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-Specialty', 'City', 'State', 'Aliases', 'Campaigns'];
+    const headers = ['BE ID', 'NPI', 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-Specialty', 'City', 'State', 'Aliases', 'Campaigns'];
     const rows = hcps.map((hcp) => {
       const specialties = getSpecialtyDisplay(hcp);
       return [
-        hcp.npi,
+        hcp.beId,
+        hcp.npi || "",
         hcp.firstName,
         hcp.lastName,
         hcp.email || '',
@@ -308,8 +309,10 @@ export default function HcpsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>BE ID</TableHead>
                 <TableHead>NPI</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Specialty</TableHead>
                 <TableHead>Sub-specialty</TableHead>
                 <TableHead>Location</TableHead>
@@ -320,7 +323,7 @@ export default function HcpsPage() {
             <TableBody>
               {hcps.map((hcp) => (
                 <TableRow key={hcp.id}>
-                  <TableCell className="font-mono text-muted-foreground">{hcp.npi}</TableCell>
+                  <TableCell className="font-mono text-muted-foreground">{hcp.beId}</TableCell><TableCell>{hcp.npi || "--"}</TableCell>
                   <TableCell>
                     <Link
                       href={`/admin/hcps/${hcp.id}`}
@@ -332,6 +335,7 @@ export default function HcpsPage() {
                       <div className="text-sm text-muted-foreground">{hcp.email}</div>
                     )}
                   </TableCell>
+                  <TableCell><div className="flex gap-1">{hcp.isSurveyTaker && <Badge variant="default" className="text-xs">Survey Taker</Badge>}{hcp.isNominated && <Badge variant="secondary" className="text-xs">Nominated</Badge>}</div></TableCell>
                   <TableCell>
                     {hcp.specialty ? (
                       <Badge variant="outline" className="text-xs">

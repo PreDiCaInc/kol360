@@ -44,19 +44,8 @@ async function cleanupTestCampaigns() {
     console.log(`  - ${campaign.name} (${campaign.id})`);
   }
 
-  // Delete campaigns and their related data
+  // Delete campaigns (cascades to related data)
   for (const campaign of testCampaigns) {
-    // Delete related records first (in order of dependencies)
-    await prisma.nomination.deleteMany({ where: { response: { campaignId: campaign.id } } });
-    await prisma.surveyResponseAnswer.deleteMany({ where: { response: { campaignId: campaign.id } } });
-    await prisma.surveyResponse.deleteMany({ where: { campaignId: campaign.id } });
-    await prisma.surveyQuestion.deleteMany({ where: { campaignId: campaign.id } });
-    await prisma.hcpCampaignScore.deleteMany({ where: { campaignId: campaign.id } });
-    await prisma.campaignHcpExclusion.deleteMany({ where: { campaignId: campaign.id } });
-    await prisma.campaignHcp.deleteMany({ where: { campaignId: campaign.id } });
-    await prisma.payment.deleteMany({ where: { campaignId: campaign.id } });
-
-    // Now delete the campaign
     await prisma.campaign.delete({
       where: { id: campaign.id },
     });
@@ -97,48 +86,7 @@ async function cleanupAllTestData() {
     }
   }
 
-  // 4. Delete test survey template (and links)
-  console.log('\nRemoving test survey template...');
-  try {
-    // Delete template-section links first
-    await prisma.templateSection.deleteMany({
-      where: { templateId: TEST_IDS.SURVEY_TEMPLATE_ID },
-    });
-    await prisma.surveyTemplate.delete({
-      where: { id: TEST_IDS.SURVEY_TEMPLATE_ID },
-    });
-    console.log('  ✓ Deleted test survey template');
-  } catch {
-    console.log('  - Test survey template not found (already deleted)');
-  }
-
-  // 5. Delete test section and questions
-  console.log('\nRemoving test section and questions...');
-  try {
-    // Delete section-question links first
-    await prisma.sectionQuestion.deleteMany({
-      where: { sectionId: TEST_IDS.SECTION_ID },
-    });
-    await prisma.section.delete({
-      where: { id: TEST_IDS.SECTION_ID },
-    });
-    console.log('  ✓ Deleted test section');
-  } catch {
-    console.log('  - Test section not found (already deleted)');
-  }
-
-  // Delete test questions
-  const questionIds = [TEST_IDS.QUESTION_1_ID, TEST_IDS.QUESTION_2_ID, TEST_IDS.QUESTION_3_ID];
-  for (const qId of questionIds) {
-    try {
-      await prisma.question.delete({ where: { id: qId } });
-      console.log(`  ✓ Deleted question: ${qId}`);
-    } catch {
-      console.log(`  - Question ${qId} not found (already deleted)`);
-    }
-  }
-
-  // 6. Delete test specialty
+  // 4. Delete test specialty
   console.log('\nRemoving test specialty...');
   try {
     await prisma.specialty.delete({
@@ -149,7 +97,7 @@ async function cleanupAllTestData() {
     console.log('  - Test specialty not found (already deleted)');
   }
 
-  // 8. Delete test disease area
+  // 5. Delete test disease area
   console.log('\nRemoving test disease area...');
   try {
     await prisma.diseaseArea.delete({
@@ -160,7 +108,7 @@ async function cleanupAllTestData() {
     console.log('  - Test disease area not found (already deleted)');
   }
 
-  // 9. Delete test client
+  // 6. Delete test client
   console.log('\nRemoving test client...');
   try {
     await prisma.client.delete({
