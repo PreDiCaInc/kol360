@@ -102,6 +102,11 @@ export class HcpService {
           orderBy: { createdAt: 'desc' },
           take: 10,
         },
+        optOuts: {
+          where: { resubscribedAt: null }, // Only show active opt-outs
+          include: { campaign: { select: { id: true, name: true } } },
+          orderBy: { optedOutAt: 'desc' },
+        },
       },
     });
   }
@@ -154,6 +159,14 @@ export class HcpService {
 
         if (!data.firstName || !data.lastName) {
           throw new Error('First and last name required');
+        }
+
+        if (!data.specialty) {
+          throw new Error('Specialty is required');
+        }
+
+        if (!data.subSpecialty) {
+          throw new Error('Sub-specialty is required');
         }
 
         const existing = await prisma.hcp.findUnique({ where: { npi } });

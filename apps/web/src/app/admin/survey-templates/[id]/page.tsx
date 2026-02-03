@@ -63,7 +63,9 @@ import {
   Search,
   ChevronUp,
   ChevronDown,
+  Eye,
 } from 'lucide-react';
+import { TemplatePreviewDialog } from '@/components/survey-templates/template-preview-dialog';
 
 const typeLabels: Record<string, string> = {
   TEXT: 'Text',
@@ -97,6 +99,7 @@ export default function SurveyTemplateDetailPage() {
   const [isLocked, setIsLocked] = useState(false);
   const [sectionToRemove, setSectionToRemove] = useState<{ id: string; name: string } | null>(null);
   const [isAddingSections, setIsAddingSections] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Check for edit=true query param
   useEffect(() => {
@@ -228,12 +231,16 @@ export default function SurveyTemplateDetailPage() {
     <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
       <div className="p-6">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center justify-between mb-6">
           <Button variant="ghost" size="sm" asChild>
             <Link href="/admin/survey-templates">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back
             </Link>
+          </Button>
+          <Button variant="outline" onClick={() => setShowPreview(true)}>
+            <Eye className="w-4 h-4 mr-2" />
+            Preview Survey
           </Button>
         </div>
 
@@ -556,6 +563,13 @@ export default function SurveyTemplateDetailPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Template Preview Dialog */}
+        <TemplatePreviewDialog
+          open={showPreview}
+          onOpenChange={setShowPreview}
+          templateId={templateId}
+        />
       </div>
     </RequireAuth>
   );

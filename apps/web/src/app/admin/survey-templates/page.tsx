@@ -51,6 +51,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Plus, MoreHorizontal, Copy, Trash2, Eye, Pencil, FileText, ClipboardList, MessageSquare, FolderKanban } from 'lucide-react';
+import { TemplatePreviewDialog } from '@/components/survey-templates/template-preview-dialog';
 
 export default function SurveyTemplatesPage() {
   const { data: templates, isLoading } = useSurveyTemplates();
@@ -62,6 +63,7 @@ export default function SurveyTemplatesPage() {
   const [showCloneDialog, setShowCloneDialog] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<{ id: string; name: string } | null>(null);
   const [templateToClone, setTemplateToClone] = useState<{ id: string; name: string } | null>(null);
+  const [templateToPreview, setTemplateToPreview] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [cloneName, setCloneName] = useState('');
@@ -258,9 +260,13 @@ export default function SurveyTemplatesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setTemplateToPreview(template.id)}>
+                              <Eye className="w-4 h-4 mr-2" />
+                              Preview Survey
+                            </DropdownMenuItem>
                             <DropdownMenuItem asChild>
                               <Link href={`/admin/survey-templates/${template.id}`}>
-                                <Eye className="w-4 h-4 mr-2" />
+                                <FileText className="w-4 h-4 mr-2" />
                                 View Details
                               </Link>
                             </DropdownMenuItem>
@@ -377,6 +383,17 @@ export default function SurveyTemplatesPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Template Preview Dialog */}
+        {templateToPreview && (
+          <TemplatePreviewDialog
+            open={!!templateToPreview}
+            onOpenChange={(open) => {
+              if (!open) setTemplateToPreview(null);
+            }}
+            templateId={templateToPreview}
+          />
+        )}
       </div>
     </RequireAuth>
   );
