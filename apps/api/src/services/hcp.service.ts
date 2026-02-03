@@ -156,6 +156,14 @@ export class HcpService {
           throw new Error('First and last name required');
         }
 
+        if (!data.specialty) {
+          throw new Error('Specialty is required');
+        }
+
+        if (!data.subSpecialty) {
+          throw new Error('Sub-specialty is required');
+        }
+
         const existing = await prisma.hcp.findUnique({ where: { npi } });
 
         if (existing) {
