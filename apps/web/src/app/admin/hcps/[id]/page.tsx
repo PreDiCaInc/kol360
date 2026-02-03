@@ -144,7 +144,17 @@ export default function HcpDetailPage() {
             <h1 className="text-2xl font-bold">
               {hcp.firstName} {hcp.lastName}
             </h1>
-            <p className="text-muted-foreground font-mono">NPI: {hcp.npi}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-muted-foreground font-mono text-sm">BE ID: {hcp.beId}</span>
+              <span className="text-muted-foreground">|</span>
+              <span className="text-muted-foreground font-mono text-sm">NPI: {hcp.npi || "N/A"}</span>
+              {hcp.isSurveyTaker && (
+                <Badge variant="default" className="ml-2">Survey Taker</Badge>
+              )}
+              {hcp.isNominated && (
+                <Badge variant="secondary" className="ml-1">Nominated</Badge>
+              )}
+            </div>
           </div>
           <Button variant="outline" onClick={() => setShowEditDialog(true)}>
             <Pencil className="w-4 h-4 mr-2" />
@@ -193,7 +203,7 @@ export default function HcpDetailPage() {
                       <Hash className="w-5 h-5 text-muted-foreground mt-0.5" />
                       <div>
                         <p className="text-sm text-muted-foreground">NPI</p>
-                        <p className="font-medium font-mono">{hcp.npi}</p>
+                        <p className="font-medium font-mono">{hcp.npi || "N/A"}</p>
                       </div>
                     </div>
 

@@ -1,4 +1,7 @@
 import { prisma } from '../lib/prisma';
+import { HcpService } from './hcp.service';
+
+const hcpServiceInstance = new HcpService();
 import { emailService } from './email.service';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
@@ -315,13 +318,15 @@ export class DistributionService {
               subSpecialty: hcpData.subSpecialty || hcp.subSpecialty,
               city: hcpData.city || hcp.city,
               state: hcpData.state || hcp.state,
+              isSurveyTaker: true,
             },
           });
           result.hcpsExisting++;
         } else {
           // Create new HCP
+          const beId = await hcpServiceInstance.generateBeId();
           hcp = await prisma.hcp.create({
-            data: { ...hcpData, createdBy: userId },
+            data: { ...hcpData, beId, isSurveyTaker: true, createdBy: userId },
           });
           result.hcpsCreated++;
         }

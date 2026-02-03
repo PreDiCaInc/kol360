@@ -13,6 +13,20 @@ interface SearchParams {
 }
 
 export class HcpService {
+  async generateBeId(): Promise<string> {
+    const lastHcp = await prisma.hcp.findFirst({
+      where: { beId: { not: undefined } },
+      orderBy: { beId: "desc" },
+      select: { beId: true },
+    });
+    let nextNum = 1;
+    if (lastHcp?.beId) {
+      const match = lastHcp.beId.match(/^BE-(\d+)$/);
+      if (match) { nextNum = parseInt(match[1], 10) + 1; }
+    }
+    return "BE-" + String(nextNum).padStart(6, "0");
+  }
+
   async search(params: SearchParams) {
     const { query, specialty, state, page, limit } = params;
 
@@ -21,6 +35,7 @@ export class HcpService {
     if (query) {
       where.OR = [
         { npi: { contains: query } },
+        { beId: { contains: query, mode: "insensitive" } },
         { firstName: { contains: query, mode: 'insensitive' } },
         { lastName: { contains: query, mode: 'insensitive' } },
         { email: { contains: query, mode: 'insensitive' } },
@@ -111,8 +126,9 @@ export class HcpService {
   }
 
   async create(data: CreateHcpInput, createdBy?: string) {
+    const beId = await this.generateBeId();
     return prisma.hcp.create({
-      data: { ...data, createdBy },
+      data: { ...data, beId, isSurveyTaker: true, createdBy },
     });
   }
 
@@ -171,6 +187,7 @@ export class HcpService {
               city: data.city || existing.city,
               state: data.state || existing.state,
               yearsInPractice: data.yearsInPractice ?? existing.yearsInPractice,
+              isSurveyTaker: true,
             },
           });
           result.updated++;
@@ -200,12 +217,14 @@ export class HcpService {
                 city: data.city || aliasMatch.hcp.city,
                 state: data.state || aliasMatch.hcp.state,
                 yearsInPractice: data.yearsInPractice ?? aliasMatch.hcp.yearsInPractice,
+                isSurveyTaker: true,
               },
             });
             result.merged++;
           } else {
             // No NPI match and no alias match - create new HCP
-            await prisma.hcp.create({ data: { ...data, createdBy: userId } });
+            const beId = await this.generateBeId();
+            await prisma.hcp.create({ data: { ...data, beId, isSurveyTaker: true, createdBy: userId } });
             result.created++;
           }
         }
