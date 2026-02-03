@@ -14,7 +14,9 @@ vi.mock('../../lib/prisma', () => ({
     hcp: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     },
     hcpAlias: {
       findFirst: vi.fn(),
@@ -152,6 +154,7 @@ describe('NominationService', () => {
         id: 'nom-1',
         rawNameEntered: 'John Doe',
       });
+      (prisma.hcp.update as Mock).mockResolvedValue({ id: 'hcp-1' });
       (prisma.hcpAlias.findFirst as Mock).mockResolvedValue(null);
       (prisma.nomination.update as Mock).mockResolvedValue({
         id: 'nom-1',
@@ -177,6 +180,7 @@ describe('NominationService', () => {
         id: 'nom-1',
         rawNameEntered: 'Dr. John',
       });
+      (prisma.hcp.update as Mock).mockResolvedValue({ id: 'hcp-1' });
       (prisma.hcpAlias.findFirst as Mock).mockResolvedValue(null);
       (prisma.hcpAlias.create as Mock).mockResolvedValue({ id: 'alias-1' });
       (prisma.nomination.update as Mock).mockResolvedValue({ id: 'nom-1' });
@@ -196,6 +200,7 @@ describe('NominationService', () => {
         id: 'nom-1',
         rawNameEntered: 'Dr. John',
       });
+      (prisma.hcp.update as Mock).mockResolvedValue({ id: 'hcp-1' });
       (prisma.hcpAlias.findFirst as Mock).mockResolvedValue({ id: 'existing-alias' });
       (prisma.nomination.update as Mock).mockResolvedValue({ id: 'nom-1' });
 
@@ -217,6 +222,7 @@ describe('NominationService', () => {
         id: 'nom-1',
         rawNameEntered: 'John',
       });
+      (prisma.hcp.update as Mock).mockResolvedValue({ id: 'hcp-1' });
       (prisma.nomination.update as Mock).mockResolvedValue({
         id: 'nom-1',
         matchStatus: 'REVIEW_NEEDED',
@@ -246,6 +252,7 @@ describe('NominationService', () => {
         rawNameEntered: 'John Doe',
       });
       (prisma.hcp.findUnique as Mock).mockResolvedValue(null);
+      (prisma.hcp.findFirst as Mock).mockResolvedValue(null);
       (prisma.hcp.create as Mock).mockResolvedValue({
         id: 'hcp-new',
         firstName: 'John',
@@ -286,6 +293,7 @@ describe('NominationService', () => {
         rawNameEntered: 'John Doe',
       });
       (prisma.hcp.findUnique as Mock).mockResolvedValue(null);
+      (prisma.hcp.findFirst as Mock).mockResolvedValue(null);
       (prisma.hcp.create as Mock).mockResolvedValue({ id: 'hcp-new' });
       (prisma.nomination.update as Mock).mockResolvedValue({ id: 'nom-1' });
 
@@ -397,6 +405,8 @@ describe('NominationService', () => {
           state: null,
         },
       ]);
+      (prisma.hcp.update as Mock).mockResolvedValue({ id: 'hcp-1' });
+      (prisma.hcpAlias.findFirst as Mock).mockResolvedValue(null);
       (prisma.nomination.update as Mock).mockResolvedValue({ id: 'nom-1' });
 
       const result = await nominationService.bulkAutoMatch('campaign-1', 'user-1');
