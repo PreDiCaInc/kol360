@@ -7,11 +7,24 @@ const tokenParamSchema = z.object({
   token: z.string().min(1),
 });
 
+// Stricter rate limit config for public endpoints
+const publicRateLimitConfig = {
+  max: 30, // 30 requests per minute (stricter than global 100)
+  timeWindow: '1 minute',
+};
+
+const submitRateLimitConfig = {
+  max: 5, // Only 5 submissions per minute per IP
+  timeWindow: '1 minute',
+};
+
 export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   // Get survey by token (public - no auth)
   fastify.get<{
     Params: z.infer<typeof tokenParamSchema>;
-  }>('/survey/take/:token', async (request, reply) => {
+  }>('/survey/take/:token', {
+    config: { rateLimit: publicRateLimitConfig },
+  }, async (request, reply) => {
     const { token } = tokenParamSchema.parse(request.params);
 
     const survey = await surveyTakingService.getSurveyByToken(token);
@@ -45,7 +58,9 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   // Start survey (mark as opened)
   fastify.post<{
     Params: z.infer<typeof tokenParamSchema>;
-  }>('/survey/take/:token/start', async (request, reply) => {
+  }>('/survey/take/:token/start', {
+    config: { rateLimit: publicRateLimitConfig },
+  }, async (request, reply) => {
     const { token } = tokenParamSchema.parse(request.params);
     const ipAddress = request.ip;
 
@@ -62,7 +77,9 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: z.infer<typeof tokenParamSchema>;
     Body: z.infer<typeof saveProgressSchema>;
-  }>('/survey/take/:token/save', async (request, reply) => {
+  }>('/survey/take/:token/save', {
+    config: { rateLimit: publicRateLimitConfig },
+  }, async (request, reply) => {
     const { token } = tokenParamSchema.parse(request.params);
     const { answers } = saveProgressSchema.parse(request.body);
 
@@ -75,11 +92,13 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Submit survey
+  // Submit survey - stricter rate limit to prevent abuse
   fastify.post<{
     Params: z.infer<typeof tokenParamSchema>;
     Body: z.infer<typeof submitSurveySchema>;
-  }>('/survey/take/:token/submit', async (request, reply) => {
+  }>('/survey/take/:token/submit', {
+    config: { rateLimit: submitRateLimitConfig },
+  }, async (request, reply) => {
     const { token } = tokenParamSchema.parse(request.params);
     const { answers } = submitSurveySchema.parse(request.body);
 
@@ -96,7 +115,9 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{
     Params: z.infer<typeof tokenParamSchema>;
     Body: z.infer<typeof unsubscribeSchema>;
-  }>('/unsubscribe/:token', async (request, reply) => {
+  }>('/unsubscribe/:token', {
+    config: { rateLimit: submitRateLimitConfig },
+  }, async (request, reply) => {
     const { token } = tokenParamSchema.parse(request.params);
     const { scope, reason } = unsubscribeSchema.parse(request.body || {});
 
@@ -112,7 +133,9 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   // GET unsubscribe page (for email link)
   fastify.get<{
     Params: z.infer<typeof tokenParamSchema>;
-  }>('/unsubscribe/:token', async (request, reply) => {
+  }>('/unsubscribe/:token', {
+    config: { rateLimit: publicRateLimitConfig },
+  }, async (request, reply) => {
     const { token } = tokenParamSchema.parse(request.params);
 
     // Validate token exists
