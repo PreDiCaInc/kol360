@@ -23,7 +23,7 @@ const grantAccessSchema = z.object({
 });
 
 interface ExportRow {
-  npi: string;
+  npi: string | null;
   firstName: string;
   lastName: string;
   specialty: string;

@@ -25,7 +25,7 @@ export type MatchNominationInput = z.infer<typeof matchNominationSchema>;
 
 // Schema for creating new HCP from nomination
 export const createHcpFromNominationSchema = z.object({
-  npi: z.string().length(10, 'NPI must be 10 digits'),
+  npi: z.string().length(10, 'NPI must be 10 digits').optional().nullable(),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email().optional().nullable(),

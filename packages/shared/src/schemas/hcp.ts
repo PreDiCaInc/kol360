@@ -14,7 +14,23 @@ export const createHcpSchema = z.object({
   yearsInPractice: z.number().int().positive().optional().nullable(),
 });
 
-export const updateHcpSchema = createHcpSchema.partial().omit({ npi: true });
+export const createNominatedHcpSchema = z.object({
+  npi: npiSchema.optional().nullable(),
+  firstName: z.string().min(1).max(50),
+  lastName: z.string().min(1).max(50),
+  email: z.string().email().optional().nullable(),
+  specialty: z.string().optional().nullable(),
+  subSpecialty: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  state: z.string().length(2).optional().nullable(),
+  yearsInPractice: z.number().int().positive().optional().nullable(),
+});
+
+export const updateHcpSchema = createHcpSchema.partial().omit({ npi: true }).extend({
+  isSurveyTaker: z.boolean().optional(),
+  isNominated: z.boolean().optional(),
+});
 
 export type CreateHcpInput = z.infer<typeof createHcpSchema>;
+export type CreateNominatedHcpInput = z.infer<typeof createNominatedHcpSchema>;
 export type UpdateHcpInput = z.infer<typeof updateHcpSchema>;

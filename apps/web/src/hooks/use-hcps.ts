@@ -43,7 +43,10 @@ interface HcpDiseaseAreaScore {
 
 interface Hcp {
   id: string;
-  npi: string;
+  beId: string;
+  npi: string | null;
+  isSurveyTaker: boolean;
+  isNominated: boolean;
   firstName: string;
   lastName: string;
   email: string | null;

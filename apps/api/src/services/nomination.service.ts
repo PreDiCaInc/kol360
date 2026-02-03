@@ -1,4 +1,7 @@
 import { prisma } from '../lib/prisma';
+import { HcpService } from './hcp.service';
+
+const hcpServiceInstance = new HcpService();
 
 interface ListParams {
   status?: string;
@@ -9,7 +12,7 @@ interface ListParams {
 interface HcpSuggestion {
   hcp: {
     id: string;
-    npi: string;
+    npi: string | null;
     firstName: string;
     lastName: string;
     specialty: string | null;
@@ -23,7 +26,7 @@ interface HcpSuggestion {
 }
 
 interface CreateHcpInput {
-  npi: string;
+  npi?: string | null;
   firstName: string;
   lastName: string;
   email?: string | null;
@@ -34,7 +37,7 @@ interface CreateHcpInput {
 
 interface HcpWithAliases {
   id: string;
-  npi: string;
+  npi: string | null;
   firstName: string;
   lastName: string;
   specialty: string | null;
@@ -287,13 +290,19 @@ export class NominationService {
     const isExactMatch = confidence === 100 && (matchType === 'exact' || matchType === 'primary' || matchType === 'alias');
     const matchStatus = isExactMatch ? 'MATCHED' : 'REVIEW_NEEDED';
 
+    // Set isNominated on the matched HCP if not already
+    await prisma.hcp.update({
+      where: { id: hcpId },
+      data: { isNominated: true },
+    });
+
     // Update nomination
     const updated = await prisma.nomination.update({
       where: { id: nominationId },
       data: {
         matchedHcpId: hcpId,
         matchStatus,
-        matchType: matchType || 'exact',
+        matchType: matchType || "exact",
         matchConfidence: confidence,
         matchedBy,
         matchedAt: new Date(),
@@ -319,19 +328,24 @@ export class NominationService {
       throw new Error('Nomination not found');
     }
 
-    // Check if NPI already exists
-    const existingHcp = await prisma.hcp.findUnique({
-      where: { npi: hcpData.npi },
-    });
-
-    if (existingHcp) {
-      throw new Error('An HCP with this NPI already exists');
+    // Check if NPI already exists (only if NPI provided)
+    if (hcpData.npi) {
+      const existingHcp = await prisma.hcp.findUnique({
+        where: { npi: hcpData.npi },
+      });
+      if (existingHcp) {
+        throw new Error("An HCP with this NPI already exists");
+      }
     }
 
-    // Create new HCP
+    // Create new HCP with beId and isNominated flag
+    const beId = await hcpServiceInstance.generateBeId();
     const hcp = await prisma.hcp.create({
       data: {
         ...hcpData,
+        npi: hcpData.npi || null,
+        beId,
+        isNominated: true,
         createdBy: matchedBy,
       },
     });
