@@ -44,8 +44,19 @@ async function cleanupTestCampaigns() {
     console.log(`  - ${campaign.name} (${campaign.id})`);
   }
 
-  // Delete campaigns (cascades to related data)
+  // Delete campaigns and their related data
   for (const campaign of testCampaigns) {
+    // Delete related records first (in order of dependencies)
+    await prisma.nomination.deleteMany({ where: { response: { campaignId: campaign.id } } });
+    await prisma.surveyResponseAnswer.deleteMany({ where: { response: { campaignId: campaign.id } } });
+    await prisma.surveyResponse.deleteMany({ where: { campaignId: campaign.id } });
+    await prisma.surveyQuestion.deleteMany({ where: { campaignId: campaign.id } });
+    await prisma.hcpCampaignScore.deleteMany({ where: { campaignId: campaign.id } });
+    await prisma.campaignHcpExclusion.deleteMany({ where: { campaignId: campaign.id } });
+    await prisma.campaignHcp.deleteMany({ where: { campaignId: campaign.id } });
+    await prisma.payment.deleteMany({ where: { campaignId: campaign.id } });
+
+    // Now delete the campaign
     await prisma.campaign.delete({
       where: { id: campaign.id },
     });

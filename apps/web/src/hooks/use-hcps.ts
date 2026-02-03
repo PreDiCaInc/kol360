@@ -70,6 +70,15 @@ interface HcpDetailDiseaseAreaScore extends HcpDiseaseAreaScore {
   finalScore: number;
 }
 
+interface OptOut {
+  id: string;
+  scope: string;
+  optedOutAt: string;
+  optedOutVia: string;
+  reason: string | null;
+  campaign: { id: string; name: string } | null;
+}
+
 interface HcpDetail extends Omit<Hcp, 'diseaseAreaScores'> {
   diseaseAreaScores: HcpDetailDiseaseAreaScore[];
   campaignScores: {
@@ -84,6 +93,7 @@ interface HcpDetail extends Omit<Hcp, 'diseaseAreaScores'> {
   campaignHcps: {
     campaign: { id: string; name: string; status: string };
   }[];
+  optOuts?: OptOut[];
 }
 
 interface HcpsListResponse {
