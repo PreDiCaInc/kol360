@@ -102,6 +102,11 @@ export class HcpService {
           orderBy: { createdAt: 'desc' },
           take: 10,
         },
+        optOuts: {
+          where: { resubscribedAt: null }, // Only show active opt-outs
+          include: { campaign: { select: { id: true, name: true } } },
+          orderBy: { optedOutAt: 'desc' },
+        },
       },
     });
   }

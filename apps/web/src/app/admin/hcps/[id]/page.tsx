@@ -53,6 +53,7 @@ import {
   Hash,
   BarChart3,
   TrendingUp,
+  Ban,
 } from 'lucide-react';
 
 // Score field labels for display
@@ -170,6 +171,31 @@ export default function HcpDetailPage() {
 
           {/* Profile Tab */}
           <TabsContent value="profile">
+            {/* Opt-Out Status Alert */}
+            {hcp.optOuts && hcp.optOuts.length > 0 && (
+              <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Ban className="h-4 w-4 text-red-600" />
+                  <h4 className="font-medium text-red-800">Opted Out of Communications</h4>
+                </div>
+                <div className="space-y-2">
+                  {hcp.optOuts.map((optOut) => (
+                    <div key={optOut.id} className="text-sm">
+                      <span className="font-medium text-red-700">
+                        {optOut.scope === 'GLOBAL' ? 'All communications' : `Campaign: ${optOut.campaign?.name || 'Unknown'}`}
+                      </span>
+                      <span className="text-red-600/70 ml-2">
+                        — {new Date(optOut.optedOutAt).toLocaleDateString()} via {optOut.optedOutVia}
+                      </span>
+                      {optOut.reason && (
+                        <span className="block text-red-600/70">Reason: {optOut.reason}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Profile Information */}
               <Card className="lg:col-span-2">
