@@ -62,22 +62,107 @@ If not running, start them:
 
 **AWS Profile:** `koluser`, **Region:** `us-east-2`
 
-**App Runner Services (auto-deploy from PreDiCa/kol360 main):**
+### Source Repositories
+- **PreDiCaInc/kol360** (`git@github.com:PreDiCaInc/kol360.git`) - Primary development repo
+- **Bio-Exec/kol360** (`git@github.com:Bio-Exec/kol360.git`) - Production deployment repo (synced from PreDiCaInc)
+
+### Shared Resources
+- **Cognito User Pool:** `us-east-2_63CJVTAV9`
+- **Cognito Client ID:** `7tqkritsrh3dgmaj6oq8va46vj`
+- **Cognito Region:** `us-east-2`
+- **VPC Connector:** `arn:aws:apprunner:us-east-2:163859990568:vpcconnector/vpc-apprunner-to-rds/1/63018110ba474556b6e2771b3389858e`
+- **GitHub Connection (PreDiCa):** `arn:aws:apprunner:us-east-2:163859990568:connection/kol360-predica-git/dfb3ee8f8b904c6da095d42218e43324`
+- **GitHub Connection (Bio-Exec):** `arn:aws:apprunner:us-east-2:163859990568:connection/kol360-bioexec-git/f91ffb40b3aa45fda3bbee96f42dd81a`
+
+### Production Environment
+**Source:** Bio-Exec/kol360 main branch
+
+**App Runner Services:**
 - **kol360-api**
   - Service ARN: `arn:aws:apprunner:us-east-2:163859990568:service/kol360-api/7eb09ba9317d46d681d004d999663ffd`
   - URL: `https://ik6dmnn2ra.us-east-2.awsapprunner.com`
-  - GitHub Connection: `kol360-predica-git`
 - **kol360-web**
   - Service ARN: `arn:aws:apprunner:us-east-2:163859990568:service/kol360-web/9fe5595685ad4ab89cdb29333ab1f5f6`
   - URL: `https://y6empq5whm.us-east-2.awsapprunner.com`
-  - GitHub Connection: `kol360-predica-git`
+  - Custom domain: `kol360.bio-exec.com` (active)
 
-**Database:** RDS PostgreSQL via SSH tunnel through bastion (3.142.171.8)
+**Production Database (kol360-db-prod):**
+- Endpoint: `kol360-db-prod.czkyi4mem2bj.us-east-2.rds.amazonaws.com`
+- Port: `5432`
+- Database: `kol360`
+- Username: `kol360admin`
+- Password: `RDS4Bioexec2025`
+- DATABASE_URL: `postgresql://kol360admin:RDS4Bioexec2025@kol360-db-prod.czkyi4mem2bj.us-east-2.rds.amazonaws.com:5432/kol360`
+- Engine: PostgreSQL 16.6
+- Security Group: `sg-0b0360bc7e93707ff`
 
-**Cognito:**
-- User Pool ID: `us-east-2_63CJVTAV9`
-- Client ID: `7tqkritsrh3dgmaj6oq8va46vj`
-- Region: `us-east-2`
+### Test Environment
+**Source:** PreDiCaInc/kol360 main branch
+
+**App Runner Services:**
+- **kol360-api-test**
+  - Service ARN: `arn:aws:apprunner:us-east-2:163859990568:service/kol360-api-test/bcc7d66db0844252adfc0284464719ea`
+  - URL: `https://mpcu4inmtj.us-east-2.awsapprunner.com`
+  - NODE_ENV: `staging`
+- **kol360-web-test**
+  - Service ARN: `arn:aws:apprunner:us-east-2:163859990568:service/kol360-web-test/3d324e4a9fd4404393b10d88e655a337`
+  - URL: `https://nba3pdn2jm.us-east-2.awsapprunner.com`
+  - Custom domain: `koltest.bio-exec.com` (pending DNS validation)
+
+**Test Database (kol360-db - existing with test data):**
+- Endpoint: `kol360-db.czkyi4mem2bj.us-east-2.rds.amazonaws.com`
+- Port: `5432`
+- Database: `kol360`
+- Username: `kol360admin`
+- Password: `RDS4Bioexec!`
+
+### Custom Domain DNS Records (Pending)
+For `koltest.bio-exec.com` on test web service - add these CNAME records:
+- `_43acbcbf6940cdf04f744d040ab4b544.koltest.bio-exec.com` → `_e19f424ccae1543b8e83c259b0ca89a3.jkddzztszm.acm-validations.aws.`
+- `_a935c8eed4c8816eee07b29a25faaab4.04a1x86r6zlg76petdj0s7lq9fclr0l.koltest.bio-exec.com` → `_39202bf17e751ddd028c7fd33d448c27.jkddzztszm.acm-validations.aws.`
+- `koltest.bio-exec.com` → `nba3pdn2jm.us-east-2.awsapprunner.com`
+
+Once DNS is validated, update test API CORS_ORIGIN from `*` to `https://koltest.bio-exec.com`.
+
+### App Runner Notes
+- **Runtime:** Must use `NODEJS_22` (NODEJS_18 reached end of support in App Runner)
+- **Auto-deploy:** Both test services auto-deploy from PreDiCaInc/kol360 main branch
+- **VPC Egress:** Both API services use VPC Connector for RDS access
+
+### Production Milestone Deployment
+
+Bio-Exec/kol360 only receives key milestone pushes (not every commit). Auto-deploy is enabled, so pushing triggers App Runner rebuilds for both API and web.
+
+**From the bioexec checkout (`/Users/haranath/genai/kol360/bioexec`):**
+```bash
+# 1. Fetch latest from PreDiCaInc
+git fetch predica main
+
+# 2. Reset local main to match PreDiCaInc exactly
+git reset --hard predica/main
+
+# 3. Force push to Bio-Exec (triggers App Runner auto-deploy)
+git push origin main --force
+
+# 4. If this milestone includes Prisma schema changes, run migrations against prod DB:
+#    Ensure SSH tunnel to prod DB is up on port 5433:
+ssh -i /Users/haranath/genai/kol360/kol360-bastion-key.pem \
+    -L 5433:kol360-db-prod.czkyi4mem2bj.us-east-2.rds.amazonaws.com:5432 \
+    ec2-user@3.142.171.8 -N -o StrictHostKeyChecking=no -f
+#    Then run migrations (from apps/api directory):
+DATABASE_URL="postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360" npx prisma migrate deploy
+
+# 5. Monitor deployment:
+aws apprunner describe-service --service-arn "arn:aws:apprunner:us-east-2:163859990568:service/kol360-api/7eb09ba9317d46d681d004d999663ffd" --region us-east-2 --profile koluser --query 'Service.Status'
+aws apprunner describe-service --service-arn "arn:aws:apprunner:us-east-2:163859990568:service/kol360-web/9fe5595685ad4ab89cdb29333ab1f5f6" --region us-east-2 --profile koluser --query 'Service.Status'
+```
+
+**Remotes in bioexec checkout:**
+- `origin` = Bio-Exec/kol360 (prod deployment repo)
+- `predica` = PreDiCaInc/kol360 (development repo)
+
+### Local Development Database Access
+Via SSH tunnel through bastion (3.142.171.8) - see "Before Starting Any Work" section
 
 ## Key Files
 

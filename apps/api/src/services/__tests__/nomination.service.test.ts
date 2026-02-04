@@ -97,6 +97,7 @@ describe('NominationService', () => {
           npi: '1234567890',
           firstName: 'John',
           lastName: 'Smith',
+          email: 'john.smith@example.com',
           specialty: 'Cardiology',
           city: 'New York',
           state: 'NY',
@@ -123,6 +124,7 @@ describe('NominationService', () => {
           npi: '1234567890',
           firstName: 'John',
           lastName: 'Smith',
+          email: 'john.smith@example.com',
           specialty: null,
           city: null,
           state: null,
@@ -133,6 +135,7 @@ describe('NominationService', () => {
           npi: '0987654321',
           firstName: 'Johnny',
           lastName: 'Smithson',
+          email: 'johnny.smithson@example.com',
           specialty: null,
           city: null,
           state: null,
@@ -267,7 +270,7 @@ describe('NominationService', () => {
 
       const result = await nominationService.createHcpAndMatch(
         'nom-1',
-        { npi: '1234567890', firstName: 'John', lastName: 'Doe' },
+        { npi: '1234567890', firstName: 'John', lastName: 'Doe', email: 'john.doe@example.com' },
         'user-1'
       );
 
@@ -281,7 +284,7 @@ describe('NominationService', () => {
       await expect(
         nominationService.createHcpAndMatch(
           'nom-1',
-          { npi: '1234567890', firstName: 'John', lastName: 'Doe' },
+          { npi: '1234567890', firstName: 'John', lastName: 'Doe', email: 'john.doe@example.com' },
           'user-1'
         )
       ).rejects.toThrow('An HCP with this NPI already exists');
@@ -299,7 +302,7 @@ describe('NominationService', () => {
 
       await nominationService.createHcpAndMatch(
         'nom-1',
-        { npi: '1234567890', firstName: 'John', lastName: 'Doe' },
+        { npi: '1234567890', firstName: 'John', lastName: 'Doe', email: 'john.doe@example.com' },
         'user-1'
       );
 
@@ -398,6 +401,7 @@ describe('NominationService', () => {
           id: 'hcp-1',
           firstName: 'John',
           lastName: 'Smith',
+          email: 'john.smith@example.com',
           aliases: [],
           npi: '1234567890',
           specialty: null,
