@@ -172,6 +172,7 @@ model Hcp {
   surveyResponses     SurveyResponse[]
   clientExclusions    ClientHcpExclusion[]
   campaignExclusions  CampaignHcpExclusion[]
+  optOuts             OptOut[]
 
   @@index([beId])
   @@index([npi])
@@ -585,11 +586,13 @@ model OptOut {
   resubscribedVia String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+  hcp             Hcp?        @relation(fields: [hcpId], references: [id])
   campaign        Campaign?   @relation(fields: [campaignId], references: [id])
 
   @@index([email])
   @@index([scope])
   @@index([campaignId])
+  @@index([hcpId])
 }
 
 model AuditLog {
