@@ -10,7 +10,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Upload, FileSpreadsheet, CheckCircle, XCircle, Merge } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, XCircle, Merge, Download } from 'lucide-react';
 
 interface Props {
   open: boolean;
@@ -67,6 +67,24 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
     onOpenChange(false);
   };
 
+  const handleDownloadTemplate = () => {
+    // Create CSV template with headers
+    const headers = ['NPI', 'First Name', 'Last Name', 'Specialty', 'Sub-specialty', 'Email', 'City', 'State', 'Years in Practice'];
+    const sampleRow = ['1234567890', 'John', 'Smith', 'Ophthalmology', 'Dry Eye', 'john.smith@example.com', 'Boston', 'MA', '15'];
+
+    const csvContent = [
+      headers.join(','),
+      sampleRow.join(','),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'hcp-import-template.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-lg">
@@ -116,16 +134,28 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
 
             {/* Template Info */}
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
-              <p className="font-medium mb-2">Required columns:</p>
+              <div className="flex justify-between items-start mb-2">
+                <p className="font-medium">Required columns:</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDownloadTemplate}
+                  className="h-7 text-xs"
+                >
+                  <Download className="w-3 h-3 mr-1" />
+                  Download Template
+                </Button>
+              </div>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                 <li>NPI (10 digits)</li>
                 <li>First Name</li>
                 <li>Last Name</li>
+                <li>Specialty (Ophthalmology or Optometry)</li>
+                <li>Sub-specialty (e.g., Dry Eye, Cornea, Retina, Glaucoma)</li>
               </ul>
               <p className="font-medium mt-3 mb-2">Optional columns:</p>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li>Email, Specialty, Sub-specialty</li>
-                <li>City, State, Years in Practice</li>
+                <li>Email, City, State, Years in Practice</li>
               </ul>
             </div>
 

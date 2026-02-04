@@ -314,6 +314,7 @@ export default function HcpsPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Specialty</TableHead>
+                <TableHead>Sub-specialty</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Aliases</TableHead>
                 <TableHead>Campaigns</TableHead>
@@ -336,24 +337,21 @@ export default function HcpsPage() {
                   </TableCell>
                   <TableCell><div className="flex gap-1">{hcp.isSurveyTaker && <Badge variant="default" className="text-xs">Survey Taker</Badge>}{hcp.isNominated && <Badge variant="secondary" className="text-xs">Nominated</Badge>}</div></TableCell>
                   <TableCell>
-                    {(() => {
-                      const specialties = getSpecialtyDisplay(hcp);
-                      return specialties.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {specialties.map((spec, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">
-                              {spec}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      );
-                    })()}
-                    {hcp.subSpecialty && (
-                      <div className="text-sm text-muted-foreground mt-1">
+                    {hcp.specialty ? (
+                      <Badge variant="outline" className="text-xs">
+                        {hcp.specialty}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {hcp.subSpecialty ? (
+                      <Badge variant="secondary" className="text-xs">
                         {hcp.subSpecialty}
-                      </div>
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
