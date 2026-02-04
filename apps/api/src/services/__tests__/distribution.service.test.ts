@@ -91,7 +91,7 @@ describe('DistributionService', () => {
           id: 'ch-1',
           campaignId: 'campaign-1',
           hcpId: 'hcp-1',
-          hcp: { id: 'hcp-1', firstName: 'John', lastName: 'Doe' },
+          hcp: { id: 'hcp-1', firstName: 'John', lastName: 'Doe', email: 'john@example.com' },
         },
       ];
 
@@ -221,7 +221,7 @@ describe('DistributionService', () => {
   describe('listHcps', () => {
     it('should return paginated HCPs', async () => {
       const mockHcps = [
-        { hcpId: 'hcp-1', hcp: { id: 'hcp-1', firstName: 'John', lastName: 'Doe' } },
+        { hcpId: 'hcp-1', hcp: { id: 'hcp-1', firstName: 'John', lastName: 'Doe', email: 'john@example.com' } },
       ];
 
       (prisma.campaignHcp.count as Mock).mockResolvedValue(1);

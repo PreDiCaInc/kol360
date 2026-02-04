@@ -56,12 +56,11 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
       npi: '',
       firstName: '',
       lastName: '',
-      email: null,
+      email: '',
       specialty: null,
       subSpecialty: null,
       city: null,
       state: null,
-      yearsInPractice: null,
     },
   });
 
@@ -71,24 +70,22 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
         npi: hcp.npi || "",
         firstName: hcp.firstName,
         lastName: hcp.lastName,
-        email: hcp.email,
+        email: hcp.email || '',
         specialty: hcp.specialty,
         subSpecialty: hcp.subSpecialty,
         city: hcp.city,
         state: hcp.state,
-        yearsInPractice: hcp.yearsInPractice,
       });
     } else if (!hcpId) {
       form.reset({
         npi: '',
         firstName: '',
         lastName: '',
-        email: null,
+        email: '',
         specialty: null,
         subSpecialty: null,
         city: null,
         state: null,
-        yearsInPractice: null,
       });
     }
   }, [hcp, hcpId, form]);
@@ -254,26 +251,6 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="yearsInPractice"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Years in Practice</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        value={field.value ?? ''}
-                        onChange={(e) =>
-                          field.onChange(e.target.value ? parseInt(e.target.value) : null)
-                        }
-                        placeholder="15"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
