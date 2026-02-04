@@ -165,11 +165,14 @@ export class HcpService {
           subSpecialty: (row['Sub-specialty'] || row['subSpecialty'] || null) as string | null,
           city: (row['City'] || row['city'] || null) as string | null,
           state: (row['State'] || row['state'] || null) as string | null,
-          yearsInPractice: row['Years in Practice'] ? parseInt(String(row['Years in Practice'])) : null,
         };
 
         if (!data.firstName || !data.lastName) {
           throw new Error('First and last name required');
+        }
+
+        if (!data.email) {
+          throw new Error('Email is required');
         }
 
         const existing = await prisma.hcp.findUnique({ where: { npi } });
@@ -186,7 +189,6 @@ export class HcpService {
               subSpecialty: data.subSpecialty || existing.subSpecialty,
               city: data.city || existing.city,
               state: data.state || existing.state,
-              yearsInPractice: data.yearsInPractice ?? existing.yearsInPractice,
               isSurveyTaker: true,
             },
           });
@@ -216,7 +218,6 @@ export class HcpService {
                 subSpecialty: data.subSpecialty || aliasMatch.hcp.subSpecialty,
                 city: data.city || aliasMatch.hcp.city,
                 state: data.state || aliasMatch.hcp.state,
-                yearsInPractice: data.yearsInPractice ?? aliasMatch.hcp.yearsInPractice,
                 isSurveyTaker: true,
               },
             });
