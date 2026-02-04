@@ -303,6 +303,10 @@ export class DistributionService {
           throw new Error('First Name and Last Name are required');
         }
 
+        if (!hcpData.email) {
+          throw new Error('Email is required');
+        }
+
         // Check if HCP already exists
         let hcp = await prisma.hcp.findUnique({ where: { npi } });
 
