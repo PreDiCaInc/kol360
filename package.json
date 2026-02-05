@@ -14,6 +14,8 @@
     "e2e:api:aws": "pnpm --filter @kol360/e2e test:api:aws",
     "e2e:web:local": "pnpm --filter @kol360/e2e test:web:local",
     "e2e:web:aws": "pnpm --filter @kol360/e2e test:web:aws",
+    "e2e:workflow:test": "pnpm --filter @kol360/e2e test:workflow:test",
+    "e2e:workflow:prod": "pnpm --filter @kol360/e2e test:workflow:prod",
     "e2e:seed": "pnpm --filter @kol360/e2e seed",
     "e2e:cleanup": "pnpm --filter @kol360/e2e cleanup",
     "e2e:cleanup:all": "pnpm --filter @kol360/e2e cleanup:all",
