@@ -81,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { currentUser, session, attributes } = await Promise.race([authCheck(), timeout]);
 
       const accessToken = session.tokens?.accessToken;
+      const tokenString = accessToken?.toString();
 
       // Get role from custom attribute or from Cognito groups
       let role = accessToken?.payload['custom:role'] as string;
@@ -96,6 +97,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role = 'TEAM_MEMBER';
         } else {
           role = 'TEAM_MEMBER';
+        }
+      }
+
+      // Call API to update lastLoginAt and verify user status
+      if (tokenString) {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        try {
+          const response = await fetch(`${apiUrl}/users/me`, {
+            headers: {
+              Authorization: `Bearer ${tokenString}`,
+            },
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            // User is disabled or pending - sign them out
+            if (response.status === 403) {
+              console.error('User not allowed:', error.message);
+              await amplifySignOut();
+              setUser(null);
+              setIsLoading(false);
+              return;
+            }
+            // User not found in DB - could be first login after Cognito signup
+            // Continue with Cognito data only
+            if (response.status !== 404) {
+              console.error('Failed to fetch user from API:', error.message);
+            }
+          }
+        } catch (apiError) {
+          // API call failed - continue with Cognito data only
+          console.error('API call to /users/me failed:', apiError);
         }
       }
 

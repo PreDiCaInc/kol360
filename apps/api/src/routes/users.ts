@@ -7,6 +7,76 @@ import { createAuditLog } from '../lib/audit';
 const userService = new UserService();
 
 export const userRoutes: FastifyPluginAsync = async (fastify) => {
+  // Get current user and update lastLoginAt
+  // Called after successful Cognito authentication
+  fastify.get('/me', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({
+        error: 'Unauthorized',
+        message: 'Not authenticated',
+        statusCode: 401
+      });
+    }
+
+    // Find user by cognitoSub
+    const user = await fastify.prisma.user.findUnique({
+      where: { cognitoSub: request.user.sub },
+      include: { client: true },
+    });
+
+    if (!user) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'User not found in database',
+        statusCode: 404
+      });
+    }
+
+    // Check if user is active
+    if (user.status === 'DISABLED') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Your account has been disabled. Please contact an administrator.',
+        statusCode: 403
+      });
+    }
+
+    if (user.status === 'PENDING_VERIFICATION') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Your account is pending verification. Please contact an administrator.',
+        statusCode: 403
+      });
+    }
+
+    if (user.status === 'PENDING_APPROVAL') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Your account is pending approval. Please contact an administrator.',
+        statusCode: 403
+      });
+    }
+
+    // Update lastLoginAt
+    const updatedUser = await fastify.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+      include: { client: true },
+    });
+
+    return {
+      id: updatedUser.id,
+      email: updatedUser.email,
+      firstName: updatedUser.firstName,
+      lastName: updatedUser.lastName,
+      role: updatedUser.role,
+      status: updatedUser.status,
+      clientId: updatedUser.clientId,
+      client: updatedUser.client,
+      lastLoginAt: updatedUser.lastLoginAt,
+    };
+  });
+
   // List users - Platform Admin sees all, Client Admin sees their tenant
   fastify.get('/', {
     preHandler: requireClientAdmin(),

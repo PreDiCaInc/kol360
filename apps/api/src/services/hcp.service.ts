@@ -180,6 +180,10 @@ export class HcpService {
           throw new Error('Email is required');
         }
 
+        if (!data.specialty) {
+          throw new Error('Specialty is required');
+        }
+
         const existing = await prisma.hcp.findUnique({ where: { npi } });
 
         if (existing) {
