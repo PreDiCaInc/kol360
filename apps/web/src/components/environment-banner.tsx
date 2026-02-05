@@ -1,18 +1,32 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
 export function EnvironmentBanner() {
-  const isProduction = process.env.NODE_ENV === 'production' &&
-    !process.env.NEXT_PUBLIC_API_URL?.includes('test') &&
-    !process.env.NEXT_PUBLIC_API_URL?.includes('staging');
+  const [isTestEnvironment, setIsTestEnvironment] = useState(false);
 
-  // Also check if the API URL contains test/staging indicators
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-  const isTestEnvironment = apiUrl.includes('test') ||
-    apiUrl.includes('staging') ||
-    apiUrl.includes('mpcu4inmtj'); // test API URL identifier
+  useEffect(() => {
+    // Check at runtime using the current URL
+    const hostname = window.location.hostname;
+    const isTest = hostname.includes('koltest') ||
+      hostname.includes('test') ||
+      hostname.includes('staging') ||
+      hostname.includes('localhost') ||
+      hostname.includes('nba3pdn2jm'); // test web service URL identifier
 
-  // Don't show banner in production
-  if (isProduction && !isTestEnvironment) {
+    // Production domain is kol360.bio-exec.com
+    const isProd = hostname === 'kol360.bio-exec.com';
+
+    const showBanner = isTest && !isProd;
+    setIsTestEnvironment(showBanner);
+
+    // Update document title for test environment
+    if (showBanner && !document.title.startsWith('[TEST]')) {
+      document.title = `[TEST] ${document.title}`;
+    }
+  }, []);
+
+  if (!isTestEnvironment) {
     return null;
   }
 
