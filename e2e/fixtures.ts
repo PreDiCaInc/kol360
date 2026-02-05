@@ -60,6 +60,19 @@ export const TEST_IDS = {
   USER_EMAIL: 'e2e.testuser@bio-exec.com',
   USER_COGNITO_SUB: 'd11b2570-8051-7098-327c-3d660a97d7a0',
 
+  // Survey Template - required for campaign activation
+  SURVEY_TEMPLATE_ID: 'cme2e0test0survey00001',
+  SURVEY_TEMPLATE_NAME: 'E2E Test Survey Template',
+
+  // Section Template
+  SECTION_TEMPLATE_ID: 'cme2e0test0section0001',
+  SECTION_TEMPLATE_NAME: 'E2E Test Section',
+
+  // Questions
+  QUESTION_1_ID: 'cme2e0test0quest00001', // Rating question
+  QUESTION_2_ID: 'cme2e0test0quest00002', // Single choice
+  QUESTION_3_ID: 'cme2e0test0quest00003', // Text question
+
   // Campaign prefix (campaigns are created dynamically)
   CAMPAIGN_PREFIX: 'E2E_TEST_CAMPAIGN_',
 } as const;
