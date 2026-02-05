@@ -46,6 +46,7 @@ apps/api/dist-lambda
 # Temp files
 tmp/
 *.zip
+*.bak
 ~$*
 
 # Data files (keep in func-spec but don't commit)
@@ -67,8 +68,8 @@ bioexec/
 # Claude Code local settings
 .claude/settings.local.json
 
-# Generated documentation
-docs/*.pdf
+# Documentation folder
+docs/
 
 # E2E test artifacts
 e2e/playwright-report/
