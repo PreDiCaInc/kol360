@@ -79,3 +79,6 @@ test-*.csv
 
 # Planning documents
 PLAN-*.md
+
+# Claude Code instructions (contains secrets)
+CLAUDE.md
