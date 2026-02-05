@@ -307,6 +307,10 @@ export class DistributionService {
           throw new Error('Email is required');
         }
 
+        if (!hcpData.specialty) {
+          throw new Error('Specialty is required');
+        }
+
         // Check if HCP already exists
         let hcp = await prisma.hcp.findUnique({ where: { npi } });
 
