@@ -80,7 +80,9 @@ async function seedTestData() {
   // 4. Create or update test HCPs
   console.log('Creating test HCPs...');
   const testHcps = getTestHcps();
-  for (const hcpData of testHcps) {
+  for (let i = 0; i < testHcps.length; i++) {
+    const hcpData = testHcps[i];
+    const beId = `E2E-TEST-${String(i + 1).padStart(6, '0')}`; // E2E-TEST-000001, etc.
     const hcp = await prisma.hcp.upsert({
       where: { id: hcpData.id },
       update: {
@@ -92,6 +94,7 @@ async function seedTestData() {
       },
       create: {
         id: hcpData.id,
+        beId: beId,
         npi: hcpData.npi,
         firstName: hcpData.firstName,
         lastName: hcpData.lastName,
