@@ -69,8 +69,8 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
 
   const handleDownloadTemplate = () => {
     // Create CSV template with headers
-    const headers = ['NPI', 'First Name', 'Last Name', 'Specialty', 'Sub-specialty', 'Email', 'City', 'State', 'Years in Practice'];
-    const sampleRow = ['1234567890', 'John', 'Smith', 'Ophthalmology', 'Dry Eye', 'john.smith@example.com', 'Boston', 'MA', '15'];
+    const headers = ['NPI', 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-specialty', 'City', 'State'];
+    const sampleRow = ['1234567890', 'John', 'Smith', 'john.smith@example.com', 'Oncology', '', 'Boston', 'MA'];
 
     const csvContent = [
       headers.join(','),
@@ -150,12 +150,12 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
                 <li>NPI (10 digits)</li>
                 <li>First Name</li>
                 <li>Last Name</li>
-                <li>Specialty (Ophthalmology or Optometry)</li>
-                <li>Sub-specialty (e.g., Dry Eye, Cornea, Retina, Glaucoma)</li>
+                <li>Email</li>
+                <li>Specialty</li>
               </ul>
               <p className="font-medium mt-3 mb-2">Optional columns:</p>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li>Email, City, State, Years in Practice</li>
+                <li>Sub-specialty, City, State</li>
               </ul>
             </div>
 
