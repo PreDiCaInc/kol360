@@ -16,7 +16,25 @@ export class DistributionService {
   async listCampaignHcps(campaignId: string) {
     const items = await prisma.campaignHcp.findMany({
       where: { campaignId },
-      include: {
+      select: {
+        id: true,
+        campaignId: true,
+        hcpId: true,
+        surveyToken: true,
+        emailSentAt: true,
+        reminderCount: true,
+        lastReminderAt: true,
+        createdAt: true,
+        // Segmentation fields
+        marketDecile: true,
+        product1Decile: true,
+        product2Decile: true,
+        practiceSetting: true,
+        practiceSentiment: true,
+        prescribingBehavior: true,
+        segmentation1: true,
+        segmentation2: true,
+        segmentation3: true,
         hcp: {
           select: {
             id: true,
@@ -208,7 +226,25 @@ export class DistributionService {
       prisma.campaignHcp.count({ where }),
       prisma.campaignHcp.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          campaignId: true,
+          hcpId: true,
+          surveyToken: true,
+          emailSentAt: true,
+          reminderCount: true,
+          lastReminderAt: true,
+          createdAt: true,
+          // Segmentation fields
+          marketDecile: true,
+          product1Decile: true,
+          product2Decile: true,
+          practiceSetting: true,
+          practiceSentiment: true,
+          prescribingBehavior: true,
+          segmentation1: true,
+          segmentation2: true,
+          segmentation3: true,
           hcp: {
             select: {
               id: true,
@@ -339,17 +375,27 @@ export class DistributionService {
           result.hcpsCreated++;
         }
 
+        // Extract campaign-level segmentation fields
+        const segmentationData = this.extractSegmentationFields(row);
+
         // Check if HCP is already assigned to this campaign
         const existingAssignment = await prisma.campaignHcp.findUnique({
           where: { campaignId_hcpId: { campaignId, hcpId: hcp.id } },
         });
 
         if (existingAssignment) {
+          // Update segmentation fields if provided
+          if (Object.keys(segmentationData).length > 0) {
+            await prisma.campaignHcp.update({
+              where: { id: existingAssignment.id },
+              data: segmentationData,
+            });
+          }
           result.skipped++;
         } else {
-          // Assign HCP to campaign
+          // Assign HCP to campaign with segmentation data
           await prisma.campaignHcp.create({
-            data: { campaignId, hcpId: hcp.id },
+            data: { campaignId, hcpId: hcp.id, ...segmentationData },
           });
           result.addedToCampaign++;
         }
@@ -417,6 +463,84 @@ export class DistributionService {
     });
 
     return rows;
+  }
+
+  /**
+   * Extract campaign-level HCP segmentation fields from a row
+   * All fields are optional
+   */
+  private extractSegmentationFields(row: Record<string, unknown>): Record<string, number | string | null> {
+    const data: Record<string, number | string | null> = {};
+
+    // Helper to parse decile values (1-10)
+    const parseDecile = (value: unknown): number | null => {
+      if (value === null || value === undefined || value === '') return null;
+      const num = parseInt(String(value), 10);
+      if (isNaN(num) || num < 1 || num > 10) return null;
+      return num;
+    };
+
+    // Helper to parse string values
+    const parseString = (value: unknown): string | null => {
+      if (value === null || value === undefined || value === '') return null;
+      return String(value).trim();
+    };
+
+    // Market Decile (1-10)
+    const marketDecile = parseDecile(
+      row['Market Decile'] || row['marketDecile'] || row['market_decile']
+    );
+    if (marketDecile !== null) data.marketDecile = marketDecile;
+
+    // Product1 Decile (1-10)
+    const product1Decile = parseDecile(
+      row['Product1 Decile'] || row['product1Decile'] || row['product1_decile']
+    );
+    if (product1Decile !== null) data.product1Decile = product1Decile;
+
+    // Product2 Decile (1-10)
+    const product2Decile = parseDecile(
+      row['Product2 Decile'] || row['product2Decile'] || row['product2_decile']
+    );
+    if (product2Decile !== null) data.product2Decile = product2Decile;
+
+    // Practice Setting (Surgical, Community, Academic, Retail)
+    const practiceSetting = parseString(
+      row['Practice Setting'] || row['practiceSetting'] || row['practice_setting']
+    );
+    if (practiceSetting !== null) data.practiceSetting = practiceSetting;
+
+    // Practice Sentiment (categorical)
+    const practiceSentiment = parseString(
+      row['Practice Sentiment'] || row['practiceSentiment'] || row['practice_sentiment']
+    );
+    if (practiceSentiment !== null) data.practiceSentiment = practiceSentiment;
+
+    // Prescribing Behavior (Champions/Loyalist, Splitter, Dabblers, Unaware/Disengaged)
+    const prescribingBehavior = parseString(
+      row['Prescribing Behavior'] || row['prescribingBehavior'] || row['prescribing_behavior']
+    );
+    if (prescribingBehavior !== null) data.prescribingBehavior = prescribingBehavior;
+
+    // Segmentation1 (categorical)
+    const segmentation1 = parseString(
+      row['Segmentation1'] || row['segmentation1'] || row['Segmentation 1']
+    );
+    if (segmentation1 !== null) data.segmentation1 = segmentation1;
+
+    // Segmentation2 (categorical)
+    const segmentation2 = parseString(
+      row['Segmentation2'] || row['segmentation2'] || row['Segmentation 2']
+    );
+    if (segmentation2 !== null) data.segmentation2 = segmentation2;
+
+    // Segmentation3 (categorical)
+    const segmentation3 = parseString(
+      row['Segmentation3'] || row['segmentation3'] || row['Segmentation 3']
+    );
+    if (segmentation3 !== null) data.segmentation3 = segmentation3;
+
+    return data;
   }
 }
 
