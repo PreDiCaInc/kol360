@@ -91,7 +91,7 @@ describe('DistributionService', () => {
           id: 'ch-1',
           campaignId: 'campaign-1',
           hcpId: 'hcp-1',
-          hcp: { id: 'hcp-1', firstName: 'John', lastName: 'Doe' },
+          hcp: { id: 'hcp-1', firstName: 'John', lastName: 'Doe', email: 'john@example.com' },
         },
       ];
 
@@ -221,7 +221,7 @@ describe('DistributionService', () => {
   describe('listHcps', () => {
     it('should return paginated HCPs', async () => {
       const mockHcps = [
-        { hcpId: 'hcp-1', hcp: { id: 'hcp-1', firstName: 'John', lastName: 'Doe' } },
+        { hcpId: 'hcp-1', hcp: { id: 'hcp-1', firstName: 'John', lastName: 'Doe', email: 'john@example.com' } },
       ];
 
       (prisma.campaignHcp.count as Mock).mockResolvedValue(1);
@@ -275,6 +275,48 @@ describe('DistributionService', () => {
       await expect(
         distributionService.importHcpsFromFile('campaign-1', buffer, 'test.pdf', 'user-1')
       ).rejects.toThrow('Unsupported file format');
+    });
+
+    it('should report error when specialty is missing from CSV import', async () => {
+      const { parse } = await import('csv-parse/sync');
+      (parse as Mock).mockReturnValue([
+        {
+          npi: '1234567890',
+          firstName: 'John',
+          lastName: 'Doe',
+          email: 'john@example.com',
+          // specialty is missing
+        },
+      ]);
+
+      const buffer = Buffer.from('npi,firstName,lastName,email\n1234567890,John,Doe,john@example.com');
+
+      const result = await distributionService.importHcpsFromFile('campaign-1', buffer, 'test.csv', 'user-1');
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toBe('Specialty is required');
+      expect(result.hcpsCreated).toBe(0);
+    });
+
+    it('should report error when email is missing from CSV import', async () => {
+      const { parse } = await import('csv-parse/sync');
+      (parse as Mock).mockReturnValue([
+        {
+          npi: '1234567890',
+          firstName: 'John',
+          lastName: 'Doe',
+          specialty: 'Cardiology',
+          // email is missing
+        },
+      ]);
+
+      const buffer = Buffer.from('npi,firstName,lastName,specialty\n1234567890,John,Doe,Cardiology');
+
+      const result = await distributionService.importHcpsFromFile('campaign-1', buffer, 'test.csv', 'user-1');
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error).toBe('Email is required');
+      expect(result.hcpsCreated).toBe(0);
     });
   });
 });

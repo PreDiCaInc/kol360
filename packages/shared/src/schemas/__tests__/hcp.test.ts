@@ -36,6 +36,7 @@ describe('HCP Schemas', () => {
       npi: '1234567890',
       firstName: 'John',
       lastName: 'Doe',
+      email: 'john.doe@example.com',
     };
 
     it('should accept valid HCP data', () => {
@@ -43,15 +44,18 @@ describe('HCP Schemas', () => {
       expect(result).toEqual(validHcp);
     });
 
+    it('should require email field', () => {
+      const { email, ...hcpWithoutEmail } = validHcp;
+      expect(() => createHcpSchema.parse(hcpWithoutEmail)).toThrow();
+    });
+
     it('should accept optional fields', () => {
       const hcpWithOptionals = {
         ...validHcp,
-        email: 'john.doe@example.com',
         specialty: 'Cardiology',
         subSpecialty: 'Interventional Cardiology',
         city: 'New York',
         state: 'NY',
-        yearsInPractice: 15,
       };
 
       const result = createHcpSchema.parse(hcpWithOptionals);
@@ -60,21 +64,17 @@ describe('HCP Schemas', () => {
       expect(result.subSpecialty).toBe('Interventional Cardiology');
       expect(result.city).toBe('New York');
       expect(result.state).toBe('NY');
-      expect(result.yearsInPractice).toBe(15);
     });
 
     it('should accept null optional fields', () => {
       const hcpWithNulls = {
         ...validHcp,
-        email: null,
         specialty: null,
         city: null,
         state: null,
-        yearsInPractice: null,
       };
 
       const result = createHcpSchema.parse(hcpWithNulls);
-      expect(result.email).toBeNull();
       expect(result.specialty).toBeNull();
     });
 
@@ -121,26 +121,6 @@ describe('HCP Schemas', () => {
       const result = createHcpSchema.parse({ ...validHcp, state: 'CA' });
       expect(result.state).toBe('CA');
     });
-
-    it('should reject non-positive yearsInPractice', () => {
-      expect(() =>
-        createHcpSchema.parse({ ...validHcp, yearsInPractice: 0 })
-      ).toThrow();
-      expect(() =>
-        createHcpSchema.parse({ ...validHcp, yearsInPractice: -5 })
-      ).toThrow();
-    });
-
-    it('should reject non-integer yearsInPractice', () => {
-      expect(() =>
-        createHcpSchema.parse({ ...validHcp, yearsInPractice: 5.5 })
-      ).toThrow();
-    });
-
-    it('should accept positive integer yearsInPractice', () => {
-      const result = createHcpSchema.parse({ ...validHcp, yearsInPractice: 20 });
-      expect(result.yearsInPractice).toBe(20);
-    });
   });
 
   describe('updateHcpSchema', () => {
@@ -172,7 +152,6 @@ describe('HCP Schemas', () => {
         specialty: 'Neurology',
         city: 'Boston',
         state: 'MA',
-        yearsInPractice: 10,
       };
 
       const result = updateHcpSchema.parse(fullUpdate);
@@ -183,7 +162,6 @@ describe('HCP Schemas', () => {
       expect(() => updateHcpSchema.parse({ email: 'invalid' })).toThrow();
       expect(() => updateHcpSchema.parse({ firstName: '' })).toThrow();
       expect(() => updateHcpSchema.parse({ state: 'New York' })).toThrow();
-      expect(() => updateHcpSchema.parse({ yearsInPractice: -1 })).toThrow();
     });
   });
 });

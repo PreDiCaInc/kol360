@@ -43,7 +43,34 @@ describe('API Authentication', () => {
       expect(data).toHaveProperty('items');
     });
 
-    // Note: /users/me endpoint doesn't exist. The app uses Cognito token claims for user info.
-    // Users are looked up by cognitoSub in the database when needed.
+    it.skipIf(!config.authToken)('should get current user via /users/me', async () => {
+      const response = await fetch(getApiUrl('/api/v1/users/me'), {
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+      });
+
+      // Should return 200 OK for active users
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data).toHaveProperty('id');
+      expect(data).toHaveProperty('email');
+      expect(data).toHaveProperty('role');
+      expect(data).toHaveProperty('status');
+      expect(data.status).toBe('ACTIVE');
+    });
+
+    it('should reject /users/me without auth token', async () => {
+      const response = await fetch(getApiUrl('/api/v1/users/me'), {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // Should return 401 Unauthorized
+      expect(response.status).toBe(401);
+    });
   });
 });

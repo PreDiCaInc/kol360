@@ -6,12 +6,11 @@ export const createHcpSchema = z.object({
   npi: npiSchema,
   firstName: z.string().min(1).max(50),
   lastName: z.string().min(1).max(50),
-  email: z.string().email().optional().nullable(),
+  email: z.string().email(),
   specialty: z.string().optional().nullable(),
   subSpecialty: z.string().optional().nullable(),
   city: z.string().optional().nullable(),
   state: z.string().length(2).optional().nullable(),
-  yearsInPractice: z.number().int().positive().optional().nullable(),
 });
 
 export const createNominatedHcpSchema = z.object({
@@ -23,7 +22,6 @@ export const createNominatedHcpSchema = z.object({
   subSpecialty: z.string().optional().nullable(),
   city: z.string().optional().nullable(),
   state: z.string().length(2).optional().nullable(),
-  yearsInPractice: z.number().int().positive().optional().nullable(),
 });
 
 export const updateHcpSchema = createHcpSchema.partial().omit({ npi: true }).extend({

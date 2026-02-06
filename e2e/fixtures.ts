@@ -21,7 +21,8 @@ export const TEST_IDS = {
   SPECIALTY_NAME: 'E2E Test Oncology Specialist',
   SPECIALTY_CODE: 'E2E_ONC',
 
-  // Test HCPs (3 test HCPs) - CUID format required
+  // Test HCPs - CUID format required
+  // HCP_1: Generic test HCP (fake email)
   HCP_1: {
     id: 'cme2e0test0hcp0000001',
     npi: '9990000001',
@@ -31,15 +32,19 @@ export const TEST_IDS = {
     city: 'Boston',
     state: 'MA',
   },
+
+  // HCP_2: Real email for testing email delivery (bio-exec.com inbox)
   HCP_2: {
     id: 'cme2e0test0hcp0000002',
     npi: '9990000002',
-    firstName: 'Bob',
-    lastName: 'TestPhysician',
-    email: 'bob.test@e2etest.example.com',
+    firstName: 'E2E',
+    lastName: 'TestHCP',
+    email: 'hcp2@bio-exec.com', // Real email - can check inbox
     city: 'New York',
     state: 'NY',
   },
+
+  // HCP_3: Generic test HCP (fake email)
   HCP_3: {
     id: 'cme2e0test0hcp0000003',
     npi: '9990000003',
@@ -55,8 +60,42 @@ export const TEST_IDS = {
   USER_EMAIL: 'e2e.testuser@bio-exec.com',
   USER_COGNITO_SUB: 'd11b2570-8051-7098-327c-3d660a97d7a0',
 
+  // Survey Template - required for campaign activation
+  SURVEY_TEMPLATE_ID: 'cme2e0test0survey00001',
+  SURVEY_TEMPLATE_NAME: 'E2E Test Survey Template',
+
+  // Section Template
+  SECTION_TEMPLATE_ID: 'cme2e0test0section0001',
+  SECTION_TEMPLATE_NAME: 'E2E Test Section',
+
+  // Questions
+  QUESTION_1_ID: 'cme2e0test0quest00001', // Rating question
+  QUESTION_2_ID: 'cme2e0test0quest00002', // Single choice
+  QUESTION_3_ID: 'cme2e0test0quest00003', // Text question
+
   // Campaign prefix (campaigns are created dynamically)
   CAMPAIGN_PREFIX: 'E2E_TEST_CAMPAIGN_',
+
+  // HCP for import test (with segmentation data)
+  HCP_IMPORT: {
+    npi: '9990000004',
+    firstName: 'Import',
+    lastName: 'TestHCP',
+    email: 'import.test@e2etest.example.com',
+    specialty: 'Oncology',
+    city: 'Los Angeles',
+    state: 'CA',
+    // Segmentation fields
+    marketDecile: 8,
+    product1Decile: 7,
+    product2Decile: 5,
+    practiceSetting: 'Academic',
+    practiceSentiment: 'Positive',
+    prescribingBehavior: 'Champions/Loyalist',
+    segmentation1: 'High Value',
+    segmentation2: 'Early Adopter',
+    segmentation3: 'Key Opinion Leader',
+  },
 } as const;
 
 /**
@@ -64,6 +103,13 @@ export const TEST_IDS = {
  */
 export function getTestHcps() {
   return [TEST_IDS.HCP_1, TEST_IDS.HCP_2, TEST_IDS.HCP_3];
+}
+
+/**
+ * Get the HCP with the real email for email delivery testing
+ */
+export function getRealEmailHcp() {
+  return TEST_IDS.HCP_2;
 }
 
 /**
@@ -79,4 +125,105 @@ export function isTestData(id: string): boolean {
 export function generateTestCampaignName(): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   return `${TEST_IDS.CAMPAIGN_PREFIX}${timestamp}`;
+}
+
+/**
+ * Generate a unique CUID-like ID for test data
+ * Format: cme2e + random suffix (must be 25 chars total)
+ */
+export function generateTestId(prefix: string = 'test'): string {
+  const random = Math.random().toString(36).substring(2, 15);
+  const id = `cme2e0${prefix}0${random}`.substring(0, 25);
+  return id.padEnd(25, '0');
+}
+
+/**
+ * Generate CSV content for HCP import with segmentation data
+ */
+export function generateHcpImportCsv(hcps: Array<{
+  npi: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  specialty: string;
+  city?: string;
+  state?: string;
+  marketDecile?: number;
+  product1Decile?: number;
+  product2Decile?: number;
+  practiceSetting?: string;
+  practiceSentiment?: string;
+  prescribingBehavior?: string;
+  segmentation1?: string;
+  segmentation2?: string;
+  segmentation3?: string;
+}>): string {
+  const headers = [
+    'NPI',
+    'First Name',
+    'Last Name',
+    'Email',
+    'Specialty',
+    'City',
+    'State',
+    'Market Decile',
+    'Product1 Decile',
+    'Product2 Decile',
+    'Practice Setting',
+    'Practice Sentiment',
+    'Prescribing Behavior',
+    'Segmentation1',
+    'Segmentation2',
+    'Segmentation3',
+  ];
+
+  const rows = hcps.map((hcp) => [
+    hcp.npi,
+    hcp.firstName,
+    hcp.lastName,
+    hcp.email,
+    hcp.specialty,
+    hcp.city || '',
+    hcp.state || '',
+    hcp.marketDecile?.toString() || '',
+    hcp.product1Decile?.toString() || '',
+    hcp.product2Decile?.toString() || '',
+    hcp.practiceSetting || '',
+    hcp.practiceSentiment || '',
+    hcp.prescribingBehavior || '',
+    hcp.segmentation1 || '',
+    hcp.segmentation2 || '',
+    hcp.segmentation3 || '',
+  ]);
+
+  return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+}
+
+/**
+ * Sample survey answers for testing
+ * These match the expected format for survey submission
+ */
+export function generateSampleAnswers(questions: { id: string; type: string }[]) {
+  return questions.map((q) => {
+    switch (q.type) {
+      case 'SINGLE_SELECT':
+        return { questionId: q.id, value: 0 }; // First option
+      case 'MULTI_SELECT':
+        return { questionId: q.id, value: [0] }; // First option selected
+      case 'RATING':
+        return { questionId: q.id, value: 4 }; // Rating of 4
+      case 'TEXT':
+        return { questionId: q.id, value: 'E2E test response' };
+      case 'NOMINATION':
+        return {
+          questionId: q.id,
+          value: [
+            { name: 'Dr. John Smith', institution: 'Test Hospital' },
+            { name: 'Dr. Jane Doe', institution: 'Test Clinic' },
+          ],
+        };
+      default:
+        return { questionId: q.id, value: 'test' };
+    }
+  });
 }

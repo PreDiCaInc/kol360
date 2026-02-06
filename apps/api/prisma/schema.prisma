@@ -400,6 +400,18 @@ model CampaignHcp {
   reminderCount  Int       @default(0)
   lastReminderAt DateTime?
   createdAt      DateTime  @default(now())
+
+  // Campaign-level HCP segmentation fields (optional, from import)
+  marketDecile        Int?      // Ranking 1-10
+  product1Decile      Int?      // Ranking 1-10
+  product2Decile      Int?      // Ranking 1-10
+  practiceSetting     String?   // Surgical, Community, Academic, Retail
+  practiceSentiment   String?   // Categorical
+  prescribingBehavior String?   // Champions/Loyalist, Splitter, Dabblers, Unaware/Disengaged
+  segmentation1       String?   // Categorical
+  segmentation2       String?   // Categorical
+  segmentation3       String?   // Categorical
+
   campaign       Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   hcp            Hcp       @relation(fields: [hcpId], references: [id])
 
