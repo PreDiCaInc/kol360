@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { NominationService } from '../nomination.service';
 
-// Mock prisma
-vi.mock('../../lib/prisma', () => ({
-  prisma: {
+// Mock prisma - using factory function to avoid hoisting issues
+vi.mock('../../lib/prisma', () => {
+  const mockHcp = {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  };
+
+  const mockPrisma = {
     nomination: {
       count: vi.fn(),
       findMany: vi.fn(),
@@ -11,19 +19,19 @@ vi.mock('../../lib/prisma', () => ({
       update: vi.fn(),
       groupBy: vi.fn(),
     },
-    hcp: {
-      findMany: vi.fn(),
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
+    hcp: mockHcp,
     hcpAlias: {
       findFirst: vi.fn(),
       create: vi.fn(),
     },
-  },
-}));
+    // Mock $transaction to execute the callback with the mock prisma
+    $transaction: vi.fn().mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
+      return callback(mockPrisma);
+    }),
+  };
+
+  return { prisma: mockPrisma };
+});
 
 import { prisma } from '../../lib/prisma';
 
