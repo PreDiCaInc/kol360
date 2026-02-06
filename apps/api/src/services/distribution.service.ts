@@ -367,11 +367,12 @@ export class DistributionService {
           });
           result.hcpsExisting++;
         } else {
-          // Create new HCP
-          const beId = await hcpServiceInstance.generateBeId();
-          hcp = await prisma.hcp.create({
-            data: { ...hcpData, beId, isSurveyTaker: true, createdBy: userId },
-          });
+          // Create new HCP atomically (beId generation + creation in single transaction)
+          // email is guaranteed to be non-null here (validated above)
+          hcp = await hcpServiceInstance.createWithAtomicBeId({
+            ...hcpData,
+            email: hcpData.email as string, // Validated above - email is required
+          }, userId);
           result.hcpsCreated++;
         }
 

@@ -171,9 +171,41 @@ export class HcpService {
   }
 
   async create(data: CreateHcpInput, createdBy?: string) {
-    const beId = await this.generateBeId();
-    return prisma.hcp.create({
-      data: { ...data, beId, isSurveyTaker: true, createdBy },
+    // Use atomic creation to prevent race conditions with beId generation
+    return this.createWithAtomicBeId(data, createdBy);
+  }
+
+  /**
+   * Atomically create an HCP with a generated beId
+   * This prevents race conditions by generating the beId and creating the HCP
+   * in a single serializable transaction
+   */
+  async createWithAtomicBeId(data: CreateHcpInput, createdBy?: string) {
+    return prisma.$transaction(async (tx) => {
+      // Find the highest existing beId
+      const lastHcp = await tx.hcp.findFirst({
+        where: { beId: { startsWith: 'BE-' } },
+        orderBy: { beId: 'desc' },
+        select: { beId: true },
+      });
+
+      let nextNum = 1;
+      if (lastHcp?.beId) {
+        const match = lastHcp.beId.match(/^BE-(\d+)$/);
+        if (match) {
+          nextNum = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      const newBeId = 'BE-' + String(nextNum).padStart(6, '0');
+
+      // Create the HCP within the same transaction
+      // This ensures atomicity - no other transaction can grab the same beId
+      return tx.hcp.create({
+        data: { ...data, beId: newBeId, isSurveyTaker: true, createdBy },
+      });
+    }, {
+      isolationLevel: 'Serializable',
     });
   }
 
@@ -272,9 +304,12 @@ export class HcpService {
             });
             result.merged++;
           } else {
-            // No NPI match and no alias match - create new HCP
-            const beId = await this.generateBeId();
-            await prisma.hcp.create({ data: { ...data, beId, isSurveyTaker: true, createdBy: userId } });
+            // No NPI match and no alias match - create new HCP atomically
+            // email is guaranteed to be non-null here (validated above)
+            await this.createWithAtomicBeId({
+              ...data,
+              email: data.email as string, // Validated above - email is required
+            }, userId);
             result.created++;
           }
         }
