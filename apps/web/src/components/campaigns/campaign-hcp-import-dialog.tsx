@@ -105,7 +105,65 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
     { name: 'Sub-specialty', description: 'Sub-specialty if applicable' },
     { name: 'City', description: 'City location' },
     { name: 'State', description: 'State (2-letter code)' },
+    { name: 'Market Decile', description: 'Ranking 1-10' },
+    { name: 'Product1 Decile', description: 'Ranking 1-10' },
+    { name: 'Product2 Decile', description: 'Ranking 1-10' },
+    { name: 'Practice Setting', description: 'Surgical, Community, Academic, Retail' },
+    { name: 'Practice Sentiment', description: 'Categorical' },
+    { name: 'Prescribing Behavior', description: 'Champions/Loyalist, Splitter, etc.' },
+    { name: 'Segmentation1', description: 'Custom segmentation' },
+    { name: 'Segmentation2', description: 'Custom segmentation' },
+    { name: 'Segmentation3', description: 'Custom segmentation' },
   ];
+
+  const downloadTemplate = () => {
+    const headers = [
+      'NPI',
+      'First Name',
+      'Last Name',
+      'Email',
+      'Specialty',
+      'Sub-specialty',
+      'City',
+      'State',
+      'Market Decile',
+      'Product1 Decile',
+      'Product2 Decile',
+      'Practice Setting',
+      'Practice Sentiment',
+      'Prescribing Behavior',
+      'Segmentation1',
+      'Segmentation2',
+      'Segmentation3',
+    ];
+    const sampleRow = [
+      '1234567890',
+      'John',
+      'Doe',
+      'john.doe@example.com',
+      'Oncology',
+      '',
+      'Boston',
+      'MA',
+      '8',
+      '7',
+      '5',
+      'Academic',
+      'Positive',
+      'Champions/Loyalist',
+      'High Value',
+      'Early Adopter',
+      '',
+    ];
+    const csv = [headers.join(','), sampleRow.join(',')].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'hcp-import-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -161,7 +219,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <div className="flex items-center justify-between mb-3">
                 <p className="font-medium">Required columns:</p>
-                <Button variant="ghost" size="sm" className="text-xs h-7">
+                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={downloadTemplate}>
                   <Download className="w-3 h-3 mr-1" />
                   Template
                 </Button>
