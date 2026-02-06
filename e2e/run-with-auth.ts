@@ -36,6 +36,8 @@ async function main() {
         await runTests(['vitest', 'run', '--config', 'vitest.config.ts', 'api/'], {
           E2E_AUTH_TOKEN: token,
           E2E_API_URL: apiUrl,
+          E2E_TEST_EMAIL: process.env.E2E_TEST_EMAIL || 'e2e.testuser@bio-exec.com',
+          E2E_TEST_PASSWORD: process.env.E2E_TEST_PASSWORD || '',
         });
         console.log('\n🧪 Running Web tests...\n');
         testCommand = ['playwright', 'test'];
@@ -47,10 +49,13 @@ async function main() {
     }
 
     // Run the tests with the token in environment
+    // Also pass through email/password for login.test.ts tests
     await runTests(testCommand, {
       E2E_AUTH_TOKEN: token,
       E2E_API_URL: apiUrl,
       E2E_WEB_URL: webUrl,
+      E2E_TEST_EMAIL: process.env.E2E_TEST_EMAIL || 'e2e.testuser@bio-exec.com',
+      E2E_TEST_PASSWORD: process.env.E2E_TEST_PASSWORD || '',
     });
   } catch (error) {
     console.error('❌ Failed:', error);
