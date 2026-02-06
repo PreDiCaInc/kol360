@@ -75,6 +75,27 @@ export const TEST_IDS = {
 
   // Campaign prefix (campaigns are created dynamically)
   CAMPAIGN_PREFIX: 'E2E_TEST_CAMPAIGN_',
+
+  // HCP for import test (with segmentation data)
+  HCP_IMPORT: {
+    npi: '9990000004',
+    firstName: 'Import',
+    lastName: 'TestHCP',
+    email: 'import.test@e2etest.example.com',
+    specialty: 'Oncology',
+    city: 'Los Angeles',
+    state: 'CA',
+    // Segmentation fields
+    marketDecile: 8,
+    product1Decile: 7,
+    product2Decile: 5,
+    practiceSetting: 'Academic',
+    practiceSentiment: 'Positive',
+    prescribingBehavior: 'Champions/Loyalist',
+    segmentation1: 'High Value',
+    segmentation2: 'Early Adopter',
+    segmentation3: 'Key Opinion Leader',
+  },
 } as const;
 
 /**
@@ -114,6 +135,68 @@ export function generateTestId(prefix: string = 'test'): string {
   const random = Math.random().toString(36).substring(2, 15);
   const id = `cme2e0${prefix}0${random}`.substring(0, 25);
   return id.padEnd(25, '0');
+}
+
+/**
+ * Generate CSV content for HCP import with segmentation data
+ */
+export function generateHcpImportCsv(hcps: Array<{
+  npi: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  specialty: string;
+  city?: string;
+  state?: string;
+  marketDecile?: number;
+  product1Decile?: number;
+  product2Decile?: number;
+  practiceSetting?: string;
+  practiceSentiment?: string;
+  prescribingBehavior?: string;
+  segmentation1?: string;
+  segmentation2?: string;
+  segmentation3?: string;
+}>): string {
+  const headers = [
+    'NPI',
+    'First Name',
+    'Last Name',
+    'Email',
+    'Specialty',
+    'City',
+    'State',
+    'Market Decile',
+    'Product1 Decile',
+    'Product2 Decile',
+    'Practice Setting',
+    'Practice Sentiment',
+    'Prescribing Behavior',
+    'Segmentation1',
+    'Segmentation2',
+    'Segmentation3',
+  ];
+
+  const rows = hcps.map((hcp) => [
+    hcp.npi,
+    hcp.firstName,
+    hcp.lastName,
+    hcp.email,
+    hcp.specialty,
+    hcp.city || '',
+    hcp.state || '',
+    hcp.marketDecile?.toString() || '',
+    hcp.product1Decile?.toString() || '',
+    hcp.product2Decile?.toString() || '',
+    hcp.practiceSetting || '',
+    hcp.practiceSentiment || '',
+    hcp.prescribingBehavior || '',
+    hcp.segmentation1 || '',
+    hcp.segmentation2 || '',
+    hcp.segmentation3 || '',
+  ]);
+
+  return [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
 }
 
 /**

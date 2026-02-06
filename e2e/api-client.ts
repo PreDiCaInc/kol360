@@ -198,6 +198,39 @@ export class ApiClient {
     );
   }
 
+  /**
+   * Import HCPs from CSV content and assign to campaign
+   * This creates a form-data request with the CSV file
+   */
+  async importHcpsFromCsv(campaignId: string, csvContent: string, filename: string = 'import.csv') {
+    const url = `${this.baseUrl}/api/v1/campaigns/${campaignId}/import-hcps`;
+
+    // Create form data with CSV as a file
+    const formData = new FormData();
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    formData.append('file', blob, filename);
+
+    const headers: Record<string, string> = {};
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    let data: ImportHcpsResult;
+    try {
+      data = await response.json();
+    } catch {
+      data = {} as ImportHcpsResult;
+    }
+
+    return { status: response.status, data };
+  }
+
   // ==================== HCPs ====================
 
   async listHcps(params?: { query?: string; specialty?: string; state?: string; page?: number; limit?: number }) {
@@ -576,6 +609,25 @@ export interface CampaignHcp {
   responseStatus?: string;
   reminderCount?: number;
   hcp: Hcp;
+  // Campaign-level segmentation fields
+  marketDecile?: number;
+  product1Decile?: number;
+  product2Decile?: number;
+  practiceSetting?: string;
+  practiceSentiment?: string;
+  prescribingBehavior?: string;
+  segmentation1?: string;
+  segmentation2?: string;
+  segmentation3?: string;
+}
+
+export interface ImportHcpsResult {
+  total: number;
+  hcpsCreated: number;
+  hcpsExisting: number;
+  addedToCampaign: number;
+  skipped: number;
+  errors: Array<{ row: number; error: string }>;
 }
 
 export interface Hcp {

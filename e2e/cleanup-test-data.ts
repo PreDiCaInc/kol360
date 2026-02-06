@@ -86,6 +86,16 @@ async function cleanupAllTestData() {
     }
   }
 
+  // Also delete the import test HCP (by NPI since ID is generated)
+  try {
+    await prisma.hcp.delete({
+      where: { npi: TEST_IDS.HCP_IMPORT.npi },
+    });
+    console.log(`  ✓ Deleted import test HCP: ${TEST_IDS.HCP_IMPORT.npi}`);
+  } catch {
+    console.log(`  - Import test HCP not found (already deleted)`);
+  }
+
   // 4. Delete test specialty
   console.log('\nRemoving test specialty...');
   try {
