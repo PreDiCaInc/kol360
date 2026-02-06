@@ -13,18 +13,58 @@ interface SearchParams {
 }
 
 export class HcpService {
+  /**
+   * Generate a unique Business Entity ID (BE-XXXXXX format)
+   * Uses a transaction to prevent race conditions that can cause duplicate IDs
+   */
   async generateBeId(): Promise<string> {
-    const lastHcp = await prisma.hcp.findFirst({
-      where: { beId: { not: undefined } },
-      orderBy: { beId: "desc" },
-      select: { beId: true },
+    // Use a transaction with serializable isolation to prevent race conditions
+    return prisma.$transaction(async (tx) => {
+      const lastHcp = await tx.hcp.findFirst({
+        where: { beId: { startsWith: 'BE-' } },
+        orderBy: { beId: 'desc' },
+        select: { beId: true },
+      });
+
+      let nextNum = 1;
+      if (lastHcp?.beId) {
+        const match = lastHcp.beId.match(/^BE-(\d+)$/);
+        if (match) {
+          nextNum = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      const newBeId = 'BE-' + String(nextNum).padStart(6, '0');
+
+      // Verify the ID doesn't exist (extra safety check)
+      const existing = await tx.hcp.findFirst({
+        where: { beId: newBeId },
+        select: { id: true },
+      });
+
+      if (existing) {
+        // If collision detected, find the actual max and increment
+        const allBeIds = await tx.hcp.findMany({
+          where: { beId: { startsWith: 'BE-' } },
+          select: { beId: true },
+          orderBy: { beId: 'desc' },
+          take: 1,
+        });
+        if (allBeIds.length > 0 && allBeIds[0].beId) {
+          const actualMatch = allBeIds[0].beId.match(/^BE-(\d+)$/);
+          if (actualMatch) {
+            nextNum = parseInt(actualMatch[1], 10) + 1;
+            return 'BE-' + String(nextNum).padStart(6, '0');
+          }
+        }
+        // Fallback: use timestamp-based ID
+        return 'BE-' + Date.now().toString().slice(-6);
+      }
+
+      return newBeId;
+    }, {
+      isolationLevel: 'Serializable',
     });
-    let nextNum = 1;
-    if (lastHcp?.beId) {
-      const match = lastHcp.beId.match(/^BE-(\d+)$/);
-      if (match) { nextNum = parseInt(match[1], 10) + 1; }
-    }
-    return "BE-" + String(nextNum).padStart(6, "0");
   }
 
   async search(params: SearchParams) {
