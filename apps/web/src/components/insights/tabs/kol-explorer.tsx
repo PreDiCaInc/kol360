@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -20,24 +21,73 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, SlidersHorizontal, Download } from 'lucide-react';
 import { ScoreFiltersGrid } from '../score-range-filter';
 import { useKolExplorer, useInsightsFilterOptions } from '@/hooks/use-insights-report';
-import type { InsightsFilter } from '@kol360/shared';
+import type { InsightsFilter, KolExplorerItem } from '@kol360/shared';
 
 interface Props {
   diseaseAreaId: string;
 }
 
-export function KolExplorerTab({ diseaseAreaId }: Props) {
-  const [filters, setFilters] = useState<Partial<InsightsFilter>>({
+// Parse URL search params to filters
+function parseUrlFilters(searchParams: URLSearchParams): Partial<InsightsFilter> {
+  const filters: Partial<InsightsFilter> = {
     page: 1,
     limit: 25,
     sortOrder: 'desc',
-  });
+  };
+
+  const page = searchParams.get('page');
+  if (page) filters.page = parseInt(page, 10);
+
+  const search = searchParams.get('search');
+  if (search) filters.search = search;
+
+  const specialty = searchParams.get('specialty');
+  if (specialty) filters.specialty = specialty;
+
+  const state = searchParams.get('state');
+  if (state) filters.state = state;
+
+  const influencerType = searchParams.get('influencerType');
+  if (influencerType) filters.influencerType = influencerType as InsightsFilter['influencerType'];
+
+  return filters;
+}
+
+// Convert filters to URL search params
+function filtersToUrlParams(filters: Partial<InsightsFilter>): URLSearchParams {
+  const params = new URLSearchParams();
+
+  if (filters.page && filters.page > 1) params.set('page', String(filters.page));
+  if (filters.search) params.set('search', filters.search);
+  if (filters.specialty) params.set('specialty', filters.specialty);
+  if (filters.state) params.set('state', filters.state);
+  if (filters.influencerType) params.set('influencerType', filters.influencerType);
+
+  return params;
+}
+
+export function KolExplorerTab({ diseaseAreaId }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Initialize filters from URL
+  const [filters, setFilters] = useState<Partial<InsightsFilter>>(() =>
+    parseUrlFilters(searchParams)
+  );
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   const { data, isLoading } = useKolExplorer(diseaseAreaId, filters);
+
+  // Sync URL when filters change
+  useEffect(() => {
+    const params = filtersToUrlParams(filters);
+    const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [filters, pathname, router]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilters((prev) => ({ ...prev, search: e.target.value, page: 1 }));
@@ -66,10 +116,76 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
 
   const [showScoreFilters, setShowScoreFilters] = useState(false);
 
+  // Export to CSV
+  const handleExportCSV = useCallback(() => {
+    if (!data?.items.length) return;
+
+    const headers = [
+      'Rank',
+      'Name',
+      'Specialty',
+      'City',
+      'State',
+      'Influencer Type',
+      'Total Score',
+      'Survey Score',
+      'Publications',
+      'Trade Pubs',
+      'Org Leadership',
+      'Org Awareness',
+      'Clinical Trials',
+      'Conference',
+      'Social Media',
+      'Media/Podcasts',
+    ];
+
+    const rows = data.items.map((kol: KolExplorerItem, index: number) => [
+      ((filters.page || 1) - 1) * (filters.limit || 25) + index + 1,
+      kol.name,
+      kol.specialty || '',
+      kol.city || '',
+      kol.state || '',
+      kol.influencerType || '',
+      kol.compositeScore?.toFixed(1) || '',
+      kol.scoreSurvey?.toFixed(1) || '',
+      kol.scorePublications?.toFixed(1) || '',
+      kol.scoreTradePubs?.toFixed(1) || '',
+      kol.scoreOrgLeadership?.toFixed(1) || '',
+      kol.scoreOrgAwareness?.toFixed(1) || '',
+      kol.scoreClinicalTrials?.toFixed(1) || '',
+      kol.scoreConference?.toFixed(1) || '',
+      kol.scoreSocialMedia?.toFixed(1) || '',
+      kol.scoreMediaPodcasts?.toFixed(1) || '',
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `kol-explorer-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }, [data?.items, filters.page, filters.limit]);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>KOL Explorer</CardTitle>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>KOL Explorer</CardTitle>
+            <CardDescription>
+              Browse and filter all KOLs with their scores
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={!data?.items.length}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Filters */}

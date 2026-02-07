@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, List, Download } from 'lucide-react';
 import { useLeaderRankings, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import type { NominationType, LeaderRankingQuery } from '@kol360/shared';
 
@@ -40,19 +41,23 @@ const NOMINATION_TYPES: { value: NominationType; label: string; color: string; b
 interface RankingTableProps {
   diseaseAreaId: string;
   nominationType: NominationType;
+  label: string;
   color: string;
   bgColor: string;
   filters?: { state?: string; specialty?: string };
   compact?: boolean;
+  onExport?: (nominationType: string, data: { rank: number; name: string; specialty: string | null; state: string | null; count: number }[]) => void;
 }
 
 function RankingTable({
   diseaseAreaId,
   nominationType,
+  label,
   color,
   bgColor,
   filters = {},
   compact = false,
+  onExport,
 }: RankingTableProps) {
   const [page, setPage] = useState(1);
   const limit = compact ? 10 : 15;
@@ -62,6 +67,44 @@ function RankingTable({
     page,
     limit,
   });
+
+  const handleExport = useCallback(() => {
+    if (!data?.items.length) return;
+
+    const csvData = data.items.map((item) => ({
+      rank: item.rank,
+      name: item.name,
+      specialty: item.specialty,
+      state: item.state,
+      count: item.count,
+    }));
+
+    if (onExport) {
+      onExport(label, csvData);
+    } else {
+      // Direct export if no onExport callback
+      const headers = ['Rank', 'Name', 'Specialty', 'State', 'Count'];
+      const rows = csvData.map((item) => [
+        item.rank,
+        item.name,
+        item.specialty || '',
+        item.state || '',
+        item.count,
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${label.toLowerCase().replace(/\s+/g, '-')}-rankings-${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+  }, [data?.items, label, onExport]);
 
   if (isLoading) {
     return (
@@ -122,45 +165,118 @@ function RankingTable({
         </Table>
       </div>
 
-      {/* Pagination */}
-      {data.totalPages > 1 && (
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">
-            {((page - 1) * limit + 1)}-{Math.min(page * limit, data.total)} of {data.total}
-          </span>
-          <div className="flex items-center gap-1">
+      {/* Pagination & Export */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">
+          {data.total > 0
+            ? `${((page - 1) * limit + 1)}-${Math.min(page * limit, data.total)} of ${data.total}`
+            : 'No results'}
+        </span>
+        <div className="flex items-center gap-1">
+          {!compact && (
             <Button
               variant="ghost"
               size="icon"
               className="h-6 w-6"
-              onClick={() => setPage((p) => p - 1)}
-              disabled={page <= 1}
+              onClick={handleExport}
+              disabled={!data.items.length}
+              title="Export CSV"
             >
-              <ChevronLeft className="h-3 w-3" />
+              <Download className="h-3 w-3" />
             </Button>
-            <span className="text-muted-foreground">{page}/{data.totalPages}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page >= data.totalPages}
-            >
-              <ChevronRight className="h-3 w-3" />
-            </Button>
-          </div>
+          )}
+          {data.totalPages > 1 && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setPage((p) => p - 1)}
+                disabled={page <= 1}
+              >
+                <ChevronLeft className="h-3 w-3" />
+              </Button>
+              <span className="text-muted-foreground">{page}/{data.totalPages}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page >= data.totalPages}
+              >
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            </>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
+// Parse URL search params to filters
+function parseUrlFilters(searchParams: URLSearchParams): {
+  state?: string;
+  specialty?: string;
+  viewMode: 'tabs' | 'grid';
+  activeType: NominationType;
+} {
+  return {
+    state: searchParams.get('lrState') || undefined,
+    specialty: searchParams.get('lrSpecialty') || undefined,
+    viewMode: (searchParams.get('lrView') as 'tabs' | 'grid') || 'grid',
+    activeType: (searchParams.get('lrType') as NominationType) || 'DISCUSSION_LEADERS',
+  };
+}
+
+// Convert filters to URL search params
+function filtersToUrlParams(
+  filters: { state?: string; specialty?: string },
+  viewMode: 'tabs' | 'grid',
+  activeType: NominationType
+): URLSearchParams {
+  const params = new URLSearchParams();
+
+  if (filters.state) params.set('lrState', filters.state);
+  if (filters.specialty) params.set('lrSpecialty', filters.specialty);
+  if (viewMode !== 'grid') params.set('lrView', viewMode);
+  if (activeType !== 'DISCUSSION_LEADERS') params.set('lrType', activeType);
+
+  return params;
+}
+
 export function LeaderRankingsTab({ diseaseAreaId }: Props) {
-  const [viewMode, setViewMode] = useState<'tabs' | 'grid'>('grid');
-  const [activeType, setActiveType] = useState<NominationType>('DISCUSSION_LEADERS');
-  const [filters, setFilters] = useState<{ state?: string; specialty?: string }>({});
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Initialize from URL
+  const urlFilters = parseUrlFilters(searchParams);
+  const [viewMode, setViewMode] = useState<'tabs' | 'grid'>(urlFilters.viewMode);
+  const [activeType, setActiveType] = useState<NominationType>(urlFilters.activeType);
+  const [filters, setFilters] = useState<{ state?: string; specialty?: string }>({
+    state: urlFilters.state,
+    specialty: urlFilters.specialty,
+  });
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
+
+  // Sync URL when filters change
+  useEffect(() => {
+    const params = filtersToUrlParams(filters, viewMode, activeType);
+    // Preserve other params (like from KOL Explorer tab)
+    const currentParams = new URLSearchParams(searchParams.toString());
+    // Remove our params first
+    currentParams.delete('lrState');
+    currentParams.delete('lrSpecialty');
+    currentParams.delete('lrView');
+    currentParams.delete('lrType');
+    // Add our new params
+    params.forEach((value, key) => currentParams.set(key, value));
+
+    const newUrl = currentParams.toString() ? `${pathname}?${currentParams.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [filters, viewMode, activeType, pathname, router, searchParams]);
 
   const handleFilterChange = (key: 'state' | 'specialty', value: string) => {
     setFilters((prev) => ({
@@ -243,6 +359,7 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
                 <RankingTable
                   diseaseAreaId={diseaseAreaId}
                   nominationType={type.value}
+                  label={type.label}
                   color={type.color}
                   bgColor={type.bgColor}
                   filters={filters}
@@ -280,6 +397,7 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
                   <RankingTable
                     diseaseAreaId={diseaseAreaId}
                     nominationType={type.value}
+                    label={type.label}
                     color={type.color}
                     bgColor={type.bgColor}
                     filters={filters}
