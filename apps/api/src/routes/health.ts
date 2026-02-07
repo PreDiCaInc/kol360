@@ -1,7 +1,19 @@
 import { FastifyPluginAsync } from 'fastify';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 // Track process start time for uptime calculation
 const processStartTime = Date.now();
+
+// Read version from package.json
+let appVersion = '1.5.0';
+try {
+  const pkgPath = join(__dirname, '../../package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+  appVersion = pkg.version || appVersion;
+} catch {
+  // Use default if package.json can't be read
+}
 
 interface HealthCheck {
   status: 'ok' | 'error';
@@ -26,7 +38,7 @@ interface FullHealthResponse {
 export const healthRoutes: FastifyPluginAsync = async (fastify) => {
   // Root health check (simple, no DB)
   fastify.get('/', async () => {
-    return { status: 'ok', timestamp: new Date().toISOString() };
+    return { status: 'ok', version: appVersion, timestamp: new Date().toISOString() };
   });
 
   // Liveness check - is the process running?
@@ -105,7 +117,7 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
 
     const response: FullHealthResponse = {
       status: overallStatus,
-      version: process.env.npm_package_version || '1.0.0',
+      version: appVersion,
       uptime_seconds: Math.floor((Date.now() - processStartTime) / 1000),
       timestamp: new Date().toISOString(),
       checks,
