@@ -239,3 +239,48 @@ export const sociometricSummaryResponseSchema = z.object({
 });
 
 export type SociometricSummaryResponse = z.infer<typeof sociometricSummaryResponseSchema>;
+
+// Nominator item (who nominated a specific KOL)
+export const nominatorItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  specialty: z.string().nullable(),
+  state: z.string().nullable(),
+  nominationType: nominationTypeSchema,
+  campaignName: z.string(),
+  respondedAt: z.string(), // ISO date
+});
+
+export type NominatorItem = z.infer<typeof nominatorItemSchema>;
+
+// Nominator demographics (aggregated for charts)
+export const nominatorDemographicsSchema = z.object({
+  bySpecialty: z.array(
+    z.object({
+      name: z.string(),
+      count: z.number(),
+    })
+  ),
+  byState: z.array(
+    z.object({
+      name: z.string(),
+      count: z.number(),
+    })
+  ),
+  byNominationType: z.array(
+    z.object({
+      name: z.string(),
+      count: z.number(),
+    })
+  ),
+});
+
+export type NominatorDemographics = z.infer<typeof nominatorDemographicsSchema>;
+
+// Extended KOL Profile with nominator data
+export const kolProfileWithNominatorsSchema = kolProfileSchema.extend({
+  nominators: z.array(nominatorItemSchema),
+  nominatorDemographics: nominatorDemographicsSchema,
+});
+
+export type KolProfileWithNominators = z.infer<typeof kolProfileWithNominatorsSchema>;

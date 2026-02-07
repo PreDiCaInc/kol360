@@ -6,7 +6,7 @@ import type {
   InsightsSummary,
   KolExplorerResponse,
   LeaderRankingsResponse,
-  KolProfile,
+  KolProfileWithNominators,
   SociometricSummaryResponse,
   InsightsFilter,
   LeaderRankingQuery,
@@ -86,13 +86,13 @@ export function useLeaderRankings(
 }
 
 /**
- * Get individual KOL profile with all scores and nomination counts
+ * Get individual KOL profile with all scores, nomination counts, and nominator details
  */
 export function useKolProfile(diseaseAreaId: string, hcpId: string | null) {
   return useQuery({
     queryKey: ['kol-profile', diseaseAreaId, hcpId],
     queryFn: () =>
-      apiClient.get<KolProfile>(
+      apiClient.get<KolProfileWithNominators>(
         `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}`
       ),
     enabled: !!diseaseAreaId && !!hcpId,

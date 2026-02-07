@@ -9,6 +9,9 @@ import {
   LeaderRankingsResponse,
   LeaderRankingItem,
   KolProfile,
+  KolProfileWithNominators,
+  NominatorItem,
+  NominatorDemographics,
   SociometricSummaryResponse,
   SociometricSummaryItem,
   NOMINATION_TYPES,
@@ -323,7 +326,7 @@ export class InsightsReportService {
   /**
    * Get individual KOL profile with all scores and nomination counts
    */
-  async getKolProfile(diseaseAreaId: string, hcpId: string): Promise<KolProfile | null> {
+  async getKolProfile(diseaseAreaId: string, hcpId: string): Promise<KolProfileWithNominators | null> {
     // Get HCP with disease area score
     const hcp = await prisma.hcp.findUnique({
       where: { id: hcpId },
@@ -345,13 +348,35 @@ export class InsightsReportService {
     const score = hcp.diseaseAreaScores[0];
     if (!score) return null;
 
-    // Get total nominations for this KOL
-    const totalNominations = await prisma.nomination.count({
+    // Get nominations for this KOL with nominator details
+    const nominations = await prisma.nomination.findMany({
       where: {
         matchedHcpId: hcpId,
         matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
         response: { campaign: { diseaseAreaId } },
       },
+      include: {
+        question: {
+          select: { nominationType: true },
+        },
+        nominatorHcp: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            specialty: true,
+            state: true,
+          },
+        },
+        response: {
+          select: {
+            campaign: {
+              select: { name: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
     // Get campaign scores for nomination breakdown by type
@@ -383,6 +408,49 @@ export class InsightsReportService {
 
     const primarySpecialty = hcp.specialties[0]?.specialty?.name || hcp.specialty;
 
+    // Build nominators list
+    const nominators: NominatorItem[] = nominations
+      .filter((n) => n.nominatorHcp)
+      .map((n) => {
+        const nomHcp = n.nominatorHcp!;
+        return {
+          id: nomHcp.id,
+          name: `${nomHcp.firstName} ${nomHcp.lastName}`,
+          specialty: nomHcp.specialty,
+          state: nomHcp.state,
+          nominationType: n.question.nominationType as NominationType,
+          campaignName: n.response?.campaign?.name || 'Unknown Campaign',
+          respondedAt: n.createdAt.toISOString(),
+        };
+      });
+
+    // Build demographics aggregations
+    const specialtyCount = new Map<string, number>();
+    const stateCount = new Map<string, number>();
+    const typeCount = new Map<string, number>();
+
+    for (const nom of nominators) {
+      const spec = nom.specialty || 'Unknown';
+      specialtyCount.set(spec, (specialtyCount.get(spec) || 0) + 1);
+
+      const state = nom.state || 'Unknown';
+      stateCount.set(state, (stateCount.get(state) || 0) + 1);
+
+      typeCount.set(nom.nominationType, (typeCount.get(nom.nominationType) || 0) + 1);
+    }
+
+    const nominatorDemographics: NominatorDemographics = {
+      bySpecialty: Array.from(specialtyCount.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count),
+      byState: Array.from(stateCount.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count),
+      byNominationType: Array.from(typeCount.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count),
+    };
+
     return {
       id: hcp.id,
       name: `${hcp.firstName} ${hcp.lastName}`,
@@ -407,9 +475,11 @@ export class InsightsReportService {
       },
       nominations: {
         ...nominationsByType,
-        total: totalNominations,
+        total: nominations.length,
       },
       regionalCount: score.totalNominationCount || 0,
+      nominators,
+      nominatorDemographics,
     };
   }
 
