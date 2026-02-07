@@ -17,10 +17,14 @@ test.describe('Navigation', () => {
 
   test.describe('Protected Routes', () => {
     test('dashboard should redirect to login when unauthenticated', async ({ page }) => {
-      await page.goto('/dashboard');
+      await page.goto('/admin');
 
-      // Should redirect to login or show auth error
-      await page.waitForLoadState('networkidle');
+      // Wait for client-side redirect to login page (with timeout)
+      try {
+        await page.waitForURL(/login|signin|auth/, { timeout: 10000 });
+      } catch {
+        // If redirect didn't happen, check if we're still on admin or have a login form
+      }
 
       const url = page.url();
       const hasLoginRedirect =
@@ -37,9 +41,14 @@ test.describe('Navigation', () => {
     });
 
     test('campaigns should redirect to login when unauthenticated', async ({ page }) => {
-      await page.goto('/campaigns');
+      await page.goto('/admin/campaigns');
 
-      await page.waitForLoadState('networkidle');
+      // Wait for client-side redirect to login page (with timeout)
+      try {
+        await page.waitForURL(/login|signin|auth/, { timeout: 10000 });
+      } catch {
+        // If redirect didn't happen, check if we're still on campaigns or have a login form
+      }
 
       const url = page.url();
       const hasLoginRedirect =
