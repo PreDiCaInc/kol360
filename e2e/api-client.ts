@@ -536,9 +536,10 @@ export class ApiClient {
    */
   async cleanupTestCampaign(campaignId: string) {
     // Use force delete endpoint - works for any campaign status
-    const response = await this.request(`/api/v1/campaigns/${campaignId}/force`, {
-      method: 'DELETE',
-    });
+    const response = await this.request(
+      'DELETE',
+      `/api/v1/campaigns/${campaignId}/force`
+    );
 
     if (response.status === 404) {
       // Already deleted
