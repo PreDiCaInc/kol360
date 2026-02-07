@@ -20,8 +20,8 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Slider } from '@/components/ui/slider';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { ScoreFiltersGrid } from '../score-range-filter';
 import { useKolExplorer, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import type { InsightsFilter } from '@kol360/shared';
 
@@ -54,6 +54,17 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
   const handlePageChange = (newPage: number) => {
     setFilters((prev) => ({ ...prev, page: newPage }));
   };
+
+  const handleScoreFilterChange = (key: string, min: number, max: number) => {
+    setFilters((prev) => ({
+      ...prev,
+      [`${key}Min`]: min === 0 ? undefined : min,
+      [`${key}Max`]: max === 100 ? undefined : max,
+      page: 1,
+    }));
+  };
+
+  const [showScoreFilters, setShowScoreFilters] = useState(false);
 
   return (
     <Card>
@@ -123,33 +134,20 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
         </div>
 
         {/* Score Range Filters - Collapsible */}
-        <details className="group">
-          <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
-            Score Filters (click to expand)
-          </summary>
-          <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-4">
-            {[
-              { key: 'compositeScore', label: 'Total Score' },
-              { key: 'scorePublications', label: 'Publications' },
-              { key: 'scoreClinicalTrials', label: 'Clinical Trials' },
-              { key: 'scoreConference', label: 'Conference' },
-              { key: 'scoreSurvey', label: 'Survey Score' },
-            ].map(({ key, label }) => (
-              <div key={key} className="space-y-2">
-                <label className="text-xs text-muted-foreground">{label}</label>
-                <Slider
-                  defaultValue={[0, 100]}
-                  max={100}
-                  step={1}
-                  onValueCommit={(value) => {
-                    handleFilterChange(`${key}Min` as keyof InsightsFilter, value[0]);
-                    handleFilterChange(`${key}Max` as keyof InsightsFilter, value[1]);
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-        </details>
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowScoreFilters(!showScoreFilters)}
+            className="mb-2"
+          >
+            <SlidersHorizontal className="h-4 w-4 mr-2" />
+            {showScoreFilters ? 'Hide Score Filters' : 'Show Score Filters (10 dimensions)'}
+          </Button>
+          {showScoreFilters && (
+            <ScoreFiltersGrid filters={filters} onChange={handleScoreFilterChange} />
+          )}
+        </div>
 
         {/* Results Table */}
         <div className="rounded-md border">
