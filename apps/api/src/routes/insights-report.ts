@@ -120,6 +120,21 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // Get respondent analytics (demographics, distributions, completion trends)
+  fastify.get<{ Params: { diseaseAreaId: string } }>(
+    '/:diseaseAreaId/respondent-analytics',
+    async (request, reply) => {
+      const { diseaseAreaId } = request.params;
+      const user = request.user!;
+
+      if (!(await verifyDiseaseAreaAccess(diseaseAreaId, user, reply))) {
+        return;
+      }
+
+      return insightsReportService.getRespondentAnalytics(diseaseAreaId);
+    }
+  );
+
   // Get filter options (specialties, states with data in this disease area)
   fastify.get<{ Params: { diseaseAreaId: string } }>(
     '/:diseaseAreaId/filter-options',

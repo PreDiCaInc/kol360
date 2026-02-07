@@ -284,3 +284,47 @@ export const kolProfileWithNominatorsSchema = kolProfileSchema.extend({
 });
 
 export type KolProfileWithNominators = z.infer<typeof kolProfileWithNominatorsSchema>;
+
+// Respondent Analytics schemas
+
+// Distribution item for charts
+export const distributionItemSchema = z.object({
+  name: z.string(),
+  count: z.number(),
+  percentage: z.number(),
+});
+
+export type DistributionItem = z.infer<typeof distributionItemSchema>;
+
+// Respondent analytics response
+export const respondentAnalyticsSchema = z.object({
+  // Summary stats
+  totalRespondents: z.number(),
+  completedSurveys: z.number(),
+  responseRate: z.number(),
+
+  // Demographics distributions
+  bySpecialty: z.array(distributionItemSchema),
+  byState: z.array(distributionItemSchema),
+  byPracticeSetting: z.array(distributionItemSchema),
+  byYearsInPractice: z.array(distributionItemSchema),
+
+  // Decile distributions
+  byMarketDecile: z.array(distributionItemSchema),
+  byProduct1Decile: z.array(distributionItemSchema),
+
+  // Survey behavior
+  byPrescribingBehavior: z.array(distributionItemSchema),
+  bySurveyStatus: z.array(distributionItemSchema),
+
+  // Completion over time (for line chart)
+  completionOverTime: z.array(
+    z.object({
+      date: z.string(),
+      count: z.number(),
+      cumulative: z.number(),
+    })
+  ),
+});
+
+export type RespondentAnalytics = z.infer<typeof respondentAnalyticsSchema>;

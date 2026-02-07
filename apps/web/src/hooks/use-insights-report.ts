@@ -8,6 +8,7 @@ import type {
   LeaderRankingsResponse,
   KolProfileWithNominators,
   SociometricSummaryResponse,
+  RespondentAnalytics,
   InsightsFilter,
   LeaderRankingQuery,
   NominationType,
@@ -122,6 +123,21 @@ export function useSociometricSummary(
       ),
     enabled: !!diseaseAreaId,
     staleTime: 30000,
+  });
+}
+
+/**
+ * Get respondent analytics - demographics, distributions, completion trends
+ */
+export function useRespondentAnalytics(diseaseAreaId: string) {
+  return useQuery({
+    queryKey: ['respondent-analytics', diseaseAreaId],
+    queryFn: () =>
+      apiClient.get<RespondentAnalytics>(
+        `/api/v1/insights/${diseaseAreaId}/respondent-analytics`
+      ),
+    enabled: !!diseaseAreaId,
+    staleTime: 60000, // 1 minute
   });
 }
 

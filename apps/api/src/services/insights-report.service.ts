@@ -14,6 +14,8 @@ import {
   NominatorDemographics,
   SociometricSummaryResponse,
   SociometricSummaryItem,
+  RespondentAnalytics,
+  DistributionItem,
   NOMINATION_TYPES,
   NominationType,
 } from '@kol360/shared';
@@ -591,6 +593,155 @@ export class InsightsReportService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Get respondent analytics - demographics and survey behavior
+   */
+  async getRespondentAnalytics(diseaseAreaId: string): Promise<RespondentAnalytics> {
+    // Get all campaigns for this disease area
+    const campaigns = await prisma.campaign.findMany({
+      where: { diseaseAreaId },
+      select: { id: true },
+    });
+    const campaignIds = campaigns.map((c) => c.id);
+
+    // Get all campaign HCPs (potential respondents)
+    const campaignHcps = await prisma.campaignHcp.findMany({
+      where: { campaignId: { in: campaignIds } },
+      include: {
+        hcp: {
+          select: {
+            specialty: true,
+            state: true,
+            yearsInPractice: true,
+          },
+        },
+      },
+    });
+
+    // Get all survey responses
+    const responses = await prisma.surveyResponse.findMany({
+      where: { campaignId: { in: campaignIds } },
+      select: {
+        id: true,
+        status: true,
+        completedAt: true,
+        respondentHcpId: true,
+      },
+      orderBy: { completedAt: 'asc' },
+    });
+
+    const totalRespondents = campaignHcps.length;
+    const completedSurveys = responses.filter((r) => r.status === 'COMPLETED').length;
+    const responseRate = totalRespondents > 0 ? (completedSurveys / totalRespondents) * 100 : 0;
+
+    // Helper to create distribution
+    const createDistribution = (items: (string | null | undefined)[]): DistributionItem[] => {
+      const counts = new Map<string, number>();
+      for (const item of items) {
+        const key = item || 'Unknown';
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      const total = items.length;
+      return Array.from(counts.entries())
+        .map(([name, count]) => ({
+          name,
+          count,
+          percentage: total > 0 ? (count / total) * 100 : 0,
+        }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    // Helper to create numeric range distribution
+    const createRangeDistribution = (values: (number | null | undefined)[], ranges: { label: string; min: number; max: number }[]): DistributionItem[] => {
+      const counts = new Map<string, number>();
+      for (const range of ranges) {
+        counts.set(range.label, 0);
+      }
+      for (const val of values) {
+        if (val === null || val === undefined) continue;
+        for (const range of ranges) {
+          if (val >= range.min && val <= range.max) {
+            counts.set(range.label, (counts.get(range.label) || 0) + 1);
+            break;
+          }
+        }
+      }
+      const total = values.filter((v) => v !== null && v !== undefined).length;
+      return ranges.map(({ label }) => ({
+        name: label,
+        count: counts.get(label) || 0,
+        percentage: total > 0 ? ((counts.get(label) || 0) / total) * 100 : 0,
+      }));
+    };
+
+    // Years in practice ranges
+    const yearsRanges = [
+      { label: '0-5 years', min: 0, max: 5 },
+      { label: '6-10 years', min: 6, max: 10 },
+      { label: '11-20 years', min: 11, max: 20 },
+      { label: '21-30 years', min: 21, max: 30 },
+      { label: '31+ years', min: 31, max: 100 },
+    ];
+
+    // Decile ranges (1-10)
+    const decileRanges = Array.from({ length: 10 }, (_, i) => ({
+      label: `Decile ${i + 1}`,
+      min: i + 1,
+      max: i + 1,
+    }));
+
+    // Build distributions
+    const bySpecialty = createDistribution(campaignHcps.map((ch) => ch.hcp.specialty));
+    const byState = createDistribution(campaignHcps.map((ch) => ch.hcp.state));
+    const byPracticeSetting = createDistribution(campaignHcps.map((ch) => ch.practiceSetting));
+    const byYearsInPractice = createRangeDistribution(
+      campaignHcps.map((ch) => ch.hcp.yearsInPractice),
+      yearsRanges
+    );
+    const byMarketDecile = createRangeDistribution(
+      campaignHcps.map((ch) => ch.marketDecile),
+      decileRanges
+    );
+    const byProduct1Decile = createRangeDistribution(
+      campaignHcps.map((ch) => ch.product1Decile),
+      decileRanges
+    );
+    const byPrescribingBehavior = createDistribution(campaignHcps.map((ch) => ch.prescribingBehavior));
+    const bySurveyStatus = createDistribution(responses.map((r) => r.status));
+
+    // Completion over time (daily counts)
+    const completionMap = new Map<string, { count: number; cumulative: number }>();
+    let cumulative = 0;
+    for (const r of responses.filter((r) => r.completedAt && r.status === 'COMPLETED')) {
+      const date = r.completedAt!.toISOString().split('T')[0];
+      cumulative++;
+      completionMap.set(date, { count: (completionMap.get(date)?.count || 0) + 1, cumulative });
+    }
+    // Recalculate cumulative properly
+    let runningTotal = 0;
+    const completionOverTime = Array.from(completionMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, data]) => {
+        runningTotal += data.count;
+        return { date, count: data.count, cumulative: runningTotal };
+      });
+
+    return {
+      totalRespondents,
+      completedSurveys,
+      responseRate,
+      bySpecialty,
+      byState,
+      byPracticeSetting,
+      byYearsInPractice,
+      byMarketDecile,
+      byProduct1Decile,
+      byPrescribingBehavior,
+      bySurveyStatus,
+      completionOverTime,
     };
   }
 
