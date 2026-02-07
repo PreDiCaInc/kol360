@@ -70,13 +70,27 @@ const statusColors: Record<CampaignStatus, string> = {
 export default function CampaignsPage() {
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | 'ALL'>('ALL');
   const [clientFilter, setClientFilter] = useState<string>('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<{ id: string; name: string } | null>(null);
 
   const { data: campaignsData, isLoading, isError, error, refetch } = useCampaigns({
     status: statusFilter === 'ALL' ? undefined : statusFilter,
     clientId: clientFilter === 'ALL' ? undefined : clientFilter,
+    page: currentPage,
+    limit: 20,
   });
+
+  // Reset to page 1 when filters change
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value as CampaignStatus | 'ALL');
+    setCurrentPage(1);
+  };
+
+  const handleClientChange = (value: string) => {
+    setClientFilter(value);
+    setCurrentPage(1);
+  };
   const { data: clientsData } = useClients();
   const { data: diseaseAreasData } = useDiseaseAreas();
   const { data: templatesData } = useSurveyTemplates();
@@ -140,7 +154,7 @@ export default function CampaignsPage() {
         <div className="flex flex-wrap gap-3 mb-6">
           <Select
             value={clientFilter}
-            onValueChange={setClientFilter}
+            onValueChange={handleClientChange}
           >
             <SelectTrigger className="w-48 bg-card">
               <SelectValue placeholder="Filter by client" />
@@ -156,7 +170,7 @@ export default function CampaignsPage() {
           </Select>
           <Select
             value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value as CampaignStatus | 'ALL')}
+            onValueChange={handleStatusChange}
           >
             <SelectTrigger className="w-48 bg-card">
               <SelectValue placeholder="Filter by status" />
@@ -287,6 +301,36 @@ export default function CampaignsPage() {
                   ))}
                 </TableBody>
               </Table>
+
+              {/* Pagination Controls */}
+              {campaignsData && campaignsData.pagination.pages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, campaignsData.pagination.total)} of {campaignsData.pagination.total} campaigns
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </Button>
+                    <span className="text-sm">
+                      Page {currentPage} of {campaignsData.pagination.pages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(p => Math.min(campaignsData.pagination.pages, p + 1))}
+                      disabled={currentPage >= campaignsData.pagination.pages}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

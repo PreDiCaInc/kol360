@@ -37,6 +37,9 @@ interface SurveyPreviewDialogProps {
   campaignId: string;
 }
 
+// Sections that should show all questions together (like form fields)
+const GROUPED_SECTIONS = ['Demographics', 'Contact Information', 'Profile'];
+
 export function SurveyPreviewDialog({
   open,
   onOpenChange,
@@ -44,6 +47,7 @@ export function SurveyPreviewDialog({
 }: SurveyPreviewDialogProps) {
   const { data: preview, isLoading } = useSurveyPreview(campaignId);
   const [currentView, setCurrentView] = useState<'welcome' | 'survey' | 'thankyou'>('welcome');
+  const [currentStep, setCurrentStep] = useState(0);
 
   if (!open) return null;
 
@@ -67,7 +71,7 @@ export function SurveyPreviewDialog({
           This survey contains {preview?.totalQuestions || 0} questions across {Object.keys(preview?.sections || {}).length} section(s).
           Your progress will be saved automatically.
         </p>
-        <Button className="w-full" onClick={() => setCurrentView('survey')}>
+        <Button className="w-full" onClick={() => { setCurrentView('survey'); setCurrentStep(0); }}>
           Begin Survey
         </Button>
       </CardContent>
@@ -100,58 +104,128 @@ export function SurveyPreviewDialog({
     </Card>
   );
 
+  // Build steps from questions - matches actual survey behavior
+  const buildSteps = (questions: SurveyPreviewQuestion[]): { title: string; questions: SurveyPreviewQuestion[] }[] => {
+    const steps: { title: string; questions: SurveyPreviewQuestion[] }[] = [];
+    let currentGroupedSection: { title: string; questions: SurveyPreviewQuestion[] } | null = null;
+
+    for (const question of questions) {
+      const section = question.section || 'General';
+      const isGrouped = GROUPED_SECTIONS.some(gs =>
+        section.toLowerCase().includes(gs.toLowerCase())
+      );
+
+      if (isGrouped) {
+        if (currentGroupedSection && currentGroupedSection.title === section) {
+          currentGroupedSection.questions.push(question);
+        } else {
+          if (currentGroupedSection) {
+            steps.push(currentGroupedSection);
+          }
+          currentGroupedSection = { title: section, questions: [question] };
+        }
+      } else {
+        if (currentGroupedSection) {
+          steps.push(currentGroupedSection);
+          currentGroupedSection = null;
+        }
+        steps.push({ title: section, questions: [question] });
+      }
+    }
+
+    if (currentGroupedSection) {
+      steps.push(currentGroupedSection);
+    }
+
+    return steps;
+  };
+
   const renderSurvey = () => {
-    const sectionNames = Object.keys(preview?.sections || {});
+    const steps = buildSteps(preview?.questions || []);
+    const totalSteps = steps.length;
+    const currentStepData = steps[currentStep];
+    const isLastStep = currentStep === totalSteps - 1;
+    const isFirstStep = currentStep === 0;
+
+    if (!currentStepData) return null;
 
     return (
-      <div className="space-y-6 max-w-2xl mx-auto">
+      <div className="space-y-4 max-w-lg mx-auto">
         {/* Progress Header */}
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg">{preview?.campaignName}</CardTitle>
-            <CardDescription>Dr. [Respondent Name]</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>0 of {preview?.totalQuestions} questions answered</span>
-                <span>0%</span>
+          <CardContent className="py-4">
+            <div className="space-y-3">
+              <div className="flex justify-between items-center text-sm">
+                <span className="font-medium">{currentStepData.title}</span>
+                <span className="text-muted-foreground">
+                  Step {currentStep + 1} of {totalSteps}
+                </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-primary h-2 rounded-full w-0" />
+                <div
+                  className="bg-primary h-2 rounded-full transition-all"
+                  style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
+                />
+              </div>
+              {/* Progress dots */}
+              <div className="flex justify-center gap-1.5 flex-wrap">
+                {steps.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentStep(idx)}
+                    className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
+                      idx === currentStep
+                        ? 'bg-primary w-4'
+                        : idx < currentStep
+                        ? 'bg-primary/60'
+                        : 'bg-gray-300'
+                    }`}
+                  />
+                ))}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Questions by Section */}
-        {sectionNames.map((sectionName) => (
-          <Card key={sectionName}>
-            <CardHeader>
-              <CardTitle className="text-base">{sectionName}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {preview?.sections[sectionName].map((question, idx) => (
-                <PreviewQuestion
-                  key={question.id}
-                  question={question}
-                  index={idx}
-                />
-              ))}
-            </CardContent>
-          </Card>
-        ))}
-
-        {/* Actions */}
+        {/* Current Step Questions */}
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="py-6 space-y-6">
+            {currentStepData.questions.map((question, idx) => (
+              <PreviewQuestion
+                key={question.id}
+                question={question}
+                index={idx}
+                showNumber={currentStepData.questions.length > 1}
+              />
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Navigation */}
+        <Card>
+          <CardContent className="py-4">
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" disabled>
-                Save Progress
+              <Button
+                variant="outline"
+                onClick={() => setCurrentStep(p => Math.max(0, p - 1))}
+                disabled={isFirstStep}
+                className="flex-1"
+              >
+                Back
               </Button>
-              <Button className="flex-1" onClick={() => setCurrentView('thankyou')}>
-                Submit Survey
-              </Button>
+
+              {isLastStep ? (
+                <Button className="flex-1" onClick={() => setCurrentView('thankyou')}>
+                  Submit
+                </Button>
+              ) : (
+                <Button
+                  className="flex-1"
+                  onClick={() => setCurrentStep(p => Math.min(totalSteps - 1, p + 1))}
+                >
+                  Next
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -196,7 +270,7 @@ export function SurveyPreviewDialog({
               <Button
                 variant={currentView === 'survey' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setCurrentView('survey')}
+                onClick={() => { setCurrentView('survey'); setCurrentStep(0); }}
               >
                 Survey ({preview.totalQuestions} questions)
               </Button>
@@ -235,9 +309,10 @@ export function SurveyPreviewDialog({
 interface PreviewQuestionProps {
   question: SurveyPreviewQuestion;
   index: number;
+  showNumber?: boolean;
 }
 
-function PreviewQuestion({ question, index }: PreviewQuestionProps) {
+function PreviewQuestion({ question, index, showNumber = true }: PreviewQuestionProps) {
   const renderInput = () => {
     switch (question.type) {
       case 'SINGLE_CHOICE':
@@ -375,21 +450,21 @@ function PreviewQuestion({ question, index }: PreviewQuestionProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
-        <span className="text-muted-foreground text-sm">{index + 1}.</span>
-        <div className="flex-1">
-          <p className="text-sm font-medium">
-            {question.text}
-            {question.isRequired && <span className="text-red-500 ml-1">*</span>}
-          </p>
-          {question.nominationType && (
-            <Badge variant="outline" className="mt-1 text-xs">
-              {NOMINATION_TYPE_LABELS[question.nominationType as NominationType] || question.nominationType}
-            </Badge>
-          )}
-        </div>
+      <div>
+        <p className="text-lg font-medium leading-relaxed">
+          {showNumber && <span className="text-muted-foreground mr-2">{index + 1}.</span>}
+          {question.text}
+          {question.isRequired && <span className="text-red-500 ml-1">*</span>}
+        </p>
+        {question.nominationType && (
+          <Badge variant="outline" className="mt-1 text-xs">
+            {NOMINATION_TYPE_LABELS[question.nominationType as NominationType] || question.nominationType}
+          </Badge>
+        )}
       </div>
-      {renderInput()}
+      <div className="pl-0 sm:pl-6">
+        {renderInput()}
+      </div>
     </div>
   );
 }
