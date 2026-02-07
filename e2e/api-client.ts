@@ -531,32 +531,24 @@ export class ApiClient {
   }
 
   /**
-   * Clean up a test campaign and all related data
+   * Clean up a test campaign and all related data.
+   * Uses force delete endpoint which works for any campaign status.
    */
   async cleanupTestCampaign(campaignId: string) {
-    // Try to get the campaign first
-    const { status, data: campaign } = await this.getCampaign(campaignId);
-    if (status === 404) {
+    // Use force delete endpoint - works for any campaign status
+    const response = await this.request(`/api/v1/campaigns/${campaignId}/force`, {
+      method: 'DELETE',
+    });
+
+    if (response.status === 404) {
       // Already deleted
       return;
     }
 
-    // Only DRAFT campaigns can be deleted
-    if (campaign.status !== 'DRAFT') {
-      console.log(`Skipping cleanup of campaign ${campaignId} - status is ${campaign.status}`);
-      return;
+    if (response.status !== 204) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(`Failed to force delete campaign: ${error.message || response.status}`);
     }
-
-    // Remove HCPs first
-    const { data } = await this.listCampaignHcps(campaignId);
-    if (data?.items) {
-      for (const hcp of data.items) {
-        await this.removeHcpFromCampaign(campaignId, hcp.hcpId);
-      }
-    }
-
-    // Delete the campaign
-    await this.deleteCampaign(campaignId);
   }
 
   /**

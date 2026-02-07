@@ -137,6 +137,65 @@ export class CampaignService {
     return prisma.campaign.delete({ where: { id } });
   }
 
+  /**
+   * Force delete a test campaign regardless of status.
+   * Only works for campaigns with E2E_TEST_CAMPAIGN_ prefix.
+   * Deletes all related data (responses, HCPs, scores, etc.)
+   */
+  async forceDeleteTestCampaign(id: string) {
+    const campaign = await prisma.campaign.findUnique({ where: { id } });
+    if (!campaign) {
+      return null; // Already deleted
+    }
+
+    // Safety check: only allow force delete for test campaigns
+    if (!campaign.name.startsWith('E2E_TEST_CAMPAIGN_')) {
+      throw new Error('Force delete only allowed for E2E test campaigns');
+    }
+
+    // Delete in correct order to handle foreign key constraints
+    await prisma.$transaction(async (tx) => {
+      // Get all response IDs for this campaign
+      const responses = await tx.surveyResponse.findMany({
+        where: { campaignId: id },
+        select: { id: true },
+      });
+      const responseIds = responses.map((r) => r.id);
+
+      // Delete nominations (linked to responses)
+      if (responseIds.length > 0) {
+        await tx.nomination.deleteMany({
+          where: { responseId: { in: responseIds } },
+        });
+
+        // Delete survey response answers
+        await tx.surveyResponseAnswer.deleteMany({
+          where: { responseId: { in: responseIds } },
+        });
+      }
+
+      // Delete survey responses
+      await tx.surveyResponse.deleteMany({ where: { campaignId: id } });
+
+      // Delete campaign HCPs
+      await tx.campaignHcp.deleteMany({ where: { campaignId: id } });
+
+      // Delete survey questions
+      await tx.surveyQuestion.deleteMany({ where: { campaignId: id } });
+
+      // Delete composite score config
+      await tx.compositeScoreConfig.deleteMany({ where: { campaignId: id } });
+
+      // Delete payments
+      await tx.payment.deleteMany({ where: { campaignId: id } });
+
+      // Finally delete the campaign
+      await tx.campaign.delete({ where: { id } });
+    });
+
+    return campaign;
+  }
+
   async activate(id: string) {
     const campaign = await prisma.campaign.findUnique({ where: { id } });
     if (campaign?.status !== 'DRAFT') {

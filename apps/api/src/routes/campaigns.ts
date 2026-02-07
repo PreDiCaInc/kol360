@@ -155,6 +155,45 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // Force delete E2E test campaign (any status)
+  fastify.delete<{ Params: { id: string } }>('/:id/force', async (request, reply) => {
+    // Only platform admins can force delete
+    if (request.user!.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform admins can force delete campaigns',
+        statusCode: 403,
+      });
+    }
+
+    try {
+      const result = await campaignService.forceDeleteTestCampaign(request.params.id);
+
+      if (!result) {
+        return reply.status(404).send({
+          error: 'Not Found',
+          message: 'Campaign not found',
+          statusCode: 404,
+        });
+      }
+
+      await createAuditLog(request.user!.sub, {
+        action: 'campaign.force_deleted',
+        entityType: 'Campaign',
+        entityId: request.params.id,
+        oldValues: { name: result.name, status: result.status },
+      });
+
+      return reply.status(204).send();
+    } catch (error) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: error instanceof Error ? error.message : 'Cannot force delete campaign',
+        statusCode: 400,
+      });
+    }
+  });
+
   // Activate campaign (DRAFT -> ACTIVE)
   fastify.post<{ Params: { id: string } }>('/:id/activate', async (request, reply) => {
     const existing = await campaignService.getById(request.params.id);
