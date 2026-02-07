@@ -42,12 +42,14 @@ const NOMINATION_COLORS = {
 };
 
 export function SociometricSummaryTab({ diseaseAreaId }: Props) {
+  const [sortField, setSortField] = useState<SortField>('total');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [filters, setFilters] = useState<Partial<InsightsFilter>>({
     page: 1,
     limit: 25,
+    sortBy: 'total',
+    sortOrder: 'desc',
   });
-  const [sortField, setSortField] = useState<SortField>('total');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   const { data, isLoading } = useSociometricSummary(diseaseAreaId, filters);
@@ -69,31 +71,20 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
   };
 
   const handleSort = useCallback((field: SortField) => {
-    if (sortField === field) {
-      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortOrder('desc');
-    }
-  }, [sortField]);
+    const newOrder = sortField === field && sortOrder === 'desc' ? 'asc' : 'desc';
+    setSortField(field);
+    setSortOrder(newOrder);
+    // Update filters to trigger server-side sorting
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: field,
+      sortOrder: newOrder,
+      page: 1, // Reset to first page when sorting changes
+    }));
+  }, [sortField, sortOrder]);
 
-  // Sort items client-side
-  const sortedItems = data?.items ? [...data.items].sort((a, b) => {
-    let aValue: string | number = a[sortField as keyof SociometricSummaryItem] as string | number;
-    let bValue: string | number = b[sortField as keyof SociometricSummaryItem] as string | number;
-
-    if (sortField === 'name') {
-      aValue = String(aValue || '').toLowerCase();
-      bValue = String(bValue || '').toLowerCase();
-      return sortOrder === 'asc'
-        ? (aValue as string).localeCompare(bValue as string)
-        : (bValue as string).localeCompare(aValue as string);
-    }
-
-    aValue = Number(aValue) || 0;
-    bValue = Number(bValue) || 0;
-    return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
-  }) : [];
+  // Items are now sorted server-side
+  const sortedItems = data?.items || [];
 
   // Export to CSV
   const handleExportCSV = useCallback(() => {

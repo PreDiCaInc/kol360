@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
+import { logger } from '../lib/logger';
 import {
   InsightsFilter,
   LeaderRankingQuery,
@@ -30,51 +31,81 @@ const NOMINATION_TYPE_FIELDS: Record<NominationType, { score: string; count: str
   SOCIAL_LEADER: { score: 'scoreSocialLeader', count: 'countSocialLeader' },
 };
 
+/**
+ * INFLUENCER TYPE CLASSIFICATION THRESHOLDS
+ *
+ * These thresholds determine how KOLs are classified into influencer categories.
+ * Modify these values to adjust classification based on business requirements.
+ *
+ * Current logic:
+ * - National Leaders: High overall influence (composite >= threshold) AND strong survey presence (survey >= threshold)
+ * - Rising Stars: Strong survey presence but still building overall influence
+ * - Regional Influencers: Default category for others
+ *
+ * Score ranges: 0-100 (normalized scores)
+ */
+const INFLUENCER_THRESHOLDS = {
+  nationalLeader: {
+    minCompositeScore: 30,  // Minimum composite score to be considered a national leader
+    minSurveyScore: 50,     // Minimum survey score to be considered a national leader
+  },
+  risingStar: {
+    minSurveyScore: 30,     // Minimum survey score to be considered a rising star
+    maxCompositeScore: 30,  // Must have composite below this to be rising star (not national leader)
+  },
+  // Regional Influencers: Everyone else (no thresholds needed)
+} as const;
+
 export class InsightsReportService {
   /**
    * Get summary stats for a disease area
    */
   async getSummary(diseaseAreaId: string): Promise<InsightsSummary> {
-    const [totalKols, totalCampaigns, totalNominations, avgScore] = await Promise.all([
-      // Total KOLs with scores in this disease area
-      prisma.hcpDiseaseAreaScore.count({
-        where: { diseaseAreaId, isCurrent: true },
-      }),
-      // Total campaigns in this disease area
-      prisma.campaign.count({
-        where: { diseaseAreaId },
-      }),
-      // Total nominations in campaigns for this disease area
-      prisma.nomination.count({
+    try {
+      const [totalKols, totalCampaigns, totalNominations, avgScore] = await Promise.all([
+        // Total KOLs with scores in this disease area
+        prisma.hcpDiseaseAreaScore.count({
+          where: { diseaseAreaId, isCurrent: true },
+        }),
+        // Total campaigns in this disease area
+        prisma.campaign.count({
+          where: { diseaseAreaId },
+        }),
+        // Total nominations in campaigns for this disease area
+        prisma.nomination.count({
+          where: {
+            response: { campaign: { diseaseAreaId } },
+            matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
+          },
+        }),
+        // Average composite score
+        prisma.hcpDiseaseAreaScore.aggregate({
+          where: { diseaseAreaId, isCurrent: true },
+          _avg: { compositeScore: true },
+        }),
+      ]);
+
+      // Get total respondents (unique completed survey responses)
+      const totalRespondents = await prisma.surveyResponse.count({
         where: {
-          response: { campaign: { diseaseAreaId } },
-          matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
+          status: 'COMPLETED',
+          campaign: { diseaseAreaId },
         },
-      }),
-      // Average composite score
-      prisma.hcpDiseaseAreaScore.aggregate({
-        where: { diseaseAreaId, isCurrent: true },
-        _avg: { compositeScore: true },
-      }),
-    ]);
+      });
 
-    // Get total respondents (unique completed survey responses)
-    const totalRespondents = await prisma.surveyResponse.count({
-      where: {
-        status: 'COMPLETED',
-        campaign: { diseaseAreaId },
-      },
-    });
-
-    return {
-      totalKols,
-      totalRespondents,
-      totalNominations,
-      totalCampaigns,
-      averageCompositeScore: avgScore._avg.compositeScore
-        ? Number(avgScore._avg.compositeScore)
-        : null,
-    };
+      return {
+        totalKols,
+        totalRespondents,
+        totalNominations,
+        totalCampaigns,
+        averageCompositeScore: avgScore._avg.compositeScore
+          ? Number(avgScore._avg.compositeScore)
+          : null,
+      };
+    } catch (error) {
+      logger.error('Error fetching insights summary', { diseaseAreaId, error });
+      throw error;
+    }
   }
 
   /**
@@ -84,6 +115,7 @@ export class InsightsReportService {
     diseaseAreaId: string,
     filters: InsightsFilter
   ): Promise<KolExplorerResponse> {
+    try {
     const { page, limit, sortBy, sortOrder, search, specialty, state, ...scoreFilters } = filters;
 
     // Build where clause
@@ -238,6 +270,10 @@ export class InsightsReportService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+    } catch (error) {
+      logger.error('Error fetching KOL explorer data', { diseaseAreaId, filters, error });
+      throw error;
+    }
   }
 
   /**
@@ -247,6 +283,7 @@ export class InsightsReportService {
     diseaseAreaId: string,
     query: LeaderRankingQuery
   ): Promise<LeaderRankingsResponse> {
+    try {
     const { nominationType, page, limit, specialty, state } = query;
 
     // Get nomination counts grouped by matched HCP
@@ -323,12 +360,17 @@ export class InsightsReportService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+    } catch (error) {
+      logger.error('Error fetching leader rankings', { diseaseAreaId, query, error });
+      throw error;
+    }
   }
 
   /**
    * Get individual KOL profile with all scores and nomination counts
    */
   async getKolProfile(diseaseAreaId: string, hcpId: string): Promise<KolProfileWithNominators | null> {
+    try {
     // Get HCP with disease area score
     const hcp = await prisma.hcp.findUnique({
       where: { id: hcpId },
@@ -483,6 +525,10 @@ export class InsightsReportService {
       nominators,
       nominatorDemographics,
     };
+    } catch (error) {
+      logger.error('Error fetching KOL profile', { diseaseAreaId, hcpId, error });
+      throw error;
+    }
   }
 
   /**
@@ -492,7 +538,8 @@ export class InsightsReportService {
     diseaseAreaId: string,
     filters: InsightsFilter
   ): Promise<SociometricSummaryResponse> {
-    const { page, limit, search, specialty, state } = filters;
+    try {
+    const { page, limit, search, specialty, state, sortBy, sortOrder } = filters;
 
     // Build HCP filter
     const hcpWhere: Prisma.HcpWhereInput = {
@@ -584,8 +631,19 @@ export class InsightsReportService {
       };
     });
 
-    // Sort by total nominations
-    items.sort((a, b) => b.total - a.total);
+    // Server-side sorting based on sortBy parameter
+    const validSortFields = ['total', 'discussionLeaders', 'referralLeaders', 'adviceLeaders', 'nationalLeaders', 'risingStars', 'socialLeaders', 'name'];
+    const field = validSortFields.includes(sortBy || '') ? sortBy : 'total';
+    const order = sortOrder === 'asc' ? 1 : -1;
+
+    items.sort((a, b) => {
+      if (field === 'name') {
+        return order * a.name.localeCompare(b.name);
+      }
+      const aVal = (a as Record<string, unknown>)[field!] as number || 0;
+      const bVal = (b as Record<string, unknown>)[field!] as number || 0;
+      return order * (bVal - aVal);
+    });
 
     return {
       items,
@@ -594,12 +652,17 @@ export class InsightsReportService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
+    } catch (error) {
+      logger.error('Error fetching sociometric summary', { diseaseAreaId, filters, error });
+      throw error;
+    }
   }
 
   /**
    * Get respondent analytics - demographics and survey behavior
    */
   async getRespondentAnalytics(diseaseAreaId: string): Promise<RespondentAnalytics> {
+    try {
     // Get all campaigns for this disease area
     const campaigns = await prisma.campaign.findMany({
       where: { diseaseAreaId },
@@ -743,12 +806,17 @@ export class InsightsReportService {
       bySurveyStatus,
       completionOverTime,
     };
+    } catch (error) {
+      logger.error('Error fetching respondent analytics', { diseaseAreaId, error });
+      throw error;
+    }
   }
 
   /**
    * Get filter options for dropdowns
    */
   async getFilterOptions(diseaseAreaId: string) {
+    try {
     // Get distinct specialties and states from HCPs with scores in this disease area
     const hcpsWithScores = await prisma.hcpDiseaseAreaScore.findMany({
       where: { diseaseAreaId, isCurrent: true },
@@ -775,11 +843,22 @@ export class InsightsReportService {
       states: Array.from(states).sort(),
       influencerTypes: ['National Leaders', 'Rising Stars', 'Regional Influencers'],
     };
+    } catch (error) {
+      logger.error('Error fetching filter options', { diseaseAreaId, error });
+      throw error;
+    }
   }
 
   /**
    * Determine influencer type based on scores
-   * This is a simplified heuristic - can be refined based on business rules
+   *
+   * Uses configurable thresholds defined in INFLUENCER_THRESHOLDS at the top of this file.
+   * Adjust those values to change classification behavior.
+   *
+   * Classification logic:
+   * 1. National Leaders: composite >= threshold AND survey >= threshold
+   * 2. Rising Stars: survey >= threshold AND composite < threshold
+   * 3. Regional Influencers: Default for everyone else
    */
   private determineInfluencerType(score: {
     compositeScore: unknown;
@@ -788,14 +867,18 @@ export class InsightsReportService {
     const composite = score.compositeScore ? Number(score.compositeScore) : 0;
     const survey = score.scoreSurvey ? Number(score.scoreSurvey) : 0;
 
+    const { nationalLeader, risingStar } = INFLUENCER_THRESHOLDS;
+
     // High composite + high survey = National Leader
-    if (composite >= 30 && survey >= 50) {
+    if (composite >= nationalLeader.minCompositeScore && survey >= nationalLeader.minSurveyScore) {
       return 'National Leaders';
     }
+
     // High survey but moderate composite = Rising Star
-    if (survey >= 30 && composite < 30) {
+    if (survey >= risingStar.minSurveyScore && composite < risingStar.maxCompositeScore) {
       return 'Rising Stars';
     }
+
     // Default to Regional Influencer
     return 'Regional Influencers';
   }
