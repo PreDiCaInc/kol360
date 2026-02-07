@@ -331,7 +331,17 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // Import segment scores from Excel or CSV
+  // diseaseAreaId is required - scores are tied to a specific disease area
   fastify.post('/import-segment-scores', async (request, reply) => {
+    const { diseaseAreaId } = request.query as { diseaseAreaId?: string };
+    if (!diseaseAreaId) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'diseaseAreaId query parameter is required',
+        statusCode: 400,
+      });
+    }
+
     const file = await request.file();
     if (!file) {
       return reply.status(400).send({
@@ -351,7 +361,6 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const buffer = await file.toBuffer();
-    const { diseaseAreaId } = request.query as { diseaseAreaId?: string };
     const result = await hcpService.importSegmentScores(buffer, diseaseAreaId, file.filename);
 
     // Audit log

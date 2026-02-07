@@ -71,13 +71,14 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
-      formData.append('diseaseAreaId', selectedDiseaseAreaId);
-      formData.append('scoreType', scoreType);
 
-      const result = await api<ImportResult>('/api/v1/hcps/import-segment-scores', {
-        method: 'POST',
-        body: formData,
-      });
+      const result = await api<ImportResult>(
+        `/api/v1/hcps/import-segment-scores?diseaseAreaId=${encodeURIComponent(selectedDiseaseAreaId)}`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
       setResult(result);
       queryClient.invalidateQueries({ queryKey: ['hcps'] });
     } catch (error) {

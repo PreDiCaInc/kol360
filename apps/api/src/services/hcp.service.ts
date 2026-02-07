@@ -475,13 +475,13 @@ export class HcpService {
   }
 
   // Import segment scores from Excel or CSV
-  async importSegmentScores(buffer: Buffer, diseaseAreaId?: string, filename?: string) {
+  // diseaseAreaId is required - scores are always tied to a specific disease area
+  async importSegmentScores(buffer: Buffer, diseaseAreaId: string, filename?: string) {
     const rows = await this.parseFileToRows(buffer, filename || 'file.xlsx');
-
 
     const result = { total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
 
-    // Map column names to score fields
+    // Map column names to score fields (all 8 are optional in the file)
     const scoreFieldMap: Record<string, string> = {
       'Research & Publications': 'scorePublications',
       'Clinical Trials': 'scoreClinicalTrials',
@@ -492,17 +492,6 @@ export class HcpService {
       'Social Media': 'scoreSocialMedia',
       'Media/Podcasts': 'scoreMediaPodcasts',
     };
-
-    // Get default disease area if not provided
-    let targetDiseaseAreaId = diseaseAreaId;
-    if (!targetDiseaseAreaId) {
-      const defaultDA = await prisma.diseaseArea.findFirst({ where: { isActive: true } });
-      if (!defaultDA) {
-        result.errors.push({ row: 0, error: 'No active disease area found' });
-        return result;
-      }
-      targetDiseaseAreaId = defaultDA.id;
-    }
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -531,7 +520,7 @@ export class HcpService {
 
         // Check if existing score record exists for this HCP and disease area
         const existing = await prisma.hcpDiseaseAreaScore.findFirst({
-          where: { hcpId: hcp.id, diseaseAreaId: targetDiseaseAreaId, isCurrent: true },
+          where: { hcpId: hcp.id, diseaseAreaId: diseaseAreaId, isCurrent: true },
         });
 
         if (existing) {
@@ -549,7 +538,7 @@ export class HcpService {
           await prisma.hcpDiseaseAreaScore.create({
             data: {
               hcpId: hcp.id,
-              diseaseAreaId: targetDiseaseAreaId,
+              diseaseAreaId: diseaseAreaId,
               ...scoreData,
               isCurrent: true,
               effectiveFrom: new Date(),
