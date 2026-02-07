@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -20,19 +20,34 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import { useSociometricSummary, useInsightsFilterOptions } from '@/hooks/use-insights-report';
-import type { InsightsFilter } from '@kol360/shared';
+import type { InsightsFilter, SociometricSummaryItem } from '@kol360/shared';
+import { cn } from '@/lib/utils';
 
 interface Props {
   diseaseAreaId: string;
 }
+
+type SortField = 'total' | 'discussionLeaders' | 'referralLeaders' | 'adviceLeaders' | 'nationalLeaders' | 'risingStars' | 'socialLeaders' | 'name';
+type SortOrder = 'asc' | 'desc';
+
+const NOMINATION_COLORS = {
+  discussionLeaders: { bg: 'bg-blue-50 dark:bg-blue-950', text: 'text-blue-700 dark:text-blue-300', header: 'bg-blue-100 dark:bg-blue-900' },
+  referralLeaders: { bg: 'bg-green-50 dark:bg-green-950', text: 'text-green-700 dark:text-green-300', header: 'bg-green-100 dark:bg-green-900' },
+  adviceLeaders: { bg: 'bg-purple-50 dark:bg-purple-950', text: 'text-purple-700 dark:text-purple-300', header: 'bg-purple-100 dark:bg-purple-900' },
+  nationalLeaders: { bg: 'bg-yellow-50 dark:bg-yellow-950', text: 'text-yellow-700 dark:text-yellow-300', header: 'bg-yellow-100 dark:bg-yellow-900' },
+  risingStars: { bg: 'bg-pink-50 dark:bg-pink-950', text: 'text-pink-700 dark:text-pink-300', header: 'bg-pink-100 dark:bg-pink-900' },
+  socialLeaders: { bg: 'bg-cyan-50 dark:bg-cyan-950', text: 'text-cyan-700 dark:text-cyan-300', header: 'bg-cyan-100 dark:bg-cyan-900' },
+};
 
 export function SociometricSummaryTab({ diseaseAreaId }: Props) {
   const [filters, setFilters] = useState<Partial<InsightsFilter>>({
     page: 1,
     limit: 25,
   });
+  const [sortField, setSortField] = useState<SortField>('total');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   const { data, isLoading } = useSociometricSummary(diseaseAreaId, filters);
@@ -53,10 +68,101 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
     setFilters((prev) => ({ ...prev, page: newPage }));
   };
 
+  const handleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  }, [sortField]);
+
+  // Sort items client-side
+  const sortedItems = data?.items ? [...data.items].sort((a, b) => {
+    let aValue: string | number = a[sortField as keyof SociometricSummaryItem] as string | number;
+    let bValue: string | number = b[sortField as keyof SociometricSummaryItem] as string | number;
+
+    if (sortField === 'name') {
+      aValue = String(aValue || '').toLowerCase();
+      bValue = String(bValue || '').toLowerCase();
+      return sortOrder === 'asc'
+        ? (aValue as string).localeCompare(bValue as string)
+        : (bValue as string).localeCompare(aValue as string);
+    }
+
+    aValue = Number(aValue) || 0;
+    bValue = Number(bValue) || 0;
+    return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+  }) : [];
+
+  // Export to CSV
+  const handleExportCSV = useCallback(() => {
+    if (!data?.items.length) return;
+
+    const headers = ['Rank', 'Name', 'Specialty', 'State', 'Type', 'Discussion', 'Referral', 'Advice', 'National', 'Rising', 'Social', 'Total'];
+    const rows = sortedItems.map((item, index) => [
+      index + 1,
+      item.name,
+      item.specialty || '',
+      item.state || '',
+      item.influencerType || '',
+      item.discussionLeaders,
+      item.referralLeaders,
+      item.adviceLeaders,
+      item.nationalLeaders,
+      item.risingStars,
+      item.socialLeaders,
+      item.total,
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `sociometric-summary-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }, [data?.items, sortedItems]);
+
+  const SortableHeader = ({ field, children, className }: { field: SortField; children: React.ReactNode; className?: string }) => (
+    <TableHead
+      className={cn('cursor-pointer select-none hover:bg-muted/50 transition-colors', className)}
+      onClick={() => handleSort(field)}
+    >
+      <div className="flex items-center justify-end gap-1">
+        {children}
+        {sortField === field ? (
+          sortOrder === 'asc' ? (
+            <ArrowUp className="h-3 w-3" />
+          ) : (
+            <ArrowDown className="h-3 w-3" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-30" />
+        )}
+      </div>
+    </TableHead>
+  );
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Sociometric Leaders Summary</CardTitle>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Sociometric Leaders Summary</CardTitle>
+            <CardDescription>
+              Master table of all KOLs with nomination counts by type
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={!data?.items.length}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Filters */}
@@ -126,17 +232,47 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[50px]">#</TableHead>
-                <TableHead>Name</TableHead>
+                <TableHead
+                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                  onClick={() => handleSort('name')}
+                >
+                  <div className="flex items-center gap-1">
+                    Name
+                    {sortField === 'name' ? (
+                      sortOrder === 'asc' ? (
+                        <ArrowUp className="h-3 w-3" />
+                      ) : (
+                        <ArrowDown className="h-3 w-3" />
+                      )
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 opacity-30" />
+                    )}
+                  </div>
+                </TableHead>
                 <TableHead>Specialty</TableHead>
                 <TableHead>State</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead className="text-right">Discussion</TableHead>
-                <TableHead className="text-right">Referral</TableHead>
-                <TableHead className="text-right">Advice</TableHead>
-                <TableHead className="text-right">National</TableHead>
-                <TableHead className="text-right">Rising</TableHead>
-                <TableHead className="text-right">Social</TableHead>
-                <TableHead className="text-right font-bold">Total</TableHead>
+                <SortableHeader field="discussionLeaders" className={NOMINATION_COLORS.discussionLeaders.header}>
+                  Discussion
+                </SortableHeader>
+                <SortableHeader field="referralLeaders" className={NOMINATION_COLORS.referralLeaders.header}>
+                  Referral
+                </SortableHeader>
+                <SortableHeader field="adviceLeaders" className={NOMINATION_COLORS.adviceLeaders.header}>
+                  Advice
+                </SortableHeader>
+                <SortableHeader field="nationalLeaders" className={NOMINATION_COLORS.nationalLeaders.header}>
+                  National
+                </SortableHeader>
+                <SortableHeader field="risingStars" className={NOMINATION_COLORS.risingStars.header}>
+                  Rising
+                </SortableHeader>
+                <SortableHeader field="socialLeaders" className={NOMINATION_COLORS.socialLeaders.header}>
+                  Social
+                </SortableHeader>
+                <SortableHeader field="total" className="font-bold">
+                  Total
+                </SortableHeader>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -146,16 +282,18 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
                     Loading...
                   </TableCell>
                 </TableRow>
-              ) : !data?.items.length ? (
+              ) : !sortedItems.length ? (
                 <TableRow>
                   <TableCell colSpan={12} className="h-24 text-center">
                     No data available
                   </TableCell>
                 </TableRow>
               ) : (
-                data.items.map((item) => (
+                sortedItems.map((item, index) => (
                   <TableRow key={item.hcpId}>
-                    <TableCell className="text-muted-foreground">{item.rank}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {((filters.page || 1) - 1) * (filters.limit || 25) + index + 1}
+                    </TableCell>
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.specialty || '-'}</TableCell>
                     <TableCell>{item.state || '-'}</TableCell>
@@ -166,13 +304,27 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-right font-mono">{item.discussionLeaders}</TableCell>
-                    <TableCell className="text-right font-mono">{item.referralLeaders}</TableCell>
-                    <TableCell className="text-right font-mono">{item.adviceLeaders}</TableCell>
-                    <TableCell className="text-right font-mono">{item.nationalLeaders}</TableCell>
-                    <TableCell className="text-right font-mono">{item.risingStars}</TableCell>
-                    <TableCell className="text-right font-mono">{item.socialLeaders}</TableCell>
-                    <TableCell className="text-right font-mono font-bold">{item.total}</TableCell>
+                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.discussionLeaders.bg, NOMINATION_COLORS.discussionLeaders.text)}>
+                      {item.discussionLeaders || '-'}
+                    </TableCell>
+                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.referralLeaders.bg, NOMINATION_COLORS.referralLeaders.text)}>
+                      {item.referralLeaders || '-'}
+                    </TableCell>
+                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.adviceLeaders.bg, NOMINATION_COLORS.adviceLeaders.text)}>
+                      {item.adviceLeaders || '-'}
+                    </TableCell>
+                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.nationalLeaders.bg, NOMINATION_COLORS.nationalLeaders.text)}>
+                      {item.nationalLeaders || '-'}
+                    </TableCell>
+                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.risingStars.bg, NOMINATION_COLORS.risingStars.text)}>
+                      {item.risingStars || '-'}
+                    </TableCell>
+                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.socialLeaders.bg, NOMINATION_COLORS.socialLeaders.text)}>
+                      {item.socialLeaders || '-'}
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold bg-muted">
+                      {item.total}
+                    </TableCell>
                   </TableRow>
                 ))
               )}
