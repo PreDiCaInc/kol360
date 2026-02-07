@@ -1,0 +1,217 @@
+'use client';
+
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSociometricSummary, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import type { InsightsFilter } from '@kol360/shared';
+
+interface Props {
+  diseaseAreaId: string;
+}
+
+export function SociometricSummaryTab({ diseaseAreaId }: Props) {
+  const [filters, setFilters] = useState<Partial<InsightsFilter>>({
+    page: 1,
+    limit: 25,
+  });
+
+  const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
+  const { data, isLoading } = useSociometricSummary(diseaseAreaId, filters);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFilters((prev) => ({ ...prev, search: e.target.value, page: 1 }));
+  };
+
+  const handleFilterChange = (key: keyof InsightsFilter, value: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value === 'all' ? undefined : value,
+      page: 1,
+    }));
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setFilters((prev) => ({ ...prev, page: newPage }));
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sociometric Leaders Summary</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name..."
+              className="pl-9"
+              value={filters.search || ''}
+              onChange={handleSearchChange}
+            />
+          </div>
+          <Select
+            value={filters.specialty || 'all'}
+            onValueChange={(v) => handleFilterChange('specialty', v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Specialty" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Specialties</SelectItem>
+              {filterOptions?.specialties.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={filters.state || 'all'}
+            onValueChange={(v) => handleFilterChange('state', v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="State" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All States</SelectItem>
+              {filterOptions?.states.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={filters.influencerType || 'all'}
+            onValueChange={(v) => handleFilterChange('influencerType', v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Influencer Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {filterOptions?.influencerTypes.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Results Table */}
+        <div className="rounded-md border overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[50px]">#</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Specialty</TableHead>
+                <TableHead>State</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead className="text-right">Discussion</TableHead>
+                <TableHead className="text-right">Referral</TableHead>
+                <TableHead className="text-right">Advice</TableHead>
+                <TableHead className="text-right">National</TableHead>
+                <TableHead className="text-right">Rising</TableHead>
+                <TableHead className="text-right">Social</TableHead>
+                <TableHead className="text-right font-bold">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={12} className="h-24 text-center">
+                    Loading...
+                  </TableCell>
+                </TableRow>
+              ) : !data?.items.length ? (
+                <TableRow>
+                  <TableCell colSpan={12} className="h-24 text-center">
+                    No data available
+                  </TableCell>
+                </TableRow>
+              ) : (
+                data.items.map((item) => (
+                  <TableRow key={item.hcpId}>
+                    <TableCell className="text-muted-foreground">{item.rank}</TableCell>
+                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell>{item.specialty || '-'}</TableCell>
+                    <TableCell>{item.state || '-'}</TableCell>
+                    <TableCell>
+                      {item.influencerType && (
+                        <Badge variant="outline" className="text-xs">
+                          {item.influencerType}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{item.discussionLeaders}</TableCell>
+                    <TableCell className="text-right font-mono">{item.referralLeaders}</TableCell>
+                    <TableCell className="text-right font-mono">{item.adviceLeaders}</TableCell>
+                    <TableCell className="text-right font-mono">{item.nationalLeaders}</TableCell>
+                    <TableCell className="text-right font-mono">{item.risingStars}</TableCell>
+                    <TableCell className="text-right font-mono">{item.socialLeaders}</TableCell>
+                    <TableCell className="text-right font-mono font-bold">{item.total}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Pagination */}
+        {data && data.totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {((filters.page || 1) - 1) * (filters.limit || 25) + 1} to{' '}
+              {Math.min((filters.page || 1) * (filters.limit || 25), data.total)} of{' '}
+              {data.total.toLocaleString()} KOLs
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange((filters.page || 1) - 1)}
+                disabled={(filters.page || 1) <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm">
+                Page {filters.page || 1} of {data.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange((filters.page || 1) + 1)}
+                disabled={(filters.page || 1) >= data.totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

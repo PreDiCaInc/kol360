@@ -25,6 +25,7 @@ import { liteClientRoutes } from './routes/lite-client';
 import { scoreCalculationRoutes } from './routes/score-calculation';
 import { exportRoutes } from './routes/exports';
 import { specialtyRoutes } from './routes/specialties';
+import { insightsReportRoutes } from './routes/insights-report';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -83,6 +84,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(scoreCalculationRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(exportRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(dashboardRoutes, { prefix: '/api/v1' });
+  await fastify.register(insightsReportRoutes, { prefix: '/api/v1/insights' });
   await fastify.register(liteClientRoutes);
 
   // Public routes (no auth required)
