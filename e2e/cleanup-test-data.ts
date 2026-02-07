@@ -44,11 +44,46 @@ async function cleanupTestCampaigns() {
     console.log(`  - ${campaign.name} (${campaign.id})`);
   }
 
-  // Delete campaigns (cascades to related data)
+  // Delete campaigns and all related data
   for (const campaign of testCampaigns) {
-    await prisma.campaign.delete({
-      where: { id: campaign.id },
+    const campaignId = campaign.id;
+
+    // Get all response IDs for this campaign
+    const responses = await prisma.surveyResponse.findMany({
+      where: { campaignId },
+      select: { id: true },
     });
+    const responseIds = responses.map((r) => r.id);
+
+    // Delete nominations (linked to responses)
+    if (responseIds.length > 0) {
+      await prisma.nomination.deleteMany({
+        where: { responseId: { in: responseIds } },
+      });
+
+      // Delete survey response answers
+      await prisma.surveyResponseAnswer.deleteMany({
+        where: { responseId: { in: responseIds } },
+      });
+    }
+
+    // Delete survey responses
+    await prisma.surveyResponse.deleteMany({ where: { campaignId } });
+
+    // Delete campaign HCPs
+    await prisma.campaignHcp.deleteMany({ where: { campaignId } });
+
+    // Delete survey questions
+    await prisma.surveyQuestion.deleteMany({ where: { campaignId } });
+
+    // Delete composite score config
+    await prisma.compositeScoreConfig.deleteMany({ where: { campaignId } });
+
+    // Delete payments
+    await prisma.payment.deleteMany({ where: { campaignId } });
+
+    // Finally delete the campaign
+    await prisma.campaign.delete({ where: { id: campaignId } });
     console.log(`  ✓ Deleted: ${campaign.name}`);
   }
 
