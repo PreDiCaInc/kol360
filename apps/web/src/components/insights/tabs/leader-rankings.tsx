@@ -23,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronLeft, ChevronRight, LayoutGrid, List, Download } from 'lucide-react';
 import { useLeaderRankings, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import { useCsvExport } from '@/lib/csv-export';
+import { Check } from 'lucide-react';
 import type { NominationType, LeaderRankingQuery } from '@kol360/shared';
 
 interface Props {
@@ -60,6 +62,9 @@ function RankingTable({
   onExport,
 }: RankingTableProps) {
   const [page, setPage] = useState(1);
+  // Intentionally lower than schema max (100) for optimal UX:
+  // - Grid view (compact): 10 rows fits card height without scrolling
+  // - Tab view: 15 rows provides good detail while keeping table scannable
   const limit = compact ? 10 : 15;
 
   const { data, isLoading } = useLeaderRankings(diseaseAreaId, nominationType, {
@@ -67,6 +72,7 @@ function RankingTable({
     page,
     limit,
   });
+  const { status: exportStatus, exportCsv } = useCsvExport();
 
   const handleExport = useCallback(() => {
     if (!data?.items.length) return;
@@ -82,29 +88,20 @@ function RankingTable({
     if (onExport) {
       onExport(label, csvData);
     } else {
-      // Direct export if no onExport callback
-      const headers = ['Rank', 'Name', 'Specialty', 'State', 'Count'];
-      const rows = csvData.map((item) => [
-        item.rank,
-        item.name,
-        item.specialty || '',
-        item.state || '',
-        item.count,
-      ]);
-
-      const csvContent = [
-        headers.join(','),
-        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
-      ].join('\n');
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `${label.toLowerCase().replace(/\s+/g, '-')}-rankings-${new Date().toISOString().split('T')[0]}.csv`;
-      link.click();
-      URL.revokeObjectURL(link.href);
+      // Direct export using shared utility
+      exportCsv({
+        filename: `${label.toLowerCase().replace(/\s+/g, '-')}-rankings`,
+        headers: ['Rank', 'Name', 'Specialty', 'State', 'Count'],
+        rows: csvData.map((item) => [
+          item.rank,
+          item.name,
+          item.specialty,
+          item.state,
+          item.count,
+        ]),
+      });
     }
-  }, [data?.items, label, onExport]);
+  }, [data?.items, label, onExport, exportCsv]);
 
   if (isLoading) {
     return (
@@ -179,10 +176,14 @@ function RankingTable({
               size="icon"
               className="h-6 w-6"
               onClick={handleExport}
-              disabled={!data.items.length}
-              title="Export CSV"
+              disabled={!data.items.length || exportStatus === 'exporting'}
+              title={exportStatus === 'success' ? 'Exported!' : 'Export CSV'}
             >
-              <Download className="h-3 w-3" />
+              {exportStatus === 'success' ? (
+                <Check className="h-3 w-3 text-green-600" />
+              ) : (
+                <Download className="h-3 w-3" />
+              )}
             </Button>
           )}
           {data.totalPages > 1 && (

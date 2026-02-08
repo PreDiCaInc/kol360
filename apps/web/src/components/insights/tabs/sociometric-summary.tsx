@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
 import { useSociometricSummary, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import { useCsvExport } from '@/lib/csv-export';
+import { Check } from 'lucide-react';
 import type { InsightsFilter, SociometricSummaryItem } from '@kol360/shared';
 import { cn } from '@/lib/utils';
 
@@ -53,6 +55,7 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   const { data, isLoading } = useSociometricSummary(diseaseAreaId, filters);
+  const { status: exportStatus, exportCsv } = useCsvExport();
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilters((prev) => ({ ...prev, search: e.target.value, page: 1 }));
@@ -90,34 +93,25 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
   const handleExportCSV = useCallback(() => {
     if (!data?.items.length) return;
 
-    const headers = ['Rank', 'Name', 'Specialty', 'State', 'Type', 'Discussion', 'Referral', 'Advice', 'National', 'Rising', 'Social', 'Total'];
-    const rows = sortedItems.map((item, index) => [
-      index + 1,
-      item.name,
-      item.specialty || '',
-      item.state || '',
-      item.influencerType || '',
-      item.discussionLeaders,
-      item.referralLeaders,
-      item.adviceLeaders,
-      item.nationalLeaders,
-      item.risingStars,
-      item.socialLeaders,
-      item.total,
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `sociometric-summary-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }, [data?.items, sortedItems]);
+    exportCsv({
+      filename: 'sociometric-summary',
+      headers: ['Rank', 'Name', 'Specialty', 'State', 'Type', 'Discussion', 'Referral', 'Advice', 'National', 'Rising', 'Social', 'Total'],
+      rows: sortedItems.map((item, index) => [
+        index + 1,
+        item.name,
+        item.specialty,
+        item.state,
+        item.influencerType,
+        item.discussionLeaders,
+        item.referralLeaders,
+        item.adviceLeaders,
+        item.nationalLeaders,
+        item.risingStars,
+        item.socialLeaders,
+        item.total,
+      ]),
+    });
+  }, [data?.items, sortedItems, exportCsv]);
 
   const SortableHeader = ({ field, children, className }: { field: SortField; children: React.ReactNode; className?: string }) => (
     <TableHead
@@ -149,9 +143,23 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
               Master table of all KOLs with nomination counts by type
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={!data?.items.length}>
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={!data?.items.length || exportStatus === 'exporting'}
+          >
+            {exportStatus === 'success' ? (
+              <>
+                <Check className="h-4 w-4 mr-2 text-green-600" />
+                Exported!
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </>
+            )}
           </Button>
         </div>
       </CardHeader>

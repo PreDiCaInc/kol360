@@ -36,6 +36,11 @@ const COLORS = [
   '#A4DE6C',
 ];
 
+// Filter helper to exclude "Unknown" values from demographic charts
+// Unknown typically indicates missing data and clutters visualizations
+const filterUnknown = <T extends { name: string }>(items: T[]): T[] =>
+  items.filter((d) => d.name !== 'Unknown');
+
 export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
   const { data, isLoading, error } = useRespondentAnalytics(diseaseAreaId);
 
@@ -148,9 +153,9 @@ export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              {data.bySpecialty.length > 0 ? (
+              {filterUnknown(data.bySpecialty).length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.bySpecialty.slice(0, 8)} layout="vertical" margin={{ left: 100 }}>
+                  <BarChart data={filterUnknown(data.bySpecialty).slice(0, 8)} layout="vertical" margin={{ left: 100 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
                     <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11 }} />
@@ -175,9 +180,9 @@ export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              {data.byState.length > 0 ? (
+              {filterUnknown(data.byState).length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.byState.slice(0, 10)} layout="vertical" margin={{ left: 40 }}>
+                  <BarChart data={filterUnknown(data.byState).slice(0, 10)} layout="vertical" margin={{ left: 40 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis type="number" />
                     <YAxis type="category" dataKey="name" width={35} tick={{ fontSize: 11 }} />
@@ -205,11 +210,11 @@ export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              {data.byPracticeSetting.filter(d => d.name !== 'Unknown').length > 0 ? (
+              {filterUnknown(data.byPracticeSetting).length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={data.byPracticeSetting.filter(d => d.name !== 'Unknown').slice(0, 6)}
+                      data={filterUnknown(data.byPracticeSetting).slice(0, 6)}
                       dataKey="count"
                       nameKey="name"
                       cx="50%"
@@ -368,9 +373,9 @@ export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
           </CardHeader>
           <CardContent>
             <div className="h-48">
-              {data.byPrescribingBehavior.filter(d => d.name !== 'Unknown').length > 0 ? (
+              {filterUnknown(data.byPrescribingBehavior).length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.byPrescribingBehavior.filter(d => d.name !== 'Unknown')}>
+                  <BarChart data={filterUnknown(data.byPrescribingBehavior)}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 10 }} />
                     <YAxis />

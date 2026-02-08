@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -84,6 +85,7 @@ const PIE_COLORS = [
 export function KolProfileTab({ diseaseAreaId }: Props) {
   const [selectedKolId, setSelectedKolId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showAllNominators, setShowAllNominators] = useState(false);
 
   // Get list of KOLs for selector
   const { data: kolList, isLoading: isLoadingKols } = useKolExplorer(diseaseAreaId, {
@@ -96,6 +98,11 @@ export function KolProfileTab({ diseaseAreaId }: Props) {
 
   const handleSearchChange = useCallback((search: string) => {
     setSearchQuery(search);
+  }, []);
+
+  const handleKolChange = useCallback((kolId: string | null) => {
+    setSelectedKolId(kolId);
+    setShowAllNominators(false); // Reset when switching KOLs
   }, []);
 
   // Prepare score data for chart
@@ -145,7 +152,7 @@ export function KolProfileTab({ diseaseAreaId }: Props) {
           <KolCombobox
             options={kolOptions}
             value={selectedKolId}
-            onValueChange={setSelectedKolId}
+            onValueChange={handleKolChange}
             onSearchChange={handleSearchChange}
             isLoading={isLoadingKols}
             className="max-w-lg"
@@ -350,15 +357,30 @@ export function KolProfileTab({ diseaseAreaId }: Props) {
           {profile.nominators && profile.nominators.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Who Nominated This KOL</CardTitle>
-                <CardDescription>
-                  Detailed list of all {profile.nominators.length} nominators
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Who Nominated This KOL</CardTitle>
+                    <CardDescription>
+                      {showAllNominators
+                        ? `All ${profile.nominators.length} nominators`
+                        : `Showing ${Math.min(25, profile.nominators.length)} of ${profile.nominators.length} nominators`}
+                    </CardDescription>
+                  </div>
+                  {profile.nominators.length > 25 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowAllNominators(!showAllNominators)}
+                    >
+                      {showAllNominators ? 'Show Less' : 'Show All'}
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border">
+                <div className="rounded-md border max-h-[600px] overflow-y-auto">
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="sticky top-0 bg-background">
                       <TableRow>
                         <TableHead>Nominator</TableHead>
                         <TableHead>Specialty</TableHead>
@@ -368,7 +390,7 @@ export function KolProfileTab({ diseaseAreaId }: Props) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {profile.nominators.slice(0, 25).map((nominator, index) => (
+                      {(showAllNominators ? profile.nominators : profile.nominators.slice(0, 25)).map((nominator, index) => (
                         <TableRow key={`${nominator.id}-${index}`}>
                           <TableCell className="font-medium">{nominator.name}</TableCell>
                           <TableCell>{nominator.specialty || '-'}</TableCell>
@@ -393,11 +415,6 @@ export function KolProfileTab({ diseaseAreaId }: Props) {
                       ))}
                     </TableBody>
                   </Table>
-                  {profile.nominators.length > 25 && (
-                    <div className="p-2 text-center text-sm text-muted-foreground border-t">
-                      Showing first 25 of {profile.nominators.length} nominators
-                    </div>
-                  )}
                 </div>
               </CardContent>
             </Card>

@@ -24,6 +24,8 @@ import { Badge } from '@/components/ui/badge';
 import { Search, ChevronLeft, ChevronRight, SlidersHorizontal, Download } from 'lucide-react';
 import { ScoreFiltersGrid } from '../score-range-filter';
 import { useKolExplorer, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import { useCsvExport } from '@/lib/csv-export';
+import { Check } from 'lucide-react';
 import type { InsightsFilter, KolExplorerItem } from '@kol360/shared';
 
 interface Props {
@@ -81,6 +83,7 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   const { data, isLoading } = useKolExplorer(diseaseAreaId, filters);
+  const { status: exportStatus, exportCsv } = useCsvExport();
 
   // Sync URL when filters change
   useEffect(() => {
@@ -120,56 +123,46 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
   const handleExportCSV = useCallback(() => {
     if (!data?.items.length) return;
 
-    const headers = [
-      'Rank',
-      'Name',
-      'Specialty',
-      'City',
-      'State',
-      'Influencer Type',
-      'Total Score',
-      'Survey Score',
-      'Publications',
-      'Trade Pubs',
-      'Org Leadership',
-      'Org Awareness',
-      'Clinical Trials',
-      'Conference',
-      'Social Media',
-      'Media/Podcasts',
-    ];
-
-    const rows = data.items.map((kol: KolExplorerItem, index: number) => [
-      ((filters.page || 1) - 1) * (filters.limit || 25) + index + 1,
-      kol.name,
-      kol.specialty || '',
-      kol.city || '',
-      kol.state || '',
-      kol.influencerType || '',
-      kol.compositeScore?.toFixed(1) || '',
-      kol.scoreSurvey?.toFixed(1) || '',
-      kol.scorePublications?.toFixed(1) || '',
-      kol.scoreTradePubs?.toFixed(1) || '',
-      kol.scoreOrgLeadership?.toFixed(1) || '',
-      kol.scoreOrgAwareness?.toFixed(1) || '',
-      kol.scoreClinicalTrials?.toFixed(1) || '',
-      kol.scoreConference?.toFixed(1) || '',
-      kol.scoreSocialMedia?.toFixed(1) || '',
-      kol.scoreMediaPodcasts?.toFixed(1) || '',
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `kol-explorer-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }, [data?.items, filters.page, filters.limit]);
+    exportCsv({
+      filename: 'kol-explorer',
+      headers: [
+        'Rank',
+        'Name',
+        'Specialty',
+        'City',
+        'State',
+        'Influencer Type',
+        'Total Score',
+        'Survey Score',
+        'Publications',
+        'Trade Pubs',
+        'Org Leadership',
+        'Org Awareness',
+        'Clinical Trials',
+        'Conference',
+        'Social Media',
+        'Media/Podcasts',
+      ],
+      rows: data.items.map((kol: KolExplorerItem, index: number) => [
+        ((filters.page || 1) - 1) * (filters.limit || 25) + index + 1,
+        kol.name,
+        kol.specialty,
+        kol.city,
+        kol.state,
+        kol.influencerType,
+        kol.compositeScore?.toFixed(1),
+        kol.scoreSurvey?.toFixed(1),
+        kol.scorePublications?.toFixed(1),
+        kol.scoreTradePubs?.toFixed(1),
+        kol.scoreOrgLeadership?.toFixed(1),
+        kol.scoreOrgAwareness?.toFixed(1),
+        kol.scoreClinicalTrials?.toFixed(1),
+        kol.scoreConference?.toFixed(1),
+        kol.scoreSocialMedia?.toFixed(1),
+        kol.scoreMediaPodcasts?.toFixed(1),
+      ]),
+    });
+  }, [data?.items, filters.page, filters.limit, exportCsv]);
 
   return (
     <Card>
@@ -181,9 +174,23 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
               Browse and filter all KOLs with their scores
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={!data?.items.length}>
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={!data?.items.length || exportStatus === 'exporting'}
+          >
+            {exportStatus === 'success' ? (
+              <>
+                <Check className="h-4 w-4 mr-2 text-green-600" />
+                Exported!
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </>
+            )}
           </Button>
         </div>
       </CardHeader>
