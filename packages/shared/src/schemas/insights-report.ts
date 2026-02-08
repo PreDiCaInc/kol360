@@ -30,28 +30,29 @@ export const SCORE_FIELDS = {
 export type ScoreField = keyof typeof SCORE_FIELDS;
 
 // Base filter schema for insights queries
+// Use z.coerce for all numeric fields since URL query params are strings
 export const insightsFilterSchema = z.object({
   // Score range filters (0-100)
-  scorePublicationsMin: z.number().min(0).max(100).optional(),
-  scorePublicationsMax: z.number().min(0).max(100).optional(),
-  scoreTradePubsMin: z.number().min(0).max(100).optional(),
-  scoreTradePubsMax: z.number().min(0).max(100).optional(),
-  scoreOrgLeadershipMin: z.number().min(0).max(100).optional(),
-  scoreOrgLeadershipMax: z.number().min(0).max(100).optional(),
-  scoreOrgAwardsMin: z.number().min(0).max(100).optional(),
-  scoreOrgAwardsMax: z.number().min(0).max(100).optional(),
-  scoreClinicalTrialsMin: z.number().min(0).max(100).optional(),
-  scoreClinicalTrialsMax: z.number().min(0).max(100).optional(),
-  scoreConferenceMin: z.number().min(0).max(100).optional(),
-  scoreConferenceMax: z.number().min(0).max(100).optional(),
-  scoreSocialMediaMin: z.number().min(0).max(100).optional(),
-  scoreSocialMediaMax: z.number().min(0).max(100).optional(),
-  scoreMediaPodcastsMin: z.number().min(0).max(100).optional(),
-  scoreMediaPodcastsMax: z.number().min(0).max(100).optional(),
-  scoreSurveyMin: z.number().min(0).max(100).optional(),
-  scoreSurveyMax: z.number().min(0).max(100).optional(),
-  compositeScoreMin: z.number().min(0).max(100).optional(),
-  compositeScoreMax: z.number().min(0).max(100).optional(),
+  scorePublicationsMin: z.coerce.number().min(0).max(100).optional(),
+  scorePublicationsMax: z.coerce.number().min(0).max(100).optional(),
+  scoreTradePubsMin: z.coerce.number().min(0).max(100).optional(),
+  scoreTradePubsMax: z.coerce.number().min(0).max(100).optional(),
+  scoreOrgLeadershipMin: z.coerce.number().min(0).max(100).optional(),
+  scoreOrgLeadershipMax: z.coerce.number().min(0).max(100).optional(),
+  scoreOrgAwardsMin: z.coerce.number().min(0).max(100).optional(),
+  scoreOrgAwardsMax: z.coerce.number().min(0).max(100).optional(),
+  scoreClinicalTrialsMin: z.coerce.number().min(0).max(100).optional(),
+  scoreClinicalTrialsMax: z.coerce.number().min(0).max(100).optional(),
+  scoreConferenceMin: z.coerce.number().min(0).max(100).optional(),
+  scoreConferenceMax: z.coerce.number().min(0).max(100).optional(),
+  scoreSocialMediaMin: z.coerce.number().min(0).max(100).optional(),
+  scoreSocialMediaMax: z.coerce.number().min(0).max(100).optional(),
+  scoreMediaPodcastsMin: z.coerce.number().min(0).max(100).optional(),
+  scoreMediaPodcastsMax: z.coerce.number().min(0).max(100).optional(),
+  scoreSurveyMin: z.coerce.number().min(0).max(100).optional(),
+  scoreSurveyMax: z.coerce.number().min(0).max(100).optional(),
+  compositeScoreMin: z.coerce.number().min(0).max(100).optional(),
+  compositeScoreMax: z.coerce.number().min(0).max(100).optional(),
 
   // Categorical filters
   influencerType: z.enum(INFLUENCER_TYPES).optional(),
@@ -61,9 +62,9 @@ export const insightsFilterSchema = z.object({
   // Search
   search: z.string().optional(),
 
-  // Pagination
-  page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(100).default(25),
+  // Pagination - use coerce for URL query params which are strings
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
@@ -75,8 +76,8 @@ export const leaderRankingQuerySchema = z.object({
   nominationType: nominationTypeSchema,
   state: z.string().optional(),
   specialty: z.string().optional(),
-  page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(100).default(100),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(100),
 });
 
 export type LeaderRankingQuery = z.infer<typeof leaderRankingQuerySchema>;
