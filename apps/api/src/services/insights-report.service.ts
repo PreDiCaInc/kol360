@@ -143,11 +143,11 @@ export class InsightsReportService {
     if (scoreFilters.scoreOrgLeadershipMax !== undefined) {
       where.scoreOrgLeadership = { ...where.scoreOrgLeadership as object, lte: scoreFilters.scoreOrgLeadershipMax };
     }
-    if (scoreFilters.scoreOrgAwarenessMin !== undefined) {
-      where.scoreOrgAwareness = { ...where.scoreOrgAwareness as object, gte: scoreFilters.scoreOrgAwarenessMin };
+    if (scoreFilters.scoreOrgAwardsMin !== undefined) {
+      where.scoreOrgAwards = { ...where.scoreOrgAwards as object, gte: scoreFilters.scoreOrgAwardsMin };
     }
-    if (scoreFilters.scoreOrgAwarenessMax !== undefined) {
-      where.scoreOrgAwareness = { ...where.scoreOrgAwareness as object, lte: scoreFilters.scoreOrgAwarenessMax };
+    if (scoreFilters.scoreOrgAwardsMax !== undefined) {
+      where.scoreOrgAwards = { ...where.scoreOrgAwards as object, lte: scoreFilters.scoreOrgAwardsMax };
     }
     if (scoreFilters.scoreClinicalTrialsMin !== undefined) {
       where.scoreClinicalTrials = { ...where.scoreClinicalTrials as object, gte: scoreFilters.scoreClinicalTrialsMin };
@@ -253,7 +253,7 @@ export class InsightsReportService {
         scorePublications: score.scorePublications ? Number(score.scorePublications) : null,
         scoreTradePubs: score.scoreTradePubs ? Number(score.scoreTradePubs) : null,
         scoreOrgLeadership: score.scoreOrgLeadership ? Number(score.scoreOrgLeadership) : null,
-        scoreOrgAwareness: score.scoreOrgAwareness ? Number(score.scoreOrgAwareness) : null,
+        scoreOrgAwards: score.scoreOrgAwards ? Number(score.scoreOrgAwards) : null,
         scoreClinicalTrials: score.scoreClinicalTrials ? Number(score.scoreClinicalTrials) : null,
         scoreConference: score.scoreConference ? Number(score.scoreConference) : null,
         scoreSocialMedia: score.scoreSocialMedia ? Number(score.scoreSocialMedia) : null,
@@ -509,7 +509,7 @@ export class InsightsReportService {
         scorePublications: score.scorePublications ? Number(score.scorePublications) : null,
         scoreTradePubs: score.scoreTradePubs ? Number(score.scoreTradePubs) : null,
         scoreOrgLeadership: score.scoreOrgLeadership ? Number(score.scoreOrgLeadership) : null,
-        scoreOrgAwareness: score.scoreOrgAwareness ? Number(score.scoreOrgAwareness) : null,
+        scoreOrgAwards: score.scoreOrgAwards ? Number(score.scoreOrgAwards) : null,
         scoreClinicalTrials: score.scoreClinicalTrials ? Number(score.scoreClinicalTrials) : null,
         scoreConference: score.scoreConference ? Number(score.scoreConference) : null,
         scoreSocialMedia: score.scoreSocialMedia ? Number(score.scoreSocialMedia) : null,

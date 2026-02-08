@@ -62,7 +62,7 @@ const SCORE_FIELDS = [
   { key: 'scoreClinicalTrials', label: 'Clinical Trials' },
   { key: 'scoreTradePubs', label: 'Trade Publications' },
   { key: 'scoreOrgLeadership', label: 'Org Leadership' },
-  { key: 'scoreOrgAwareness', label: 'Org Awareness' },
+  { key: 'scoreOrgAwards', label: 'Org Awards' },
   { key: 'scoreConference', label: 'Conference' },
   { key: 'scoreSocialMedia', label: 'Social Media' },
   { key: 'scoreMediaPodcasts', label: 'Media/Podcasts' },

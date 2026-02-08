@@ -70,8 +70,8 @@ interface ScoreFiltersGridProps {
     scoreTradePubsMax?: number;
     scoreOrgLeadershipMin?: number;
     scoreOrgLeadershipMax?: number;
-    scoreOrgAwarenessMin?: number;
-    scoreOrgAwarenessMax?: number;
+    scoreOrgAwardsMin?: number;
+    scoreOrgAwardsMax?: number;
     scoreClinicalTrialsMin?: number;
     scoreClinicalTrialsMax?: number;
     scoreConferenceMin?: number;
@@ -94,7 +94,7 @@ const SCORE_FILTERS = [
   { key: 'scorePublications', label: 'Publications', color: 'text-blue-500' },
   { key: 'scoreTradePubs', label: 'Trade Pubs', color: 'text-green-500' },
   { key: 'scoreOrgLeadership', label: 'Org Leadership', color: 'text-purple-500' },
-  { key: 'scoreOrgAwareness', label: 'Org Awareness', color: 'text-orange-500' },
+  { key: 'scoreOrgAwards', label: 'Org Awards', color: 'text-orange-500' },
   { key: 'scoreClinicalTrials', label: 'Clinical Trials', color: 'text-cyan-500' },
   { key: 'scoreConference', label: 'Conference', color: 'text-emerald-500' },
   { key: 'scoreSocialMedia', label: 'Social Media', color: 'text-pink-500' },

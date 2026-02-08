@@ -36,7 +36,7 @@ interface ExportRow {
   scoreClinicalTrials: string | number;
   scoreTradePubs: string | number;
   scoreOrgLeadership: string | number;
-  scoreOrgAwareness: string | number;
+  scoreOrgAwards: string | number;
   scoreConference: string | number;
   scoreSocialMedia: string | number;
   scoreMediaPodcasts: string | number;

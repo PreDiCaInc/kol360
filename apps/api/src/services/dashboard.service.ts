@@ -450,7 +450,7 @@ export class DashboardService {
       { name: 'Clinical Trials', key: 'scoreClinicalTrials', weight: config?.weightClinicalTrials?.toNumber() ?? 15 },
       { name: 'Trade Publications', key: 'scoreTradePubs', weight: config?.weightTradePubs?.toNumber() ?? 10 },
       { name: 'Org Leadership', key: 'scoreOrgLeadership', weight: config?.weightOrgLeadership?.toNumber() ?? 10 },
-      { name: 'Org Awareness', key: 'scoreOrgAwareness', weight: config?.weightOrgAwareness?.toNumber() ?? 10 },
+      { name: 'Org Awards', key: 'scoreOrgAwards', weight: config?.weightOrgAwards?.toNumber() ?? 10 },
       { name: 'Conference', key: 'scoreConference', weight: config?.weightConference?.toNumber() ?? 10 },
       { name: 'Social Media', key: 'scoreSocialMedia', weight: config?.weightSocialMedia?.toNumber() ?? 5 },
       { name: 'Media/Podcasts', key: 'scoreMediaPodcasts', weight: config?.weightMediaPodcasts?.toNumber() ?? 5 },

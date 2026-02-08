@@ -37,7 +37,7 @@ const SCORE_COLORS = [
   '#0088FE', // Publications
   '#00C49F', // Trade Pubs
   '#FFBB28', // Org Leadership
-  '#FF8042', // Org Awareness
+  '#FF8042', // Org Awards
   '#8884D8', // Clinical Trials
   '#82CA9D', // Conference
   '#FFC658', // Social Media
@@ -111,7 +111,7 @@ export function KolProfileTab({ diseaseAreaId }: Props) {
         { name: 'Publications', value: profile.scores.scorePublications || 0 },
         { name: 'Trade Pubs', value: profile.scores.scoreTradePubs || 0 },
         { name: 'Org Leadership', value: profile.scores.scoreOrgLeadership || 0 },
-        { name: 'Org Awareness', value: profile.scores.scoreOrgAwareness || 0 },
+        { name: 'Org Awards', value: profile.scores.scoreOrgAwards || 0 },
         { name: 'Clinical Trials', value: profile.scores.scoreClinicalTrials || 0 },
         { name: 'Conference', value: profile.scores.scoreConference || 0 },
         { name: 'Social Media', value: profile.scores.scoreSocialMedia || 0 },

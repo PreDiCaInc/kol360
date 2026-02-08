@@ -9,7 +9,7 @@ interface ScoreConfig {
   weightClinicalTrials: number;
   weightTradePubs: number;
   weightOrgLeadership: number;
-  weightOrgAwareness: number;
+  weightOrgAwards: number;
   weightConference: number;
   weightSocialMedia: number;
   weightMediaPodcasts: number;

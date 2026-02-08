@@ -52,7 +52,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   clinicalTrials: 'Clinical Trials',
   tradePubs: 'Trade Publications',
   orgLeadership: 'Org Leadership',
-  orgAwareness: 'Org Awareness',
+  orgAwards: 'Org Awards',
   conference: 'Conference',
   socialMedia: 'Social Media',
   mediaPodcasts: 'Media/Podcasts',
