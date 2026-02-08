@@ -116,7 +116,7 @@ export class InsightsReportService {
     filters: InsightsFilter
   ): Promise<KolExplorerResponse> {
     try {
-    const { page, limit, sortBy, sortOrder, search, specialty, state, ...scoreFilters } = filters;
+    const { page, limit, sortBy, sortOrder, search, specialty, state, specialties, states, influencerType, influencerTypes, ...scoreFilters } = filters;
 
     // Build where clause
     const where: Prisma.HcpDiseaseAreaScoreWhereInput = {
@@ -195,15 +195,28 @@ export class InsightsReportService {
         { npi: { contains: search } },
       ];
     }
-    if (specialty) {
+    // Support both single and multi-select for specialty
+    if (specialties && specialties.length > 0) {
+      hcpWhere.specialty = { in: specialties };
+    } else if (specialty) {
       hcpWhere.specialty = specialty;
     }
-    if (state) {
+    // Support both single and multi-select for state
+    if (states && states.length > 0) {
+      hcpWhere.state = { in: states };
+    } else if (state) {
       hcpWhere.state = state;
     }
     if (Object.keys(hcpWhere).length > 0) {
       where.hcp = hcpWhere;
     }
+
+    // Filter by influencer type (computed field - filter after fetch)
+    const influencerTypeFilter = influencerTypes && influencerTypes.length > 0
+      ? influencerTypes
+      : influencerType
+        ? [influencerType]
+        : null;
 
     // Determine sort field
     // Valid score fields on HcpDiseaseAreaScore
@@ -292,12 +305,18 @@ export class InsightsReportService {
       };
     });
 
+    // Apply influencer type filter (computed field, filtered post-fetch)
+    // Note: This filter is applied after pagination, so results may be less than limit
+    const filteredItems = influencerTypeFilter
+      ? items.filter((item) => item.influencerType && influencerTypeFilter.includes(item.influencerType))
+      : items;
+
     return {
-      items,
-      total,
+      items: filteredItems,
+      total: influencerTypeFilter ? filteredItems.length : total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: influencerTypeFilter ? 1 : Math.ceil(total / limit),
     };
     } catch (error) {
       logger.error('Error fetching KOL explorer data', { diseaseAreaId, filters, error });
@@ -313,7 +332,7 @@ export class InsightsReportService {
     query: LeaderRankingQuery
   ): Promise<LeaderRankingsResponse> {
     try {
-    const { nominationType, page, limit, specialty, state } = query;
+    const { nominationType, page, limit, specialty, state, specialties, states } = query;
 
     // Get nomination counts grouped by matched HCP
     const nominations = await prisma.nomination.groupBy({
@@ -332,12 +351,26 @@ export class InsightsReportService {
 
     // Get HCP details for the ranked list
     const hcpIds = nominations.map((n) => n.matchedHcpId!);
+
+    // Build HCP where clause with array filter support
+    const hcpWhere: Record<string, unknown> = { id: { in: hcpIds } };
+
+    // Support both single and multi-select for specialty
+    if (specialties && specialties.length > 0) {
+      hcpWhere.specialty = { in: specialties };
+    } else if (specialty) {
+      hcpWhere.specialty = specialty;
+    }
+
+    // Support both single and multi-select for state
+    if (states && states.length > 0) {
+      hcpWhere.state = { in: states };
+    } else if (state) {
+      hcpWhere.state = state;
+    }
+
     const hcps = await prisma.hcp.findMany({
-      where: {
-        id: { in: hcpIds },
-        ...(specialty ? { specialty } : {}),
-        ...(state ? { state } : {}),
-      },
+      where: hcpWhere,
       include: {
         specialties: {
           where: { isPrimary: true },

@@ -54,7 +54,11 @@ export const insightsFilterSchema = z.object({
   compositeScoreMin: z.coerce.number().min(0).max(100).optional(),
   compositeScoreMax: z.coerce.number().min(0).max(100).optional(),
 
-  // Categorical filters
+  // Categorical filters - support both single string and comma-separated for arrays
+  influencerTypes: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
+  specialties: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
+  states: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
+  // Keep single values for backwards compatibility
   influencerType: z.enum(INFLUENCER_TYPES).optional(),
   specialty: z.string().optional(),
   state: z.string().optional(),
@@ -69,18 +73,30 @@ export const insightsFilterSchema = z.object({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+// Output type (after transform) - used by API service
 export type InsightsFilter = z.infer<typeof insightsFilterSchema>;
+
+// Input type (before transform) - used by frontend hooks
+export type InsightsFilterInput = z.input<typeof insightsFilterSchema>;
 
 // Leader ranking query schema
 export const leaderRankingQuerySchema = z.object({
   nominationType: nominationTypeSchema,
+  // Single value filters (backwards compat)
   state: z.string().optional(),
   specialty: z.string().optional(),
+  // Multi-value filters (comma-separated, transformed to arrays)
+  states: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
+  specialties: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(100),
 });
 
+// Output type (after transform) - used by API service
 export type LeaderRankingQuery = z.infer<typeof leaderRankingQuerySchema>;
+
+// Input type (before transform) - used by frontend hooks
+export type LeaderRankingQueryInput = z.input<typeof leaderRankingQuerySchema>;
 
 // KOL Profile query schema
 export const kolProfileQuerySchema = z.object({

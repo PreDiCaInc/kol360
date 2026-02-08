@@ -4,13 +4,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   Table,
   TableBody,
@@ -26,7 +20,7 @@ import { ScoreFiltersGrid } from '../score-range-filter';
 import { useKolExplorer, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import { useCsvExport } from '@/lib/csv-export';
 import { Check } from 'lucide-react';
-import type { InsightsFilter, KolExplorerItem } from '@kol360/shared';
+import type { InsightsFilterInput, KolExplorerItem } from '@kol360/shared';
 
 interface Props {
   diseaseAreaId: string;
@@ -44,8 +38,8 @@ const SORTABLE_COLUMNS = {
 type SortableColumn = keyof typeof SORTABLE_COLUMNS;
 
 // Parse URL search params to filters
-function parseUrlFilters(searchParams: URLSearchParams): Partial<InsightsFilter> {
-  const filters: Partial<InsightsFilter> = {
+function parseUrlFilters(searchParams: URLSearchParams): Partial<InsightsFilterInput> {
+  const filters: Partial<InsightsFilterInput> = {
     page: 1,
     limit: 25,
     sortBy: 'compositeScore',
@@ -65,7 +59,7 @@ function parseUrlFilters(searchParams: URLSearchParams): Partial<InsightsFilter>
   if (state) filters.state = state;
 
   const influencerType = searchParams.get('influencerType');
-  if (influencerType) filters.influencerType = influencerType as InsightsFilter['influencerType'];
+  if (influencerType) filters.influencerType = influencerType as InsightsFilterInput['influencerType'];
 
   const sortBy = searchParams.get('sortBy');
   if (sortBy) filters.sortBy = sortBy;
@@ -77,7 +71,7 @@ function parseUrlFilters(searchParams: URLSearchParams): Partial<InsightsFilter>
 }
 
 // Convert filters to URL search params
-function filtersToUrlParams(filters: Partial<InsightsFilter>): URLSearchParams {
+function filtersToUrlParams(filters: Partial<InsightsFilterInput>): URLSearchParams {
   const params = new URLSearchParams();
 
   if (filters.page && filters.page > 1) params.set('page', String(filters.page));
@@ -97,15 +91,29 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
   const searchParams = useSearchParams();
 
   // Initialize filters from URL
-  const [filters, setFilters] = useState<Partial<InsightsFilter>>(() =>
+  const [filters, setFilters] = useState<Partial<InsightsFilterInput>>(() =>
     parseUrlFilters(searchParams)
   );
 
+  // Multi-select state (form-only, not URL params)
+  const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
+  const [selectedStates, setSelectedStates] = useState<string[]>([]);
+  const [selectedInfluencerTypes, setSelectedInfluencerTypes] = useState<string[]>([]);
+
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
-  const { data, isLoading } = useKolExplorer(diseaseAreaId, filters);
+
+  // Build API filters including multi-select as comma-separated strings
+  const apiFilters = {
+    ...filters,
+    specialties: selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined,
+    states: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
+    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes.join(',') : undefined,
+  };
+
+  const { data, isLoading } = useKolExplorer(diseaseAreaId, apiFilters);
   const { status: exportStatus, exportCsv } = useCsvExport();
 
-  // Sync URL when filters change
+  // Sync URL when filters change (only for non-multi-select filters)
   useEffect(() => {
     const params = filtersToUrlParams(filters);
     const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
@@ -116,12 +124,10 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
     setFilters((prev) => ({ ...prev, search: e.target.value, page: 1 }));
   };
 
-  const handleFilterChange = (key: keyof InsightsFilter, value: string | number | undefined) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value === 'all' ? undefined : value,
-      page: 1,
-    }));
+  // Reset page when multi-select changes
+  const handleMultiSelectChange = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (values: string[]) => {
+    setter(values);
+    setFilters((prev) => ({ ...prev, page: 1 }));
   };
 
   const handlePageChange = (newPage: number) => {
@@ -269,54 +275,24 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
               onChange={handleSearchChange}
             />
           </div>
-          <Select
-            value={filters.specialty || 'all'}
-            onValueChange={(v) => handleFilterChange('specialty', v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Specialty" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Specialties</SelectItem>
-              {filterOptions?.specialties.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={filters.state || 'all'}
-            onValueChange={(v) => handleFilterChange('state', v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="State" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All States</SelectItem>
-              {filterOptions?.states.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={filters.influencerType || 'all'}
-            onValueChange={(v) => handleFilterChange('influencerType', v as InsightsFilter['influencerType'])}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Influencer Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {filterOptions?.influencerTypes.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelect
+            options={filterOptions?.specialties || []}
+            selected={selectedSpecialties}
+            onChange={handleMultiSelectChange(setSelectedSpecialties)}
+            placeholder="All Specialties"
+          />
+          <MultiSelect
+            options={filterOptions?.states || []}
+            selected={selectedStates}
+            onChange={handleMultiSelectChange(setSelectedStates)}
+            placeholder="All States"
+          />
+          <MultiSelect
+            options={filterOptions?.influencerTypes || []}
+            selected={selectedInfluencerTypes}
+            onChange={handleMultiSelectChange(setSelectedInfluencerTypes)}
+            placeholder="All Types"
+          />
         </div>
 
         {/* Score Range Filters - Collapsible */}

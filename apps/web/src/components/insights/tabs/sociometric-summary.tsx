@@ -3,13 +3,7 @@
 import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   Table,
   TableBody,
@@ -24,7 +18,7 @@ import { Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Dow
 import { useSociometricSummary, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import { useCsvExport } from '@/lib/csv-export';
 import { Check } from 'lucide-react';
-import type { InsightsFilter, SociometricSummaryItem } from '@kol360/shared';
+import type { InsightsFilterInput, SociometricSummaryItem } from '@kol360/shared';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -46,27 +40,39 @@ const NOMINATION_COLORS = {
 export function SociometricSummaryTab({ diseaseAreaId }: Props) {
   const [sortField, setSortField] = useState<SortField>('total');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [filters, setFilters] = useState<Partial<InsightsFilter>>({
+  const [filters, setFilters] = useState<Partial<InsightsFilterInput>>({
     page: 1,
     limit: 25,
     sortBy: 'total',
     sortOrder: 'desc',
   });
 
+  // Multi-select state (form-only, not URL params)
+  const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
+  const [selectedStates, setSelectedStates] = useState<string[]>([]);
+  const [selectedInfluencerTypes, setSelectedInfluencerTypes] = useState<string[]>([]);
+
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
-  const { data, isLoading } = useSociometricSummary(diseaseAreaId, filters);
+
+  // Build API filters including multi-select as comma-separated strings
+  const apiFilters = {
+    ...filters,
+    specialties: selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined,
+    states: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
+    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes.join(',') : undefined,
+  };
+
+  const { data, isLoading } = useSociometricSummary(diseaseAreaId, apiFilters);
   const { status: exportStatus, exportCsv } = useCsvExport();
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilters((prev) => ({ ...prev, search: e.target.value, page: 1 }));
   };
 
-  const handleFilterChange = (key: keyof InsightsFilter, value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value === 'all' ? undefined : value,
-      page: 1,
-    }));
+  // Reset page when multi-select changes
+  const handleMultiSelectChange = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (values: string[]) => {
+    setter(values);
+    setFilters((prev) => ({ ...prev, page: 1 }));
   };
 
   const handlePageChange = (newPage: number) => {
@@ -175,54 +181,24 @@ export function SociometricSummaryTab({ diseaseAreaId }: Props) {
               onChange={handleSearchChange}
             />
           </div>
-          <Select
-            value={filters.specialty || 'all'}
-            onValueChange={(v) => handleFilterChange('specialty', v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Specialty" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Specialties</SelectItem>
-              {filterOptions?.specialties.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={filters.state || 'all'}
-            onValueChange={(v) => handleFilterChange('state', v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="State" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All States</SelectItem>
-              {filterOptions?.states.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={filters.influencerType || 'all'}
-            onValueChange={(v) => handleFilterChange('influencerType', v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Influencer Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {filterOptions?.influencerTypes.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelect
+            options={filterOptions?.specialties || []}
+            selected={selectedSpecialties}
+            onChange={handleMultiSelectChange(setSelectedSpecialties)}
+            placeholder="All Specialties"
+          />
+          <MultiSelect
+            options={filterOptions?.states || []}
+            selected={selectedStates}
+            onChange={handleMultiSelectChange(setSelectedStates)}
+            placeholder="All States"
+          />
+          <MultiSelect
+            options={filterOptions?.influencerTypes || []}
+            selected={selectedInfluencerTypes}
+            onChange={handleMultiSelectChange(setSelectedInfluencerTypes)}
+            placeholder="All Types"
+          />
         </div>
 
         {/* Results Table */}
