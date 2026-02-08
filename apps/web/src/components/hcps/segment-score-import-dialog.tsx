@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -10,6 +10,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -17,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Download } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, Download, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useDiseaseAreas } from '@/hooks/use-hcps';
 
@@ -34,20 +35,53 @@ interface ImportResult {
   errors: { row: number; error: string }[];
 }
 
+interface ImportProgress {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  errors: number;
+  currentItem?: string;
+  estimatedSecondsRemaining?: number;
+}
+
 export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segment' }: Props) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedDiseaseAreaId, setSelectedDiseaseAreaId] = useState<string>('');
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [progress, setProgress] = useState<ImportProgress | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { data: diseaseAreas = [] } = useDiseaseAreas();
+
+  const generateImportId = () => `import_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+  const pollProgress = useCallback(async (importId: string) => {
+    try {
+      const progressData = await api<ImportProgress>(`/api/v1/hcps/import/progress/${importId}`);
+      setProgress(progressData);
+
+      if (progressData.status === 'completed' || progressData.status === 'failed') {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      }
+    } catch {
+      // Progress endpoint may not be ready yet, ignore errors
+    }
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
       setResult(null);
+      setProgress(null);
     }
   };
 
@@ -57,6 +91,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv'))) {
       setSelectedFile(file);
       setResult(null);
+      setProgress(null);
     }
   };
 
@@ -67,19 +102,25 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
   const handleImport = async () => {
     if (!selectedFile || !selectedDiseaseAreaId) return;
 
+    const importId = generateImportId();
     setIsImporting(true);
+    setProgress({ id: importId, status: 'pending', total: 0, processed: 0, created: 0, updated: 0, errors: 0 });
+
+    // Start polling for progress
+    pollIntervalRef.current = setInterval(() => pollProgress(importId), 2000);
+
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const result = await api<ImportResult>(
-        `/api/v1/hcps/import-segment-scores?diseaseAreaId=${encodeURIComponent(selectedDiseaseAreaId)}`,
+      const importResult = await api<ImportResult>(
+        `/api/v1/hcps/import-segment-scores?diseaseAreaId=${encodeURIComponent(selectedDiseaseAreaId)}&importId=${encodeURIComponent(importId)}`,
         {
           method: 'POST',
           body: formData,
         }
       );
-      setResult(result);
+      setResult(importResult);
       queryClient.invalidateQueries({ queryKey: ['hcps'] });
     } catch (error) {
       console.error('Import failed:', error);
@@ -91,15 +132,34 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
       });
     } finally {
       setIsImporting(false);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
     }
   };
 
   const handleClose = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
     setSelectedFile(null);
     setSelectedDiseaseAreaId('');
     setResult(null);
+    setProgress(null);
+    setIsImporting(false);
     onOpenChange(false);
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   // The 8 segment score columns that map to HcpDiseaseAreaScore fields
   const segmentColumns = [
@@ -129,6 +189,35 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     ? 'Upload an Excel file with HCP survey nomination scores across 6 categories.'
     : 'Upload an Excel file with HCP segment scores across 8 categories.';
 
+  const handleDownloadTemplate = () => {
+    const headers = ['NPI', ...columns.map(c => c.name)];
+    const exampleRow = ['1234567890', ...columns.map(() => '50')];
+
+    const csvContent = [
+      headers.join(','),
+      exampleRow.join(','),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = scoreType === 'survey' ? 'survey-scores-template.csv' : 'segment-scores-template.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const formatTime = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  const progressPercent = progress?.total ? Math.round((progress.processed / progress.total) * 100) : 0;
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl">
@@ -139,7 +228,57 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
           </DialogDescription>
         </DialogHeader>
 
-        {!result ? (
+        {isImporting ? (
+          <div className="space-y-4 py-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              <span className="font-medium">Importing {scoreType} scores...</span>
+            </div>
+
+            {progress && progress.total > 0 && (
+              <>
+                <Progress value={progressPercent} className="h-2" />
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>
+                    {progress.processed.toLocaleString()} / {progress.total.toLocaleString()} records
+                  </span>
+                  <span>{progressPercent}%</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                  <div className="bg-green-50 dark:bg-green-950/30 rounded p-2">
+                    <div className="font-semibold text-green-600">{progress.created}</div>
+                    <div className="text-xs text-muted-foreground">Created</div>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-950/30 rounded p-2">
+                    <div className="font-semibold text-blue-600">{progress.updated}</div>
+                    <div className="text-xs text-muted-foreground">Updated</div>
+                  </div>
+                  <div className="bg-red-50 dark:bg-red-950/30 rounded p-2">
+                    <div className="font-semibold text-red-600">{progress.errors}</div>
+                    <div className="text-xs text-muted-foreground">Errors</div>
+                  </div>
+                </div>
+
+                {progress.currentItem && (
+                  <p className="text-sm text-muted-foreground">
+                    Processing NPI: {progress.currentItem}
+                  </p>
+                )}
+
+                {progress.estimatedSecondsRemaining !== undefined && progress.estimatedSecondsRemaining > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Estimated time remaining: {formatTime(progress.estimatedSecondsRemaining)}
+                  </p>
+                )}
+              </>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              Please keep this dialog open. Large imports may take several minutes.
+            </p>
+          </div>
+        ) : !result ? (
           <div className="space-y-4">
             {/* Disease Area Selector */}
             <div className="space-y-2">
@@ -205,7 +344,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <div className="flex items-center justify-between mb-2">
                 <p className="font-medium">Required columns:</p>
-                <Button variant="ghost" size="sm" className="text-xs h-7">
+                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={handleDownloadTemplate}>
                   <Download className="w-3 h-3 mr-1" />
                   Template
                 </Button>
@@ -233,9 +372,9 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
               </Button>
               <Button
                 onClick={handleImport}
-                disabled={!selectedFile || !selectedDiseaseAreaId || isImporting}
+                disabled={!selectedFile || !selectedDiseaseAreaId}
               >
-                {isImporting ? 'Importing...' : 'Import Scores'}
+                Import Scores
               </Button>
             </div>
           </div>

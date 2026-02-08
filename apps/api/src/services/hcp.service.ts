@@ -213,109 +213,250 @@ export class HcpService {
     return prisma.hcp.update({ where: { id }, data });
   }
 
-  async importFromFile(buffer: Buffer, userId: string, filename: string = 'file.xlsx') {
+  async importFromFile(buffer: Buffer, userId: string, filename: string = 'file.xlsx', importId?: string) {
+    const { importProgressStore } = await import('./import-progress.service');
     const rows = await this.parseFileToRows(buffer, filename);
 
     const result = {
+      importId,
       total: rows.length,
       created: 0,
       updated: 0,
-      merged: 0, // New: count of HCPs merged via alias match
+      merged: 0,
       errors: [] as { row: number; error: string }[],
     };
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      try {
-        // Normalize NPI
-        const npi = String(row['NPI'] || row['npi'] || '').trim();
-        if (!/^\d{10}$/.test(npi)) {
-          throw new Error('Invalid NPI format');
+    if (importId) {
+      importProgressStore.start(importId, 'hcp', rows.length);
+    }
+
+    try {
+      // Phase 1: Parse and validate all rows upfront
+      const validRows: Array<{
+        rowIndex: number;
+        npi: string;
+        firstName: string;
+        lastName: string;
+        email: string;
+        specialty: string;
+        subSpecialty: string | null;
+        city: string | null;
+        state: string | null;
+        fullName: string;
+      }> = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        try {
+          const npi = String(row['NPI'] || row['npi'] || '').trim();
+          if (!/^\d{10}$/.test(npi)) {
+            throw new Error('Invalid NPI format');
+          }
+
+          const firstName = String(row['First Name'] || row['firstName'] || '').trim();
+          const lastName = String(row['Last Name'] || row['lastName'] || '').trim();
+          const email = (row['Email'] || row['email'] || null) as string | null;
+          const specialty = (row['Specialty'] || row['specialty'] || null) as string | null;
+
+          if (!firstName || !lastName) {
+            throw new Error('First and last name required');
+          }
+          if (!email) {
+            throw new Error('Email is required');
+          }
+          if (!specialty) {
+            throw new Error('Specialty is required');
+          }
+
+          validRows.push({
+            rowIndex: i,
+            npi,
+            firstName,
+            lastName,
+            email,
+            specialty,
+            subSpecialty: (row['Sub-specialty'] || row['subSpecialty'] || null) as string | null,
+            city: (row['City'] || row['city'] || null) as string | null,
+            state: (row['State'] || row['state'] || null) as string | null,
+            fullName: `${firstName} ${lastName}`,
+          });
+        } catch (error) {
+          result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
         }
+      }
 
-        const data = {
-          npi,
-          firstName: String(row['First Name'] || row['firstName'] || '').trim(),
-          lastName: String(row['Last Name'] || row['lastName'] || '').trim(),
-          email: (row['Email'] || row['email'] || null) as string | null,
-          specialty: (row['Specialty'] || row['specialty'] || null) as string | null,
-          subSpecialty: (row['Sub-specialty'] || row['subSpecialty'] || null) as string | null,
-          city: (row['City'] || row['city'] || null) as string | null,
-          state: (row['State'] || row['state'] || null) as string | null,
-        };
+      if (importId) {
+        importProgressStore.update(importId, {
+          processed: 0,
+          created: 0,
+          updated: 0,
+          errors: result.errors.length,
+          currentItem: 'Loading existing records...',
+        });
+      }
 
-        if (!data.firstName || !data.lastName) {
-          throw new Error('First and last name required');
-        }
+      // Phase 2: Bulk load existing data (2 queries instead of N*2)
+      const allNpis = validRows.map(r => r.npi);
+      const allFullNames = validRows.map(r => r.fullName.toLowerCase());
 
-        if (!data.email) {
-          throw new Error('Email is required');
-        }
+      const [existingHcps, existingAliases] = await Promise.all([
+        prisma.hcp.findMany({
+          where: { npi: { in: allNpis } },
+          select: { id: true, npi: true, firstName: true, lastName: true, email: true, specialty: true, subSpecialty: true, city: true, state: true },
+        }),
+        prisma.hcpAlias.findMany({
+          where: { aliasName: { in: allFullNames, mode: 'insensitive' } },
+          include: { hcp: true },
+        }),
+      ]);
 
-        if (!data.specialty) {
-          throw new Error('Specialty is required');
-        }
+      const existingByNpi = new Map(existingHcps.map(h => [h.npi, h]));
+      const aliasByName = new Map(existingAliases.map(a => [a.aliasName.toLowerCase(), a]));
 
-        const existing = await prisma.hcp.findUnique({ where: { npi } });
+      // Phase 3: Categorize records
+      const toUpdate: Array<{ npi: string; data: Parameters<typeof prisma.hcp.update>[0]['data'] }> = [];
+      const toMerge: Array<{ hcpId: string; data: Parameters<typeof prisma.hcp.update>[0]['data'] }> = [];
+      const toCreate: typeof validRows = [];
 
+      for (const row of validRows) {
+        const existing = existingByNpi.get(row.npi);
         if (existing) {
-          // HCP with this NPI exists - update it
-          await prisma.hcp.update({
-            where: { npi },
+          toUpdate.push({
+            npi: row.npi,
             data: {
-              firstName: data.firstName || existing.firstName,
-              lastName: data.lastName || existing.lastName,
-              email: data.email || existing.email,
-              specialty: data.specialty || existing.specialty,
-              subSpecialty: data.subSpecialty || existing.subSpecialty,
-              city: data.city || existing.city,
-              state: data.state || existing.state,
+              firstName: row.firstName || existing.firstName,
+              lastName: row.lastName || existing.lastName,
+              email: row.email || existing.email,
+              specialty: row.specialty || existing.specialty,
+              subSpecialty: row.subSpecialty || existing.subSpecialty,
+              city: row.city || existing.city,
+              state: row.state || existing.state,
               isSurveyTaker: true,
             },
           });
-          result.updated++;
         } else {
-          // Check for 100% alias match before creating new HCP
-          const fullName = `${data.firstName} ${data.lastName}`;
-          const aliasMatch = await prisma.hcpAlias.findFirst({
-            where: {
-              aliasName: { equals: fullName, mode: 'insensitive' },
-            },
-            include: { hcp: true },
-          });
-
-          if (aliasMatch && aliasMatch.hcp) {
-            // Found an exact alias match - auto-merge by updating the existing HCP's NPI
-            // This handles the case where the same person was nominated under an alias
-            // and now we have their real NPI from an import
-            await prisma.hcp.update({
-              where: { id: aliasMatch.hcp.id },
+          const aliasMatch = aliasByName.get(row.fullName.toLowerCase());
+          if (aliasMatch?.hcp) {
+            toMerge.push({
+              hcpId: aliasMatch.hcp.id,
               data: {
-                npi: data.npi,
-                firstName: data.firstName,
-                lastName: data.lastName,
-                email: data.email || aliasMatch.hcp.email,
-                specialty: data.specialty || aliasMatch.hcp.specialty,
-                subSpecialty: data.subSpecialty || aliasMatch.hcp.subSpecialty,
-                city: data.city || aliasMatch.hcp.city,
-                state: data.state || aliasMatch.hcp.state,
+                npi: row.npi,
+                firstName: row.firstName,
+                lastName: row.lastName,
+                email: row.email || aliasMatch.hcp.email,
+                specialty: row.specialty || aliasMatch.hcp.specialty,
+                subSpecialty: row.subSpecialty || aliasMatch.hcp.subSpecialty,
+                city: row.city || aliasMatch.hcp.city,
+                state: row.state || aliasMatch.hcp.state,
                 isSurveyTaker: true,
               },
             });
-            result.merged++;
           } else {
-            // No NPI match and no alias match - create new HCP atomically
-            // email is guaranteed to be non-null here (validated above)
-            await this.createWithAtomicBeId({
-              ...data,
-              email: data.email as string, // Validated above - email is required
-            }, userId);
-            result.created++;
+            toCreate.push(row);
           }
         }
-      } catch (error) {
-        result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
       }
+
+      // Phase 4: Execute batch updates in chunks
+      const BATCH_SIZE = 100;
+
+      // Batch updates
+      for (let i = 0; i < toUpdate.length; i += BATCH_SIZE) {
+        const batch = toUpdate.slice(i, i + BATCH_SIZE);
+        await prisma.$transaction(
+          batch.map(item => prisma.hcp.update({ where: { npi: item.npi }, data: item.data }))
+        );
+        result.updated += batch.length;
+
+        if (importId) {
+          importProgressStore.update(importId, {
+            processed: result.updated + result.merged + result.created,
+            created: result.created,
+            updated: result.updated + result.merged,
+            errors: result.errors.length,
+            currentItem: `Updated ${result.updated} records`,
+          });
+        }
+      }
+
+      // Batch merges
+      for (let i = 0; i < toMerge.length; i += BATCH_SIZE) {
+        const batch = toMerge.slice(i, i + BATCH_SIZE);
+        await prisma.$transaction(
+          batch.map(item => prisma.hcp.update({ where: { id: item.hcpId }, data: item.data }))
+        );
+        result.merged += batch.length;
+
+        if (importId) {
+          importProgressStore.update(importId, {
+            processed: result.updated + result.merged + result.created,
+            created: result.created,
+            updated: result.updated + result.merged,
+            errors: result.errors.length,
+            currentItem: `Merged ${result.merged} records`,
+          });
+        }
+      }
+
+      // Batch creates - need to generate beIds first
+      if (toCreate.length > 0) {
+        // Get starting beId
+        const lastHcp = await prisma.hcp.findFirst({
+          where: { beId: { startsWith: 'BE-' } },
+          orderBy: { beId: 'desc' },
+          select: { beId: true },
+        });
+        let nextNum = 1;
+        if (lastHcp?.beId) {
+          const match = lastHcp.beId.match(/^BE-(\d+)$/);
+          if (match) {
+            nextNum = parseInt(match[1], 10) + 1;
+          }
+        }
+
+        for (let i = 0; i < toCreate.length; i += BATCH_SIZE) {
+          const batch = toCreate.slice(i, i + BATCH_SIZE);
+          const createData = batch.map((row, idx) => ({
+            beId: 'BE-' + String(nextNum + i + idx).padStart(6, '0'),
+            npi: row.npi,
+            firstName: row.firstName,
+            lastName: row.lastName,
+            email: row.email,
+            specialty: row.specialty,
+            subSpecialty: row.subSpecialty,
+            city: row.city,
+            state: row.state,
+            isSurveyTaker: true,
+            createdBy: userId,
+          }));
+
+          await prisma.hcp.createMany({ data: createData, skipDuplicates: true });
+          result.created += batch.length;
+
+          if (importId) {
+            importProgressStore.update(importId, {
+              processed: result.updated + result.merged + result.created,
+              created: result.created,
+              updated: result.updated + result.merged,
+              errors: result.errors.length,
+              currentItem: `Created ${result.created} records`,
+            });
+          }
+        }
+      }
+
+      if (importId) {
+        importProgressStore.complete(importId, {
+          created: result.created,
+          updated: result.updated + result.merged,
+          errors: result.errors.length,
+        });
+      }
+    } catch (error) {
+      if (importId) {
+        importProgressStore.fail(importId, error instanceof Error ? error.message : 'Unknown error');
+      }
+      throw error;
     }
 
     return result;
@@ -474,81 +615,200 @@ export class HcpService {
     return results.map((r: { state: string | null }) => r.state).filter(Boolean);
   }
 
-  // Import segment scores from Excel or CSV
+  // Import segment scores from Excel or CSV (BATCH OPTIMIZED)
   // diseaseAreaId is required - scores are always tied to a specific disease area
-  async importSegmentScores(buffer: Buffer, diseaseAreaId: string, filename?: string) {
+  async importSegmentScores(buffer: Buffer, diseaseAreaId: string, filename?: string, importId?: string) {
+    const { importProgressStore } = await import('./import-progress.service');
     const rows = await this.parseFileToRows(buffer, filename || 'file.xlsx');
 
-    const result = { total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
+    const result = { importId, total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
 
-    // Map column names to score fields (all 8 are optional in the file)
+    if (importId) {
+      importProgressStore.start(importId, 'segment-scores', rows.length);
+    }
+
     const scoreFieldMap: Record<string, string> = {
       'Research & Publications': 'scorePublications',
       'Clinical Trials': 'scoreClinicalTrials',
       'Trade Pubs': 'scoreTradePubs',
       'Org Leadership': 'scoreOrgLeadership',
-      'Org Awareness': 'scoreOrgAwards',
+      'Org Awards': 'scoreOrgAwards',
       'Conference': 'scoreConference',
       'Social Media': 'scoreSocialMedia',
       'Media/Podcasts': 'scoreMediaPodcasts',
+      'scorePublications': 'scorePublications',
+      'scoreClinicalTrials': 'scoreClinicalTrials',
+      'scoreTradePubs': 'scoreTradePubs',
+      'scoreOrgLeadership': 'scoreOrgLeadership',
+      'scoreOrgAwards': 'scoreOrgAwards',
+      'scoreConference': 'scoreConference',
+      'scoreSocialMedia': 'scoreSocialMedia',
+      'scoreMediaPodcasts': 'scoreMediaPodcasts',
     };
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      try {
-        const npi = String(row['NPI'] || row['npi'] || '').trim();
-        if (!/^\d{10}$/.test(npi)) {
-          throw new Error('Invalid NPI format');
-        }
+    try {
+      // Phase 1: Parse and validate all rows
+      const validRows: Array<{
+        rowIndex: number;
+        npi: string;
+        scoreData: Record<string, number>;
+      }> = [];
 
-        const hcp = await prisma.hcp.findUnique({ where: { npi } });
-        if (!hcp) {
-          throw new Error(`HCP not found: ${npi}`);
-        }
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        try {
+          const npi = String(row['NPI'] || row['npi'] || '').trim();
+          if (!/^\d{10}$/.test(npi)) {
+            throw new Error('Invalid NPI format');
+          }
 
-        // Build score data
-        const scoreData: Record<string, number | null> = {};
-        for (const [colName, fieldName] of Object.entries(scoreFieldMap)) {
-          const value = row[colName];
-          if (value !== undefined && value !== null && value !== '') {
-            const numValue = parseFloat(String(value));
-            if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
-              scoreData[fieldName] = numValue;
+          const scoreData: Record<string, number> = {};
+          for (const [colName, fieldName] of Object.entries(scoreFieldMap)) {
+            const value = row[colName];
+            if (value !== undefined && value !== null && value !== '') {
+              const numValue = parseFloat(String(value));
+              if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
+                scoreData[fieldName] = numValue;
+              }
             }
           }
-        }
 
-        // Check if existing score record exists for this HCP and disease area
-        const existing = await prisma.hcpDiseaseAreaScore.findFirst({
-          where: { hcpId: hcp.id, diseaseAreaId: diseaseAreaId, isCurrent: true },
+          validRows.push({ rowIndex: i, npi, scoreData });
+        } catch (error) {
+          result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
+        }
+      }
+
+      if (importId) {
+        importProgressStore.update(importId, {
+          processed: 0,
+          created: 0,
+          updated: 0,
+          errors: result.errors.length,
+          currentItem: 'Loading existing records...',
         });
+      }
+
+      // Phase 2: Bulk load HCPs and existing scores (2 queries instead of N*2)
+      const allNpis = validRows.map(r => r.npi);
+
+      const hcps = await prisma.hcp.findMany({
+        where: { npi: { in: allNpis } },
+        select: { id: true, npi: true },
+      });
+      const hcpByNpi = new Map(hcps.map(h => [h.npi, h]));
+
+      // Mark NPIs that don't have HCPs as errors
+      for (const row of validRows) {
+        if (!hcpByNpi.has(row.npi)) {
+          result.errors.push({ row: row.rowIndex + 2, error: `HCP not found: ${row.npi}` });
+        }
+      }
+
+      // Filter to only valid rows with matching HCPs
+      const rowsWithHcps = validRows.filter(r => hcpByNpi.has(r.npi));
+      const hcpIds = rowsWithHcps.map(r => hcpByNpi.get(r.npi)!.id);
+
+      const existingScores = await prisma.hcpDiseaseAreaScore.findMany({
+        where: { hcpId: { in: hcpIds }, diseaseAreaId, isCurrent: true },
+        select: { id: true, hcpId: true },
+      });
+      const existingByHcpId = new Map(existingScores.map(s => [s.hcpId, s]));
+
+      // Phase 3: Categorize into creates and updates
+      const toCreate: Array<{
+        hcpId: string;
+        diseaseAreaId: string;
+        isCurrent: boolean;
+        effectiveFrom: Date;
+        scorePublications?: number;
+        scoreClinicalTrials?: number;
+        scoreTradePubs?: number;
+        scoreOrgLeadership?: number;
+        scoreOrgAwards?: number;
+        scoreConference?: number;
+        scoreSocialMedia?: number;
+        scoreMediaPodcasts?: number;
+      }> = [];
+      const toUpdate: Array<{ id: string; data: Record<string, unknown> }> = [];
+
+      const now = new Date();
+      for (const row of rowsWithHcps) {
+        const hcp = hcpByNpi.get(row.npi)!;
+        const existing = existingByHcpId.get(hcp.id);
 
         if (existing) {
-          // Update existing score
-          await prisma.hcpDiseaseAreaScore.update({
-            where: { id: existing.id },
-            data: {
-              ...scoreData,
-              lastCalculatedAt: new Date(),
-            },
+          toUpdate.push({
+            id: existing.id,
+            data: { ...row.scoreData, lastCalculatedAt: now },
           });
-          result.updated++;
         } else {
-          // Create new score
-          await prisma.hcpDiseaseAreaScore.create({
-            data: {
-              hcpId: hcp.id,
-              diseaseAreaId: diseaseAreaId,
-              ...scoreData,
-              isCurrent: true,
-              effectiveFrom: new Date(),
-            },
+          toCreate.push({
+            hcpId: hcp.id,
+            diseaseAreaId,
+            isCurrent: true,
+            effectiveFrom: now,
+            ...row.scoreData,
           });
-          result.created++;
         }
-      } catch (error) {
-        result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
       }
+
+      // Phase 4: Execute batch operations
+      const BATCH_SIZE = 100;
+
+      // Batch creates
+      if (toCreate.length > 0) {
+        for (let i = 0; i < toCreate.length; i += BATCH_SIZE) {
+          const batch = toCreate.slice(i, i + BATCH_SIZE);
+          await prisma.hcpDiseaseAreaScore.createMany({ data: batch });
+          result.created += batch.length;
+
+          if (importId) {
+            importProgressStore.update(importId, {
+              processed: result.created + result.updated,
+              created: result.created,
+              updated: result.updated,
+              errors: result.errors.length,
+              currentItem: `Created ${result.created} scores`,
+            });
+          }
+        }
+      }
+
+      // Batch updates (need to do individually but in transaction batches)
+      for (let i = 0; i < toUpdate.length; i += BATCH_SIZE) {
+        const batch = toUpdate.slice(i, i + BATCH_SIZE);
+        await prisma.$transaction(
+          batch.map(item => prisma.hcpDiseaseAreaScore.update({
+            where: { id: item.id },
+            data: item.data,
+          }))
+        );
+        result.updated += batch.length;
+
+        if (importId) {
+          importProgressStore.update(importId, {
+            processed: result.created + result.updated,
+            created: result.created,
+            updated: result.updated,
+            errors: result.errors.length,
+            currentItem: `Updated ${result.updated} scores`,
+          });
+        }
+      }
+
+      if (importId) {
+        importProgressStore.complete(importId, {
+          created: result.created,
+          updated: result.updated,
+          errors: result.errors.length,
+        });
+      }
+    } catch (error) {
+      if (importId) {
+        importProgressStore.fail(importId, error instanceof Error ? error.message : 'Unknown error');
+      }
+      throw error;
     }
 
     return result;
