@@ -114,7 +114,7 @@ The e2e tests use a dedicated test tenant:
 | Entity | ID | Description |
 |--------|-----|-------------|
 | Client | `e2e_test_client_001` | E2E Test Pharma |
-| Disease Area | `e2e_test_disease_area_001` | E2E Test Oncology |
+| Disease Area | `e2e_test_disease_area_001` | zE2E Test Oncology |
 | HCP 1 | `e2e_test_hcp_001` | Alice TestDoctor (NPI: 9990000001) |
 | HCP 2 | `e2e_test_hcp_002` | Bob TestPhysician (NPI: 9990000002) |
 | HCP 3 | `e2e_test_hcp_003` | Carol TestSpecialist (NPI: 9990000003) |

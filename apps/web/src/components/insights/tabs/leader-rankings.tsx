@@ -3,14 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   Table,
   TableBody,
@@ -46,7 +39,7 @@ interface RankingTableProps {
   label: string;
   color: string;
   bgColor: string;
-  filters?: { state?: string; specialty?: string };
+  filters?: { states?: string; specialties?: string };
   compact?: boolean;
   onExport?: (nominationType: string, data: { rank: number; name: string; specialty: string | null; state: string | null; count: number }[]) => void;
 }
@@ -215,31 +208,24 @@ function RankingTable({
   );
 }
 
-// Parse URL search params to filters
+// Parse URL search params for view mode and active type only
 function parseUrlFilters(searchParams: URLSearchParams): {
-  state?: string;
-  specialty?: string;
   viewMode: 'tabs' | 'grid';
   activeType: NominationType;
 } {
   return {
-    state: searchParams.get('lrState') || undefined,
-    specialty: searchParams.get('lrSpecialty') || undefined,
     viewMode: (searchParams.get('lrView') as 'tabs' | 'grid') || 'grid',
     activeType: (searchParams.get('lrType') as NominationType) || 'DISCUSSION_LEADERS',
   };
 }
 
-// Convert filters to URL search params
+// Convert view settings to URL search params
 function filtersToUrlParams(
-  filters: { state?: string; specialty?: string },
   viewMode: 'tabs' | 'grid',
   activeType: NominationType
 ): URLSearchParams {
   const params = new URLSearchParams();
 
-  if (filters.state) params.set('lrState', filters.state);
-  if (filters.specialty) params.set('lrSpecialty', filters.specialty);
   if (viewMode !== 'grid') params.set('lrView', viewMode);
   if (activeType !== 'DISCUSSION_LEADERS') params.set('lrType', activeType);
 
@@ -255,21 +241,25 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
   const urlFilters = parseUrlFilters(searchParams);
   const [viewMode, setViewMode] = useState<'tabs' | 'grid'>(urlFilters.viewMode);
   const [activeType, setActiveType] = useState<NominationType>(urlFilters.activeType);
-  const [filters, setFilters] = useState<{ state?: string; specialty?: string }>({
-    state: urlFilters.state,
-    specialty: urlFilters.specialty,
-  });
+
+  // Multi-select state (form-only, not URL params)
+  const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
+  const [selectedStates, setSelectedStates] = useState<string[]>([]);
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
 
-  // Sync URL when filters change
+  // Build filters for API calls (comma-separated for arrays)
+  const apiFilters = {
+    specialties: selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined,
+    states: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
+  };
+
+  // Sync URL when view settings change
   useEffect(() => {
-    const params = filtersToUrlParams(filters, viewMode, activeType);
+    const params = filtersToUrlParams(viewMode, activeType);
     // Preserve other params (like from KOL Explorer tab)
     const currentParams = new URLSearchParams(searchParams.toString());
     // Remove our params first
-    currentParams.delete('lrState');
-    currentParams.delete('lrSpecialty');
     currentParams.delete('lrView');
     currentParams.delete('lrType');
     // Add our new params
@@ -277,52 +267,29 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
 
     const newUrl = currentParams.toString() ? `${pathname}?${currentParams.toString()}` : pathname;
     router.replace(newUrl, { scroll: false });
-  }, [filters, viewMode, activeType, pathname, router, searchParams]);
-
-  const handleFilterChange = (key: 'state' | 'specialty', value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value === 'all' ? undefined : value,
-    }));
-  };
+  }, [viewMode, activeType, pathname, router, searchParams]);
 
   return (
     <div className="space-y-4">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4">
-        <Select
-          value={filters.specialty || 'all'}
-          onValueChange={(v) => handleFilterChange('specialty', v)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Specialty" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Specialties</SelectItem>
-            {filterOptions?.specialties.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="w-[200px]">
+          <MultiSelect
+            options={filterOptions?.specialties || []}
+            selected={selectedSpecialties}
+            onChange={setSelectedSpecialties}
+            placeholder="All Specialties"
+          />
+        </div>
 
-        <Select
-          value={filters.state || 'all'}
-          onValueChange={(v) => handleFilterChange('state', v)}
-        >
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="State" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All States</SelectItem>
-            {filterOptions?.states.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="w-[180px]">
+          <MultiSelect
+            options={filterOptions?.states || []}
+            selected={selectedStates}
+            onChange={setSelectedStates}
+            placeholder="All States"
+          />
+        </div>
 
         <div className="flex-1" />
 
@@ -363,7 +330,7 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
                   label={type.label}
                   color={type.color}
                   bgColor={type.bgColor}
-                  filters={filters}
+                  filters={apiFilters}
                   compact
                 />
               </CardContent>
@@ -401,7 +368,7 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
                     label={type.label}
                     color={type.color}
                     bgColor={type.bgColor}
-                    filters={filters}
+                    filters={apiFilters}
                   />
                 </CardContent>
               </Card>

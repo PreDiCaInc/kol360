@@ -233,9 +233,11 @@ export class ApiClient {
 
   // ==================== HCPs ====================
 
-  async listHcps(params?: { query?: string; specialty?: string; state?: string; page?: number; limit?: number }) {
+  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; page?: number; limit?: number }) {
     const queryParams = new URLSearchParams();
-    if (params?.query) queryParams.set('query', params.query);
+    // Support both 'query' and 'search' as aliases for the search parameter
+    const searchTerm = params?.query || params?.search;
+    if (searchTerm) queryParams.set('query', searchTerm);
     if (params?.specialty) queryParams.set('specialty', params.specialty);
     if (params?.state) queryParams.set('state', params.state);
     if (params?.page) queryParams.set('page', params.page.toString());
@@ -560,6 +562,83 @@ export class ApiClient {
     const hcp = data?.items?.find((h) => h.hcpId === hcpId);
     return hcp?.surveyToken || null;
   }
+
+  // ==================== Import Progress ====================
+
+  async getImportProgress(importId: string) {
+    return this.request<ImportProgress>('GET', `/api/v1/hcps/import/progress/${importId}`);
+  }
+
+  // ==================== Insights Report ====================
+
+  async getInsightsSummary(diseaseAreaId: string) {
+    return this.request<InsightsSummary>('GET', `/api/v1/insights/${diseaseAreaId}/summary`);
+  }
+
+  async getInsightsRespondentAnalytics(diseaseAreaId: string) {
+    return this.request<RespondentAnalytics>('GET', `/api/v1/insights/${diseaseAreaId}/respondent-analytics`);
+  }
+
+  async getInsightsLeaderRankings(diseaseAreaId: string, params?: {
+    nominationType?: string;
+    specialty?: string;
+    state?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (params?.nominationType) query.set('nominationType', params.nominationType);
+    if (params?.specialty) query.set('specialty', params.specialty);
+    if (params?.state) query.set('state', params.state);
+    if (params?.page) query.set('page', params.page.toString());
+    if (params?.limit) query.set('limit', params.limit.toString());
+    const queryStr = query.toString() ? `?${query.toString()}` : '';
+    return this.request<LeaderRankings>('GET', `/api/v1/insights/${diseaseAreaId}/leader-rankings${queryStr}`);
+  }
+
+  async getInsightsKolProfile(diseaseAreaId: string, hcpId: string) {
+    return this.request<KolProfile>('GET', `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}`);
+  }
+
+  async getInsightsKolExplorer(diseaseAreaId: string, params?: {
+    search?: string;
+    specialty?: string;
+    state?: string;
+    influencerType?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.specialty) query.set('specialty', params.specialty);
+    if (params?.state) query.set('state', params.state);
+    if (params?.influencerType) query.set('influencerType', params.influencerType);
+    if (params?.page) query.set('page', params.page.toString());
+    if (params?.limit) query.set('limit', params.limit.toString());
+    const queryStr = query.toString() ? `?${query.toString()}` : '';
+    return this.request<KolExplorerResult>('GET', `/api/v1/insights/${diseaseAreaId}/kol-explorer${queryStr}`);
+  }
+
+  async getInsightsSociometricSummary(diseaseAreaId: string, params?: {
+    search?: string;
+    specialty?: string;
+    state?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.specialty) query.set('specialty', params.specialty);
+    if (params?.state) query.set('state', params.state);
+    if (params?.page) query.set('page', params.page.toString());
+    if (params?.limit) query.set('limit', params.limit.toString());
+    const queryStr = query.toString() ? `?${query.toString()}` : '';
+    return this.request<SociometricSummary>('GET', `/api/v1/insights/${diseaseAreaId}/sociometric-summary${queryStr}`);
+  }
+
+  async getInsightsFilterOptions(diseaseAreaId: string) {
+    return this.request<FilterOptions>('GET', `/api/v1/insights/${diseaseAreaId}/filter-options`);
+  }
 }
 
 // ==================== Types ====================
@@ -825,4 +904,128 @@ export interface Pagination {
   limit: number;
   total: number;
   pages: number;
+}
+
+// ==================== Import Progress Types ====================
+
+export interface ImportProgress {
+  id: string;
+  type: 'hcp' | 'segment-scores' | 'survey-scores';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  errors: number;
+  currentItem?: string;
+  estimatedSecondsRemaining?: number;
+}
+
+// ==================== Insights Report Types ====================
+
+export interface InsightsSummary {
+  totalKols: number;
+  totalRespondents: number;
+  totalNominations: number;
+  responseRate: number;
+  avgCompositeScore: number;
+}
+
+export interface RespondentAnalytics {
+  bySpecialty: Array<{ specialty: string; count: number }>;
+  byState: Array<{ state: string; count: number }>;
+  byPracticeSetting: Array<{ setting: string; count: number }>;
+  bySurveyStatus: Array<{ status: string; count: number }>;
+  completionOverTime: Array<{ date: string; count: number; cumulative: number }>;
+}
+
+export interface LeaderRankings {
+  items: Array<{
+    rank: number;
+    hcpId: string;
+    firstName: string;
+    lastName: string;
+    specialty?: string;
+    state?: string;
+    nominationCount: number;
+    compositeScore?: number;
+  }>;
+  total: number;
+  nominationType: string;
+}
+
+export interface KolProfile {
+  hcp: Hcp;
+  scores: {
+    scorePublications?: number;
+    scoreClinicalTrials?: number;
+    scoreTradePubs?: number;
+    scoreOrgLeadership?: number;
+    scoreOrgAwards?: number;
+    scoreConference?: number;
+    scoreSocialMedia?: number;
+    scoreMediaPodcasts?: number;
+    scoreSurvey?: number;
+    compositeScore?: number;
+  };
+  nominationCounts: Record<string, number>;
+  nominators: Array<{
+    nominatorId: string;
+    firstName: string;
+    lastName: string;
+    specialty?: string;
+    state?: string;
+  }>;
+}
+
+export interface KolExplorerResult {
+  items: Array<{
+    hcpId: string;
+    firstName: string;
+    lastName: string;
+    npi: string;
+    specialty?: string;
+    state?: string;
+    influencerType?: string;
+    scorePublications?: number;
+    scoreClinicalTrials?: number;
+    scoreTradePubs?: number;
+    scoreOrgLeadership?: number;
+    scoreOrgAwards?: number;
+    scoreConference?: number;
+    scoreSocialMedia?: number;
+    scoreMediaPodcasts?: number;
+    scoreSurvey?: number;
+    compositeScore?: number;
+  }>;
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface SociometricSummary {
+  items: Array<{
+    hcpId: string;
+    firstName: string;
+    lastName: string;
+    specialty?: string;
+    state?: string;
+    totalNominations: number;
+    discussionLeaders: number;
+    referralLeaders: number;
+    adviceLeaders: number;
+    nationalLeader: number;
+    risingStar: number;
+    socialLeader: number;
+  }>;
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface FilterOptions {
+  specialties: string[];
+  states: string[];
+  influencerTypes: string[];
+  nominationTypes: string[];
 }

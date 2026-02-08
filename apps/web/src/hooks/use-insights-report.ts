@@ -9,8 +9,8 @@ import type {
   KolProfileWithNominators,
   SociometricSummaryResponse,
   RespondentAnalytics,
-  InsightsFilter,
-  LeaderRankingQuery,
+  InsightsFilterInput,
+  LeaderRankingQueryInput,
   NominationType,
 } from '@kol360/shared';
 
@@ -38,7 +38,7 @@ export function useInsightsSummary(diseaseAreaId: string) {
  */
 export function useKolExplorer(
   diseaseAreaId: string,
-  filters: Partial<InsightsFilter> = {}
+  filters: Partial<InsightsFilterInput> = {}
 ) {
   // Build query params from filters
   const params = new URLSearchParams();
@@ -65,7 +65,7 @@ export function useKolExplorer(
 export function useLeaderRankings(
   diseaseAreaId: string,
   nominationType: NominationType,
-  options: Partial<Omit<LeaderRankingQuery, 'nominationType'>> = {}
+  options: Partial<Omit<LeaderRankingQueryInput, 'nominationType'>> = {}
 ) {
   const params = new URLSearchParams();
   params.append('nominationType', nominationType);
@@ -106,7 +106,7 @@ export function useKolProfile(diseaseAreaId: string, hcpId: string | null) {
  */
 export function useSociometricSummary(
   diseaseAreaId: string,
-  filters: Partial<InsightsFilter> = {}
+  filters: Partial<InsightsFilterInput> = {}
 ) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
