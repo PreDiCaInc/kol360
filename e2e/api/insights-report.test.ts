@@ -1,0 +1,216 @@
+/**
+ * Insights Report API E2E Tests
+ *
+ * Tests the insights report endpoints that aggregate KOL data across campaigns
+ * within a disease area. These endpoints power the 5-tab Insights dashboard.
+ *
+ * Run with: cd e2e && source .env && E2E_TEST_PASSWORD="$E2E_TEST_PASSWORD" pnpm test:workflow:test
+ */
+
+import { describe, it, expect, beforeAll } from 'vitest';
+import { ApiClient } from '../api-client';
+import { config } from '../config';
+
+// Use the Dry Eye disease area which has test data
+const DRY_EYE_DISEASE_AREA_ID = 'cmj6ice860000wspd6wotdndy';
+
+describe('Insights Report API', () => {
+  let client: ApiClient;
+
+  beforeAll(() => {
+    if (!config.authToken) {
+      throw new Error('E2E_AUTH_TOKEN is required. Run with auth: pnpm test:api:aws:auth');
+    }
+    client = new ApiClient();
+  });
+
+  describe('Summary Endpoint', () => {
+    it('should return insights summary for a disease area', async () => {
+      const { status, data } = await client.getInsightsSummary(DRY_EYE_DISEASE_AREA_ID);
+
+      expect(status).toBe(200);
+      expect(typeof data.totalKols).toBe('number');
+      expect(data.totalKols).toBeGreaterThanOrEqual(0);
+
+      console.log(`✅ Insights summary: ${data.totalKols} KOLs, ${data.totalRespondents || 0} respondents`);
+    });
+
+    it('should return 404 for non-existent disease area', async () => {
+      const { status } = await client.getInsightsSummary('non-existent-id');
+
+      expect([400, 404]).toContain(status);
+    });
+  });
+
+  describe('Filter Options Endpoint', () => {
+    it('should return available filter options', async () => {
+      const { status, data } = await client.getInsightsFilterOptions(DRY_EYE_DISEASE_AREA_ID);
+
+      expect(status).toBe(200);
+      expect(Array.isArray(data.specialties)).toBe(true);
+      expect(Array.isArray(data.states)).toBe(true);
+
+      console.log(`✅ Filter options: ${data.specialties.length} specialties, ${data.states.length} states`);
+    });
+  });
+
+  describe('KOL Explorer Endpoint', () => {
+    it('should return paginated KOL list', async () => {
+      const { status, data } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(status).toBe(200);
+      expect(Array.isArray(data.items)).toBe(true);
+      expect(typeof data.total).toBe('number');
+
+      if (data.items.length > 0) {
+        const firstKol = data.items[0];
+        expect(firstKol.hcpId).toBeTruthy();
+        expect(firstKol.firstName).toBeTruthy();
+        expect(firstKol.lastName).toBeTruthy();
+      }
+
+      console.log(`✅ KOL Explorer: ${data.items.length} items, ${data.total} total`);
+    });
+
+    it('should support search filter', async () => {
+      const { status, data } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
+        search: 'Smith',
+        limit: 10,
+      });
+
+      expect(status).toBe(200);
+      expect(Array.isArray(data.items)).toBe(true);
+
+      // All results should contain 'Smith' in name
+      data.items.forEach((kol) => {
+        const fullName = `${kol.firstName} ${kol.lastName}`.toLowerCase();
+        expect(fullName).toContain('smith');
+      });
+    });
+
+    it('should support specialty filter', async () => {
+      // First get available specialties
+      const { data: filterData } = await client.getInsightsFilterOptions(DRY_EYE_DISEASE_AREA_ID);
+
+      if (filterData.specialties.length > 0) {
+        const testSpecialty = filterData.specialties[0];
+        const { status, data } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
+          specialty: testSpecialty,
+          limit: 10,
+        });
+
+        expect(status).toBe(200);
+        expect(Array.isArray(data.items)).toBe(true);
+
+        console.log(`✅ Specialty filter: ${data.items.length} KOLs with specialty "${testSpecialty}"`);
+      }
+    });
+  });
+
+  describe('Leader Rankings Endpoint', () => {
+    it('should return leader rankings', async () => {
+      const { status, data } = await client.getInsightsLeaderRankings(DRY_EYE_DISEASE_AREA_ID, {
+        limit: 10,
+      });
+
+      expect(status).toBe(200);
+      expect(Array.isArray(data.items)).toBe(true);
+
+      if (data.items.length > 0) {
+        const firstLeader = data.items[0];
+        expect(firstLeader.hcpId).toBeTruthy();
+        expect(typeof firstLeader.nominationCount).toBe('number');
+      }
+
+      console.log(`✅ Leader rankings: ${data.items.length} leaders`);
+    });
+
+    it('should support nomination type filter', async () => {
+      const nominationTypes = [
+        'discussionLeaders',
+        'referralLeaders',
+        'adviceLeaders',
+        'nationalLeader',
+        'risingStar',
+        'socialLeader',
+      ];
+
+      for (const nominationType of nominationTypes.slice(0, 2)) {
+        const { status } = await client.getInsightsLeaderRankings(DRY_EYE_DISEASE_AREA_ID, {
+          nominationType,
+          limit: 5,
+        });
+
+        expect(status).toBe(200);
+      }
+
+      console.log('✅ Nomination type filters work');
+    });
+  });
+
+  describe('Sociometric Summary Endpoint', () => {
+    it('should return sociometric summary', async () => {
+      const { status, data } = await client.getInsightsSociometricSummary(DRY_EYE_DISEASE_AREA_ID, {
+        page: 1,
+        limit: 10,
+      });
+
+      expect(status).toBe(200);
+      expect(Array.isArray(data.items)).toBe(true);
+      expect(typeof data.total).toBe('number');
+
+      if (data.items.length > 0) {
+        const firstItem = data.items[0];
+        expect(firstItem.hcpId).toBeTruthy();
+        expect(typeof firstItem.totalNominations).toBe('number');
+      }
+
+      console.log(`✅ Sociometric summary: ${data.items.length} items, ${data.total} total`);
+    });
+  });
+
+  describe('KOL Profile Endpoint', () => {
+    it('should return KOL profile with scores', async () => {
+      // First get a KOL ID from the explorer
+      const { data: explorerData } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
+        limit: 1,
+      });
+
+      if (explorerData.items.length === 0) {
+        console.log('⚠️ No KOLs found - skipping profile test');
+        return;
+      }
+
+      const testHcpId = explorerData.items[0].hcpId;
+      const { status, data } = await client.getInsightsKolProfile(DRY_EYE_DISEASE_AREA_ID, testHcpId);
+
+      expect(status).toBe(200);
+      expect(data.hcp).toBeTruthy();
+      expect(data.hcp.id).toBe(testHcpId);
+      expect(data.scores).toBeTruthy();
+
+      console.log(`✅ KOL profile: ${data.hcp.firstName} ${data.hcp.lastName}`);
+    });
+
+    it('should return 404 for non-existent HCP', async () => {
+      const { status } = await client.getInsightsKolProfile(DRY_EYE_DISEASE_AREA_ID, 'non-existent-hcp-id');
+
+      expect([400, 404]).toContain(status);
+    });
+  });
+
+  describe('Respondent Analytics Endpoint', () => {
+    it('should return respondent analytics', async () => {
+      const { status, data } = await client.getInsightsRespondentAnalytics(DRY_EYE_DISEASE_AREA_ID);
+
+      expect(status).toBe(200);
+      expect(Array.isArray(data.bySpecialty)).toBe(true);
+      expect(Array.isArray(data.byState)).toBe(true);
+
+      console.log(`✅ Respondent analytics: ${data.bySpecialty.length} specialties, ${data.byState.length} states`);
+    });
+  });
+});
