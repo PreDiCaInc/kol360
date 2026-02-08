@@ -247,9 +247,10 @@ export class HcpService {
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
+        // Extract NPI first for error reporting
+        const rawNpi = String(row['NPI'] || row['npi'] || '').trim();
         try {
-          const npi = String(row['NPI'] || row['npi'] || '').trim();
-          if (!/^\d{10}$/.test(npi)) {
+          if (!/^\d{10}$/.test(rawNpi)) {
             throw new Error('Invalid NPI format');
           }
 
@@ -270,7 +271,7 @@ export class HcpService {
 
           validRows.push({
             rowIndex: i,
-            npi,
+            npi: rawNpi,
             firstName,
             lastName,
             email,
@@ -281,7 +282,8 @@ export class HcpService {
             fullName: `${firstName} ${lastName}`,
           });
         } catch (error) {
-          result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
+          const npiInfo = rawNpi ? ` (NPI: ${rawNpi})` : '';
+          result.errors.push({ row: i + 2, error: `${error instanceof Error ? error.message : 'Unknown error'}${npiInfo}` });
         }
       }
 
@@ -656,9 +658,10 @@ export class HcpService {
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
+        // Extract NPI first for error reporting
+        const rawNpi = String(row['NPI'] || row['npi'] || '').trim();
         try {
-          const npi = String(row['NPI'] || row['npi'] || '').trim();
-          if (!/^\d{10}$/.test(npi)) {
+          if (!/^\d{10}$/.test(rawNpi)) {
             throw new Error('Invalid NPI format');
           }
 
@@ -673,9 +676,10 @@ export class HcpService {
             }
           }
 
-          validRows.push({ rowIndex: i, npi, scoreData });
+          validRows.push({ rowIndex: i, npi: rawNpi, scoreData });
         } catch (error) {
-          result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
+          const npiInfo = rawNpi ? ` (NPI: ${rawNpi})` : '';
+          result.errors.push({ row: i + 2, error: `${error instanceof Error ? error.message : 'Unknown error'}${npiInfo}` });
         }
       }
 
