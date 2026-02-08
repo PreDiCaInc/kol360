@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, ChevronLeft, ChevronRight, SlidersHorizontal, Download } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, SlidersHorizontal, Download, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { ScoreFiltersGrid } from '../score-range-filter';
 import { useKolExplorer, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import { useCsvExport } from '@/lib/csv-export';
@@ -32,11 +32,23 @@ interface Props {
   diseaseAreaId: string;
 }
 
+// Sortable columns mapping to API field names
+const SORTABLE_COLUMNS = {
+  name: 'name',
+  specialty: 'specialty',
+  compositeScore: 'compositeScore',
+  scoreSurvey: 'scoreSurvey',
+  scorePublications: 'scorePublications',
+} as const;
+
+type SortableColumn = keyof typeof SORTABLE_COLUMNS;
+
 // Parse URL search params to filters
 function parseUrlFilters(searchParams: URLSearchParams): Partial<InsightsFilter> {
   const filters: Partial<InsightsFilter> = {
     page: 1,
     limit: 25,
+    sortBy: 'compositeScore',
     sortOrder: 'desc',
   };
 
@@ -55,6 +67,12 @@ function parseUrlFilters(searchParams: URLSearchParams): Partial<InsightsFilter>
   const influencerType = searchParams.get('influencerType');
   if (influencerType) filters.influencerType = influencerType as InsightsFilter['influencerType'];
 
+  const sortBy = searchParams.get('sortBy');
+  if (sortBy) filters.sortBy = sortBy;
+
+  const sortOrder = searchParams.get('sortOrder');
+  if (sortOrder === 'asc' || sortOrder === 'desc') filters.sortOrder = sortOrder;
+
   return filters;
 }
 
@@ -67,6 +85,8 @@ function filtersToUrlParams(filters: Partial<InsightsFilter>): URLSearchParams {
   if (filters.specialty) params.set('specialty', filters.specialty);
   if (filters.state) params.set('state', filters.state);
   if (filters.influencerType) params.set('influencerType', filters.influencerType);
+  if (filters.sortBy && filters.sortBy !== 'compositeScore') params.set('sortBy', filters.sortBy);
+  if (filters.sortOrder && filters.sortOrder !== 'desc') params.set('sortOrder', filters.sortOrder);
 
   return params;
 }
@@ -118,6 +138,49 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
   };
 
   const [showScoreFilters, setShowScoreFilters] = useState(false);
+
+  // Handle column sorting
+  const handleSort = (column: SortableColumn) => {
+    setFilters((prev) => {
+      const currentSortBy = prev.sortBy || 'compositeScore';
+      const currentOrder = prev.sortOrder || 'desc';
+
+      if (currentSortBy === column) {
+        // Toggle sort order if clicking same column
+        return { ...prev, sortOrder: currentOrder === 'desc' ? 'asc' : 'desc', page: 1 };
+      } else {
+        // New column, default to descending (highest first) for scores, ascending for name
+        const defaultOrder = column === 'name' ? 'asc' : 'desc';
+        return { ...prev, sortBy: column, sortOrder: defaultOrder, page: 1 };
+      }
+    });
+  };
+
+  // Render sort icon for column header
+  const renderSortIcon = (column: SortableColumn) => {
+    const currentSortBy = filters.sortBy || 'compositeScore';
+    const currentOrder = filters.sortOrder || 'desc';
+
+    if (currentSortBy !== column) {
+      return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/50" />;
+    }
+    return currentOrder === 'desc'
+      ? <ArrowDown className="ml-1 h-3 w-3" />
+      : <ArrowUp className="ml-1 h-3 w-3" />;
+  };
+
+  // Sortable header component
+  const SortableHeader = ({ column, children, className = '' }: { column: SortableColumn; children: React.ReactNode; className?: string }) => (
+    <TableHead
+      className={`cursor-pointer hover:bg-muted/50 select-none ${className}`}
+      onClick={() => handleSort(column)}
+    >
+      <div className="flex items-center">
+        {children}
+        {renderSortIcon(column)}
+      </div>
+    </TableHead>
+  );
 
   // Export to CSV
   const handleExportCSV = useCallback(() => {
@@ -278,13 +341,13 @@ export function KolExplorerTab({ diseaseAreaId }: Props) {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[50px]">#</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Specialty</TableHead>
+                <SortableHeader column="name">Name</SortableHeader>
+                <SortableHeader column="specialty">Specialty</SortableHeader>
                 <TableHead>Location</TableHead>
                 <TableHead>Influencer Type</TableHead>
-                <TableHead className="text-right">Total Score</TableHead>
-                <TableHead className="text-right">Survey</TableHead>
-                <TableHead className="text-right">Publications</TableHead>
+                <SortableHeader column="compositeScore" className="text-right">Total Score</SortableHeader>
+                <SortableHeader column="scoreSurvey" className="text-right">Survey</SortableHeader>
+                <SortableHeader column="scorePublications" className="text-right">Publications</SortableHeader>
               </TableRow>
             </TableHeader>
             <TableBody>

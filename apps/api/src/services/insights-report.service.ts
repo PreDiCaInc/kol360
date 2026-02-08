@@ -206,13 +206,42 @@ export class InsightsReportService {
     }
 
     // Determine sort field
-    const orderBy: Prisma.HcpDiseaseAreaScoreOrderByWithRelationInput = {};
-    if (sortBy && sortBy in NOMINATION_TYPE_FIELDS) {
+    // Valid score fields on HcpDiseaseAreaScore
+    const VALID_SCORE_FIELDS = [
+      'compositeScore',
+      'scorePublications',
+      'scoreTradePubs',
+      'scoreOrgLeadership',
+      'scoreOrgAwards',
+      'scoreClinicalTrials',
+      'scoreConference',
+      'scoreSocialMedia',
+      'scoreMediaPodcasts',
+      'scoreSurvey',
+    ];
+
+    let orderBy: Prisma.HcpDiseaseAreaScoreOrderByWithRelationInput;
+
+    if (sortBy === 'name') {
+      // Sort by HCP lastName then firstName
+      orderBy = {
+        hcp: {
+          lastName: sortOrder,
+        },
+      };
+    } else if (sortBy === 'specialty') {
+      // Sort by HCP specialty
+      orderBy = {
+        hcp: {
+          specialty: sortOrder,
+        },
+      };
+    } else if (sortBy && VALID_SCORE_FIELDS.includes(sortBy)) {
       // Sort by score field
-      orderBy[sortBy as keyof typeof orderBy] = sortOrder;
+      orderBy = { [sortBy]: sortOrder };
     } else {
       // Default sort by composite score
-      orderBy.compositeScore = sortOrder;
+      orderBy = { compositeScore: sortOrder };
     }
 
     // Execute queries
