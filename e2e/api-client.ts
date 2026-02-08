@@ -233,9 +233,11 @@ export class ApiClient {
 
   // ==================== HCPs ====================
 
-  async listHcps(params?: { query?: string; specialty?: string; state?: string; page?: number; limit?: number }) {
+  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; page?: number; limit?: number }) {
     const queryParams = new URLSearchParams();
-    if (params?.query) queryParams.set('query', params.query);
+    // Support both 'query' and 'search' as aliases for the search parameter
+    const searchTerm = params?.query || params?.search;
+    if (searchTerm) queryParams.set('query', searchTerm);
     if (params?.specialty) queryParams.set('specialty', params.specialty);
     if (params?.state) queryParams.set('state', params.state);
     if (params?.page) queryParams.set('page', params.page.toString());
