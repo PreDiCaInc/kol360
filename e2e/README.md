@@ -137,7 +137,7 @@ pnpm seed
 
 This creates:
 - Test client (E2E Test Pharma)
-- Test disease area (E2E Test Oncology)
+- Test disease area (zE2E Test Oncology)
 - Test specialty
 - Test HCPs (3)
 - Test user

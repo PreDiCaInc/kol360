@@ -11,10 +11,11 @@ export const TEST_IDS = {
   CLIENT_NAME: 'E2E Test Pharma',
 
   // Test Disease Area / Therapeutic Area - CUID format required
+  // Named with 'z' prefix to sort last in disease area lists
   DISEASE_AREA_ID: 'cme2e0test0disease0001',
-  DISEASE_AREA_NAME: 'E2E Test Oncology',
+  DISEASE_AREA_NAME: 'zE2E Test Oncology',
   DISEASE_AREA_CODE: 'E2E_ONCOLOGY',
-  THERAPEUTIC_AREA: 'E2E Test Therapeutic Area',
+  THERAPEUTIC_AREA: 'zTest',
 
   // Test Specialty - CUID format required
   SPECIALTY_ID: 'cme2e0test0special0001',
