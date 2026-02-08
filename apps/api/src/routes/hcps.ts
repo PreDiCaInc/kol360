@@ -3,6 +3,7 @@ import { createHcpSchema, updateHcpSchema } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { HcpService } from '../services/hcp.service';
 import { scoreCalculationService } from '../services/score-calculation.service';
+import { importProgressStore } from '../services/import-progress.service';
 import { createAuditLog } from '../lib/audit';
 import multipart from '@fastify/multipart';
 
@@ -107,8 +108,22 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     return hcp;
   });
 
+  // Get import progress by ID
+  fastify.get<{ Params: { importId: string } }>('/import/progress/:importId', async (request, reply) => {
+    const progress = importProgressStore.get(request.params.importId);
+    if (!progress) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'Import not found or already expired',
+        statusCode: 404,
+      });
+    }
+    return progress;
+  });
+
   // Bulk import HCPs from Excel or CSV
   fastify.post('/import', async (request, reply) => {
+    const { importId } = request.query as { importId?: string };
     const file = await request.file();
     if (!file) {
       return reply.status(400).send({
@@ -128,7 +143,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const buffer = await file.toBuffer();
-    const result = await hcpService.importFromFile(buffer, request.user!.sub, file.filename);
+    const result = await hcpService.importFromFile(buffer, request.user!.sub, file.filename, importId);
 
     // Audit log
     await createAuditLog(request.user!.sub, {
@@ -331,7 +346,17 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // Import segment scores from Excel or CSV
+  // diseaseAreaId is required - scores are tied to a specific disease area
   fastify.post('/import-segment-scores', async (request, reply) => {
+    const { diseaseAreaId } = request.query as { diseaseAreaId?: string };
+    if (!diseaseAreaId) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'diseaseAreaId query parameter is required',
+        statusCode: 400,
+      });
+    }
+
     const file = await request.file();
     if (!file) {
       return reply.status(400).send({
@@ -350,9 +375,9 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    const { importId } = request.query as { diseaseAreaId?: string; importId?: string };
     const buffer = await file.toBuffer();
-    const { diseaseAreaId } = request.query as { diseaseAreaId?: string };
-    const result = await hcpService.importSegmentScores(buffer, diseaseAreaId, file.filename);
+    const result = await hcpService.importSegmentScores(buffer, diseaseAreaId, file.filename, importId);
 
     // Audit log
     await createAuditLog(request.user!.sub, {

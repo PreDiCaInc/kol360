@@ -24,3 +24,4 @@ export * from './survey-taking';
 export * from './response';
 export * from './nomination';
 export * from './dashboard';
+export * from './insights-report';

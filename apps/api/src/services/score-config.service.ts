@@ -59,7 +59,7 @@ export class ScoreConfigService {
     weightClinicalTrials: unknown;
     weightTradePubs: unknown;
     weightOrgLeadership: unknown;
-    weightOrgAwareness: unknown;
+    weightOrgAwards: unknown;
     weightConference: unknown;
     weightSocialMedia: unknown;
     weightMediaPodcasts: unknown;
@@ -74,7 +74,7 @@ export class ScoreConfigService {
       weightClinicalTrials: Number(config.weightClinicalTrials),
       weightTradePubs: Number(config.weightTradePubs),
       weightOrgLeadership: Number(config.weightOrgLeadership),
-      weightOrgAwareness: Number(config.weightOrgAwareness),
+      weightOrgAwards: Number(config.weightOrgAwards),
       weightConference: Number(config.weightConference),
       weightSocialMedia: Number(config.weightSocialMedia),
       weightMediaPodcasts: Number(config.weightMediaPodcasts),

@@ -30,7 +30,7 @@ interface HcpDiseaseAreaScore {
   scoreClinicalTrials?: number | null;
   scoreTradePubs?: number | null;
   scoreOrgLeadership?: number | null;
-  scoreOrgAwareness?: number | null;
+  scoreOrgAwards?: number | null;
   scoreConference?: number | null;
   scoreSocialMedia?: number | null;
   scoreMediaPodcasts?: number | null;

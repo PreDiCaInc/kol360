@@ -28,5 +28,8 @@
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
   },
-  "packageManager": "pnpm@9.0.0"
+  "packageManager": "pnpm@9.0.0",
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
 }

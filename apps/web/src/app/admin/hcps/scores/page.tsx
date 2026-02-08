@@ -33,7 +33,7 @@ const OVERVIEW_SCORE_COLUMNS = [
   { key: 'scoreClinicalTrials', label: 'Clinical Trials' },
   { key: 'scoreTradePubs', label: 'Trade Pubs' },
   { key: 'scoreOrgLeadership', label: 'Org Leadership' },
-  { key: 'scoreOrgAwareness', label: 'Org Awareness' },
+  { key: 'scoreOrgAwards', label: 'Org Awards' },
   { key: 'scoreConference', label: 'Conference' },
   { key: 'scoreSocialMedia', label: 'Social Media' },
   { key: 'scoreMediaPodcasts', label: 'Media/Podcasts' },
@@ -75,7 +75,7 @@ interface DiseaseAreaScore {
   scoreClinicalTrials?: number | null;
   scoreTradePubs?: number | null;
   scoreOrgLeadership?: number | null;
-  scoreOrgAwareness?: number | null;
+  scoreOrgAwards?: number | null;
   scoreConference?: number | null;
   scoreSocialMedia?: number | null;
   scoreMediaPodcasts?: number | null;

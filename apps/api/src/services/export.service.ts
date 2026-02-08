@@ -249,7 +249,7 @@ export class ExportService {
         toNum(daScore?.scoreClinicalTrials),
         toNum(daScore?.scoreTradePubs),
         toNum(daScore?.scoreOrgLeadership),
-        toNum(daScore?.scoreOrgAwareness),
+        toNum(daScore?.scoreOrgAwards),
         toNum(daScore?.scoreConference),
         toNum(daScore?.scoreSocialMedia),
         toNum(daScore?.scoreMediaPodcasts),

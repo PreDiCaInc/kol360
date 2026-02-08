@@ -250,7 +250,7 @@ export class ScoreCalculationService {
         scoreClinicalTrials?: unknown;
         scoreTradePubs?: unknown;
         scoreOrgLeadership?: unknown;
-        scoreOrgAwareness?: unknown;
+        scoreOrgAwards?: unknown;
         scoreConference?: unknown;
         scoreSocialMedia?: unknown;
         scoreMediaPodcasts?: unknown;
@@ -267,7 +267,7 @@ export class ScoreCalculationService {
         (toNum(daScore?.scoreClinicalTrials) * toNum(weights.weightClinicalTrials) / 100) +
         (toNum(daScore?.scoreTradePubs) * toNum(weights.weightTradePubs) / 100) +
         (toNum(daScore?.scoreOrgLeadership) * toNum(weights.weightOrgLeadership) / 100) +
-        (toNum(daScore?.scoreOrgAwareness) * toNum(weights.weightOrgAwareness) / 100) +
+        (toNum(daScore?.scoreOrgAwards) * toNum(weights.weightOrgAwards) / 100) +
         (toNum(daScore?.scoreConference) * toNum(weights.weightConference) / 100) +
         (toNum(daScore?.scoreSocialMedia) * toNum(weights.weightSocialMedia) / 100) +
         (toNum(daScore?.scoreMediaPodcasts) * toNum(weights.weightMediaPodcasts) / 100) +
@@ -309,7 +309,7 @@ export class ScoreCalculationService {
       weightClinicalTrials: 15,
       weightTradePubs: 10,
       weightOrgLeadership: 10,
-      weightOrgAwareness: 10,
+      weightOrgAwards: 10,
       weightConference: 10,
       weightSocialMedia: 5,
       weightMediaPodcasts: 5,
@@ -371,7 +371,7 @@ export class ScoreCalculationService {
           (toNum(currentDaScore.scoreClinicalTrials) * toNum(weights.weightClinicalTrials) / 100) +
           (toNum(currentDaScore.scoreTradePubs) * toNum(weights.weightTradePubs) / 100) +
           (toNum(currentDaScore.scoreOrgLeadership) * toNum(weights.weightOrgLeadership) / 100) +
-          (toNum(currentDaScore.scoreOrgAwareness) * toNum(weights.weightOrgAwareness) / 100) +
+          (toNum(currentDaScore.scoreOrgAwards) * toNum(weights.weightOrgAwards) / 100) +
           (toNum(currentDaScore.scoreConference) * toNum(weights.weightConference) / 100) +
           (toNum(currentDaScore.scoreSocialMedia) * toNum(weights.weightSocialMedia) / 100) +
           (toNum(currentDaScore.scoreMediaPodcasts) * toNum(weights.weightMediaPodcasts) / 100) +
@@ -386,7 +386,7 @@ export class ScoreCalculationService {
             scoreClinicalTrials: currentDaScore.scoreClinicalTrials,
             scoreTradePubs: currentDaScore.scoreTradePubs,
             scoreOrgLeadership: currentDaScore.scoreOrgLeadership,
-            scoreOrgAwareness: currentDaScore.scoreOrgAwareness,
+            scoreOrgAwards: currentDaScore.scoreOrgAwards,
             scoreConference: currentDaScore.scoreConference,
             scoreSocialMedia: currentDaScore.scoreSocialMedia,
             scoreMediaPodcasts: currentDaScore.scoreMediaPodcasts,
@@ -444,7 +444,7 @@ export class ScoreCalculationService {
       weightClinicalTrials: 15,
       weightTradePubs: 10,
       weightOrgLeadership: 10,
-      weightOrgAwareness: 10,
+      weightOrgAwards: 10,
       weightConference: 10,
       weightSocialMedia: 5,
       weightMediaPodcasts: 5,
@@ -468,7 +468,7 @@ export class ScoreCalculationService {
         (toNum(daScore.scoreClinicalTrials) * toNum(weights.weightClinicalTrials) / 100) +
         (toNum(daScore.scoreTradePubs) * toNum(weights.weightTradePubs) / 100) +
         (toNum(daScore.scoreOrgLeadership) * toNum(weights.weightOrgLeadership) / 100) +
-        (toNum(daScore.scoreOrgAwareness) * toNum(weights.weightOrgAwareness) / 100) +
+        (toNum(daScore.scoreOrgAwards) * toNum(weights.weightOrgAwards) / 100) +
         (toNum(daScore.scoreConference) * toNum(weights.weightConference) / 100) +
         (toNum(daScore.scoreSocialMedia) * toNum(weights.weightSocialMedia) / 100) +
         (toNum(daScore.scoreMediaPodcasts) * toNum(weights.weightMediaPodcasts) / 100) +

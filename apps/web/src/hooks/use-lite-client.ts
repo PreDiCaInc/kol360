@@ -18,7 +18,7 @@ interface HcpScores {
   clinicalTrials: number | null;
   tradePubs: number | null;
   orgLeadership: number | null;
-  orgAwareness: number | null;
+  orgAwards: number | null;
   conference: number | null;
   socialMedia: number | null;
   mediaPodcasts: number | null;
@@ -76,7 +76,7 @@ interface DiseaseAreaStats {
     clinicalTrials: number;
     tradePubs: number;
     orgLeadership: number;
-    orgAwareness: number;
+    orgAwards: number;
     conference: number;
     socialMedia: number;
     mediaPodcasts: number;

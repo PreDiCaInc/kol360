@@ -83,3 +83,7 @@ PLAN-*.md
 
 # Claude Code instructions (contains secrets)
 CLAUDE.md
+
+# Spec/reference documents (store in Google Drive/Confluence)
+func-spec/*.pdf
+func-spec/*.xlsx
