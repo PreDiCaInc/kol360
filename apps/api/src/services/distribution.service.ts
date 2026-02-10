@@ -3,7 +3,7 @@ import { HcpService } from './hcp.service';
 
 const hcpServiceInstance = new HcpService();
 import { emailService } from './email.service';
-import { auditService, AuditContext } from './audit.service';
+import { createAuditLog } from '../lib/audit';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
 
@@ -394,15 +394,13 @@ export class DistributionService {
           );
 
           if (hasChanges) {
-            const auditContext: AuditContext = { userId, actorType: 'USER' };
-            await auditService.logHcpAccess(
-              auditContext,
-              'updated',
-              hcp.id,
+            await createAuditLog(userId, {
+              action: 'hcp.updated',
+              entityType: 'Hcp',
+              entityId: hcp.id,
               oldValues,
-              newValues,
-              { source: 'campaign-import', campaignId }
-            );
+              newValues: { ...newValues, _source: 'campaign-import', _campaignId: campaignId },
+            });
           }
 
           result.hcpsExisting++;
