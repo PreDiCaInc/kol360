@@ -87,3 +87,7 @@ CLAUDE.md
 # Spec/reference documents (store in Google Drive/Confluence)
 func-spec/*.pdf
 func-spec/*.xlsx
+
+# Debug and review files
+e2e/debug-*.ts
+func-spec/ui-review/
