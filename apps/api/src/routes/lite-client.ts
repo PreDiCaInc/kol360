@@ -143,12 +143,19 @@ export const liteClientRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Export HCP scores as CSV
+  // Export HCP scores as CSV (disabled for Lite clients - no exports allowed)
   fastify.get<{
     Params: { diseaseAreaId: string };
   }>('/api/v1/lite/disease-areas/:diseaseAreaId/export', async (request, reply) => {
     const user = request.user;
     const { diseaseAreaId } = request.params;
+
+    // Lite clients cannot export - only PLATFORM_ADMIN can use this endpoint
+    if (user?.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Export functionality is not available for your account type',
+      });
+    }
 
     if (!user?.tenantId) {
       return reply.status(403).send({ error: 'No tenant associated with user' });

@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { UserRole } from '@kol360/shared';
+import { PrismaClient } from '@prisma/client';
 
 export function requireAuth() {
   return async (request: FastifyRequest, reply: FastifyReply) => {
@@ -61,4 +62,84 @@ export function requireTenantAccess(getTenantId: (request: FastifyRequest) => st
       });
     }
   };
+}
+
+// ============================================================================
+// Tenant Access Helper Functions
+// ============================================================================
+
+/**
+ * Get disease area IDs that a client has campaigns in
+ */
+export async function getClientDiseaseAreaIds(
+  prisma: PrismaClient,
+  clientId: string
+): Promise<string[]> {
+  const campaigns = await prisma.campaign.findMany({
+    where: { clientId },
+    select: { diseaseAreaId: true },
+    distinct: ['diseaseAreaId'],
+  });
+  return campaigns.map((c) => c.diseaseAreaId);
+}
+
+/**
+ * Get HCP IDs assigned to a client's campaigns
+ */
+export async function getClientHcpIds(
+  prisma: PrismaClient,
+  clientId: string
+): Promise<string[]> {
+  const campaignHcps = await prisma.campaignHcp.findMany({
+    where: {
+      campaign: { clientId },
+    },
+    select: { hcpId: true },
+    distinct: ['hcpId'],
+  });
+  return campaignHcps.map((ch) => ch.hcpId);
+}
+
+/**
+ * Check if a user has access to a specific disease area (via campaigns)
+ */
+export async function hasDiseaseAreaAccess(
+  prisma: PrismaClient,
+  diseaseAreaId: string,
+  user: { role: string; tenantId?: string }
+): Promise<boolean> {
+  // Platform admins can access all disease areas
+  if (user.role === 'PLATFORM_ADMIN') return true;
+  if (!user.tenantId) return false;
+
+  const count = await prisma.campaign.count({
+    where: {
+      clientId: user.tenantId,
+      diseaseAreaId,
+    },
+  });
+
+  return count > 0;
+}
+
+/**
+ * Check if a user has access to a specific HCP (via campaign assignments)
+ */
+export async function hasHcpAccess(
+  prisma: PrismaClient,
+  hcpId: string,
+  user: { role: string; tenantId?: string }
+): Promise<boolean> {
+  // Platform admins can access all HCPs
+  if (user.role === 'PLATFORM_ADMIN') return true;
+  if (!user.tenantId) return false;
+
+  const count = await prisma.campaignHcp.count({
+    where: {
+      hcpId,
+      campaign: { clientId: user.tenantId },
+    },
+  });
+
+  return count > 0;
 }

@@ -96,12 +96,21 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     return stats;
   });
 
-  // Bulk auto-match nominations
+  // Bulk auto-match nominations (PLATFORM_ADMIN only)
   fastify.post<{
     Params: z.infer<typeof campaignIdParamSchema>;
   }>('/:id/nominations/bulk-match', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    // Only platform admins can modify nominations
+    if (request.user.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform administrators can modify nominations',
+        statusCode: 403,
+      });
     }
 
     const { id: campaignId } = campaignIdParamSchema.parse(request.params);
@@ -147,13 +156,22 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     return suggestions;
   });
 
-  // Match nomination to existing HCP
+  // Match nomination to existing HCP (PLATFORM_ADMIN only)
   fastify.post<{
     Params: z.infer<typeof nominationIdParamSchema>;
     Body: z.infer<typeof matchNominationSchema>;
   }>('/:id/nominations/:nid/match', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    // Only platform admins can modify nominations
+    if (request.user.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform administrators can modify nominations',
+        statusCode: 403,
+      });
     }
 
     const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
@@ -189,13 +207,22 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Create new HCP and match nomination
+  // Create new HCP and match nomination (PLATFORM_ADMIN only)
   fastify.post<{
     Params: z.infer<typeof nominationIdParamSchema>;
     Body: z.infer<typeof createHcpFromNominationSchema>;
   }>('/:id/nominations/:nid/create-hcp', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    // Only platform admins can modify nominations
+    if (request.user.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform administrators can modify nominations',
+        statusCode: 403,
+      });
     }
 
     const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
@@ -228,13 +255,22 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Exclude nomination
+  // Exclude nomination (PLATFORM_ADMIN only)
   fastify.post<{
     Params: z.infer<typeof nominationIdParamSchema>;
     Body: z.infer<typeof excludeNominationSchema>;
   }>('/:id/nominations/:nid/exclude', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    // Only platform admins can modify nominations
+    if (request.user.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform administrators can modify nominations',
+        statusCode: 403,
+      });
     }
 
     const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
@@ -254,13 +290,22 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Update raw name (fix typos)
+  // Update raw name (fix typos) (PLATFORM_ADMIN only)
   fastify.patch<{
     Params: z.infer<typeof nominationIdParamSchema>;
     Body: z.infer<typeof updateNominationRawNameSchema>;
   }>('/:id/nominations/:nid', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    // Only platform admins can modify nominations
+    if (request.user.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform administrators can modify nominations',
+        statusCode: 403,
+      });
     }
 
     const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
