@@ -11,10 +11,40 @@ import { TEST_IDS, generateTestCampaignName } from './fixtures';
 export class ApiClient {
   private baseUrl: string;
   private authToken: string;
+  private impersonateClientId?: string;
 
   constructor(authToken?: string) {
     this.baseUrl = config.apiUrl;
     this.authToken = authToken || config.authToken;
+  }
+
+  /**
+   * Start impersonating a client (PLATFORM_ADMIN only)
+   * All subsequent requests will be scoped to this client's data
+   */
+  setImpersonation(clientId: string): void {
+    this.impersonateClientId = clientId;
+  }
+
+  /**
+   * Stop impersonating and return to PLATFORM_ADMIN access
+   */
+  clearImpersonation(): void {
+    this.impersonateClientId = undefined;
+  }
+
+  /**
+   * Check if currently impersonating a client
+   */
+  isImpersonating(): boolean {
+    return !!this.impersonateClientId;
+  }
+
+  /**
+   * Get the current impersonated client ID
+   */
+  getImpersonatedClientId(): string | undefined {
+    return this.impersonateClientId;
   }
 
   private async request<T>(
@@ -33,6 +63,11 @@ export class ApiClient {
 
     if (this.authToken) {
       headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+
+    // Add impersonation header if set
+    if (this.impersonateClientId) {
+      headers['X-Impersonate-Client'] = this.impersonateClientId;
     }
 
     const controller = new AbortController();

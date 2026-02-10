@@ -1,6 +1,7 @@
 import fp from 'fastify-plugin';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { auditService } from '../services/audit.service';
 
 const verifier = CognitoJwtVerifier.create({
   userPoolId: process.env.COGNITO_USER_POOL_ID!,
@@ -13,6 +14,12 @@ export interface AuthUser {
   email: string;
   role: string;
   tenantId?: string;
+  // Impersonation context
+  isImpersonating?: boolean;
+  originalRole?: string;
+  originalEmail?: string;
+  impersonatedClientId?: string;
+  impersonatedClientName?: string;
 }
 
 declare module 'fastify' {
@@ -79,6 +86,58 @@ export const authPlugin = fp(async (fastify) => {
         role,
         tenantId: payload['custom:tenant_id'] as string | undefined,
       };
+
+      // Check for impersonation header (PLATFORM_ADMIN only)
+      const impersonateClientId = request.headers['x-impersonate-client'] as string | undefined;
+
+      if (impersonateClientId && request.user.role === 'PLATFORM_ADMIN') {
+        try {
+          // Validate client exists
+          const client = await fastify.prisma.client.findUnique({
+            where: { id: impersonateClientId },
+            select: { id: true, name: true },
+          });
+
+          if (client) {
+            // Store original context and apply impersonation
+            request.user = {
+              ...request.user,
+              isImpersonating: true,
+              originalRole: 'PLATFORM_ADMIN',
+              originalEmail: request.user.email,
+              impersonatedClientId: client.id,
+              impersonatedClientName: client.name,
+              // Apply impersonation - downgrade to CLIENT_ADMIN with tenant scope
+              role: 'CLIENT_ADMIN',
+              tenantId: client.id,
+            };
+
+            // Log impersonation start
+            await auditService.log(
+              { userId: payload.sub },
+              {
+                action: 'admin.impersonation_started',
+                entityType: 'Client',
+                entityId: client.id,
+                metadata: {
+                  clientName: client.name,
+                  originalEmail: request.user.originalEmail,
+                },
+              }
+            );
+
+            // Add response headers to indicate impersonation status
+            reply.header('X-Impersonation-Active', 'true');
+            reply.header('X-Impersonation-Client', client.id);
+            reply.header('X-Impersonation-Client-Name', client.name);
+          } else {
+            fastify.log.warn({ clientId: impersonateClientId }, 'Impersonation failed: client not found');
+          }
+        } catch (impersonationErr) {
+          fastify.log.error({ err: impersonationErr }, 'Impersonation lookup failed');
+          // Continue without impersonation - don't block the request
+        }
+      }
     } catch (err) {
       fastify.log.warn({ err }, 'Token verification failed');
       return reply.status(401).send({

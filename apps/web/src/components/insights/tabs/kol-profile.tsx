@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,8 @@ import {
 } from '@/components/ui/table';
 import { useKolProfile, useKolExplorer } from '@/hooks/use-insights-report';
 import { KolCombobox } from '../kol-combobox';
-import type { NominationType } from '@kol360/shared';
+import { UsStateMap } from '../charts/us-state-map';
+import type { NominationType, InsightsFilterInput } from '@kol360/shared';
 import {
   BarChart,
   Bar,
@@ -31,6 +32,8 @@ import {
 
 interface Props {
   diseaseAreaId: string;
+  initialKolId?: string | null;
+  globalFilters?: Partial<InsightsFilterInput>;
 }
 
 const SCORE_COLORS = [
@@ -58,6 +61,7 @@ const NOMINATION_COLORS: Record<string, string> = {
   NATIONAL_LEADER: '#F59E0B',
   RISING_STAR: '#EC4899',
   SOCIAL_LEADER: '#06B6D4',
+  REGIONAL_LEADER: '#64748B',
 };
 
 const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
@@ -67,6 +71,7 @@ const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
   NATIONAL_LEADER: 'National',
   RISING_STAR: 'Rising Star',
   SOCIAL_LEADER: 'Social',
+  REGIONAL_LEADER: 'Regional',
 };
 
 const PIE_COLORS = [
@@ -82,10 +87,18 @@ const PIE_COLORS = [
   '#A4DE6C',
 ];
 
-export function KolProfileTab({ diseaseAreaId }: Props) {
-  const [selectedKolId, setSelectedKolId] = useState<string | null>(null);
+export function KolProfileTab({ diseaseAreaId, initialKolId, globalFilters }: Props) {
+  const [selectedKolId, setSelectedKolId] = useState<string | null>(initialKolId ?? null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAllNominators, setShowAllNominators] = useState(false);
+
+  // Update selectedKolId when initialKolId changes (cross-tab navigation)
+  useEffect(() => {
+    if (initialKolId) {
+      setSelectedKolId(initialKolId);
+      setShowAllNominators(false);
+    }
+  }, [initialKolId]);
 
   // Get list of KOLs for selector
   const { data: kolList, isLoading: isLoadingKols } = useKolExplorer(diseaseAreaId, {
@@ -269,6 +282,31 @@ export function KolProfileTab({ diseaseAreaId }: Props) {
               </CardContent>
             </Card>
           </div>
+
+          {/* KOL Nominations Map - Shows where nominators are located */}
+          {profile.nominatorDemographics && profile.nominatorDemographics.byState.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Where Nominations Come From</CardTitle>
+                <CardDescription>
+                  Geographic distribution of HCPs who nominated this KOL
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <UsStateMap
+                  data={profile.nominatorDemographics.byState
+                    .filter((s) => s.name !== 'Unknown')
+                    .map((s) => ({
+                      name: s.name,
+                      count: s.count,
+                      percentage: (s.count / profile.nominators.length) * 100,
+                    }))}
+                  colorScale="purple"
+                  title="Nominator Locations"
+                />
+              </CardContent>
+            </Card>
+          )}
 
           {/* Nominator Demographics Charts */}
           {profile.nominatorDemographics && (

@@ -174,6 +174,10 @@ export const LogActions = {
   // Configuration
   CONFIG_WEIGHTS_CHANGED: 'config.weights_changed',
   CONFIG_SURVEY_PUBLISHED: 'config.survey_published',
+
+  // Admin Impersonation
+  ADMIN_IMPERSONATION_STARTED: 'admin.impersonation_started',
+  ADMIN_IMPERSONATION_ENDED: 'admin.impersonation_ended',
 } as const;
 
 export type LogAction = (typeof LogActions)[keyof typeof LogActions];

@@ -3,6 +3,7 @@ import { HcpService } from './hcp.service';
 
 const hcpServiceInstance = new HcpService();
 import { emailService } from './email.service';
+import { createAuditLog } from '../lib/audit';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
 
@@ -351,6 +352,17 @@ export class DistributionService {
         let hcp = await prisma.hcp.findUnique({ where: { npi } });
 
         if (hcp) {
+          // Capture old values for audit logging
+          const oldValues = {
+            firstName: hcp.firstName,
+            lastName: hcp.lastName,
+            email: hcp.email,
+            specialty: hcp.specialty,
+            subSpecialty: hcp.subSpecialty,
+            city: hcp.city,
+            state: hcp.state,
+          };
+
           // Update existing HCP with any new data
           hcp = await prisma.hcp.update({
             where: { npi },
@@ -365,6 +377,32 @@ export class DistributionService {
               isSurveyTaker: true,
             },
           });
+
+          // Audit log if any field actually changed
+          const newValues = {
+            firstName: hcp.firstName,
+            lastName: hcp.lastName,
+            email: hcp.email,
+            specialty: hcp.specialty,
+            subSpecialty: hcp.subSpecialty,
+            city: hcp.city,
+            state: hcp.state,
+          };
+
+          const hasChanges = Object.keys(oldValues).some(
+            (key) => oldValues[key as keyof typeof oldValues] !== newValues[key as keyof typeof newValues]
+          );
+
+          if (hasChanges) {
+            await createAuditLog(userId, {
+              action: 'hcp.updated',
+              entityType: 'Hcp',
+              entityId: hcp.id,
+              oldValues,
+              newValues: { ...newValues, _source: 'campaign-import', _campaignId: campaignId },
+            });
+          }
+
           result.hcpsExisting++;
         } else {
           // Create new HCP atomically (beId generation + creation in single transaction)

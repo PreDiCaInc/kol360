@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +26,11 @@ export function ScoreRangeFilter({
   // Local state for smooth interaction
   const [localValue, setLocalValue] = useState(value);
 
+  // Sync local value when prop value changes (e.g., reset filters)
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
   const handleValueChange = useCallback((newValue: number[]) => {
     setLocalValue(newValue as [number, number]);
   }, []);
@@ -46,18 +51,29 @@ export function ScoreRangeFilter({
         <label className={cn('text-xs', isActive ? 'font-medium text-primary' : 'text-muted-foreground')}>
           {label}
         </label>
-        <span className={cn('text-xs font-mono', isActive ? 'text-primary' : 'text-muted-foreground')}>
-          {localValue[0]} - {localValue[1]}
-        </span>
+        {/* Dual-value display: Min and Max clearly labeled */}
+        <div className={cn('flex items-center gap-1 text-xs font-mono', isActive ? 'text-primary' : 'text-muted-foreground')}>
+          <span className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{localValue[0]}</span>
+          <span className="text-muted-foreground">to</span>
+          <span className="bg-muted px-1.5 py-0.5 rounded text-[10px]">{localValue[1]}</span>
+        </div>
       </div>
-      <Slider
-        value={localValue}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={handleValueChange}
-        onValueCommit={handleValueCommit}
-      />
+      {/* Dual-thumb slider - drag left thumb for min, right thumb for max */}
+      <div className="relative">
+        <Slider
+          value={localValue}
+          min={min}
+          max={max}
+          step={step}
+          onValueChange={handleValueChange}
+          onValueCommit={handleValueCommit}
+        />
+        {/* Min/Max labels below the slider */}
+        <div className="flex justify-between mt-1">
+          <span className="text-[9px] text-muted-foreground">{min}</span>
+          <span className="text-[9px] text-muted-foreground">{max}</span>
+        </div>
+      </div>
     </div>
   );
 }

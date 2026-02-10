@@ -29,7 +29,29 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Platform admins can access all disease areas
-    // TODO: Add tenant-specific disease area access if needed
+    if (user.role === 'PLATFORM_ADMIN') {
+      return true;
+    }
+
+    // CLIENT_ADMIN: Check if they have campaigns in this disease area
+    if (user.tenantId) {
+      const campaignCount = await fastify.prisma.campaign.count({
+        where: {
+          clientId: user.tenantId,
+          diseaseAreaId: diseaseAreaId,
+        },
+      });
+
+      if (campaignCount === 0) {
+        reply.status(403).send({
+          error: 'Forbidden',
+          message: 'No access to this disease area',
+          statusCode: 403,
+        });
+        return false;
+      }
+    }
+
     return true;
   }
 

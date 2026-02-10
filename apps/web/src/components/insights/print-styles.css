@@ -1,0 +1,202 @@
+/* Print Styles for KOL 360 Insights Report */
+
+@media print {
+  /* Hide non-essential elements */
+  .print\\:hidden,
+  nav,
+  header,
+  footer,
+  aside,
+  .sidebar,
+  .navigation,
+  button[data-state],
+  [data-radix-popper-content-wrapper],
+  .pagination,
+  .filters,
+  [role="tablist"] {
+    display: none !important;
+  }
+
+  /* Reset backgrounds and colors for printing */
+  body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Page setup */
+  @page {
+    size: landscape;
+    margin: 0.5in;
+  }
+
+  /* Ensure content takes full width */
+  main,
+  .main-content,
+  [class*="container"] {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Print header - Add report title */
+  .print-header {
+    display: block !important;
+    text-align: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #333;
+  }
+
+  .print-header h1 {
+    font-size: 24px;
+    margin: 0;
+    color: #333;
+  }
+
+  .print-header .print-date {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+  }
+
+  /* Card styling for print */
+  .card,
+  [class*="Card"] {
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    margin-bottom: 15px;
+    page-break-inside: avoid;
+  }
+
+  /* Table styling for print */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    font-size: 10px !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #ccc !important;
+    padding: 4px 8px !important;
+    text-align: left !important;
+  }
+
+  th {
+    background-color: #f5f5f5 !important;
+    font-weight: bold !important;
+  }
+
+  /* Ensure charts print with colors */
+  svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  .recharts-surface {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Map printing */
+  .us-state-map {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Page breaks */
+  .page-break-before {
+    page-break-before: always !important;
+  }
+
+  .page-break-after {
+    page-break-after: always !important;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid !important;
+  }
+
+  /* Badge styling for print */
+  .badge,
+  [class*="Badge"] {
+    border: 1px solid #999 !important;
+    background-color: #f5f5f5 !important;
+    color: #333 !important;
+    padding: 2px 6px !important;
+    font-size: 9px !important;
+  }
+
+  /* Ensure all text is readable */
+  * {
+    color: #333 !important;
+  }
+
+  /* Muted text slightly lighter */
+  .text-muted-foreground {
+    color: #666 !important;
+  }
+
+  /* Summary cards in a row */
+  .grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  .grid > * {
+    flex: 1 !important;
+    min-width: 150px !important;
+  }
+
+  /* Ensure scrollable areas show all content */
+  .overflow-auto,
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Hide scroll shadows */
+  .scroll-shadow::before,
+  .scroll-shadow::after {
+    display: none !important;
+  }
+
+  /* Links styling */
+  a {
+    text-decoration: none !important;
+    color: #333 !important;
+  }
+
+  /* Footer with page numbers */
+  @page {
+    @bottom-center {
+      content: counter(page) " of " counter(pages);
+      font-size: 10px;
+      color: #666;
+    }
+  }
+}
+
+/* Print-only elements (hidden on screen) */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .print-only {
+    display: block !important;
+  }
+}
+
+/* Screen-only elements (hidden when printing) */
+@media print {
+  .screen-only {
+    display: none !important;
+  }
+}

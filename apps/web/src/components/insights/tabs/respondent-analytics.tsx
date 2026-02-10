@@ -18,9 +18,12 @@ import {
   Line,
   Legend,
 } from 'recharts';
+import { UsStateMap } from '../charts/us-state-map';
+import type { InsightsFilterInput } from '@kol360/shared';
 
 interface Props {
   diseaseAreaId: string;
+  globalFilters?: Partial<InsightsFilterInput>;
 }
 
 const COLORS = [
@@ -41,7 +44,41 @@ const COLORS = [
 const filterUnknown = <T extends { name: string }>(items: T[]): T[] =>
   items.filter((d) => d.name !== 'Unknown');
 
-export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
+// Group specialties into Respondent Role categories (Ophthalmologist vs Optometrist)
+const groupByRespondentRole = (bySpecialty: { name: string; count: number; percentage: number }[]): { name: string; count: number; percentage: number }[] => {
+  const roles: Record<string, number> = {
+    'Ophthalmologist': 0,
+    'Optometrist': 0,
+    'Other': 0,
+  };
+
+  for (const spec of bySpecialty) {
+    const name = spec.name.toLowerCase();
+    if (name.includes('ophthalmolog')) {
+      roles['Ophthalmologist'] += spec.count;
+    } else if (name.includes('optometr')) {
+      roles['Optometrist'] += spec.count;
+    } else if (spec.name !== 'Unknown') {
+      roles['Other'] += spec.count;
+    }
+  }
+
+  const total = roles['Ophthalmologist'] + roles['Optometrist'] + roles['Other'];
+
+  return Object.entries(roles)
+    .filter(([_, count]) => count > 0)
+    .map(([name, count]) => ({
+      name,
+      count,
+      percentage: total > 0 ? (count / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+};
+
+export function RespondentAnalyticsTab({ diseaseAreaId, globalFilters = {} }: Props) {
+  // Note: globalFilters is accepted but not currently used in this tab
+  // as the respondent analytics API doesn't support filtering yet.
+  // This is here for future extension.
   const { data, isLoading, error } = useRespondentAnalytics(diseaseAreaId);
 
   if (isLoading) {
@@ -143,6 +180,22 @@ export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
         </Card>
       )}
 
+      {/* US State Map - Geographic Choropleth */}
+      {filterUnknown(data.byState).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Geographic Distribution</CardTitle>
+            <CardDescription>US map showing respondent concentration by state</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <UsStateMap
+              data={filterUnknown(data.byState)}
+              colorScale="blue"
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {/* Demographics Row 1 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* By Specialty */}
@@ -172,11 +225,11 @@ export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
           </CardContent>
         </Card>
 
-        {/* By State */}
+        {/* By State - Top 10 Bar Chart */}
         <Card>
           <CardHeader>
-            <CardTitle>Respondents by State</CardTitle>
-            <CardDescription>Geographic distribution of respondents</CardDescription>
+            <CardTitle>Top States</CardTitle>
+            <CardDescription>Top 10 states by respondent count</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-64">
@@ -201,7 +254,48 @@ export function RespondentAnalyticsTab({ diseaseAreaId }: Props) {
       </div>
 
       {/* Demographics Row 2 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* By Respondent Role */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Respondent Role</CardTitle>
+            <CardDescription>Ophthalmologist vs Optometrist breakdown</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              {(() => {
+                const roleData = groupByRespondentRole(data.bySpecialty);
+                return roleData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={roleData}
+                        dataKey="count"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        label={({ name, percent }) =>
+                          `${name} (${((percent || 0) * 100).toFixed(0)}%)`
+                        }
+                      >
+                        {roleData.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground">
+                    No role data available
+                  </div>
+                );
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* By Practice Setting */}
         <Card>
           <CardHeader>

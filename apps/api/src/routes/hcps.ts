@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { createHcpSchema, updateHcpSchema } from '@kol360/shared';
-import { requireClientAdmin } from '../middleware/rbac';
+import { requireClientAdmin, getClientHcpIds, hasHcpAccess } from '../middleware/rbac';
 import { HcpService } from '../services/hcp.service';
 import { scoreCalculationService } from '../services/score-calculation.service';
 import { importProgressStore } from '../services/import-progress.service';
@@ -32,10 +32,17 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       limit?: string;
     };
 
+    // CLIENT_ADMIN can only see HCPs assigned to their campaigns
+    let hcpIds: string[] | undefined;
+    if (request.user!.role !== 'PLATFORM_ADMIN' && request.user!.tenantId) {
+      hcpIds = await getClientHcpIds(fastify.prisma, request.user!.tenantId);
+    }
+
     return hcpService.search({
       query,
       specialty,
       state,
+      hcpIds,
       page: parseInt(page || '1', 10),
       limit: parseInt(limit || '50', 10),
     });
@@ -43,6 +50,15 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Get HCP by ID
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
+    // CLIENT_ADMIN can only access HCPs in their campaigns
+    if (!(await hasHcpAccess(fastify.prisma, request.params.id, request.user!))) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'No access to this HCP',
+        statusCode: 403,
+      });
+    }
+
     const hcp = await hcpService.getById(request.params.id);
     if (!hcp) {
       return reply.status(404).send({
@@ -83,6 +99,15 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Update HCP
   fastify.put<{ Params: { id: string } }>('/:id', async (request, reply) => {
+    // CLIENT_ADMIN can only update HCPs in their campaigns
+    if (!(await hasHcpAccess(fastify.prisma, request.params.id, request.user!))) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'No access to this HCP',
+        statusCode: 403,
+      });
+    }
+
     const data = updateHcpSchema.parse(request.body);
     const existing = await hcpService.getById(request.params.id);
 

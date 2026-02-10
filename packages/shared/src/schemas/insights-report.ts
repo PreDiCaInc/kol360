@@ -160,6 +160,7 @@ export const leaderRankingItemSchema = z.object({
   rank: z.number(),
   hcpId: z.string(),
   name: z.string(),
+  degree: z.string().nullable(),
   specialty: z.string().nullable(),
   city: z.string().nullable(),
   state: z.string().nullable(),

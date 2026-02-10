@@ -8,6 +8,7 @@ interface SearchParams {
   specialty?: string;
   state?: string;
   diseaseAreaId?: string;
+  hcpIds?: string[]; // Filter to specific HCP IDs (for tenant scoping)
   page: number;
   limit: number;
 }
@@ -68,9 +69,14 @@ export class HcpService {
   }
 
   async search(params: SearchParams) {
-    const { query, specialty, state, page, limit } = params;
+    const { query, specialty, state, hcpIds, page, limit } = params;
 
     const where: Record<string, unknown> = {};
+
+    // Tenant scoping: filter to specific HCP IDs if provided
+    if (hcpIds !== undefined) {
+      where.id = { in: hcpIds };
+    }
 
     if (query) {
       where.OR = [

@@ -229,7 +229,7 @@ model HcpCampaignScore {
   id                     String    @id @default(cuid())
   hcpId                  String
   campaignId             String
-  // 6 nomination type scores (matching database)
+  // 7 nomination type scores (matching database)
   scoreDiscussionLeaders Decimal?  @db.Decimal(5, 2)
   countDiscussionLeaders Int       @default(0)
   scoreReferralLeaders   Decimal?  @db.Decimal(5, 2)
@@ -242,6 +242,8 @@ model HcpCampaignScore {
   countRisingStar        Int       @default(0)
   scoreSocialLeader      Decimal?  @db.Decimal(5, 2)
   countSocialLeader      Int       @default(0)
+  scoreRegionalLeader    Decimal?  @db.Decimal(5, 2)
+  countRegionalLeader    Int       @default(0)
   // Consolidated score
   scoreSurvey            Decimal?  @db.Decimal(5, 2)
   nominationCount        Int       @default(0)
@@ -739,6 +741,7 @@ enum NominationType {
   NATIONAL_LEADER    // National KOL / thought leader
   RISING_STAR        // Emerging/up-and-coming KOL
   SOCIAL_LEADER      // Social media / digital influencer
+  REGIONAL_LEADER    // Regional influencer / local leader
 }
 
 enum ActorType {

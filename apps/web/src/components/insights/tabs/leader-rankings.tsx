@@ -17,11 +17,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronLeft, ChevronRight, LayoutGrid, List, Download } from 'lucide-react';
 import { useLeaderRankings, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import { useCsvExport } from '@/lib/csv-export';
-import { Check } from 'lucide-react';
-import type { NominationType, LeaderRankingQuery } from '@kol360/shared';
+import { useExcelExport } from '@/lib/excel-export';
+import { Check, FileSpreadsheet } from 'lucide-react';
+import type { NominationType, LeaderRankingQuery, InsightsFilterInput } from '@kol360/shared';
 
 interface Props {
   diseaseAreaId: string;
+  onKolSelect?: (kolId: string) => void;
+  globalFilters?: Partial<InsightsFilterInput>;
 }
 
 const NOMINATION_TYPES: { value: NominationType; label: string; color: string; bgColor: string }[] = [
@@ -31,6 +34,7 @@ const NOMINATION_TYPES: { value: NominationType; label: string; color: string; b
   { value: 'NATIONAL_LEADER', label: 'National Leaders', color: 'bg-yellow-500', bgColor: 'bg-yellow-100 dark:bg-yellow-950' },
   { value: 'RISING_STAR', label: 'Rising Stars', color: 'bg-pink-500', bgColor: 'bg-pink-100 dark:bg-pink-950' },
   { value: 'SOCIAL_LEADER', label: 'Social Leaders', color: 'bg-cyan-500', bgColor: 'bg-cyan-100 dark:bg-cyan-950' },
+  { value: 'REGIONAL_LEADER', label: 'Regional Leaders', color: 'bg-slate-500', bgColor: 'bg-slate-100 dark:bg-slate-950' },
 ];
 
 interface RankingTableProps {
@@ -41,7 +45,8 @@ interface RankingTableProps {
   bgColor: string;
   filters?: { states?: string; specialties?: string };
   compact?: boolean;
-  onExport?: (nominationType: string, data: { rank: number; name: string; specialty: string | null; state: string | null; count: number }[]) => void;
+  onExport?: (nominationType: string, data: { rank: number; name: string; degree: string | null; specialty: string | null; city: string | null; state: string | null; count: number }[]) => void;
+  onKolSelect?: (kolId: string) => void;
 }
 
 function RankingTable({
@@ -53,6 +58,7 @@ function RankingTable({
   filters = {},
   compact = false,
   onExport,
+  onKolSelect,
 }: RankingTableProps) {
   const [page, setPage] = useState(1);
   // Intentionally lower than schema max (100) for optimal UX:
@@ -66,35 +72,59 @@ function RankingTable({
     limit,
   });
   const { status: exportStatus, exportCsv } = useCsvExport();
+  const { status: excelExportStatus, exportExcel } = useExcelExport();
 
-  const handleExport = useCallback(() => {
-    if (!data?.items.length) return;
+  const exportHeaders = ['Rank', 'Name', 'Degree', 'Specialty', 'City', 'State', 'Count'];
 
-    const csvData = data.items.map((item) => ({
+  const buildExportRows = useCallback(() => {
+    if (!data?.items.length) return [];
+    return data.items.map((item) => [
+      item.rank,
+      item.name,
+      item.degree,
+      item.specialty,
+      item.city,
+      item.state,
+      item.count,
+    ]);
+  }, [data?.items]);
+
+  const handleExportCsv = useCallback(() => {
+    const rows = buildExportRows();
+    if (!rows.length) return;
+
+    const csvData = data?.items.map((item) => ({
       rank: item.rank,
       name: item.name,
+      degree: item.degree,
       specialty: item.specialty,
+      city: item.city,
       state: item.state,
       count: item.count,
     }));
 
-    if (onExport) {
+    if (onExport && csvData) {
       onExport(label, csvData);
     } else {
-      // Direct export using shared utility
       exportCsv({
         filename: `${label.toLowerCase().replace(/\s+/g, '-')}-rankings`,
-        headers: ['Rank', 'Name', 'Specialty', 'State', 'Count'],
-        rows: csvData.map((item) => [
-          item.rank,
-          item.name,
-          item.specialty,
-          item.state,
-          item.count,
-        ]),
+        headers: exportHeaders,
+        rows,
       });
     }
-  }, [data?.items, label, onExport, exportCsv]);
+  }, [data?.items, label, onExport, exportCsv, buildExportRows]);
+
+  const handleExportExcel = useCallback(() => {
+    const rows = buildExportRows();
+    if (!rows.length) return;
+
+    exportExcel({
+      filename: `${label.toLowerCase().replace(/\s+/g, '-')}-rankings`,
+      headers: exportHeaders,
+      rows,
+      sheetName: label,
+    });
+  }, [buildExportRows, exportExcel, label]);
 
   if (isLoading) {
     return (
@@ -122,21 +152,32 @@ function RankingTable({
             <TableRow>
               <TableHead className="w-[40px]">#</TableHead>
               <TableHead>Leader</TableHead>
+              <TableHead className={compact ? 'hidden' : 'w-[50px]'}>Deg</TableHead>
               <TableHead className={compact ? 'hidden md:table-cell' : ''}>Specialty</TableHead>
-              <TableHead className={compact ? 'hidden lg:table-cell' : ''}>State</TableHead>
+              <TableHead className={compact ? 'hidden lg:table-cell' : ''}>Location</TableHead>
               <TableHead className="w-[120px] text-right">Count</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.items.map((item) => (
-              <TableRow key={item.hcpId}>
+              <TableRow key={item.hcpId} className={onKolSelect ? 'cursor-pointer hover:bg-muted/50' : ''}>
                 <TableCell className="font-medium text-muted-foreground">{item.rank}</TableCell>
-                <TableCell className="font-medium">{item.name}</TableCell>
+                <TableCell
+                  className="font-medium text-primary hover:underline cursor-pointer"
+                  onClick={() => onKolSelect?.(item.hcpId)}
+                >
+                  {item.name}
+                </TableCell>
+                <TableCell className={compact ? 'hidden' : ''}>
+                  <span className="text-[10px] text-muted-foreground">{item.degree || '-'}</span>
+                </TableCell>
                 <TableCell className={compact ? 'hidden md:table-cell' : ''}>
                   {item.specialty || '-'}
                 </TableCell>
                 <TableCell className={compact ? 'hidden lg:table-cell' : ''}>
-                  {item.state || '-'}
+                  {item.city && item.state
+                    ? `${item.city}, ${item.state}`
+                    : item.state || '-'}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-2">
@@ -164,20 +205,36 @@ function RankingTable({
         </span>
         <div className="flex items-center gap-1">
           {!compact && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={handleExport}
-              disabled={!data.items.length || exportStatus === 'exporting'}
-              title={exportStatus === 'success' ? 'Exported!' : 'Export CSV'}
-            >
-              {exportStatus === 'success' ? (
-                <Check className="h-3 w-3 text-green-600" />
-              ) : (
-                <Download className="h-3 w-3" />
-              )}
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={handleExportExcel}
+                disabled={!data.items.length || excelExportStatus === 'exporting'}
+                title={excelExportStatus === 'success' ? 'Exported!' : 'Export Excel'}
+              >
+                {excelExportStatus === 'success' ? (
+                  <Check className="h-3 w-3 text-green-600" />
+                ) : (
+                  <FileSpreadsheet className="h-3 w-3" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={handleExportCsv}
+                disabled={!data.items.length || exportStatus === 'exporting'}
+                title={exportStatus === 'success' ? 'Exported!' : 'Export CSV'}
+              >
+                {exportStatus === 'success' ? (
+                  <Check className="h-3 w-3 text-green-600" />
+                ) : (
+                  <Download className="h-3 w-3" />
+                )}
+              </Button>
+            </>
           )}
           {data.totalPages > 1 && (
             <>
@@ -232,7 +289,7 @@ function filtersToUrlParams(
   return params;
 }
 
-export function LeaderRankingsTab({ diseaseAreaId }: Props) {
+export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, globalFilters = {} }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -249,9 +306,10 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
 
   // Build filters for API calls (comma-separated for arrays)
+  // Global filters override local tab filters when present
   const apiFilters = {
-    specialties: selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined,
-    states: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
+    specialties: globalFilters?.specialties || (selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined),
+    states: globalFilters?.states || (selectedStates.length > 0 ? selectedStates.join(',') : undefined),
   };
 
   // Sync URL when view settings change
@@ -313,8 +371,8 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
       </div>
 
       {viewMode === 'grid' ? (
-        /* 2x3 Grid View - All 6 tables visible */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        /* Grid View - All 7 tables visible */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {NOMINATION_TYPES.map((type) => (
             <Card key={type.value}>
               <CardHeader className="pb-2">
@@ -332,6 +390,7 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
                   bgColor={type.bgColor}
                   filters={apiFilters}
                   compact
+                  onKolSelect={onKolSelect}
                 />
               </CardContent>
             </Card>
@@ -340,7 +399,7 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
       ) : (
         /* Tab View - One table at a time */
         <Tabs value={activeType} onValueChange={(v) => setActiveType(v as NominationType)}>
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             {NOMINATION_TYPES.map((type) => (
               <TabsTrigger key={type.value} value={type.value} className="text-xs">
                 <div className={`w-2 h-2 rounded-full ${type.color} mr-1.5 hidden sm:block`} />
@@ -369,6 +428,7 @@ export function LeaderRankingsTab({ diseaseAreaId }: Props) {
                     color={type.color}
                     bgColor={type.bgColor}
                     filters={apiFilters}
+                    onKolSelect={onKolSelect}
                   />
                 </CardContent>
               </Card>
