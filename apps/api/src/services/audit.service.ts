@@ -287,6 +287,28 @@ export class AuditService {
   }
 
   /**
+   * Log admin impersonation events
+   */
+  async logImpersonation(
+    context: AuditContext,
+    action: 'started' | 'ended',
+    clientId: string,
+    metadata?: Record<string, unknown>
+  ): Promise<void> {
+    const actionMap = {
+      started: LogActions.ADMIN_IMPERSONATION_STARTED,
+      ended: LogActions.ADMIN_IMPERSONATION_ENDED,
+    };
+
+    await this.log(context, {
+      action: actionMap[action],
+      entityType: 'Client',
+      entityId: clientId,
+      metadata,
+    });
+  }
+
+  /**
    * Query audit logs with filters
    */
   async query(filters: {
