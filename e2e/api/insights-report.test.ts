@@ -163,6 +163,8 @@ describe('Insights Report API', () => {
       const nominationTypes = [
         'referralLeaders',
         'adviceLeaders',
+        'nationalLeader',
+        'risingStar',
       ];
 
       for (const nominationType of nominationTypes) {
