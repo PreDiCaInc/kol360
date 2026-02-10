@@ -73,7 +73,7 @@ describe('Insights Report API', () => {
 
       if (data.items.length > 0) {
         const firstKol = data.items[0];
-        expect(firstKol.hcpId).toBeTruthy();
+        expect(firstKol.id).toBeTruthy(); // KOL Explorer uses 'id', not 'hcpId'
         expect(firstKol.firstName).toBeTruthy();
         expect(firstKol.lastName).toBeTruthy();
       }
@@ -219,7 +219,7 @@ describe('Insights Report API', () => {
         return;
       }
 
-      const testHcpId = explorerData.items[0].hcpId;
+      const testHcpId = explorerData.items[0].id; // KOL Explorer uses 'id', not 'hcpId'
       const { status, data } = await client.getInsightsKolProfile(DRY_EYE_DISEASE_AREA_ID, testHcpId);
 
       expect(status).toBe(200);

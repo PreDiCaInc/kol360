@@ -1015,10 +1015,10 @@ export interface KolProfile {
 
 export interface KolExplorerResult {
   items: Array<{
-    hcpId: string;
+    id: string; // Note: KOL Explorer uses 'id', not 'hcpId'
     firstName: string;
     lastName: string;
-    npi: string;
+    name: string;
     specialty?: string;
     state?: string;
     influencerType?: string;
