@@ -97,11 +97,11 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
     { name: 'NPI', description: '10-digit National Provider Identifier' },
     { name: 'First Name', description: 'HCP first name' },
     { name: 'Last Name', description: 'HCP last name' },
+    { name: 'Email', description: 'For survey invitations' },
+    { name: 'Specialty', description: 'Medical specialty' },
   ];
 
   const optionalColumns = [
-    { name: 'Email', description: 'For survey invitations' },
-    { name: 'Specialty', description: 'Medical specialty' },
     { name: 'Sub-specialty', description: 'Sub-specialty if applicable' },
     { name: 'City', description: 'City location' },
     { name: 'State', description: 'State (2-letter code)' },

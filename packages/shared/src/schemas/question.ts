@@ -34,7 +34,7 @@ export const questionTypeSchema = z.enum([
   'MULTI_TEXT',
 ]);
 
-// Nomination types for categorizing HCP nominations (6 new categories)
+// Nomination types for categorizing HCP nominations (7 categories)
 export const nominationTypeSchema = z.enum([
   'DISCUSSION_LEADERS', // Who do you discuss challenging cases with?
   'REFERRAL_LEADERS',   // Who do you refer patients to?
@@ -42,6 +42,7 @@ export const nominationTypeSchema = z.enum([
   'NATIONAL_LEADER',    // National thought leaders
   'RISING_STAR',        // Emerging/up-and-coming KOL
   'SOCIAL_LEADER',      // Social media/digital presence leaders
+  'REGIONAL_LEADER',    // Regional influencer / local leader
 ]);
 
 export type NominationType = z.infer<typeof nominationTypeSchema>;
@@ -54,6 +55,7 @@ export const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
   NATIONAL_LEADER: 'National Leader',
   RISING_STAR: 'Rising Star',
   SOCIAL_LEADER: 'Social Leader',
+  REGIONAL_LEADER: 'Regional Leader',
 };
 
 // Option object with text and optional requiresText flag

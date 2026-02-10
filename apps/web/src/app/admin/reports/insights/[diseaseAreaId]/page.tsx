@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Users, Trophy, User, Search, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,12 +16,16 @@ import {
 import { useInsightsSummary, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import { useDiseaseAreas } from '@/hooks/use-hcps';
 
-// Tab components (will be implemented in subsequent phases)
+// Tab components
 import { KolExplorerTab } from '@/components/insights/tabs/kol-explorer';
 import { LeaderRankingsTab } from '@/components/insights/tabs/leader-rankings';
 import { KolProfileTab } from '@/components/insights/tabs/kol-profile';
 import { SociometricSummaryTab } from '@/components/insights/tabs/sociometric-summary';
 import { RespondentAnalyticsTab } from '@/components/insights/tabs/respondent-analytics';
+
+// Global filters and print styles
+import { GlobalFilters, GlobalFilterState, globalFiltersToApiFormat } from '@/components/insights/global-filters';
+import '@/components/insights/print-styles.css';
 
 export default function InsightsReportPage() {
   const params = useParams();
@@ -29,6 +33,23 @@ export default function InsightsReportPage() {
   const diseaseAreaId = params.diseaseAreaId as string;
 
   const [activeTab, setActiveTab] = useState('kol-explorer');
+  const [selectedKolId, setSelectedKolId] = useState<string | null>(null);
+  const [globalFilters, setGlobalFilters] = useState<GlobalFilterState>({
+    states: [],
+    specialties: [],
+    influencerType: null,
+  });
+
+  // Handler for cross-tab KOL selection
+  const handleKolSelect = useCallback((kolId: string) => {
+    setSelectedKolId(kolId);
+    setActiveTab('kol-profile');
+  }, []);
+
+  // Handler for global filter changes
+  const handleGlobalFilterChange = useCallback((filters: GlobalFilterState) => {
+    setGlobalFilters(filters);
+  }, []);
 
   // Fetch disease areas for selector
   const { data: diseaseAreas = [] } = useDiseaseAreas();
@@ -41,10 +62,21 @@ export default function InsightsReportPage() {
     router.push(`/admin/reports/insights/${newDiseaseAreaId}`);
   };
 
+  // Convert global filters to API format for passing to tabs
+  const apiFilters = globalFiltersToApiFormat(globalFilters);
+
   return (
     <div className="space-y-6">
+      {/* Print Header - Only visible when printing */}
+      <div className="print-header print-only">
+        <h1>KOL 360 Insights Report</h1>
+        <p className="print-date">
+          {currentDiseaseArea?.name || 'Disease Area'} - Generated on {new Date().toLocaleDateString()}
+        </p>
+      </div>
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-5 w-5" />
@@ -74,6 +106,12 @@ export default function InsightsReportPage() {
           </Select>
         </div>
       </div>
+
+      {/* Global Filters */}
+      <GlobalFilters
+        diseaseAreaId={diseaseAreaId}
+        onFilterChange={handleGlobalFilterChange}
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -133,7 +171,7 @@ export default function InsightsReportPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-5 print:hidden">
           <TabsTrigger value="kol-explorer" className="flex items-center gap-2">
             <Search className="h-4 w-4" />
             <span className="hidden sm:inline">KOL Explorer</span>
@@ -157,23 +195,42 @@ export default function InsightsReportPage() {
         </TabsList>
 
         <TabsContent value="kol-explorer" className="mt-6">
-          <KolExplorerTab diseaseAreaId={diseaseAreaId} />
+          <KolExplorerTab
+            diseaseAreaId={diseaseAreaId}
+            onKolSelect={handleKolSelect}
+            globalFilters={apiFilters}
+          />
         </TabsContent>
 
         <TabsContent value="leader-rankings" className="mt-6">
-          <LeaderRankingsTab diseaseAreaId={diseaseAreaId} />
+          <LeaderRankingsTab
+            diseaseAreaId={diseaseAreaId}
+            onKolSelect={handleKolSelect}
+            globalFilters={apiFilters}
+          />
         </TabsContent>
 
         <TabsContent value="kol-profile" className="mt-6">
-          <KolProfileTab diseaseAreaId={diseaseAreaId} />
+          <KolProfileTab
+            diseaseAreaId={diseaseAreaId}
+            initialKolId={selectedKolId}
+            globalFilters={apiFilters}
+          />
         </TabsContent>
 
         <TabsContent value="sociometric-summary" className="mt-6">
-          <SociometricSummaryTab diseaseAreaId={diseaseAreaId} />
+          <SociometricSummaryTab
+            diseaseAreaId={diseaseAreaId}
+            onKolSelect={handleKolSelect}
+            globalFilters={apiFilters}
+          />
         </TabsContent>
 
         <TabsContent value="respondent-analytics" className="mt-6">
-          <RespondentAnalyticsTab diseaseAreaId={diseaseAreaId} />
+          <RespondentAnalyticsTab
+            diseaseAreaId={diseaseAreaId}
+            globalFilters={apiFilters}
+          />
         </TabsContent>
       </Tabs>
     </div>

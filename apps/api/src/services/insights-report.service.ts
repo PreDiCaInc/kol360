@@ -29,6 +29,7 @@ const NOMINATION_TYPE_FIELDS: Record<NominationType, { score: string; count: str
   NATIONAL_LEADER: { score: 'scoreNationalLeader', count: 'countNationalLeader' },
   RISING_STAR: { score: 'scoreRisingStar', count: 'countRisingStar' },
   SOCIAL_LEADER: { score: 'scoreSocialLeader', count: 'countSocialLeader' },
+  REGIONAL_LEADER: { score: 'scoreRegionalLeader', count: 'countRegionalLeader' },
 };
 
 /**
@@ -402,6 +403,7 @@ export class InsightsReportService {
         rank,
         hcpId: hcp.id,
         name: `${hcp.firstName} ${hcp.lastName}`,
+        degree: primarySpecialty?.includes('Ophthalmologist') ? 'MD' : 'OD',
         specialty: primarySpecialty,
         city: hcp.city,
         state: hcp.state,
@@ -694,7 +696,7 @@ export class InsightsReportService {
     });
 
     // Server-side sorting based on sortBy parameter
-    const validSortFields = ['total', 'discussionLeaders', 'referralLeaders', 'adviceLeaders', 'nationalLeaders', 'risingStars', 'socialLeaders', 'name'];
+    const validSortFields = ['total', 'discussionLeaders', 'referralLeaders', 'adviceLeaders', 'nationalLeaders', 'risingStars', 'socialLeaders', 'regional', 'name'];
     const field = validSortFields.includes(sortBy || '') ? sortBy : 'total';
     const order = sortOrder === 'asc' ? 1 : -1;
 
