@@ -630,6 +630,7 @@ describe('Full Workflow E2E Tests', () => {
 
 describe('Individual Workflow Steps', () => {
   let client: ApiClient;
+  const stepCampaignIds: string[] = [];
 
   beforeAll(() => {
     if (!config.authToken) {
@@ -639,11 +640,27 @@ describe('Individual Workflow Steps', () => {
     client = new ApiClient();
   });
 
+  afterAll(async () => {
+    if (SKIP_CLEANUP) {
+      console.log('\n📋 SKIP_CLEANUP=true - Step campaigns not deleted:');
+      stepCampaignIds.forEach((id) => console.log(`  - ${id}`));
+      return;
+    }
+    for (const campaignId of stepCampaignIds) {
+      try {
+        await client.cleanupTestCampaign(campaignId);
+        console.log(`🧹 Cleaned up step campaign: ${campaignId}`);
+      } catch (error) {
+        console.log(`⚠️ Could not cleanup step campaign ${campaignId}:`, error);
+      }
+    }
+  });
+
   describe('Campaign Lifecycle States', () => {
     it.skipIf(!config.authToken)('should enforce valid state transitions', async () => {
       // Create a test campaign (includes survey template via createTestCampaign)
       const { data: campaign } = await client.createTestCampaign();
-      createdCampaignIds.push(campaign.id);
+      stepCampaignIds.push(campaign.id);
 
       // Assign HCPs (required for activation)
       await client.assignHcpsToCampaign(campaign.id, [TEST_IDS.HCP_1.id]);
@@ -654,7 +671,7 @@ describe('Individual Workflow Steps', () => {
 
       // DRAFT -> Cannot publish directly
       const { status: publishStatus } = await client.publishCampaign(campaign.id);
-      expect([400, 429]).toContain(publishStatus); // 429 = rate limited
+      expect(publishStatus).toBe(400);
 
       // DRAFT -> ACTIVE (valid - requires HCPs and survey questions)
       const { status: activateStatus } = await client.activateCampaign(campaign.id);
@@ -667,13 +684,13 @@ describe('Individual Workflow Steps', () => {
       // CLOSED -> PUBLISHED (valid)
       const { status: publishStatus2 } = await client.publishCampaign(campaign.id);
       expect(publishStatus2).toBe(200);
-    });
+    }, 60000); // Extended timeout for rate limit retries
   });
 
   describe('Survey Token Access', () => {
     it.skipIf(!config.authToken)('should generate unique tokens per HCP', async () => {
       const { data: campaign } = await client.createTestCampaign();
-      createdCampaignIds.push(campaign.id);
+      stepCampaignIds.push(campaign.id);
 
       // Assign multiple HCPs
       await client.assignHcpsToCampaign(campaign.id, [TEST_IDS.HCP_1.id, TEST_IDS.HCP_2.id]);

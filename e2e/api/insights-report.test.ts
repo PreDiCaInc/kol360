@@ -223,11 +223,10 @@ describe('Insights Report API', () => {
       const { status, data } = await client.getInsightsKolProfile(DRY_EYE_DISEASE_AREA_ID, testHcpId);
 
       expect(status).toBe(200);
-      expect(data.hcp).toBeTruthy();
-      expect(data.hcp.id).toBe(testHcpId);
+      expect(data.id).toBe(testHcpId);
       expect(data.scores).toBeTruthy();
 
-      console.log(`✅ KOL profile: ${data.hcp.firstName} ${data.hcp.lastName}`);
+      console.log(`✅ KOL profile: ${data.firstName} ${data.lastName}`);
     });
 
     it('should return 404 for non-existent HCP', async () => {

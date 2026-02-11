@@ -70,42 +70,57 @@ export class ApiClient {
       headers['X-Impersonate-Client'] = this.impersonateClientId;
     }
 
-    const controller = new AbortController();
     const timeout = options?.timeout || 30000;
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const maxRetries = 3;
 
-    try {
-      const response = await fetch(url, {
-        method,
-        headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      clearTimeout(timeoutId);
+      try {
+        const response = await fetch(url, {
+          method,
+          headers,
+          body: body !== undefined ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        });
 
-      let data: T;
-      const contentType = response.headers.get('content-type');
+        clearTimeout(timeoutId);
 
-      if (options?.rawResponse) {
-        // Return raw buffer for file downloads
-        const buffer = await response.arrayBuffer();
-        data = buffer as unknown as T;
-      } else if (contentType?.includes('application/json')) {
-        try {
-          data = await response.json();
-        } catch {
+        // Auto-retry on 429 (rate limited) with Retry-After backoff
+        if (response.status === 429 && attempt < maxRetries) {
+          const retryAfter = parseInt(response.headers.get('retry-after') || '0', 10);
+          const waitMs = retryAfter > 0 ? retryAfter * 1000 : 3000;
+          await new Promise((r) => setTimeout(r, waitMs));
+          continue;
+        }
+
+        let data: T;
+        const contentType = response.headers.get('content-type');
+
+        if (options?.rawResponse) {
+          // Return raw buffer for file downloads
+          const buffer = await response.arrayBuffer();
+          data = buffer as unknown as T;
+        } else if (contentType?.includes('application/json')) {
+          try {
+            data = await response.json();
+          } catch {
+            data = {} as T;
+          }
+        } else {
           data = {} as T;
         }
-      } else {
-        data = {} as T;
-      }
 
-      return { status: response.status, data, headers: response.headers };
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
+        return { status: response.status, data, headers: response.headers };
+      } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+      }
     }
+
+    // Should not reach here, but TypeScript needs it
+    throw new Error('Max retries exceeded');
   }
 
   // Health check
@@ -990,26 +1005,36 @@ export interface LeaderRankings {
 }
 
 export interface KolProfile {
-  hcp: Hcp;
+  id: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  npi?: string;
+  specialty?: string;
+  city?: string;
+  state?: string;
+  influencerType?: string;
   scores: {
-    scorePublications?: number;
-    scoreClinicalTrials?: number;
-    scoreTradePubs?: number;
-    scoreOrgLeadership?: number;
-    scoreOrgAwards?: number;
-    scoreConference?: number;
-    scoreSocialMedia?: number;
-    scoreMediaPodcasts?: number;
-    scoreSurvey?: number;
-    compositeScore?: number;
+    scorePublications?: number | null;
+    scoreClinicalTrials?: number | null;
+    scoreTradePubs?: number | null;
+    scoreOrgLeadership?: number | null;
+    scoreOrgAwards?: number | null;
+    scoreConference?: number | null;
+    scoreSocialMedia?: number | null;
+    scoreMediaPodcasts?: number | null;
+    scoreSurvey?: number | null;
+    compositeScore?: number | null;
   };
-  nominationCounts: Record<string, number>;
+  nominations: Record<string, number>;
   nominators: Array<{
-    nominatorId: string;
-    firstName: string;
-    lastName: string;
+    id: string;
+    name: string;
     specialty?: string;
     state?: string;
+    nominationType: string;
+    campaignName: string;
+    respondedAt: string;
   }>;
 }
 
