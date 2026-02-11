@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/auth-provider';
+import { useImpersonation } from '@/lib/impersonation-context';
 import { usePlatformStats } from '@/hooks/use-dashboards';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Popover,
@@ -26,6 +28,7 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
+  Eye,
 } from 'lucide-react';
 
 interface HealthCheck {
@@ -216,6 +219,7 @@ function QuickActionCard({ href, icon, iconBg, title, description }: QuickAction
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const { isImpersonating, clientName, stopImpersonating } = useImpersonation();
   const { data: stats, isLoading: statsLoading } = usePlatformStats();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
   const isClientAdmin = user?.role === 'CLIENT_ADMIN';
@@ -367,22 +371,31 @@ export default function AdminDashboard() {
       </div>
 
       {/* Account Info Card */}
-      <Card className="border-border/60">
+      <Card className={isImpersonating ? 'border-amber-400/60' : 'border-border/60'}>
         <CardHeader className="pb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              <span className="text-sm font-semibold text-primary">
-                {user?.email?.substring(0, 2).toUpperCase() || 'U'}
-              </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                isImpersonating ? 'bg-amber-500/10' : 'bg-primary/10'
+              }`}>
+                <span className={`text-sm font-semibold ${isImpersonating ? 'text-amber-600' : 'text-primary'}`}>
+                  {user?.email?.substring(0, 2).toUpperCase() || 'U'}
+                </span>
+              </div>
+              <div>
+                <CardTitle className="text-base">Your Account</CardTitle>
+                <CardDescription>Current session information</CardDescription>
+              </div>
             </div>
-            <div>
-              <CardTitle className="text-base">Your Account</CardTitle>
-              <CardDescription>Current session information</CardDescription>
-            </div>
+            {isImpersonating && (
+              <Button variant="outline" size="sm" onClick={stopImpersonating} className="border-amber-400 text-amber-600 hover:bg-amber-50">
+                Stop Viewing
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</p>
               <p className="text-sm font-medium">{user?.email}</p>
@@ -391,7 +404,16 @@ export default function AdminDashboard() {
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</p>
               <p className="text-sm font-medium capitalize">{user?.role?.replace(/_/g, ' ').toLowerCase()}</p>
             </div>
-            {user?.tenantId && (
+            {isImpersonating && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-amber-600 uppercase tracking-wider flex items-center gap-1">
+                  <Eye className="h-3 w-3" />
+                  Viewing As
+                </p>
+                <p className="text-sm font-medium text-amber-700">{clientName}</p>
+              </div>
+            )}
+            {user?.tenantId && !isImpersonating && (
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Organization</p>
                 <p className="text-sm font-medium">Client Tenant</p>

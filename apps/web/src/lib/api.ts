@@ -1,9 +1,18 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 let getTokenFn: (() => Promise<string | null>) | null = null;
+let impersonateClientId: string | null = null;
 
 export function setAuthTokenFn(fn: () => Promise<string | null>) {
   getTokenFn = fn;
+}
+
+export function setImpersonateClientId(clientId: string | null) {
+  impersonateClientId = clientId;
+}
+
+export function getImpersonateClientId(): string | null {
+  return impersonateClientId;
 }
 
 export async function api<T>(
@@ -36,6 +45,7 @@ export async function api<T>(
   // Only set Content-Type for requests with a body (and not FormData)
   const headers: Record<string, string> = {
     ...(token && { Authorization: `Bearer ${token}` }),
+    ...(impersonateClientId && { 'X-Impersonate-Client': impersonateClientId }),
   };
   if (init.body && typeof init.body === 'string') {
     headers['Content-Type'] = 'application/json';
