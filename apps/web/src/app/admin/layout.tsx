@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { SidebarContext } from '@/components/layout/sidebar-context';
+import { ImpersonationProvider } from '@/lib/impersonation-context';
 import { cn } from '@/lib/utils';
 
 interface AdminLayoutProps {
@@ -45,7 +46,9 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <RequireAuth>
-      <AdminLayoutContent>{children}</AdminLayoutContent>
+      <ImpersonationProvider>
+        <AdminLayoutContent>{children}</AdminLayoutContent>
+      </ImpersonationProvider>
     </RequireAuth>
   );
 }
