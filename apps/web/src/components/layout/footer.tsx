@@ -1,6 +1,7 @@
 'use client';
 
 import { Heart } from 'lucide-react';
+import packageJson from '../../../package.json';
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -8,9 +9,10 @@ export function Footer() {
   return (
     <footer className="border-t bg-card">
       <div className="flex flex-col items-center justify-between gap-2 px-6 py-4 md:flex-row">
-        {/* Left side - Copyright */}
-        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+        {/* Left side - Copyright + Version */}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>© {currentYear} Bio-Exec. All rights reserved.</span>
+          <span className="text-[10px] text-muted-foreground/60">v{packageJson.version}</span>
         </div>
 
         {/* Center - Powered by */}
