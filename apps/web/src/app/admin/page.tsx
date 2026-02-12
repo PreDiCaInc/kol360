@@ -221,8 +221,8 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const { isImpersonating, clientName, stopImpersonating } = useImpersonation();
   const { data: stats, isLoading: statsLoading } = usePlatformStats();
-  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
-  const isClientAdmin = user?.role === 'CLIENT_ADMIN';
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN' && !isImpersonating;
+  const isClientAdmin = user?.role === 'CLIENT_ADMIN' || isImpersonating;
 
   const formatNumber = (num: number | undefined) => {
     if (num === undefined) return '—';
@@ -326,7 +326,7 @@ export default function AdminDashboard() {
             icon={<Stethoscope className="h-6 w-6 text-blue-600" />}
             iconBg="bg-blue-500/10"
             title="HCP Database"
-            description="Search and manage healthcare professionals"
+            description={isImpersonating ? "View healthcare professionals" : "Search and manage healthcare professionals"}
           />
 
           <QuickActionCard
@@ -334,16 +334,18 @@ export default function AdminDashboard() {
             icon={<BarChart3 className="h-6 w-6 text-violet-600" />}
             iconBg="bg-violet-500/10"
             title="Campaigns"
-            description="Create and manage KOL assessment campaigns"
+            description={isImpersonating ? "View KOL assessment campaigns" : "Create and manage KOL assessment campaigns"}
           />
 
-          <QuickActionCard
-            href="/admin/survey-templates"
-            icon={<FileText className="h-6 w-6 text-amber-600" />}
-            iconBg="bg-amber-500/10"
-            title="Survey Templates"
-            description="Configure survey questions and sections"
-          />
+          {isPlatformAdmin && (
+            <QuickActionCard
+              href="/admin/survey-templates"
+              icon={<FileText className="h-6 w-6 text-amber-600" />}
+              iconBg="bg-amber-500/10"
+              title="Survey Templates"
+              description="Configure survey questions and sections"
+            />
+          )}
 
           <Link href="/admin/dashboards" className="group">
             <Card className="h-full gradient-primary text-white border-0 hover:shadow-xl hover:shadow-primary/20 transition-all duration-300">

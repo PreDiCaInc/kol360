@@ -7,6 +7,7 @@ import { updateUserSchema, UpdateUserInput } from '@kol360/shared';
 import { useUpdateUser } from '@/hooks/use-users';
 import { useClients } from '@/hooks/use-clients';
 import { useAuth } from '@/lib/auth/auth-provider';
+import { useImpersonation } from '@/lib/impersonation-context';
 import {
   Dialog,
   DialogContent,
@@ -48,12 +49,13 @@ interface Props {
 
 export function UserEditDialog({ open, onOpenChange, user }: Props) {
   const { user: currentUser } = useAuth();
+  const { isImpersonating } = useImpersonation();
   const updateUser = useUpdateUser();
   const { data: clientsData } = useClients();
   const clients = clientsData?.items || [];
   const [error, setError] = useState<string | null>(null);
 
-  const isPlatformAdmin = currentUser?.role === 'PLATFORM_ADMIN';
+  const isPlatformAdmin = currentUser?.role === 'PLATFORM_ADMIN' && !isImpersonating;
 
   const form = useForm<UpdateUserInput>({
     resolver: zodResolver(updateUserSchema),

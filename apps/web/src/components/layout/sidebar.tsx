@@ -5,6 +5,8 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-provider';
+import { useImpersonation } from '@/lib/impersonation-context';
+import { useSidebarContext } from './sidebar-context';
 import {
   LayoutDashboard,
   Building2,
@@ -19,7 +21,7 @@ import {
   ChevronDown,
   Megaphone,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface NavItem {
   title: string;
@@ -105,9 +107,20 @@ const clientAdminNavigation: NavItem[] = [
     icon: Stethoscope,
   },
   {
+    title: 'Campaigns',
+    href: '/admin/campaigns',
+    icon: Megaphone,
+  },
+  {
+    title: 'Dashboards',
+    href: '/admin/dashboards',
+    icon: BarChart3,
+  },
+  {
     title: 'Users',
     href: '/admin/users',
     icon: Users,
+    roles: ['CLIENT_ADMIN'],
   },
 ];
 
@@ -234,15 +247,18 @@ function NavItemComponent({
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
+  const { isImpersonating, clientName: impersonatedClientName, logoUrl, primaryColor } = useImpersonation();
+  const { collapsed, setCollapsed } = useSidebarContext();
 
-  // Determine navigation based on role
-  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
+  // When impersonating, show client admin navigation instead of platform admin
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN' && !isImpersonating;
   const navigationItems = isPlatformAdmin ? platformAdminNavigation : clientAdminNavigation;
 
+  // Use effective role for filtering: CLIENT_ADMIN when impersonating, actual role otherwise
+  const effectiveRole = isImpersonating ? 'CLIENT_ADMIN' : (user?.role || '');
   const filteredNavItems = navigationItems.filter((item) => {
     if (!item.roles) return true;
-    return item.roles.includes(user?.role || '');
+    return item.roles.includes(effectiveRole);
   });
 
   return (
@@ -259,20 +275,52 @@ export function Sidebar() {
         'flex h-[72px] items-center border-b border-[hsl(var(--sidebar-border))] transition-all duration-300',
         collapsed ? 'justify-center px-2' : 'px-5'
       )}>
-        <Link href="/admin" className="flex items-center">
-          {!collapsed ? (
-            <Image
-              src="/images/logo-white.png"
-              alt="BioExec"
-              width={140}
-              height={42}
-              className="h-10 w-auto object-contain"
-              priority
-            />
+        <Link href="/admin" className="flex items-center gap-3">
+          {isImpersonating ? (
+            // Client branding when impersonating
+            <>
+              {logoUrl ? (
+                <Image
+                  src={logoUrl}
+                  alt={impersonatedClientName || 'Client'}
+                  width={collapsed ? 40 : 36}
+                  height={collapsed ? 40 : 36}
+                  className={cn('rounded-lg object-contain', collapsed ? 'h-10 w-10' : 'h-9 w-9')}
+                />
+              ) : (
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-xl shadow-lg"
+                  style={{ backgroundColor: primaryColor || '#0066CC' }}
+                >
+                  <span className="text-sm font-bold text-white">
+                    {impersonatedClientName?.substring(0, 2).toUpperCase() || 'CL'}
+                  </span>
+                </div>
+              )}
+              {!collapsed && (
+                <span className="text-sm font-semibold text-[hsl(var(--sidebar-foreground))] truncate">
+                  {impersonatedClientName}
+                </span>
+              )}
+            </>
           ) : (
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/20">
-              <span className="text-sm font-bold text-white">BE</span>
-            </div>
+            // Default BioExec branding
+            <>
+              {!collapsed ? (
+                <Image
+                  src="/images/logo-white.png"
+                  alt="BioExec"
+                  width={140}
+                  height={42}
+                  className="h-10 w-auto object-contain"
+                  priority
+                />
+              ) : (
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/20">
+                  <span className="text-sm font-bold text-white">BE</span>
+                </div>
+              )}
+            </>
           )}
         </Link>
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useImpersonation } from '@/lib/impersonation-context';
 import {
   useCampaignHcps,
   useDistributionStats,
@@ -69,6 +70,7 @@ interface CampaignHcpsTabProps {
 }
 
 export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabProps) {
+  const { isImpersonating } = useImpersonation();
   const { data: campaignHcps, isLoading: hcpsLoading } = useCampaignHcps(campaignId);
   const { data: stats } = useDistributionStats(campaignId);
   const [searchQuery, setSearchQuery] = useState('');
@@ -132,7 +134,7 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
   };
 
   const isActive = campaignStatus === 'ACTIVE';
-  const canModify = campaignStatus === 'DRAFT' || campaignStatus === 'ACTIVE';
+  const canModify = (campaignStatus === 'DRAFT' || campaignStatus === 'ACTIVE') && !isImpersonating;
 
   return (
     <div className="space-y-6">
@@ -196,13 +198,13 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
                   </Button>
                 </>
               )}
-              {isActive && stats && stats.notInvited > 0 && (
+              {isActive && !isImpersonating && stats && stats.notInvited > 0 && (
                 <Button onClick={() => setShowSendConfirm('invitations')} variant="outline">
                   <Send className="w-4 h-4 mr-2" />
                   Send Invitations ({stats.notInvited})
                 </Button>
               )}
-              {isActive && stats && stats.invited > stats.completed && (
+              {isActive && !isImpersonating && stats && stats.invited > stats.completed && (
                 <Button onClick={() => setShowSendConfirm('reminders')} variant="outline">
                   <Bell className="w-4 h-4 mr-2" />
                   Send Reminders
