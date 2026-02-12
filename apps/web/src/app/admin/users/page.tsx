@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useUsers, useApproveUser, useDisableUser, useEnableUser } from '@/hooks/use-users';
+import { useImpersonation } from '@/lib/impersonation-context';
 import { useClients } from '@/hooks/use-clients';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,7 @@ interface User {
 }
 
 export default function UsersPage() {
+  const { isImpersonating } = useImpersonation();
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -145,27 +147,29 @@ export default function UsersPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 mb-6">
-          <Select
-            value={filters.clientId || 'all'}
-            onValueChange={(value) =>
-              setFilters((prev) => ({
-                ...prev,
-                clientId: value === 'all' ? undefined : value,
-              }))
-            }
-          >
-            <SelectTrigger className="w-48 bg-card">
-              <SelectValue placeholder="All Clients" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Clients</SelectItem>
-              {clients.map((client) => (
-                <SelectItem key={client.id} value={client.id}>
-                  {client.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!isImpersonating && (
+            <Select
+              value={filters.clientId || 'all'}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  clientId: value === 'all' ? undefined : value,
+                }))
+              }
+            >
+              <SelectTrigger className="w-48 bg-card">
+                <SelectValue placeholder="All Clients" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Clients</SelectItem>
+                {clients.map((client) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           <Select
             value={filters.role || 'all'}

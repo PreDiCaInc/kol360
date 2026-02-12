@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useHcp, useAddHcpAlias, useRemoveHcpAlias, useUpdateHcp } from '@/hooks/use-hcps';
+import { useImpersonation } from '@/lib/impersonation-context';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,6 +70,8 @@ const SCORE_FIELDS = [
 ] as const;
 
 export default function HcpDetailPage() {
+  const { isImpersonating } = useImpersonation();
+  const canEdit = !isImpersonating;
   const params = useParams();
   const router = useRouter();
   const hcpId = params.id as string;
@@ -157,10 +160,12 @@ export default function HcpDetailPage() {
               )}
             </div>
           </div>
-          <Button variant="outline" onClick={() => setShowEditDialog(true)}>
-            <Pencil className="w-4 h-4 mr-2" />
-            Edit
-          </Button>
+          {canEdit && (
+            <Button variant="outline" onClick={() => setShowEditDialog(true)}>
+              <Pencil className="w-4 h-4 mr-2" />
+              Edit
+            </Button>
+          )}
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
@@ -288,23 +293,25 @@ export default function HcpDetailPage() {
                 <CardContent>
                   <div className="space-y-4">
                     {/* Add new alias */}
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Add alias..."
-                        value={newAliasName}
-                        onChange={(e) => setNewAliasName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleAddAlias();
-                        }}
-                      />
-                      <Button
-                        size="icon"
-                        onClick={handleAddAlias}
-                        disabled={!newAliasName.trim() || addAlias.isPending}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    {canEdit && (
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Add alias..."
+                          value={newAliasName}
+                          onChange={(e) => setNewAliasName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleAddAlias();
+                          }}
+                        />
+                        <Button
+                          size="icon"
+                          onClick={handleAddAlias}
+                          disabled={!newAliasName.trim() || addAlias.isPending}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
 
                     {/* Alias list */}
                     <div className="space-y-2">
@@ -319,16 +326,18 @@ export default function HcpDetailPage() {
                             className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2"
                           >
                             <span className="text-sm">{alias.aliasName}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              onClick={() =>
-                                setAliasToDelete({ id: alias.id, name: alias.aliasName })
-                              }
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
+                            {canEdit && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() =>
+                                  setAliasToDelete({ id: alias.id, name: alias.aliasName })
+                                }
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                         ))
                       )}

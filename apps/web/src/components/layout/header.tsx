@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Bell, User, LogOut, Settings, ChevronDown, HelpCircle, Eye, X } from 'lucide-react';
+import { Bell, User, LogOut, Settings, ChevronDown, HelpCircle, Eye } from 'lucide-react';
 import { Breadcrumb } from './breadcrumb';
 
 export function Header() {
@@ -58,26 +58,12 @@ export function Header() {
     }
     const client = clients.find((c) => c.id === value);
     if (client) {
-      startImpersonating(client.id, client.name);
+      startImpersonating(client.id, client.name, client.logoUrl, client.primaryColor);
     }
   };
 
   return (
     <>
-      {/* Impersonation Banner */}
-      {isImpersonating && (
-        <div className="sticky top-0 z-40 flex h-8 items-center justify-center gap-2 bg-amber-500 text-amber-950 text-sm font-medium">
-          <Eye className="h-3.5 w-3.5" />
-          <span>Viewing as: {clientName}</span>
-          <button
-            onClick={stopImpersonating}
-            className="ml-2 rounded-full p-0.5 hover:bg-amber-600/50 transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border/60 bg-card/95 backdrop-blur-sm px-6">
         {/* Breadcrumb */}
         <div className="flex items-center gap-4">

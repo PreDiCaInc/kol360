@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useHcps, useHcpFilters } from '@/hooks/use-hcps';
+import { useImpersonation } from '@/lib/impersonation-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +42,8 @@ function getSpecialtyDisplay(hcp: { specialty?: string | null; specialties?: { i
 }
 
 export default function HcpsPage() {
+  const { isImpersonating } = useImpersonation();
+  const canEdit = !isImpersonating;
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAliasImportDialog, setShowAliasImportDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -135,18 +138,22 @@ export default function HcpsPage() {
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
-          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Import HCPs
-          </Button>
-          <Button variant="outline" onClick={() => setShowAliasImportDialog(true)}>
-            <Users className="w-4 h-4 mr-2" />
-            Import Aliases
-          </Button>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add HCP
-          </Button>
+          {canEdit && (
+            <>
+              <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Import HCPs
+              </Button>
+              <Button variant="outline" onClick={() => setShowAliasImportDialog(true)}>
+                <Users className="w-4 h-4 mr-2" />
+                Import Aliases
+              </Button>
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add HCP
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -293,16 +300,18 @@ export default function HcpsPage() {
               ? 'Try adjusting your search filters to find more results.'
               : 'Import HCP data or add your first healthcare professional.'}
           </p>
-          <div className="flex gap-2 justify-center">
-            <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-              <Upload className="w-4 h-4 mr-2" />
-              Import HCPs
-            </Button>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add HCP
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Import HCPs
+              </Button>
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add HCP
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <>

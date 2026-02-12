@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Download,
   Search,
   Users,
   TrendingUp,
@@ -96,37 +95,6 @@ export default function LiteDashboardPage() {
       }))
     : [];
 
-  const handleExport = async () => {
-    if (!selectedDiseaseArea) return;
-
-    try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(
-        `/api/v1/lite/disease-areas/${selectedDiseaseArea}/export`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!response.ok) throw new Error('Export failed');
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `hcp-scores-${selectedArea?.code || 'export'}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Export failed:', error);
-      alert('Failed to export data. Please try again.');
-    }
-  };
-
   if (loadingAreas) {
     return (
       <RequireAuth>
@@ -164,7 +132,7 @@ export default function LiteDashboardPage() {
           <div>
             <h1 className="text-2xl font-bold">KOL Scores Dashboard</h1>
             <p className="text-muted-foreground">
-              View and export KOL scores by disease area
+              View KOL scores by disease area
             </p>
           </div>
 
@@ -188,14 +156,6 @@ export default function LiteDashboardPage() {
               </SelectContent>
             </Select>
 
-            <Button
-              variant="outline"
-              onClick={handleExport}
-              disabled={!selectedDiseaseArea}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export CSV
-            </Button>
           </div>
         </div>
 

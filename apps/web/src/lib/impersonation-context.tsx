@@ -8,22 +8,30 @@ import { useAuth } from './auth/auth-provider';
 interface ImpersonationState {
   clientId: string | null;
   clientName: string | null;
+  logoUrl: string | null;
+  primaryColor: string | null;
 }
 
 interface ImpersonationContextValue {
   isImpersonating: boolean;
   clientId: string | null;
   clientName: string | null;
-  startImpersonating: (clientId: string, clientName: string) => void;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  startImpersonating: (clientId: string, clientName: string, logoUrl?: string | null, primaryColor?: string | null) => void;
   stopImpersonating: () => void;
 }
 
 const STORAGE_KEY = 'kol360_impersonation';
 
+const emptyState: ImpersonationState = { clientId: null, clientName: null, logoUrl: null, primaryColor: null };
+
 const ImpersonationContext = createContext<ImpersonationContextValue>({
   isImpersonating: false,
   clientId: null,
   clientName: null,
+  logoUrl: null,
+  primaryColor: null,
   startImpersonating: () => {},
   stopImpersonating: () => {},
 });
@@ -33,12 +41,12 @@ export function useImpersonation() {
 }
 
 function loadFromStorage(): ImpersonationState {
-  if (typeof window === 'undefined') return { clientId: null, clientName: null };
+  if (typeof window === 'undefined') return emptyState;
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return JSON.parse(stored);
+    if (stored) return { ...emptyState, ...JSON.parse(stored) };
   } catch {}
-  return { clientId: null, clientName: null };
+  return emptyState;
 }
 
 function saveToStorage(state: ImpersonationState) {
@@ -56,7 +64,7 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
   const [state, setState] = useState<ImpersonationState>(() => {
-    if (!isPlatformAdmin) return { clientId: null, clientName: null };
+    if (!isPlatformAdmin) return emptyState;
     return loadFromStorage();
   });
 
@@ -69,26 +77,24 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
   // Clear impersonation if user is no longer PLATFORM_ADMIN
   useEffect(() => {
     if (!isPlatformAdmin && state.clientId) {
-      setState({ clientId: null, clientName: null });
-      saveToStorage({ clientId: null, clientName: null });
+      setState(emptyState);
+      saveToStorage(emptyState);
       setImpersonateClientId(null);
     }
   }, [isPlatformAdmin, state.clientId]);
 
-  const startImpersonating = useCallback((clientId: string, clientName: string) => {
-    const newState = { clientId, clientName };
+  const startImpersonating = useCallback((clientId: string, clientName: string, logoUrl?: string | null, primaryColor?: string | null) => {
+    const newState: ImpersonationState = { clientId, clientName, logoUrl: logoUrl || null, primaryColor: primaryColor || null };
     setState(newState);
     saveToStorage(newState);
     setImpersonateClientId(clientId);
-    // Refetch all queries with the new impersonation header
     queryClient.invalidateQueries();
   }, [queryClient]);
 
   const stopImpersonating = useCallback(() => {
-    setState({ clientId: null, clientName: null });
-    saveToStorage({ clientId: null, clientName: null });
+    setState(emptyState);
+    saveToStorage(emptyState);
     setImpersonateClientId(null);
-    // Refetch all queries without the impersonation header
     queryClient.invalidateQueries();
   }, [queryClient]);
 
@@ -98,6 +104,8 @@ export function ImpersonationProvider({ children }: { children: ReactNode }) {
         isImpersonating: !!state.clientId && isPlatformAdmin,
         clientId: state.clientId,
         clientName: state.clientName,
+        logoUrl: state.logoUrl,
+        primaryColor: state.primaryColor,
         startImpersonating,
         stopImpersonating,
       }}

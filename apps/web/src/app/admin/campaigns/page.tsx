@@ -7,6 +7,7 @@ import {
   useCreateCampaign,
   useDeleteCampaign,
 } from '@/hooks/use-campaigns';
+import { useImpersonation } from '@/lib/impersonation-context';
 import { useClients } from '@/hooks/use-clients';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { useSurveyTemplates } from '@/hooks/use-survey-templates';
@@ -68,6 +69,8 @@ const statusColors: Record<CampaignStatus, string> = {
 };
 
 export default function CampaignsPage() {
+  const { isImpersonating } = useImpersonation();
+  const canEdit = !isImpersonating;
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | 'ALL'>('ALL');
   const [clientFilter, setClientFilter] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
@@ -144,30 +147,34 @@ export default function CampaignsPage() {
             Manage KOL assessment campaigns
           </p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)} className="sm:w-auto">
-          <Plus className="w-4 h-4 mr-2" />
-          New Campaign
-        </Button>
+        {canEdit && (
+          <Button onClick={() => setShowCreateDialog(true)} className="sm:w-auto">
+            <Plus className="w-4 h-4 mr-2" />
+            New Campaign
+          </Button>
+        )}
       </div>
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 mb-6">
-          <Select
-            value={clientFilter}
-            onValueChange={handleClientChange}
-          >
-            <SelectTrigger className="w-48 bg-card">
-              <SelectValue placeholder="Filter by client" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">All Clients</SelectItem>
-              {clients.map((client) => (
-                <SelectItem key={client.id} value={client.id}>
-                  {client.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!isImpersonating && (
+            <Select
+              value={clientFilter}
+              onValueChange={handleClientChange}
+            >
+              <SelectTrigger className="w-48 bg-card">
+                <SelectValue placeholder="Filter by client" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">All Clients</SelectItem>
+                {clients.map((client) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select
             value={statusFilter}
             onValueChange={handleStatusChange}
@@ -224,10 +231,12 @@ export default function CampaignsPage() {
               <p className="text-muted-foreground mb-4">
                 Create your first campaign to get started
               </p>
-              <Button onClick={() => setShowCreateDialog(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Campaign
-              </Button>
+              {canEdit && (
+                <Button onClick={() => setShowCreateDialog(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Campaign
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -285,7 +294,7 @@ export default function CampaignsPage() {
                                 View Details
                               </Link>
                             </DropdownMenuItem>
-                            {campaign.status === 'DRAFT' && (
+                            {campaign.status === 'DRAFT' && canEdit && (
                               <DropdownMenuItem
                                 className="text-destructive"
                                 onClick={() => setCampaignToDelete({ id: campaign.id, name: campaign.name })}

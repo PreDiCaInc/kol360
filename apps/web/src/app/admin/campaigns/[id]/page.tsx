@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useImpersonation } from '@/lib/impersonation-context';
 import {
   useCampaign,
   useUpdateCampaign,
@@ -111,6 +112,8 @@ interface StepStatus {
 }
 
 export default function CampaignDetailPage() {
+  const { isImpersonating } = useImpersonation();
+  const canEdit = !isImpersonating;
   const params = useParams();
   const router = useRouter();
   const campaignId = params.id as string;
@@ -404,7 +407,7 @@ export default function CampaignDetailPage() {
               <div>
                 <div className="flex items-center gap-3 mb-1">
                   <h1 className="text-2xl font-bold">{campaign.name}</h1>
-                  {campaign.status !== 'PUBLISHED' && (
+                  {campaign.status !== 'PUBLISHED' && canEdit && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -429,7 +432,7 @@ export default function CampaignDetailPage() {
           </div>
           {/* Workflow-aware action button - shows next step */}
           <div className="flex gap-2">
-            {campaign.status === 'DRAFT' && (() => {
+            {campaign.status === 'DRAFT' && canEdit && (() => {
               const nextStep = getNextIncompleteStep();
               if (nextStep && nextStep.id !== 'initiate') {
                 // Guide to next incomplete setup step
@@ -461,14 +464,14 @@ export default function CampaignDetailPage() {
                 );
               }
             })()}
-            {campaign.status === 'ACTIVE' && (
+            {campaign.status === 'ACTIVE' && canEdit && (
               <Button onClick={() => handleStepClick('nominations')}>
                 <UserCheck className="w-4 h-4 mr-2" />
                 Review Nominations
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             )}
-            {campaign.status === 'CLOSED' && (
+            {campaign.status === 'CLOSED' && canEdit && (
               <Button onClick={() => handleStepClick('survey-scores')}>
                 <Calculator className="w-4 h-4 mr-2" />
                 Calculate Scores
@@ -860,14 +863,16 @@ export default function CampaignDetailPage() {
                       </ul>
                     </div>
                     <div className="flex items-center gap-4">
-                      <Button
-                        onClick={() => setStatusAction('activate')}
-                        size="lg"
-                        disabled={!isReadyToActivate()}
-                      >
-                        <Play className="w-5 h-5 mr-2" />
-                        Activate Campaign
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          onClick={() => setStatusAction('activate')}
+                          size="lg"
+                          disabled={!isReadyToActivate()}
+                        >
+                          <Play className="w-5 h-5 mr-2" />
+                          Activate Campaign
+                        </Button>
+                      )}
                       {isReadyToActivate() ? (
                         <p className="text-sm text-muted-foreground">
                           This will activate the campaign. You can then send invitation emails to HCPs.
@@ -929,22 +934,24 @@ export default function CampaignDetailPage() {
                       </div>
                     )}
 
-                    <div className="flex gap-3 flex-wrap">
-                      {distributionStats && distributionStats.notInvited > 0 && (
-                        <Button onClick={() => setShowInvitationConfirm(true)} variant="default">
-                          <Mail className="w-4 h-4 mr-2" />
-                          Send Invitations ({distributionStats.notInvited})
+                    {canEdit && (
+                      <div className="flex gap-3 flex-wrap">
+                        {distributionStats && distributionStats.notInvited > 0 && (
+                          <Button onClick={() => setShowInvitationConfirm(true)} variant="default">
+                            <Mail className="w-4 h-4 mr-2" />
+                            Send Invitations ({distributionStats.notInvited})
+                          </Button>
+                        )}
+                        <Button onClick={() => setShowReminderConfirm(true)} variant="outline" disabled={!distributionStats || distributionStats.invited === 0}>
+                          <Bell className="w-4 h-4 mr-2" />
+                          Send Reminders
                         </Button>
-                      )}
-                      <Button onClick={() => setShowReminderConfirm(true)} variant="outline" disabled={!distributionStats || distributionStats.invited === 0}>
-                        <Bell className="w-4 h-4 mr-2" />
-                        Send Reminders
-                      </Button>
-                      <Button onClick={() => setStatusAction('close')} variant="outline">
-                        <Pause className="w-4 h-4 mr-2" />
-                        Close Survey
-                      </Button>
-                    </div>
+                        <Button onClick={() => setStatusAction('close')} variant="outline">
+                          <Pause className="w-4 h-4 mr-2" />
+                          Close Survey
+                        </Button>
+                      </div>
+                    )}
                   </>
                 ) : campaign.status === 'CLOSED' ? (
                   <>
@@ -957,10 +964,12 @@ export default function CampaignDetailPage() {
                         No more responses are being accepted. You can reopen if needed.
                       </p>
                     </div>
-                    <Button onClick={() => setStatusAction('reopen')} variant="outline">
-                      <RotateCcw className="w-4 h-4 mr-2" />
-                      Reopen Survey
-                    </Button>
+                    {canEdit && (
+                      <Button onClick={() => setStatusAction('reopen')} variant="outline">
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Reopen Survey
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
