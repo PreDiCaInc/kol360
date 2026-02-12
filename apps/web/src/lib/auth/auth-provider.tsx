@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (tokenString) {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL;
         try {
-          const response = await fetch(`${apiUrl}/users/me`, {
+          const response = await fetch(`${apiUrl}/api/v1/users/me`, {
             headers: {
               Authorization: `Bearer ${tokenString}`,
             },
@@ -128,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (apiError) {
           // API call failed - continue with Cognito data only
-          console.error('API call to /users/me failed:', apiError);
+          console.error('API call to /api/v1/users/me failed:', apiError);
         }
       }
 
@@ -202,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       let userName = email.split('@')[0]; // Default fallback to email prefix
 
       try {
-        const response = await fetch(`${apiUrl}/users/by-email/${encodeURIComponent(email)}`);
+        const response = await fetch(`${apiUrl}/api/v1/users/by-email/${encodeURIComponent(email)}`);
         if (response.ok) {
           const userData = await response.json();
           if (userData.firstName && userData.lastName) {

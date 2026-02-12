@@ -21,14 +21,14 @@ interface Client {
 export function useClients(includeInactive = false) {
   return useQuery({
     queryKey: ['clients', { includeInactive }],
-    queryFn: () => apiClient.get<{ items: Client[] }>('/api/v1/clients', { includeInactive }),
+    queryFn: () => apiClient.get<{ items: Client[] }>('/api/v1/clients', { includeInactive }, { skipImpersonation: true }),
   });
 }
 
 export function useClient(id: string) {
   return useQuery({
     queryKey: ['clients', id],
-    queryFn: () => apiClient.get<Client>(`/api/v1/clients/${id}`),
+    queryFn: () => apiClient.get<Client>(`/api/v1/clients/${id}`, undefined, { skipImpersonation: true }),
     enabled: !!id,
   });
 }

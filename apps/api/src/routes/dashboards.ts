@@ -27,8 +27,14 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
       fastify.prisma.campaign.count({
         where: { status: 'ACTIVE', ...tenantFilter },
       }),
-      // Total HCPs count (platform-wide, not tenant-specific)
-      fastify.prisma.hcp.count(),
+      // Total HCPs count - scoped to client's campaigns for non-platform admins
+      user?.role === 'PLATFORM_ADMIN'
+        ? fastify.prisma.hcp.count()
+        : fastify.prisma.campaignHcp.findMany({
+            where: { campaign: { clientId: user?.tenantId } },
+            select: { hcpId: true },
+            distinct: ['hcpId'],
+          }).then(results => results.length),
       // Completed survey responses
       fastify.prisma.surveyResponse.count({
         where: { status: 'COMPLETED', ...campaignTenantFilter },
