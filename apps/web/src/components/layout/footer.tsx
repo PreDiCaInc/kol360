@@ -29,18 +29,8 @@ export function Footer() {
           </a>
         </div>
 
-        {/* Right side - Links */}
-        <div className="flex items-center gap-4 text-sm">
-          <a href="#" className="text-muted-foreground transition-colors hover:text-foreground">
-            Privacy
-          </a>
-          <a href="#" className="text-muted-foreground transition-colors hover:text-foreground">
-            Terms
-          </a>
-          <a href="#" className="text-muted-foreground transition-colors hover:text-foreground">
-            Support
-          </a>
-        </div>
+        {/* Right side - placeholder for future links */}
+        <div className="flex items-center gap-4 text-sm" />
       </div>
     </footer>
   );

@@ -20,9 +20,10 @@ export async function api<T>(
   options: RequestInit & {
     params?: Record<string, string | number | boolean | undefined | null>;
     responseType?: 'json' | 'blob';
+    skipImpersonation?: boolean;
   } = {}
 ): Promise<T> {
-  const { params, responseType = 'json', ...init } = options;
+  const { params, responseType = 'json', skipImpersonation, ...init } = options;
 
   // Build URL with query params
   let url = `${API_BASE}${endpoint}`;
@@ -45,7 +46,7 @@ export async function api<T>(
   // Only set Content-Type for requests with a body (and not FormData)
   const headers: Record<string, string> = {
     ...(token && { Authorization: `Bearer ${token}` }),
-    ...(impersonateClientId && { 'X-Impersonate-Client': impersonateClientId }),
+    ...(!skipImpersonation && impersonateClientId && { 'X-Impersonate-Client': impersonateClientId }),
   };
   if (init.body && typeof init.body === 'string') {
     headers['Content-Type'] = 'application/json';
@@ -60,6 +61,10 @@ export async function api<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== 'undefined') {
+      window.location.href = '/login';
+      throw new Error('Session expired');
+    }
     const error = await response.json().catch(() => ({ message: 'Unknown error' }));
     throw new Error(error.message || `API Error: ${response.status}`);
   }
@@ -89,8 +94,8 @@ export async function api<T>(
 }
 
 export const apiClient = {
-  get: <T>(endpoint: string, params?: Record<string, string | number | boolean | undefined | null>) =>
-    api<T>(endpoint, { method: 'GET', params }),
+  get: <T>(endpoint: string, params?: Record<string, string | number | boolean | undefined | null>, options?: { skipImpersonation?: boolean }) =>
+    api<T>(endpoint, { method: 'GET', params, skipImpersonation: options?.skipImpersonation }),
   post: <T>(endpoint: string, body?: unknown) =>
     api<T>(endpoint, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(endpoint: string, body: unknown) =>

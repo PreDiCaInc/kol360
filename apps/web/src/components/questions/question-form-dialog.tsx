@@ -144,7 +144,6 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
   }, [options, needsOptions, form]);
 
   async function onSubmit(data: CreateQuestionInput) {
-    console.log('Submitting question:', data);
     try {
       if (isEdit) {
         await updateQuestion.mutateAsync({ id: questionId!, data });
@@ -163,7 +162,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
   }
 
   function onInvalid(errors: unknown) {
-    console.log('Form validation failed:', errors);
+    console.error('Form validation failed:', errors);
   }
 
   function addOption() {

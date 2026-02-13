@@ -1,5 +1,6 @@
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { dashboardService } from '../services/dashboard.service';
+import { requireClientAdmin } from '../middleware/rbac';
 import {
   createDashboardSchema,
   updateDashboardSchema,
@@ -9,7 +10,7 @@ import {
 
 export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Platform-wide stats endpoint for admin dashboard
-  fastify.get('/stats', async (request, reply) => {
+  fastify.get('/stats', { preHandler: requireClientAdmin() }, async (request, reply) => {
     const user = request.user;
 
     // Build tenant filter for non-platform admins
@@ -27,8 +28,14 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
       fastify.prisma.campaign.count({
         where: { status: 'ACTIVE', ...tenantFilter },
       }),
-      // Total HCPs count (platform-wide, not tenant-specific)
-      fastify.prisma.hcp.count(),
+      // Total HCPs count - scoped to client's campaigns for non-platform admins
+      user?.role === 'PLATFORM_ADMIN'
+        ? fastify.prisma.hcp.count()
+        : fastify.prisma.campaignHcp.findMany({
+            where: { campaign: { clientId: user?.tenantId } },
+            select: { hcpId: true },
+            distinct: ['hcpId'],
+          }).then(results => results.length),
       // Completed survey responses
       fastify.prisma.surveyResponse.count({
         where: { status: 'COMPLETED', ...campaignTenantFilter },
@@ -149,6 +156,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Get dashboard for campaign
   fastify.get<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/dashboard',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { campaignId } = request.params;
 
@@ -177,6 +185,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Create dashboard for campaign
   fastify.post<{ Params: { campaignId: string }; Body: { name: string } }>(
     '/campaigns/:campaignId/dashboard',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { campaignId } = request.params;
       const { name } = request.body;
@@ -207,6 +216,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Update dashboard
   fastify.patch<{ Params: { dashboardId: string }; Body: { name?: string; isPublished?: boolean } }>(
     '/dashboards/:dashboardId',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { dashboardId } = request.params;
 
@@ -226,6 +236,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Publish dashboard
   fastify.post<{ Params: { dashboardId: string } }>(
     '/dashboards/:dashboardId/publish',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { dashboardId } = request.params;
 
@@ -243,6 +254,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Unpublish dashboard
   fastify.post<{ Params: { dashboardId: string } }>(
     '/dashboards/:dashboardId/unpublish',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { dashboardId } = request.params;
 
@@ -260,6 +272,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Add component to dashboard
   fastify.post<{ Params: { dashboardId: string }; Body: unknown }>(
     '/dashboards/:dashboardId/components',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { dashboardId } = request.params;
 
@@ -287,6 +300,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Update component
   fastify.patch<{ Params: { componentId: string }; Body: unknown }>(
     '/components/:componentId',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { componentId } = request.params;
 
@@ -312,6 +326,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Delete component
   fastify.delete<{ Params: { componentId: string } }>(
     '/components/:componentId',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { componentId } = request.params;
 
@@ -329,6 +344,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Toggle component visibility
   fastify.post<{ Params: { componentId: string } }>(
     '/components/:componentId/toggle',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { componentId } = request.params;
 
@@ -346,6 +362,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Reorder components
   fastify.post<{ Params: { dashboardId: string }; Body: { componentIds: string[] } }>(
     '/dashboards/:dashboardId/reorder',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { dashboardId } = request.params;
 
@@ -367,6 +384,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Get dashboard stats
   fastify.get<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/dashboard/stats',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { campaignId } = request.params;
 
@@ -384,6 +402,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Get completion funnel data
   fastify.get<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/dashboard/funnel',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { campaignId } = request.params;
 
@@ -401,6 +420,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Get score distribution
   fastify.get<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/dashboard/score-distribution',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { campaignId } = request.params;
 
@@ -418,6 +438,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Get top KOLs
   fastify.get<{ Params: { campaignId: string }; Querystring: { limit?: string } }>(
     '/campaigns/:campaignId/dashboard/top-kols',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { campaignId } = request.params;
 
@@ -436,6 +457,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   // Get segment scores
   fastify.get<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/dashboard/segment-scores',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { campaignId } = request.params;
 
@@ -456,6 +478,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
     Querystring: { questionId?: string; groupBy?: string; metric?: string };
   }>(
     '/campaigns/:campaignId/dashboard/custom-chart',
+    { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { campaignId } = request.params;
 

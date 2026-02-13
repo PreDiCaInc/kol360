@@ -76,9 +76,7 @@ export default function SectionsPage() {
   const handleDelete = async () => {
     if (!sectionToDelete) return;
     try {
-      console.log('Deleting section:', sectionToDelete.id);
       await deleteSection.mutateAsync(sectionToDelete.id);
-      console.log('Section deleted successfully');
       setSectionToDelete(null);
     } catch (error) {
       console.error('Failed to delete section:', error);
