@@ -599,8 +599,8 @@ export class ApiClient {
     }
 
     if (response.status !== 204) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(`Failed to force delete campaign: ${error.message || response.status}`);
+      const error = response.data as Record<string, string>;
+      throw new Error(`Failed to force delete campaign: ${error?.message || response.status}`);
     }
   }
 
@@ -725,7 +725,7 @@ export interface CampaignHcp {
   id: string;
   campaignId: string;
   hcpId: string;
-  surveyToken: string;
+  surveyToken?: string;
   emailSentAt?: string;
   emailStatus?: string;
   responseStatus?: string;

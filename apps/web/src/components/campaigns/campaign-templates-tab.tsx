@@ -26,7 +26,13 @@ import {
 } from '@/components/ui/accordion';
 import { Mail, FileText, Save, RotateCcw, Eye } from 'lucide-react';
 import { SurveyPreviewDialog } from './survey-preview-dialog';
-import { TemplatePreviewDialog } from './template-preview-dialog';
+import {
+  TemplatePreviewDialog,
+  DEFAULT_INVITATION_SUBJECT,
+  DEFAULT_INVITATION_BODY,
+  DEFAULT_REMINDER_SUBJECT,
+  DEFAULT_REMINDER_BODY,
+} from './template-preview-dialog';
 
 type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done';
 
@@ -63,13 +69,13 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
   const [showSurveyPreview, setShowSurveyPreview] = useState(false);
   const [templatePreviewType, setTemplatePreviewType] = useState<PreviewType | null>(null);
 
-  // Initialize form with fetched data
+  // Initialize form with fetched data, falling back to default templates
   useEffect(() => {
     if (emailTemplates) {
-      setInvitationSubject(emailTemplates.invitationEmailSubject || '');
-      setInvitationBody(emailTemplates.invitationEmailBody || '');
-      setReminderSubject(emailTemplates.reminderEmailSubject || '');
-      setReminderBody(emailTemplates.reminderEmailBody || '');
+      setInvitationSubject(emailTemplates.invitationEmailSubject || DEFAULT_INVITATION_SUBJECT);
+      setInvitationBody(emailTemplates.invitationEmailBody || DEFAULT_INVITATION_BODY.trim());
+      setReminderSubject(emailTemplates.reminderEmailSubject || DEFAULT_REMINDER_SUBJECT);
+      setReminderBody(emailTemplates.reminderEmailBody || DEFAULT_REMINDER_BODY.trim());
       setEmailDirty(false);
     }
   }, [emailTemplates]);
@@ -116,10 +122,10 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
 
   const handleResetEmailTemplates = () => {
     if (emailTemplates) {
-      setInvitationSubject(emailTemplates.invitationEmailSubject || '');
-      setInvitationBody(emailTemplates.invitationEmailBody || '');
-      setReminderSubject(emailTemplates.reminderEmailSubject || '');
-      setReminderBody(emailTemplates.reminderEmailBody || '');
+      setInvitationSubject(emailTemplates.invitationEmailSubject || DEFAULT_INVITATION_SUBJECT);
+      setInvitationBody(emailTemplates.invitationEmailBody || DEFAULT_INVITATION_BODY.trim());
+      setReminderSubject(emailTemplates.reminderEmailSubject || DEFAULT_REMINDER_SUBJECT);
+      setReminderBody(emailTemplates.reminderEmailBody || DEFAULT_REMINDER_BODY.trim());
       setEmailDirty(false);
     }
   };
@@ -209,7 +215,7 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
                       setInvitationSubject(e.target.value);
                       setEmailDirty(true);
                     }}
-                    placeholder="Default: KOL360 Survey Invitation - {campaignName}"
+                    placeholder="e.g. Your expertise needed: {campaignName} KOL Survey"
                   />
                 </div>
                 <div>
@@ -220,9 +226,9 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
                       setInvitationBody(e.target.value);
                       setEmailDirty(true);
                     }}
-                    placeholder="Leave empty to use default template. Supports HTML."
-                    rows={12}
-                    className="font-mono text-sm"
+                    placeholder="Edit the HTML template above. Use placeholders: {firstName}, {lastName}, {surveyLink}, {campaignName}, {honorariumBlock}"
+                    rows={16}
+                    className="font-mono text-xs"
                   />
                 </div>
               </AccordionContent>
@@ -255,7 +261,7 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
                       setReminderSubject(e.target.value);
                       setEmailDirty(true);
                     }}
-                    placeholder="Default: Reminder: Complete Your KOL360 Survey"
+                    placeholder="e.g. Reminder: {campaignName} KOL Survey"
                   />
                 </div>
                 <div>
@@ -266,9 +272,9 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
                       setReminderBody(e.target.value);
                       setEmailDirty(true);
                     }}
-                    placeholder="Leave empty to use default template. Supports HTML."
-                    rows={12}
-                    className="font-mono text-sm"
+                    placeholder="Edit the HTML template above. Use placeholders: {firstName}, {lastName}, {surveyLink}, {campaignName}, {honorariumBlock}"
+                    rows={16}
+                    className="font-mono text-xs"
                   />
                 </div>
               </AccordionContent>
