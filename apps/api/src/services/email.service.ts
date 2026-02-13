@@ -133,6 +133,14 @@ export class EmailService {
       ? `$${params.honorariumAmount}`
       : '';
 
+    const honorariumBlock = params.honorariumAmount
+      ? `<div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin: 24px 0; text-align: center;">
+        <p style="margin: 0 0 4px 0; font-size: 14px; color: #065f46;">Upon completion, you will receive</p>
+        <p style="margin: 0; font-size: 28px; font-weight: 700; color: #047857;">$${params.honorariumAmount}</p>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #065f46;">honorarium</p>
+      </div>`
+      : '';
+
     return template
       .replace(/\{firstName\}/g, params.firstName)
       .replace(/\{lastName\}/g, params.lastName)
@@ -140,7 +148,8 @@ export class EmailService {
       .replace(/\{surveyUrl\}/g, params.surveyUrl)
       .replace(/\{unsubscribeUrl\}/g, params.unsubscribeUrl)
       .replace(/\{campaignName\}/g, params.campaignName)
-      .replace(/\{honorarium\}/g, honorariumText);
+      .replace(/\{honorarium\}/g, honorariumText)
+      .replace(/\{honorariumBlock\}/g, honorariumBlock);
   }
 
   async sendSurveyInvitation(params: SendInvitationParams): Promise<{ messageId: string }> {
@@ -186,6 +195,15 @@ export class EmailService {
       ? this.replaceTemplatePlaceholders(customSubject, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount })
       : `Your expertise needed: ${campaignName} KOL Survey`;
 
+    // Build honorarium block for default template
+    const honorariumBlock = honorariumAmount
+      ? `<div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin: 24px 0; text-align: center;">
+          <p style="margin: 0 0 4px 0; font-size: 14px; color: #065f46;">Upon completion, you will receive</p>
+          <p style="margin: 0; font-size: 28px; font-weight: 700; color: #047857;">$${honorariumAmount}</p>
+          <p style="margin: 4px 0 0 0; font-size: 13px; color: #065f46;">honorarium</p>
+        </div>`
+      : '';
+
     // If custom body provided, use it with placeholder replacement
     let htmlBody: string;
     if (customBody) {
@@ -197,44 +215,47 @@ export class EmailService {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subject}</title>
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="text-align: center; margin-bottom: 30px;">
-    <img src="${APP_URL}/images/logo-black.png" alt="BioExec" style="height: 40px;">
-  </div>
+<body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.7; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+    <div style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
+      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" style="height: 36px; margin-bottom: 8px;">
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Key Opinion Leader Research</p>
+    </div>
 
-  <h2 style="color: #0066CC;">Dear Dr. ${lastName},</h2>
+    <div style="padding: 32px 24px;">
+      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Dear Dr. ${lastName},</h2>
 
-  <p>You have been identified as a key opinion leader in your field, and we would greatly value your insights.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">You have been identified as a <strong>key opinion leader</strong> in your field, and we would greatly value your insights.</p>
 
-  <p>We are conducting the <strong>${campaignName}</strong> research study and would like to invite you to participate in a brief survey about thought leaders in your specialty area.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">We are conducting the <strong style="color: #147a6d;">${campaignName}</strong> research study and would like to invite you to participate in a brief survey about thought leaders in your specialty area.</p>
 
-  <p>The survey takes approximately <strong>5-10 minutes</strong> to complete.</p>
+      <div style="background: #f0fdf9; border-left: 4px solid #147a6d; padding: 16px; border-radius: 0 8px 8px 0; margin: 24px 0;">
+        <p style="margin: 0; color: #0f5d54; font-size: 14px;">
+          <strong>Estimated time:</strong> 5-10 minutes
+        </p>
+      </div>
 
-  ${honorariumText ? `<p style="background-color: #f0f7ff; padding: 15px; border-radius: 5px;">${honorariumText}</p>` : ''}
+      ${honorariumBlock}
 
-  <div style="text-align: center; margin: 30px 0;">
-    <a href="${surveyUrl}" style="background-color: #0066CC; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-      Start Survey
-    </a>
-  </div>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${surveyUrl}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
+          Start Survey
+        </a>
+      </div>
 
-  <p>If the button above doesn't work, copy and paste this link into your browser:</p>
-  <p style="word-break: break-all; color: #666; font-size: 14px;">${surveyUrl}</p>
+      <p style="font-size: 13px; color: #6b7280; margin: 24px 0 8px 0;">If the button doesn't work, copy this link:</p>
+      <p style="word-break: break-all; color: #147a6d; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 0;">${surveyUrl}</p>
+    </div>
 
-  <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-
-  <p style="font-size: 14px; color: #666;">
-    Your responses will be kept confidential and used only for research purposes.
-  </p>
-
-  <p style="font-size: 12px; color: #999;">
-    If you wish to unsubscribe from this survey, <a href="${unsubscribeUrl}" style="color: #999;">click here</a>.
-  </p>
-
-  <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999; text-align: center;">
-    <p>BioExec Research | Confidential KOL Survey</p>
+    <div style="background: #f8fafc; padding: 24px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 13px; color: #6b7280; margin: 0 0 8px 0; text-align: center;">
+        Your responses will be kept confidential and used only for research purposes.
+      </p>
+      <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
+        <a href="${unsubscribeUrl}" style="color: #9ca3af;">Unsubscribe</a> &middot; BioExec Research &middot; Confidential KOL Survey
+      </p>
+    </div>
   </div>
 </body>
 </html>
@@ -350,6 +371,15 @@ BioExec Research | Confidential KOL Survey
       ? this.replaceTemplatePlaceholders(customSubject, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount })
       : `Reminder: ${campaignName} KOL Survey - We value your input`;
 
+    // Build honorarium block for default template
+    const honorariumBlock = honorariumAmount
+      ? `<div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin: 24px 0; text-align: center;">
+          <p style="margin: 0 0 4px 0; font-size: 14px; color: #065f46;">Upon completion, you will receive</p>
+          <p style="margin: 0; font-size: 28px; font-weight: 700; color: #047857;">$${honorariumAmount}</p>
+          <p style="margin: 4px 0 0 0; font-size: 13px; color: #065f46;">honorarium</p>
+        </div>`
+      : '';
+
     let htmlBody: string;
     if (customBody) {
       htmlBody = this.replaceTemplatePlaceholders(customBody, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount });
@@ -361,38 +391,47 @@ BioExec Research | Confidential KOL Survey
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="text-align: center; margin-bottom: 30px;">
-    <img src="${APP_URL}/images/logo-black.png" alt="BioExec" style="height: 40px;">
-  </div>
+<body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.7; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+    <div style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
+      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" style="height: 36px; margin-bottom: 8px;">
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Key Opinion Leader Research</p>
+    </div>
 
-  <h2 style="color: #0066CC;">Dear Dr. ${lastName},</h2>
+    <div style="padding: 32px 24px;">
+      <div style="display: inline-block; background: #fef3c7; color: #92400e; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 20px;">
+        Friendly Reminder
+      </div>
 
-  <p>We recently invited you to participate in the <strong>${campaignName}</strong> research study, and we noticed you haven't yet completed the survey.</p>
+      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Dear Dr. ${lastName},</h2>
 
-  <p>${urgencyText}Your insights as a key opinion leader are invaluable to this research.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">We recently invited you to participate in the <strong style="color: #147a6d;">${campaignName}</strong> research study, and we noticed you haven't yet completed the survey.</p>
 
-  <p>The survey takes only <strong>5-10 minutes</strong> to complete.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">${urgencyText}Your insights as a key opinion leader are <strong>invaluable</strong> to this research.</p>
 
-  ${honorariumText ? `<p style="background-color: #f0f7ff; padding: 15px; border-radius: 5px;">${honorariumText}</p>` : ''}
+      <div style="background: #f0fdf9; border-left: 4px solid #147a6d; padding: 16px; border-radius: 0 8px 8px 0; margin: 24px 0;">
+        <p style="margin: 0; color: #0f5d54; font-size: 14px;">
+          <strong>Only 5-10 minutes</strong> to complete
+        </p>
+      </div>
 
-  <div style="text-align: center; margin: 30px 0;">
-    <a href="${surveyUrl}" style="background-color: #0066CC; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; display: inline-block;">
-      Complete Survey Now
-    </a>
-  </div>
+      ${honorariumBlock}
 
-  <p>If the button above doesn't work, copy and paste this link into your browser:</p>
-  <p style="word-break: break-all; color: #666; font-size: 14px;">${surveyUrl}</p>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${surveyUrl}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
+          Complete Survey Now
+        </a>
+      </div>
 
-  <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+      <p style="font-size: 13px; color: #6b7280; margin: 24px 0 8px 0;">If the button doesn't work, copy this link:</p>
+      <p style="word-break: break-all; color: #147a6d; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 0;">${surveyUrl}</p>
+    </div>
 
-  <p style="font-size: 12px; color: #999;">
-    If you wish to unsubscribe from this survey, <a href="${unsubscribeUrl}" style="color: #999;">click here</a>.
-  </p>
-
-  <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999; text-align: center;">
-    <p>BioExec Research | Confidential KOL Survey</p>
+    <div style="background: #f8fafc; padding: 24px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
+        <a href="${unsubscribeUrl}" style="color: #9ca3af;">Unsubscribe</a> &middot; BioExec Research &middot; Confidential KOL Survey
+      </p>
+    </div>
   </div>
 </body>
 </html>

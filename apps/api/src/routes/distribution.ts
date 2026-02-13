@@ -89,11 +89,22 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { status, page = '1', limit = '50' } = request.query;
 
-      return distributionService.listHcps(request.params.campaignId, {
+      const result = await distributionService.listHcps(request.params.campaignId, {
         status,
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
       });
+
+      // Strip surveyToken for non-PLATFORM_ADMIN users (security: prevent CLIENT_ADMIN from impersonating HCPs)
+      if (request.user!.role !== 'PLATFORM_ADMIN') {
+        result.items = result.items.map((item) => {
+          const cleaned = { ...item };
+          delete (cleaned as Record<string, unknown>).surveyToken;
+          return cleaned;
+        });
+      }
+
+      return result;
     }
   );
 
@@ -105,6 +116,16 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
       if (!hasAccess) return;
 
       const hcps = await distributionService.listCampaignHcps(request.params.campaignId);
+
+      // Strip surveyToken for non-PLATFORM_ADMIN users
+      if (request.user!.role !== 'PLATFORM_ADMIN') {
+        return { items: hcps.map((item) => {
+          const cleaned = { ...item };
+          delete (cleaned as Record<string, unknown>).surveyToken;
+          return cleaned;
+        }) };
+      }
+
       return { items: hcps };
     }
   );

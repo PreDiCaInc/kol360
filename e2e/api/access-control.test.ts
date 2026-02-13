@@ -247,4 +247,142 @@ describe('Access Control', () => {
       client.clearImpersonation();
     });
   });
+
+  // ==================== Security: Survey Token Visibility ====================
+
+  describe('Survey Token Security', () => {
+    let testCampaignId: string | undefined;
+
+    beforeAll(async () => {
+      // Find a campaign with assigned HCPs
+      const { data: campaigns } = await client.listCampaigns({ clientId: TEST_IDS.CLIENT_ID });
+      const campaign = campaigns?.items?.find(
+        (c) => c.status === 'ACTIVE' || c.status === 'CLOSED' || c.status === 'PUBLISHED'
+      );
+      testCampaignId = campaign?.id;
+    });
+
+    it('should expose surveyToken to PLATFORM_ADMIN', async () => {
+      if (!testCampaignId) {
+        console.log('Skipping: no campaign with HCPs available');
+        return;
+      }
+
+      client.clearImpersonation();
+      const { status, data } = await client.listCampaignHcps(testCampaignId);
+
+      expect(status).toBe(200);
+      if (data.items.length > 0) {
+        // PLATFORM_ADMIN should see surveyToken
+        const hasToken = data.items.some((h) => h.surveyToken);
+        expect(hasToken).toBe(true);
+        console.log('PLATFORM_ADMIN can see surveyTokens');
+      }
+    });
+
+    it('should hide surveyToken from CLIENT_ADMIN (impersonated)', async () => {
+      if (!testCampaignId) {
+        console.log('Skipping: no campaign with HCPs available');
+        return;
+      }
+
+      client.setImpersonation(TEST_IDS.CLIENT_ID);
+      const { status, data } = await client.listCampaignHcps(testCampaignId);
+
+      expect(status).toBe(200);
+      if (data.items.length > 0) {
+        // CLIENT_ADMIN should NOT see surveyToken
+        const hasToken = data.items.some((h) => h.surveyToken);
+        expect(hasToken).toBe(false);
+        console.log('CLIENT_ADMIN correctly cannot see surveyTokens');
+      }
+
+      client.clearImpersonation();
+    });
+  });
+
+  // ==================== Security: Dashboard Auth ====================
+
+  describe('Dashboard Auth Requirements', () => {
+    it('should allow PLATFORM_ADMIN to access dashboard stats', async () => {
+      client.clearImpersonation();
+      const { status } = await client.health();
+      expect(status).toBe(200);
+
+      // Dashboard stats endpoint - should return 200 for PLATFORM_ADMIN
+      const { data: campaigns } = await client.listCampaigns({ clientId: TEST_IDS.CLIENT_ID });
+      const campaign = campaigns?.items?.[0];
+      if (!campaign) {
+        console.log('Skipping: no campaigns available for dashboard test');
+        return;
+      }
+
+      // Access dashboard stats as PLATFORM_ADMIN
+      const baseUrl = config.apiUrl;
+      const response = await fetch(`${baseUrl}/api/v1/campaigns/${campaign.id}/dashboard/stats`, {
+        headers: { Authorization: `Bearer ${config.authToken}` },
+      });
+
+      // Should be 200 or 404 (no dashboard configured), NOT 401/403
+      expect([200, 404]).toContain(response.status);
+      console.log(`PLATFORM_ADMIN dashboard stats: ${response.status}`);
+    });
+
+    it('should require authentication for dashboard endpoints', async () => {
+      const { data: campaigns } = await client.listCampaigns({ clientId: TEST_IDS.CLIENT_ID });
+      const campaign = campaigns?.items?.[0];
+      if (!campaign) {
+        console.log('Skipping: no campaigns available');
+        return;
+      }
+
+      // Access without auth token
+      const baseUrl = config.apiUrl;
+      const response = await fetch(`${baseUrl}/api/v1/campaigns/${campaign.id}/dashboard/stats`);
+
+      expect(response.status).toBe(401);
+      console.log('Dashboard correctly requires authentication');
+    });
+  });
+
+  // ==================== Security: Export Tenant Isolation ====================
+
+  describe('Export Tenant Isolation', () => {
+    it('should allow PLATFORM_ADMIN to export from any campaign', async () => {
+      client.clearImpersonation();
+      const { data: campaigns } = await client.listCampaigns();
+      const closedCampaign = campaigns?.items?.find(
+        (c) => c.status === 'CLOSED' || c.status === 'PUBLISHED'
+      );
+      if (!closedCampaign) {
+        console.log('Skipping: no closed/published campaigns for export test');
+        return;
+      }
+
+      const { status } = await client.exportResponses(closedCampaign.id);
+      expect([200, 400]).toContain(status); // 400 if no responses
+      console.log(`PLATFORM_ADMIN export responses: ${status}`);
+    });
+
+    it('should deny CLIENT_ADMIN export from other tenant campaigns', async () => {
+      // Find a campaign NOT belonging to the test client
+      client.clearImpersonation();
+      const { data: allCampaigns } = await client.listCampaigns();
+      const otherCampaign = allCampaigns?.items?.find((c) => c.clientId !== TEST_IDS.CLIENT_ID);
+
+      if (!otherCampaign) {
+        console.log('Skipping: no campaigns from other tenants available');
+        return;
+      }
+
+      // Now impersonate as test client and try to export
+      client.setImpersonation(TEST_IDS.CLIENT_ID);
+      const { status } = await client.exportResponses(otherCampaign.id);
+
+      expect(status).toBe(403);
+      console.log('CLIENT_ADMIN correctly denied export from other tenant');
+
+      client.clearImpersonation();
+    });
+  });
 });

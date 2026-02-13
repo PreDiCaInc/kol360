@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import {
   Dialog,
@@ -24,8 +24,9 @@ const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['div', 'span', 'p', 'a', 'img', 'table', 'tr', 'td', 'th', 'tbody', 'thead',
                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 'u', 'br', 'hr',
-                   'ul', 'ol', 'li', 'blockquote', 'pre', 'code'],
-    ALLOWED_ATTR: ['href', 'src', 'alt', 'style', 'class', 'width', 'height', 'target', 'rel'],
+                   'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'center', 'caption'],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'style', 'class', 'width', 'height', 'target', 'rel',
+                   'bgcolor', 'align', 'valign', 'cellpadding', 'cellspacing', 'border'],
     ALLOW_DATA_ATTR: false,
     ADD_ATTR: ['target'],
   });
@@ -62,8 +63,8 @@ const SAMPLE_DATA = {
 };
 
 // Updated email templates with new design system colors (teal primary: #147a6d)
-const DEFAULT_INVITATION_SUBJECT = 'Your expertise needed: {campaignName} KOL Survey';
-const DEFAULT_INVITATION_BODY = `
+export const DEFAULT_INVITATION_SUBJECT = 'Your expertise needed: {campaignName} KOL Survey';
+export const DEFAULT_INVITATION_BODY = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -117,8 +118,8 @@ const DEFAULT_INVITATION_BODY = `
 </html>
 `;
 
-const DEFAULT_REMINDER_SUBJECT = 'Reminder: {campaignName} KOL Survey - We value your input';
-const DEFAULT_REMINDER_BODY = `
+export const DEFAULT_REMINDER_SUBJECT = 'Reminder: {campaignName} KOL Survey - We value your input';
+export const DEFAULT_REMINDER_BODY = `
 <!DOCTYPE html>
 <html>
 <head>
