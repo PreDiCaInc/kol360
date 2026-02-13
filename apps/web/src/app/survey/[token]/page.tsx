@@ -327,7 +327,7 @@ export default function SurveyPage() {
   if (submitted) {
     const thankYouTitle = survey.campaign.surveyThankYouTitle || 'Thank You!';
     const thankYouMessage = survey.campaign.surveyThankYouMessage ||
-      `Thank you for completing the survey, Dr. ${survey.hcp.lastName}.`;
+      `Thank you for completing the survey, Dr. ${survey.hcp.lastName}. Your insights are invaluable to this research and will help shape the future of key opinion leader engagement.`;
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -375,7 +375,7 @@ export default function SurveyPage() {
 
   // Welcome screen - uses same layout as login page
   if (!started) {
-    const welcomeTitle = survey.campaign.surveyWelcomeTitle || survey.campaign.name;
+    const welcomeTitle = survey.campaign.surveyWelcomeTitle || survey.campaign.name || 'Welcome to the KOL360 Survey';
     const welcomeMessage = survey.campaign.surveyWelcomeMessage ||
       'Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.';
 

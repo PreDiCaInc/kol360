@@ -32,6 +32,12 @@ import {
   DEFAULT_INVITATION_BODY,
   DEFAULT_REMINDER_SUBJECT,
   DEFAULT_REMINDER_BODY,
+  DEFAULT_WELCOME_TITLE,
+  DEFAULT_WELCOME_MESSAGE,
+  DEFAULT_THANKYOU_TITLE,
+  DEFAULT_THANKYOU_MESSAGE,
+  DEFAULT_ALREADYDONE_TITLE,
+  DEFAULT_ALREADYDONE_MESSAGE,
 } from './template-preview-dialog';
 
 type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done';
@@ -82,12 +88,12 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
 
   useEffect(() => {
     if (landingTemplates) {
-      setWelcomeTitle(landingTemplates.surveyWelcomeTitle || '');
-      setWelcomeMessage(landingTemplates.surveyWelcomeMessage || '');
-      setThankYouTitle(landingTemplates.surveyThankYouTitle || '');
-      setThankYouMessage(landingTemplates.surveyThankYouMessage || '');
-      setAlreadyDoneTitle(landingTemplates.surveyAlreadyDoneTitle || '');
-      setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || '');
+      setWelcomeTitle(landingTemplates.surveyWelcomeTitle || DEFAULT_WELCOME_TITLE);
+      setWelcomeMessage(landingTemplates.surveyWelcomeMessage || DEFAULT_WELCOME_MESSAGE);
+      setThankYouTitle(landingTemplates.surveyThankYouTitle || DEFAULT_THANKYOU_TITLE);
+      setThankYouMessage(landingTemplates.surveyThankYouMessage || DEFAULT_THANKYOU_MESSAGE);
+      setAlreadyDoneTitle(landingTemplates.surveyAlreadyDoneTitle || DEFAULT_ALREADYDONE_TITLE);
+      setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || DEFAULT_ALREADYDONE_MESSAGE);
       setLandingDirty(false);
     }
   }, [landingTemplates]);
@@ -132,12 +138,12 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
 
   const handleResetLandingTemplates = () => {
     if (landingTemplates) {
-      setWelcomeTitle(landingTemplates.surveyWelcomeTitle || '');
-      setWelcomeMessage(landingTemplates.surveyWelcomeMessage || '');
-      setThankYouTitle(landingTemplates.surveyThankYouTitle || '');
-      setThankYouMessage(landingTemplates.surveyThankYouMessage || '');
-      setAlreadyDoneTitle(landingTemplates.surveyAlreadyDoneTitle || '');
-      setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || '');
+      setWelcomeTitle(landingTemplates.surveyWelcomeTitle || DEFAULT_WELCOME_TITLE);
+      setWelcomeMessage(landingTemplates.surveyWelcomeMessage || DEFAULT_WELCOME_MESSAGE);
+      setThankYouTitle(landingTemplates.surveyThankYouTitle || DEFAULT_THANKYOU_TITLE);
+      setThankYouMessage(landingTemplates.surveyThankYouMessage || DEFAULT_THANKYOU_MESSAGE);
+      setAlreadyDoneTitle(landingTemplates.surveyAlreadyDoneTitle || DEFAULT_ALREADYDONE_TITLE);
+      setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || DEFAULT_ALREADYDONE_MESSAGE);
       setLandingDirty(false);
     }
   };
