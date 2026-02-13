@@ -42,7 +42,11 @@ export function buildApp() {
 
 export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   // Security plugins
-  await fastify.register(helmet);
+  await fastify.register(helmet, {
+    contentSecurityPolicy: false, // API returns JSON, CSP not applicable
+    crossOriginResourcePolicy: { policy: 'same-origin' },
+    hsts: { maxAge: 31536000, includeSubDomains: true },
+  });
   await fastify.register(cors, {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
     credentials: true,

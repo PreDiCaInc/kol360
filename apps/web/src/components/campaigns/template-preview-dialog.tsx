@@ -118,6 +118,14 @@ export const DEFAULT_INVITATION_BODY = `
 </html>
 `;
 
+// Default landing page templates
+export const DEFAULT_WELCOME_TITLE = 'Welcome to the KOL360 Survey';
+export const DEFAULT_WELCOME_MESSAGE = 'Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.';
+export const DEFAULT_THANKYOU_TITLE = 'Thank You!';
+export const DEFAULT_THANKYOU_MESSAGE = 'Thank you for completing the survey. Your insights are invaluable to this research and will help shape the future of key opinion leader engagement.';
+export const DEFAULT_ALREADYDONE_TITLE = 'Survey Already Completed';
+export const DEFAULT_ALREADYDONE_MESSAGE = 'You have already completed this survey. Thank you for your participation.';
+
 export const DEFAULT_REMINDER_SUBJECT = 'Reminder: {campaignName} KOL Survey - We value your input';
 export const DEFAULT_REMINDER_BODY = `
 <!DOCTYPE html>
@@ -290,22 +298,22 @@ export function TemplatePreviewDialog({
       case 'welcome':
         title = welcomeTitle || '';
         message = welcomeMessage || '';
-        defaultTitle = campaignName;
-        defaultMessage = 'Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.';
+        defaultTitle = campaignName || DEFAULT_WELCOME_TITLE;
+        defaultMessage = DEFAULT_WELCOME_MESSAGE;
         icon = null;
         break;
       case 'thankyou':
         title = thankYouTitle || '';
         message = thankYouMessage || '';
-        defaultTitle = 'Thank You!';
-        defaultMessage = `Thank you for completing the survey, Dr. ${SAMPLE_DATA.lastName}.`;
+        defaultTitle = DEFAULT_THANKYOU_TITLE;
+        defaultMessage = DEFAULT_THANKYOU_MESSAGE;
         icon = <CheckCircle2 className="w-12 h-12 text-emerald-500" />;
         break;
       case 'already-done':
         title = alreadyDoneTitle || '';
         message = alreadyDoneMessage || '';
-        defaultTitle = 'Survey Already Completed';
-        defaultMessage = 'You have already completed this survey. Thank you for your participation.';
+        defaultTitle = DEFAULT_ALREADYDONE_TITLE;
+        defaultMessage = DEFAULT_ALREADYDONE_MESSAGE;
         icon = <AlertCircle className="w-12 h-12 text-primary" />;
         break;
     }
