@@ -61,6 +61,10 @@ export async function api<T>(
   });
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== 'undefined') {
+      window.location.href = '/login';
+      throw new Error('Session expired');
+    }
     const error = await response.json().catch(() => ({ message: 'Unknown error' }));
     throw new Error(error.message || `API Error: ${response.status}`);
   }

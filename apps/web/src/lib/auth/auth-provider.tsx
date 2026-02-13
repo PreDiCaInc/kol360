@@ -213,7 +213,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch {
         // If API call fails, use email prefix as fallback
-        console.log('Could not fetch user name, using email prefix');
       }
 
       await amplifyConfirmSignIn({

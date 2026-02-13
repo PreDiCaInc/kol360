@@ -30,6 +30,12 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { id: campaignId } = campaignIdSchema.parse(request.params);
 
+      if (request.user!.role !== 'PLATFORM_ADMIN') {
+        const campaign = await fastify.prisma.campaign.findUnique({ where: { id: campaignId }, select: { clientId: true } });
+        if (!campaign) return reply.status(404).send({ error: 'Not Found', message: 'Campaign not found', statusCode: 404 });
+        if (campaign.clientId !== request.user!.tenantId) return reply.status(403).send({ error: 'Forbidden', message: 'Cannot access campaigns from other tenants', statusCode: 403 });
+      }
+
       try {
         const result = await exportService.exportResponses(campaignId);
 
@@ -56,6 +62,12 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: requireClientAdmin() },
     async (request, reply) => {
       const { id: campaignId } = campaignIdSchema.parse(request.params);
+
+      if (request.user!.role !== 'PLATFORM_ADMIN') {
+        const campaign = await fastify.prisma.campaign.findUnique({ where: { id: campaignId }, select: { clientId: true } });
+        if (!campaign) return reply.status(404).send({ error: 'Not Found', message: 'Campaign not found', statusCode: 404 });
+        if (campaign.clientId !== request.user!.tenantId) return reply.status(403).send({ error: 'Forbidden', message: 'Cannot access campaigns from other tenants', statusCode: 403 });
+      }
 
       try {
         const result = await exportService.exportScores(campaignId);
@@ -138,8 +150,15 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
   }>(
     '/:id/payments',
     { preHandler: requireClientAdmin() },
-    async (request) => {
+    async (request, reply) => {
       const { id: campaignId } = campaignIdSchema.parse(request.params);
+
+      if (request.user!.role !== 'PLATFORM_ADMIN') {
+        const campaign = await fastify.prisma.campaign.findUnique({ where: { id: campaignId }, select: { clientId: true } });
+        if (!campaign) return reply.status(404).send({ error: 'Not Found', message: 'Campaign not found', statusCode: 404 });
+        if (campaign.clientId !== request.user!.tenantId) return reply.status(403).send({ error: 'Forbidden', message: 'Cannot access campaigns from other tenants', statusCode: 403 });
+      }
+
       const { status, page = '1', limit = '20' } = request.query;
 
       return exportService.listPayments(campaignId, {
@@ -154,8 +173,15 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Params: z.infer<typeof campaignIdSchema> }>(
     '/:id/payments/stats',
     { preHandler: requireClientAdmin() },
-    async (request) => {
+    async (request, reply) => {
       const { id: campaignId } = campaignIdSchema.parse(request.params);
+
+      if (request.user!.role !== 'PLATFORM_ADMIN') {
+        const campaign = await fastify.prisma.campaign.findUnique({ where: { id: campaignId }, select: { clientId: true } });
+        if (!campaign) return reply.status(404).send({ error: 'Not Found', message: 'Campaign not found', statusCode: 404 });
+        if (campaign.clientId !== request.user!.tenantId) return reply.status(403).send({ error: 'Forbidden', message: 'Cannot access campaigns from other tenants', statusCode: 403 });
+      }
+
       return exportService.getPaymentStats(campaignId);
     }
   );

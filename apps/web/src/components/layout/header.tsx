@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Bell, User, LogOut, Settings, ChevronDown, HelpCircle, Eye } from 'lucide-react';
+import { LogOut, ChevronDown, Eye } from 'lucide-react';
 import { Breadcrumb } from './breadcrumb';
 
 export function Header() {
@@ -72,29 +72,6 @@ export function Header() {
 
         {/* Right side actions */}
         <div className="flex items-center gap-2">
-          {/* Help */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 text-muted-foreground hover:text-foreground"
-          >
-            <HelpCircle className="h-[18px] w-[18px]" />
-          </Button>
-
-          {/* Notifications */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
-          >
-            <Bell className="h-[18px] w-[18px]" />
-            <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground ring-2 ring-card">
-              3
-            </span>
-          </Button>
-
-          <div className="mx-2 h-6 w-px bg-border" />
-
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -166,15 +143,6 @@ export function Header() {
                 </>
               )}
 
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer">
-                <User className="mr-2.5 h-4 w-4 text-muted-foreground" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer">
-                <Settings className="mr-2.5 h-4 w-4 text-muted-foreground" />
-                Settings
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={signOut}

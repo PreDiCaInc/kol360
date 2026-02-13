@@ -21,7 +21,6 @@ export class DistributionService {
         id: true,
         campaignId: true,
         hcpId: true,
-        surveyToken: true,
         emailSentAt: true,
         reminderCount: true,
         lastReminderAt: true,
