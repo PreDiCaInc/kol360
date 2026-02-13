@@ -91,3 +91,6 @@ func-spec/*.xlsx
 # Debug and review files
 e2e/debug-*.ts
 func-spec/ui-review/
+
+# Security scan results (sensitive - do not commit)
+sec-scan-results/
