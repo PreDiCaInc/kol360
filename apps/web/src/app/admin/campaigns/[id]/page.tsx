@@ -273,9 +273,10 @@ export default function CampaignDetailPage() {
   const isReadyToActivate = (): boolean => {
     if (!campaign || campaign.status !== 'DRAFT') return false;
     const hasHcps = campaign._count.campaignHcps > 0;
+    const hasSurveyQuestions = ((campaign._count as Record<string, number>).surveyQuestions ?? 0) > 0;
     const hasConfirmedScoreConfig = !!campaign.scoreConfigConfirmedAt;
     const hasConfirmedTemplates = !!campaign.templatesConfirmedAt;
-    return hasHcps && hasConfirmedScoreConfig && hasConfirmedTemplates;
+    return hasHcps && hasSurveyQuestions && hasConfirmedScoreConfig && hasConfirmedTemplates;
   };
 
   // Get current workflow progress for visual display
@@ -821,6 +822,17 @@ export default function CampaignDetailPage() {
                     <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
                       <h4 className="font-medium text-blue-900 mb-2">Setup Checklist:</h4>
                       <ul className="text-sm space-y-2">
+                        <li className={`flex items-center gap-2 ${((campaign._count as Record<string, number>).surveyQuestions ?? 0) > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {((campaign._count as Record<string, number>).surveyQuestions ?? 0) > 0 ? (
+                            <CheckCircle2 className="w-4 h-4" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4" />
+                          )}
+                          Survey questions ({(campaign._count as Record<string, number>).surveyQuestions ?? 0} questions)
+                          {((campaign._count as Record<string, number>).surveyQuestions ?? 0) === 0 && (
+                            <span className="text-red-600 font-medium">- Select a survey template in Overview</span>
+                          )}
+                        </li>
                         <li className={`flex items-center gap-2 ${campaign._count.campaignHcps > 0 ? 'text-green-700' : 'text-blue-800'}`}>
                           {campaign._count.campaignHcps > 0 ? (
                             <CheckCircle2 className="w-4 h-4" />

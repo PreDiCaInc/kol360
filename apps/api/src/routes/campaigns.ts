@@ -17,13 +17,22 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', requireClientAdmin());
 
   // List campaigns
-  fastify.get('/', async (request) => {
+  fastify.get('/', async (request, reply) => {
     const query = campaignListQuerySchema.parse(request.query);
 
     // Client admins can only see their own tenant's campaigns
     const effectiveClientId = request.user!.role === 'PLATFORM_ADMIN'
       ? query.clientId
       : request.user!.tenantId;
+
+    // SECURITY: Reject if non-platform-admin has no tenant context
+    if (!effectiveClientId && request.user!.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'No tenant context available',
+        statusCode: 403,
+      });
+    }
 
     return campaignService.list({ ...query, clientId: effectiveClientId });
   });

@@ -33,23 +33,30 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       return true;
     }
 
-    // CLIENT_ADMIN: Check if they have campaigns in this disease area
-    if (user.tenantId) {
-      const campaignCount = await fastify.prisma.campaign.count({
-        where: {
-          clientId: user.tenantId,
-          diseaseAreaId: diseaseAreaId,
-        },
+    // CLIENT_ADMIN: Must have tenantId and campaigns in this disease area
+    if (!user.tenantId) {
+      reply.status(403).send({
+        error: 'Forbidden',
+        message: 'No tenant context available',
+        statusCode: 403,
       });
+      return false;
+    }
 
-      if (campaignCount === 0) {
-        reply.status(403).send({
-          error: 'Forbidden',
-          message: 'No access to this disease area',
-          statusCode: 403,
-        });
-        return false;
-      }
+    const campaignCount = await fastify.prisma.campaign.count({
+      where: {
+        clientId: user.tenantId,
+        diseaseAreaId: diseaseAreaId,
+      },
+    });
+
+    if (campaignCount === 0) {
+      reply.status(403).send({
+        error: 'Forbidden',
+        message: 'No access to this disease area',
+        statusCode: 403,
+      });
+      return false;
     }
 
     return true;

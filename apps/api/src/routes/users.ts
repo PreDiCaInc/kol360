@@ -80,7 +80,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
   // List users - Platform Admin sees all, Client Admin sees their tenant
   fastify.get('/', {
     preHandler: requireClientAdmin(),
-  }, async (request) => {
+  }, async (request, reply) => {
     const { clientId, role, status, page = '1', limit = '20' } = request.query as {
       clientId?: string;
       role?: string;
@@ -93,6 +93,15 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     const effectiveClientId = request.user!.role === 'PLATFORM_ADMIN'
       ? clientId
       : request.user!.tenantId;
+
+    // SECURITY: Reject if non-platform-admin has no tenant context
+    if (!effectiveClientId && request.user!.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'No tenant context available',
+        statusCode: 403,
+      });
+    }
 
     return userService.list({
       clientId: effectiveClientId,

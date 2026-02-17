@@ -87,6 +87,27 @@ export const authPlugin = fp(async (fastify) => {
         tenantId: payload['custom:tenant_id'] as string | undefined,
       };
 
+      // SECURITY: If tenantId is not in the token, resolve it from the database.
+      // This prevents tenant isolation bypass when Cognito custom:tenant_id is not set.
+      if (!request.user.tenantId && request.user.role !== 'PLATFORM_ADMIN') {
+        try {
+          const dbUser = await fastify.prisma.user.findUnique({
+            where: { cognitoSub: payload.sub },
+            select: { clientId: true },
+          });
+          if (dbUser?.clientId) {
+            request.user.tenantId = dbUser.clientId;
+          } else {
+            fastify.log.warn(
+              { sub: payload.sub, email: payload.email, role },
+              'Non-platform user has no tenantId in token or database'
+            );
+          }
+        } catch (lookupErr) {
+          fastify.log.error({ err: lookupErr, sub: payload.sub }, 'Failed to resolve tenantId from database');
+        }
+      }
+
       // Check for impersonation header (PLATFORM_ADMIN only)
       const impersonateClientId = request.headers['x-impersonate-client'] as string | undefined;
 

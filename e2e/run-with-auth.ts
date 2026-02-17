@@ -1,15 +1,43 @@
 /**
  * Run E2E tests with automatic Cognito authentication
  *
+ * Automatically loads credentials from e2e/.env file to avoid
+ * bash shell expansion issues with special characters in passwords.
+ *
  * Usage:
- *   E2E_TEST_PASSWORD=yourpassword npx tsx run-with-auth.ts api
- *   E2E_TEST_PASSWORD=yourpassword npx tsx run-with-auth.ts all
+ *   npx tsx run-with-auth.ts api        # reads .env automatically
+ *   npx tsx run-with-auth.ts all        # reads .env automatically
  */
 
 import { spawn } from 'child_process';
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 import { getE2EAuthToken } from './auth';
 
+// Load .env file directly in Node (avoids bash ! expansion issues with passwords)
+function loadEnvFile() {
+  const envPath = join(__dirname, '.env');
+  if (!existsSync(envPath)) return;
+  const content = readFileSync(envPath, 'utf-8');
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let val = trimmed.slice(eqIdx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    // Only set if not already in environment (explicit env vars take precedence)
+    if (!process.env[key]) {
+      process.env[key] = val;
+    }
+  }
+}
+
 async function main() {
+  loadEnvFile();
   const testType = process.argv[2] || 'api';
 
   console.log('🔐 Authenticating with Cognito...');

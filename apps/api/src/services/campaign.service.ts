@@ -61,6 +61,7 @@ export class CampaignService {
           select: {
             campaignHcps: true,
             surveyResponses: true,
+            surveyQuestions: true,
           },
         },
       },
@@ -118,6 +119,23 @@ export class CampaignService {
   }
 
   async update(id: string, data: UpdateCampaignInput) {
+    // If surveyTemplateId is being set, check if we need to instantiate questions
+    if (data.surveyTemplateId) {
+      const existing = await prisma.campaign.findUnique({
+        where: { id },
+        select: { surveyTemplateId: true, status: true },
+      });
+
+      // Only instantiate if template is changing and campaign is still DRAFT
+      if (existing?.status === 'DRAFT' && existing.surveyTemplateId !== data.surveyTemplateId) {
+        // Remove old questions if any
+        await prisma.surveyQuestion.deleteMany({ where: { campaignId: id } });
+
+        // Instantiate new questions from the template
+        await surveyTemplateService.instantiateForCampaign(data.surveyTemplateId, id);
+      }
+    }
+
     return prisma.campaign.update({
       where: { id },
       data: {
