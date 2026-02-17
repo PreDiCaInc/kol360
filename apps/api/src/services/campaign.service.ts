@@ -119,20 +119,34 @@ export class CampaignService {
   }
 
   async update(id: string, data: UpdateCampaignInput) {
-    // If surveyTemplateId is being set, check if we need to instantiate questions
-    if (data.surveyTemplateId) {
+    // If surveyTemplateId is being changed, lock once first response is received
+    if (data.surveyTemplateId !== undefined) {
       const existing = await prisma.campaign.findUnique({
         where: { id },
-        select: { surveyTemplateId: true, status: true },
+        select: {
+          surveyTemplateId: true,
+          status: true,
+          _count: { select: { surveyResponses: true } },
+        },
       });
 
-      // Only instantiate if template is changing and campaign is still DRAFT
-      if (existing?.status === 'DRAFT' && existing.surveyTemplateId !== data.surveyTemplateId) {
+      if (!existing) {
+        throw new Error('Campaign not found');
+      }
+
+      if (existing._count.surveyResponses > 0) {
+        throw new Error('Survey template cannot be changed after responses have been received');
+      }
+
+      // Only instantiate if template is actually changing
+      if (existing.surveyTemplateId !== data.surveyTemplateId) {
         // Remove old questions if any
         await prisma.surveyQuestion.deleteMany({ where: { campaignId: id } });
 
-        // Instantiate new questions from the template
-        await surveyTemplateService.instantiateForCampaign(data.surveyTemplateId, id);
+        // Instantiate new questions from the new template (if one was selected)
+        if (data.surveyTemplateId) {
+          await surveyTemplateService.instantiateForCampaign(data.surveyTemplateId, id);
+        }
       }
     }
 

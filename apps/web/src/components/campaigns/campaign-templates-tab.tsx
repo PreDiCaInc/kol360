@@ -89,11 +89,11 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
   useEffect(() => {
     if (landingTemplates) {
       setWelcomeTitle(landingTemplates.surveyWelcomeTitle || DEFAULT_WELCOME_TITLE);
-      setWelcomeMessage(landingTemplates.surveyWelcomeMessage || DEFAULT_WELCOME_MESSAGE);
+      setWelcomeMessage(landingTemplates.surveyWelcomeMessage || DEFAULT_WELCOME_MESSAGE.trim());
       setThankYouTitle(landingTemplates.surveyThankYouTitle || DEFAULT_THANKYOU_TITLE);
-      setThankYouMessage(landingTemplates.surveyThankYouMessage || DEFAULT_THANKYOU_MESSAGE);
+      setThankYouMessage(landingTemplates.surveyThankYouMessage || DEFAULT_THANKYOU_MESSAGE.trim());
       setAlreadyDoneTitle(landingTemplates.surveyAlreadyDoneTitle || DEFAULT_ALREADYDONE_TITLE);
-      setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || DEFAULT_ALREADYDONE_MESSAGE);
+      setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || DEFAULT_ALREADYDONE_MESSAGE.trim());
       setLandingDirty(false);
     }
   }, [landingTemplates]);
@@ -139,11 +139,11 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
   const handleResetLandingTemplates = () => {
     if (landingTemplates) {
       setWelcomeTitle(landingTemplates.surveyWelcomeTitle || DEFAULT_WELCOME_TITLE);
-      setWelcomeMessage(landingTemplates.surveyWelcomeMessage || DEFAULT_WELCOME_MESSAGE);
+      setWelcomeMessage(landingTemplates.surveyWelcomeMessage || DEFAULT_WELCOME_MESSAGE.trim());
       setThankYouTitle(landingTemplates.surveyThankYouTitle || DEFAULT_THANKYOU_TITLE);
-      setThankYouMessage(landingTemplates.surveyThankYouMessage || DEFAULT_THANKYOU_MESSAGE);
+      setThankYouMessage(landingTemplates.surveyThankYouMessage || DEFAULT_THANKYOU_MESSAGE.trim());
       setAlreadyDoneTitle(landingTemplates.surveyAlreadyDoneTitle || DEFAULT_ALREADYDONE_TITLE);
-      setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || DEFAULT_ALREADYDONE_MESSAGE);
+      setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || DEFAULT_ALREADYDONE_MESSAGE.trim());
       setLandingDirty(false);
     }
   };
@@ -315,7 +315,7 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
             </div>
           </div>
           <CardDescription>
-            Customize the messages shown on the survey landing pages.
+            Customize the full-page HTML for survey landing pages. Use placeholders: {'{title}'}, {'{lastName}'}, {'{campaignName}'}, {'{honorariumBlock}'}, {'{questionCount}'}, {'{year}'}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -352,15 +352,16 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Message</label>
+                  <label className="text-sm font-medium">Page HTML</label>
                   <Textarea
                     value={welcomeMessage}
                     onChange={(e) => {
                       setWelcomeMessage(e.target.value);
                       setLandingDirty(true);
                     }}
-                    placeholder="Leave empty to use default message."
-                    rows={4}
+                    placeholder="Full-page HTML template. Edit colors, logo, layout, and content."
+                    rows={20}
+                    className="font-mono text-xs"
                   />
                 </div>
               </AccordionContent>
@@ -397,15 +398,16 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Message</label>
+                  <label className="text-sm font-medium">Page HTML</label>
                   <Textarea
                     value={thankYouMessage}
                     onChange={(e) => {
                       setThankYouMessage(e.target.value);
                       setLandingDirty(true);
                     }}
-                    placeholder="Leave empty to use default message."
-                    rows={4}
+                    placeholder="Full-page HTML template. Edit colors, logo, layout, and content."
+                    rows={20}
+                    className="font-mono text-xs"
                   />
                 </div>
               </AccordionContent>
@@ -442,15 +444,16 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Message</label>
+                  <label className="text-sm font-medium">Page HTML</label>
                   <Textarea
                     value={alreadyDoneMessage}
                     onChange={(e) => {
                       setAlreadyDoneMessage(e.target.value);
                       setLandingDirty(true);
                     }}
-                    placeholder="Leave empty to use default message."
-                    rows={4}
+                    placeholder="Full-page HTML template. Edit colors, logo, layout, and content."
+                    rows={20}
+                    className="font-mono text-xs"
                   />
                 </div>
               </AccordionContent>

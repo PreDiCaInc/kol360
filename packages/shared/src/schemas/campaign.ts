@@ -33,11 +33,11 @@ export const emailTemplatesSchema = z.object({
 
 export const landingPageTemplatesSchema = z.object({
   surveyWelcomeTitle: z.string().max(200).optional().nullable(),
-  surveyWelcomeMessage: z.string().max(5000).optional().nullable(),
+  surveyWelcomeMessage: z.string().max(50000).optional().nullable(),
   surveyThankYouTitle: z.string().max(200).optional().nullable(),
-  surveyThankYouMessage: z.string().max(5000).optional().nullable(),
+  surveyThankYouMessage: z.string().max(50000).optional().nullable(),
   surveyAlreadyDoneTitle: z.string().max(200).optional().nullable(),
-  surveyAlreadyDoneMessage: z.string().max(5000).optional().nullable(),
+  surveyAlreadyDoneMessage: z.string().max(50000).optional().nullable(),
 });
 
 // CampaignStatus type is exported from types/index.ts

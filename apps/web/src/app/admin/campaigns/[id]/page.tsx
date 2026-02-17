@@ -14,6 +14,7 @@ import {
   useCampaignAuditLog,
   useConfirmWorkflowStep,
 } from '@/hooks/use-campaigns';
+import { useSurveyTemplates } from '@/hooks/use-survey-templates';
 import { useScoreConfig, useUpdateScoreConfig, useResetScoreConfig } from '@/hooks/use-score-config';
 import { useSendReminders, useSendInvitations, useDistributionStats } from '@/hooks/use-distribution';
 import { useCampaignScores } from '@/hooks/use-campaign-scores';
@@ -24,6 +25,13 @@ import { CampaignTemplatesTab } from '@/components/campaigns/campaign-templates-
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -133,6 +141,7 @@ export default function CampaignDetailPage() {
   const { data: campaignScores } = useCampaignScores(campaignId);
   const { data: auditLogData } = useCampaignAuditLog(campaignId);
   const confirmWorkflowStep = useConfirmWorkflowStep();
+  const { data: surveyTemplates } = useSurveyTemplates();
 
   const [activeStep, setActiveStep] = useState('overview');
   const [isEditingName, setIsEditingName] = useState(false);
@@ -623,12 +632,39 @@ export default function CampaignDetailPage() {
                       <p className="font-medium">{campaign.diseaseArea.name}</p>
                     </div>
                   </div>
-                  {campaign.surveyTemplate && (
-                    <div>
-                      <label className="text-sm text-muted-foreground">Survey Template</label>
-                      <p>{campaign.surveyTemplate.name}</p>
-                    </div>
-                  )}
+                  <div>
+                    <label className="text-sm text-muted-foreground">Survey Template</label>
+                    {canEdit && (campaign.status === 'DRAFT' || (campaign.status === 'ACTIVE' && campaign._count.surveyResponses === 0)) ? (
+                      <Select
+                        value={campaign.surveyTemplateId || 'none'}
+                        onValueChange={async (value) => {
+                          try {
+                            await updateCampaign.mutateAsync({
+                              id: campaignId,
+                              data: { surveyTemplateId: value === 'none' ? null : value },
+                            });
+                          } catch (error) {
+                            console.error('Failed to update survey template:', error);
+                          }
+                        }}
+                        disabled={updateCampaign.isPending}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Select a survey template" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No template</SelectItem>
+                          {surveyTemplates?.map((template) => (
+                            <SelectItem key={template.id} value={template.id}>
+                              {template.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{campaign.surveyTemplate?.name || 'None'}</p>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm text-muted-foreground">Survey Open Date</label>

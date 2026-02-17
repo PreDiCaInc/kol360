@@ -9,25 +9,22 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Eye, Mail, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Eye, Mail, FileText } from 'lucide-react';
 
-// Configure DOMPurify to allow safe HTML for email templates
-const sanitizeHtml = (html: string): string => {
+// Configure DOMPurify to allow safe HTML for templates (emails + landing pages)
+export const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['div', 'span', 'p', 'a', 'img', 'table', 'tr', 'td', 'th', 'tbody', 'thead',
                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 'u', 'br', 'hr',
-                   'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'center', 'caption'],
+                   'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'center', 'caption',
+                   'style', 'button', 'svg', 'path', 'polyline', 'line', 'circle', 'rect', 'g'],
     ALLOWED_ATTR: ['href', 'src', 'alt', 'style', 'class', 'width', 'height', 'target', 'rel',
-                   'bgcolor', 'align', 'valign', 'cellpadding', 'cellspacing', 'border'],
-    ALLOW_DATA_ATTR: false,
+                   'bgcolor', 'align', 'valign', 'cellpadding', 'cellspacing', 'border',
+                   'data-action', 'viewBox', 'fill', 'stroke', 'stroke-width',
+                   'stroke-linecap', 'stroke-linejoin', 'd', 'points',
+                   'cx', 'cy', 'r', 'x1', 'y1', 'x2', 'y2', 'xmlns'],
+    ALLOW_DATA_ATTR: true,
     ADD_ATTR: ['target'],
   });
 };
@@ -118,13 +115,143 @@ export const DEFAULT_INVITATION_BODY = `
 </html>
 `;
 
-// Default landing page templates
+// Default landing page templates - full-page HTML (editable like email templates)
+// Placeholders: {title}, {lastName}, {campaignName}, {honorariumBlock}, {questionCount}, {year}
 export const DEFAULT_WELCOME_TITLE = 'Welcome to the KOL360 Survey';
-export const DEFAULT_WELCOME_MESSAGE = 'Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.';
+export const DEFAULT_WELCOME_MESSAGE = `
+<style>
+  .kol-welcome { display: flex; min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; }
+  .kol-welcome .brand-panel { width: 55%; position: relative; overflow: hidden; background: linear-gradient(135deg, hsl(175,72%,28%) 0%, hsl(175,72%,22%) 50%, hsl(195,60%,18%) 100%); }
+  .kol-welcome .content-panel { width: 45%; display: flex; align-items: center; justify-content: center; padding: 24px 48px; background: linear-gradient(to bottom right, #f9fafb, #f3f4f6); }
+  .kol-welcome .mobile-logo { display: none; }
+  @media (max-width: 1024px) {
+    .kol-welcome .brand-panel { display: none; }
+    .kol-welcome .content-panel { width: 100%; padding: 24px; }
+    .kol-welcome .mobile-logo { display: flex; justify-content: center; margin-bottom: 32px; }
+  }
+</style>
+<div class="kol-welcome">
+  <!-- Left Panel - Branding (hidden on mobile) -->
+  <div class="brand-panel">
+    <div style="position: absolute; top: 25%; left: -80px; width: 384px; height: 384px; background: rgba(255,255,255,0.1); border-radius: 50%; filter: blur(48px);"></div>
+    <div style="position: absolute; bottom: 25%; right: -80px; width: 320px; height: 320px; background: rgba(255,255,255,0.1); border-radius: 50%; filter: blur(48px);"></div>
+    <div style="position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 48px; color: white; height: 100%; box-sizing: border-box;">
+      <div>
+        <img src="/images/logo-white.png" alt="BioExec" style="height: 144px; width: auto; object-fit: contain;" />
+      </div>
+      <div style="max-width: 448px;">
+        <h1 style="font-size: 48px; font-weight: 600; line-height: 1.1; letter-spacing: -0.025em; margin: 0 0 24px 0; color: white;">KOL360</h1>
+        <p style="font-size: 20px; color: rgba(255,255,255,0.8); line-height: 1.6; margin: 0 0 32px 0;">
+          The comprehensive platform for Key Opinion Leader identification, assessment, and engagement analytics.
+        </p>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; color: rgba(255,255,255,0.6);">
+          <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block;"></span> National Leaders</span>
+          <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block;"></span> Peer Advisors</span>
+          <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block;"></span> Rising Stars and more</span>
+        </div>
+      </div>
+      <div>
+        <p style="font-size: 14px; color: rgba(255,255,255,0.4); margin: 0 0 4px 0;">&copy; {year} Bio-Exec KOL Research. All rights reserved.</p>
+        <p style="font-size: 12px; color: rgba(255,255,255,0.25); margin: 0;">Powered by PreDiCa.care</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel - Welcome Content -->
+  <div class="content-panel">
+    <div style="width: 100%; max-width: 448px;">
+      <!-- Mobile Logo (shown only on small screens) -->
+      <div class="mobile-logo">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="display: flex; height: 40px; width: 40px; align-items: center; justify-content: center; border-radius: 12px; background: linear-gradient(to bottom right, #147a6d, rgba(20,122,109,0.8)); box-shadow: 0 4px 14px rgba(20,122,109,0.2);">
+            <span style="font-size: 14px; font-weight: 700; color: white;">K3</span>
+          </div>
+          <span style="font-size: 20px; font-weight: 600; color: #111827;">KOL360</span>
+        </div>
+      </div>
+
+      <div style="background: rgba(255,255,255,0.8); border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.05); overflow: hidden;">
+        <div style="padding: 24px 32px 0;">
+          <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 4px 0; color: #111827;">{title}</h2>
+          <p style="color: #6b7280; margin: 0 0 24px 0; font-size: 14px;">Welcome, Dr. {lastName}</p>
+        </div>
+        <div style="padding: 0 32px 32px;">
+          <p style="color: #6b7280; line-height: 1.7; margin: 0 0 16px 0;">
+            Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.
+          </p>
+
+          {honorariumBlock}
+
+          <p style="font-size: 14px; color: #6b7280; margin: 16px 0 20px 0;">
+            This survey contains {questionCount} questions. Your progress will be saved automatically.
+          </p>
+
+          <button data-action="begin-survey" style="width: 100%; padding: 12px 24px; font-size: 16px; font-weight: 500; color: white; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 14px rgba(20,122,109,0.3);">
+            Begin Survey
+          </button>
+        </div>
+      </div>
+
+      <p style="text-align: center; font-size: 12px; color: #9ca3af; margin: 32px 0 0 0;">
+        Protected by enterprise-grade security. Need help?
+        <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">Contact support</a>
+      </p>
+    </div>
+  </div>
+</div>
+`;
+
 export const DEFAULT_THANKYOU_TITLE = 'Thank You!';
-export const DEFAULT_THANKYOU_MESSAGE = 'Thank you for completing the survey. Your insights are invaluable to this research and will help shape the future of key opinion leader engagement.';
+export const DEFAULT_THANKYOU_MESSAGE = `
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(to bottom, #f9fafb, #f3f4f6); padding: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+  <div style="max-width: 448px; width: 100%; background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); padding: 48px 32px;">
+    <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+      <div style="width: 64px; height: 64px; border-radius: 50%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+      </div>
+      <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 12px 0; color: #111827;">{title}</h2>
+      <p style="color: #6b7280; line-height: 1.7; margin: 0 0 16px 0;">
+        Thank you for completing the survey, Dr. {lastName}. Your insights are invaluable to this research and will help shape the future of key opinion leader engagement.
+      </p>
+
+      {honorariumBlock}
+
+      <p style="color: #6b7280; line-height: 1.7; margin: 16px 0 0 0; font-size: 14px;">
+        If you have any questions, please contact
+        <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">support@bio-exec.com</a>.
+      </p>
+    </div>
+  </div>
+</div>
+`;
+
 export const DEFAULT_ALREADYDONE_TITLE = 'Survey Already Completed';
-export const DEFAULT_ALREADYDONE_MESSAGE = 'You have already completed this survey. Thank you for your participation.';
+export const DEFAULT_ALREADYDONE_MESSAGE = `
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(to bottom, #f9fafb, #f3f4f6); padding: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+  <div style="max-width: 448px; width: 100%; background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); padding: 48px 32px;">
+    <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+      <div style="width: 64px; height: 64px; border-radius: 50%; background: #f0fdf9; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#147a6d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+      </div>
+      <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 12px 0; color: #111827;">{title}</h2>
+      <p style="color: #6b7280; line-height: 1.7; margin: 0;">
+        You have already completed this survey. Thank you for your participation.
+      </p>
+      <p style="color: #6b7280; line-height: 1.7; margin: 16px 0 0 0; font-size: 14px;">
+        If you believe this is an error, please contact
+        <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">support@bio-exec.com</a>.
+      </p>
+    </div>
+  </div>
+</div>
+`;
 
 export const DEFAULT_REMINDER_SUBJECT = 'Reminder: {campaignName} KOL Survey - We value your input';
 export const DEFAULT_REMINDER_BODY = `
@@ -183,10 +310,11 @@ export const DEFAULT_REMINDER_BODY = `
 </html>
 `;
 
-function replacePlaceholders(
+export function replacePlaceholders(
   template: string,
   campaignName: string,
-  honorariumAmount?: number | null
+  honorariumAmount?: number | null,
+  options?: { title?: string; lastName?: string; questionCount?: number }
 ): string {
   const honorariumBlock = honorariumAmount
     ? `<div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin: 24px 0; text-align: center;">
@@ -198,14 +326,17 @@ function replacePlaceholders(
   const honorariumText = honorariumAmount ? `$${honorariumAmount}` : '';
 
   return template
-    .replace(/\{firstName\}/g, SAMPLE_DATA.firstName)
-    .replace(/\{lastName\}/g, SAMPLE_DATA.lastName)
+    .replace(/\{firstName\}/g, options?.lastName ? SAMPLE_DATA.firstName : SAMPLE_DATA.firstName)
+    .replace(/\{lastName\}/g, options?.lastName || SAMPLE_DATA.lastName)
     .replace(/\{surveyLink\}/g, SAMPLE_DATA.surveyLink)
     .replace(/\{surveyUrl\}/g, SAMPLE_DATA.surveyLink)
     .replace(/\{unsubscribeUrl\}/g, SAMPLE_DATA.unsubscribeUrl)
     .replace(/\{campaignName\}/g, campaignName)
     .replace(/\{honorarium\}/g, honorariumText)
-    .replace(/\{honorariumBlock\}/g, honorariumBlock);
+    .replace(/\{honorariumBlock\}/g, honorariumBlock)
+    .replace(/\{title\}/g, options?.title || campaignName)
+    .replace(/\{questionCount\}/g, String(options?.questionCount ?? 12))
+    .replace(/\{year\}/g, String(new Date().getFullYear()));
 }
 
 export function TemplatePreviewDialog({
@@ -290,166 +421,56 @@ export function TemplatePreviewDialog({
   ) => {
     let title: string;
     let message: string;
-    let icon: React.ReactNode;
     let defaultTitle: string;
     let defaultMessage: string;
+    let label: string;
 
     switch (previewType) {
       case 'welcome':
         title = welcomeTitle || '';
         message = welcomeMessage || '';
-        defaultTitle = campaignName || DEFAULT_WELCOME_TITLE;
+        defaultTitle = DEFAULT_WELCOME_TITLE;
         defaultMessage = DEFAULT_WELCOME_MESSAGE;
-        icon = null;
+        label = 'Welcome Page';
         break;
       case 'thankyou':
         title = thankYouTitle || '';
         message = thankYouMessage || '';
         defaultTitle = DEFAULT_THANKYOU_TITLE;
         defaultMessage = DEFAULT_THANKYOU_MESSAGE;
-        icon = <CheckCircle2 className="w-12 h-12 text-emerald-500" />;
+        label = 'Thank You Page';
         break;
       case 'already-done':
         title = alreadyDoneTitle || '';
         message = alreadyDoneMessage || '';
         defaultTitle = DEFAULT_ALREADYDONE_TITLE;
         defaultMessage = DEFAULT_ALREADYDONE_MESSAGE;
-        icon = <AlertCircle className="w-12 h-12 text-primary" />;
+        label = 'Already Completed Page';
         break;
     }
 
-    const finalTitle = title || defaultTitle;
-    const finalMessage = message || defaultMessage;
+    const finalHtml = replacePlaceholders(
+      message || defaultMessage,
+      campaignName,
+      honorariumAmount,
+      { title: title || defaultTitle }
+    );
 
-    // Welcome page uses two-panel layout like login page
-    if (previewType === 'welcome') {
-      return (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FileText className="w-4 h-4" />
-            <span>Welcome Page Preview</span>
-            {!title && !message && <Badge variant="muted" className="text-xs">Using Defaults</Badge>}
-          </div>
-
-          {/* Two-panel layout preview */}
-          <div className="rounded-xl overflow-hidden border border-border/60 shadow-sm min-h-[450px] flex">
-            {/* Left Panel - Branding */}
-            <div className="w-1/2 relative overflow-hidden bg-gradient-to-br from-[hsl(187,85%,25%)] via-[hsl(187,80%,30%)] to-[hsl(200,75%,20%)]">
-              <div className="absolute inset-0 opacity-10">
-                <svg className="absolute inset-0 h-full w-full" xmlns="http://www.w3.org/2000/svg">
-                  <defs>
-                    <pattern id="grid-preview" width="40" height="40" patternUnits="userSpaceOnUse">
-                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="0.5" />
-                    </pattern>
-                  </defs>
-                  <rect width="100%" height="100%" fill="url(#grid-preview)" />
-                </svg>
-              </div>
-              <div className="absolute top-1/4 -left-10 w-48 h-48 bg-white/10 rounded-full blur-3xl" />
-              <div className="absolute bottom-1/4 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
-
-              <div className="relative z-10 flex flex-col justify-between p-6 text-white h-full">
-                <div>
-                  <img
-                    src="/images/logo-white.png"
-                    alt="BioExec"
-                    className="h-16 w-auto object-contain"
-                  />
-                </div>
-
-                <div className="max-w-xs">
-                  <h1 className="text-2xl font-semibold leading-tight tracking-tight mb-3">
-                    KOL360
-                  </h1>
-                  <p className="text-sm text-white/80 leading-relaxed mb-4">
-                    The comprehensive platform for Key Opinion Leader identification and assessment.
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-white/60">
-                    <div className="flex items-center gap-1">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      <span>National Leaders</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      <span>Rising Stars</span>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-xs text-white/40">
-                  © {new Date().getFullYear()} Bio-Exec KOL Research
-                </p>
-              </div>
-            </div>
-
-            {/* Right Panel - Welcome Content */}
-            <div className="w-1/2 flex items-center justify-center p-6 bg-gradient-to-br from-gray-50 to-gray-100">
-              <div className="w-full max-w-sm">
-                <Card className="border-0 shadow-xl shadow-black/5 bg-card/80 backdrop-blur-sm">
-                  <CardHeader className="space-y-1 pb-4">
-                    <CardTitle className="text-lg font-semibold tracking-tight">
-                      {finalTitle}
-                    </CardTitle>
-                    <CardDescription className="text-muted-foreground text-sm">
-                      Welcome, Dr. {SAMPLE_DATA.lastName}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <p className="text-muted-foreground leading-relaxed text-sm">
-                      {finalMessage}
-                    </p>
-                    {honorariumAmount && (
-                      <div className="flex items-start gap-2 p-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg">
-                        <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                        <span>
-                          Upon completion, you will receive a ${honorariumAmount} honorarium.
-                        </span>
-                      </div>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      Your progress will be saved automatically.
-                    </p>
-                    <Button className="w-full h-9 text-sm font-medium" size="sm" disabled>
-                      Begin Survey
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Thank you and Already Done pages use simple centered card
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <FileText className="w-4 h-4" />
-          <span>
-            {previewType === 'thankyou' ? 'Thank You Page' : 'Already Completed Page'} Preview
-          </span>
-          {!title && !message && <Badge variant="muted" className="text-xs">Using Defaults</Badge>}
+          <span>{label} Preview</span>
+          {!message && <Badge variant="muted" className="text-xs">Using Default Template</Badge>}
         </div>
 
-        {/* Landing Page Mock */}
-        <div className="bg-gradient-to-b from-muted/30 to-muted/60 rounded-xl p-8 min-h-[400px] flex items-center justify-center">
-          <Card className="max-w-md w-full shadow-lg border-border/60 overflow-hidden">
-            <CardContent className="pt-8 pb-8">
-              <div className="flex flex-col items-center text-center">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 ${previewType === 'thankyou' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-primary/10'}`}>
-                  {icon}
-                </div>
-                <h2 className="text-2xl font-semibold mb-3 tracking-tight">{finalTitle}</h2>
-                <p className="text-muted-foreground">{finalMessage}</p>
-                {previewType === 'thankyou' && honorariumAmount && (
-                  <div className="mt-5 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-lg text-sm border border-emerald-200 dark:border-emerald-800/30">
-                    Your ${honorariumAmount} honorarium will be processed shortly.
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Full-page HTML Preview */}
+        <div className="border border-border/60 rounded-xl overflow-hidden shadow-sm">
+          <div
+            className="bg-slate-100"
+            style={{ minHeight: previewType === 'welcome' ? 500 : 400 }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(finalHtml) }}
+          />
         </div>
       </div>
     );
