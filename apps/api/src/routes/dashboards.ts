@@ -13,6 +13,15 @@ export const dashboardRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/stats', { preHandler: requireClientAdmin() }, async (request, reply) => {
     const user = request.user;
 
+    // SECURITY: Reject if non-platform-admin has no tenant context
+    if (user?.role !== 'PLATFORM_ADMIN' && !user?.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'No tenant context available',
+        statusCode: 403,
+      });
+    }
+
     // Build tenant filter for non-platform admins
     const tenantFilter = user?.role === 'PLATFORM_ADMIN' ? {} : { clientId: user?.tenantId };
     const campaignTenantFilter = user?.role === 'PLATFORM_ADMIN' ? {} : { campaign: { clientId: user?.tenantId } };

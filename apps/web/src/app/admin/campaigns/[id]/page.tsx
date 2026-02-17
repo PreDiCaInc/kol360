@@ -14,6 +14,7 @@ import {
   useCampaignAuditLog,
   useConfirmWorkflowStep,
 } from '@/hooks/use-campaigns';
+import { useSurveyTemplates } from '@/hooks/use-survey-templates';
 import { useScoreConfig, useUpdateScoreConfig, useResetScoreConfig } from '@/hooks/use-score-config';
 import { useSendReminders, useSendInvitations, useDistributionStats } from '@/hooks/use-distribution';
 import { useCampaignScores } from '@/hooks/use-campaign-scores';
@@ -24,6 +25,13 @@ import { CampaignTemplatesTab } from '@/components/campaigns/campaign-templates-
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -133,6 +141,7 @@ export default function CampaignDetailPage() {
   const { data: campaignScores } = useCampaignScores(campaignId);
   const { data: auditLogData } = useCampaignAuditLog(campaignId);
   const confirmWorkflowStep = useConfirmWorkflowStep();
+  const { data: surveyTemplates } = useSurveyTemplates();
 
   const [activeStep, setActiveStep] = useState('overview');
   const [isEditingName, setIsEditingName] = useState(false);
@@ -273,9 +282,10 @@ export default function CampaignDetailPage() {
   const isReadyToActivate = (): boolean => {
     if (!campaign || campaign.status !== 'DRAFT') return false;
     const hasHcps = campaign._count.campaignHcps > 0;
+    const hasSurveyQuestions = ((campaign._count as Record<string, number>).surveyQuestions ?? 0) > 0;
     const hasConfirmedScoreConfig = !!campaign.scoreConfigConfirmedAt;
     const hasConfirmedTemplates = !!campaign.templatesConfirmedAt;
-    return hasHcps && hasConfirmedScoreConfig && hasConfirmedTemplates;
+    return hasHcps && hasSurveyQuestions && hasConfirmedScoreConfig && hasConfirmedTemplates;
   };
 
   // Get current workflow progress for visual display
@@ -622,12 +632,39 @@ export default function CampaignDetailPage() {
                       <p className="font-medium">{campaign.diseaseArea.name}</p>
                     </div>
                   </div>
-                  {campaign.surveyTemplate && (
-                    <div>
-                      <label className="text-sm text-muted-foreground">Survey Template</label>
-                      <p>{campaign.surveyTemplate.name}</p>
-                    </div>
-                  )}
+                  <div>
+                    <label className="text-sm text-muted-foreground">Survey Template</label>
+                    {canEdit && (campaign.status === 'DRAFT' || (campaign.status === 'ACTIVE' && campaign._count.surveyResponses === 0)) ? (
+                      <Select
+                        value={campaign.surveyTemplateId || 'none'}
+                        onValueChange={async (value) => {
+                          try {
+                            await updateCampaign.mutateAsync({
+                              id: campaignId,
+                              data: { surveyTemplateId: value === 'none' ? null : value },
+                            });
+                          } catch (error) {
+                            console.error('Failed to update survey template:', error);
+                          }
+                        }}
+                        disabled={updateCampaign.isPending}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Select a survey template" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No template</SelectItem>
+                          {surveyTemplates?.map((template) => (
+                            <SelectItem key={template.id} value={template.id}>
+                              {template.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p>{campaign.surveyTemplate?.name || 'None'}</p>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm text-muted-foreground">Survey Open Date</label>
@@ -821,6 +858,17 @@ export default function CampaignDetailPage() {
                     <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
                       <h4 className="font-medium text-blue-900 mb-2">Setup Checklist:</h4>
                       <ul className="text-sm space-y-2">
+                        <li className={`flex items-center gap-2 ${((campaign._count as Record<string, number>).surveyQuestions ?? 0) > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {((campaign._count as Record<string, number>).surveyQuestions ?? 0) > 0 ? (
+                            <CheckCircle2 className="w-4 h-4" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4" />
+                          )}
+                          Survey questions ({(campaign._count as Record<string, number>).surveyQuestions ?? 0} questions)
+                          {((campaign._count as Record<string, number>).surveyQuestions ?? 0) === 0 && (
+                            <span className="text-red-600 font-medium">- Select a survey template in Overview</span>
+                          )}
+                        </li>
                         <li className={`flex items-center gap-2 ${campaign._count.campaignHcps > 0 ? 'text-green-700' : 'text-blue-800'}`}>
                           {campaign._count.campaignHcps > 0 ? (
                             <CheckCircle2 className="w-4 h-4" />

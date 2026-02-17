@@ -226,10 +226,10 @@ describe('Campaign Schemas', () => {
       ).toThrow();
     });
 
-    it('should reject message over 5000 characters', () => {
+    it('should reject message over 50000 characters', () => {
       expect(() =>
         landingPageTemplatesSchema.parse({
-          surveyWelcomeMessage: 'A'.repeat(5001),
+          surveyWelcomeMessage: 'A'.repeat(50001),
         })
       ).toThrow();
     });

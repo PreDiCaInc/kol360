@@ -23,7 +23,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // Search HCPs
-  fastify.get('/', async (request) => {
+  fastify.get('/', async (request, reply) => {
     const { query, specialty, state, page, limit } = request.query as {
       query?: string;
       specialty?: string;
@@ -34,7 +34,15 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
     // CLIENT_ADMIN can only see HCPs assigned to their campaigns
     let hcpIds: string[] | undefined;
-    if (request.user!.role !== 'PLATFORM_ADMIN' && request.user!.tenantId) {
+    if (request.user!.role !== 'PLATFORM_ADMIN') {
+      // SECURITY: Reject if non-platform-admin has no tenant context
+      if (!request.user!.tenantId) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'No tenant context available',
+          statusCode: 403,
+        });
+      }
       hcpIds = await getClientHcpIds(fastify.prisma, request.user!.tenantId);
     }
 
