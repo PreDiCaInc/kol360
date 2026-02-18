@@ -13,8 +13,14 @@ const SEND_EXTERNAL_EMAIL = process.env.SEND_EXTERNAL_EMAIL === 'true';
 const ALLOWED_EMAIL_DOMAIN = 'bio-exec.com';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
-// Base URL for survey links
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://kol360.bio-exec.com';
+// Base URL for survey links - derive from environment if not explicitly set
+function getAppUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.NODE_ENV === 'production') return 'https://kol360.bio-exec.com';
+  if (process.env.NODE_ENV === 'staging') return 'https://koltest.bio-exec.com';
+  return 'http://localhost:3000';
+}
+const APP_URL = getAppUrl();
 
 interface SendEmailParams {
   to: string;
