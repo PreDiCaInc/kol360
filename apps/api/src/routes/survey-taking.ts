@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { surveyTakingService } from '../services/survey-taking.service';
 import { saveProgressSchema, submitSurveySchema, unsubscribeSchema } from '@kol360/shared';
+import { logger } from '../lib/logger';
 
 const tokenParamSchema = z.object({
   token: z.string().min(1),
@@ -18,6 +19,26 @@ const submitRateLimitConfig = {
   timeWindow: '1 minute',
 };
 
+/**
+ * Safe error handler for public endpoints.
+ * Returns 400 for validation errors, 500 with generic message for everything else.
+ * Never leaks internal error details to unauthenticated users.
+ */
+function publicErrorResponse(error: unknown, defaultMessage: string): { status: number; body: { message: string } } {
+  if (error instanceof z.ZodError) {
+    return { status: 400, body: { message: 'Invalid request' } };
+  }
+  if (error instanceof Error && (
+    error.message.includes('not found') ||
+    error.message.includes('Invalid token') ||
+    error.message.includes('already completed')
+  )) {
+    return { status: 400, body: { message: error.message } };
+  }
+  logger.error('Public endpoint error', { defaultMessage }, error instanceof Error ? error : new Error(String(error)));
+  return { status: 500, body: { message: defaultMessage } };
+}
+
 export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   // Get survey by token (public - no auth)
   fastify.get<{
@@ -25,34 +46,39 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   }>('/survey/take/:token', {
     config: { rateLimit: publicRateLimitConfig },
   }, async (request, reply) => {
-    const { token } = tokenParamSchema.parse(request.params);
+    try {
+      const { token } = tokenParamSchema.parse(request.params);
 
-    const survey = await surveyTakingService.getSurveyByToken(token);
+      const survey = await surveyTakingService.getSurveyByToken(token);
 
-    if (!survey) {
-      return reply.status(404).send({ message: 'Survey not found' });
+      if (!survey) {
+        return reply.status(404).send({ message: 'Survey not found' });
+      }
+
+      // Check campaign status
+      if (survey.campaign.status !== 'ACTIVE') {
+        return reply.status(400).send({
+          message: survey.campaign.status === 'DRAFT'
+            ? 'This survey is not yet active'
+            : 'This survey is no longer accepting responses',
+        });
+      }
+
+      // Check if already completed
+      if (survey.response?.status === 'COMPLETED') {
+        return reply.status(400).send({
+          message: survey.campaign.surveyAlreadyDoneMessage || 'You have already completed this survey',
+          completed: true,
+          customTitle: survey.campaign.surveyAlreadyDoneTitle,
+          honorariumAmount: survey.campaign.honorariumAmount,
+        });
+      }
+
+      return survey;
+    } catch (error) {
+      const { status, body } = publicErrorResponse(error, 'Unable to load survey');
+      return reply.status(status).send(body);
     }
-
-    // Check campaign status
-    if (survey.campaign.status !== 'ACTIVE') {
-      return reply.status(400).send({
-        message: survey.campaign.status === 'DRAFT'
-          ? 'This survey is not yet active'
-          : 'This survey is no longer accepting responses',
-      });
-    }
-
-    // Check if already completed
-    if (survey.response?.status === 'COMPLETED') {
-      return reply.status(400).send({
-        message: survey.campaign.surveyAlreadyDoneMessage || 'You have already completed this survey',
-        completed: true,
-        customTitle: survey.campaign.surveyAlreadyDoneTitle,
-        honorariumAmount: survey.campaign.honorariumAmount,
-      });
-    }
-
-    return survey;
   });
 
   // Start survey (mark as opened)
@@ -61,15 +87,14 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   }>('/survey/take/:token/start', {
     config: { rateLimit: publicRateLimitConfig },
   }, async (request, reply) => {
-    const { token } = tokenParamSchema.parse(request.params);
-    const ipAddress = request.ip;
-
     try {
+      const { token } = tokenParamSchema.parse(request.params);
+      const ipAddress = request.ip;
       const response = await surveyTakingService.startSurvey(token, ipAddress);
       return { status: response.status, startedAt: response.startedAt };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to start survey';
-      return reply.status(400).send({ message });
+      const { status, body } = publicErrorResponse(error, 'Failed to start survey');
+      return reply.status(status).send(body);
     }
   });
 
@@ -80,15 +105,14 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   }>('/survey/take/:token/save', {
     config: { rateLimit: publicRateLimitConfig },
   }, async (request, reply) => {
-    const { token } = tokenParamSchema.parse(request.params);
-    const { answers } = saveProgressSchema.parse(request.body);
-
     try {
+      const { token } = tokenParamSchema.parse(request.params);
+      const { answers } = saveProgressSchema.parse(request.body);
       const result = await surveyTakingService.saveProgress(token, answers);
       return result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to save progress';
-      return reply.status(400).send({ message });
+      const { status, body } = publicErrorResponse(error, 'Failed to save progress');
+      return reply.status(status).send(body);
     }
   });
 
@@ -99,15 +123,14 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   }>('/survey/take/:token/submit', {
     config: { rateLimit: submitRateLimitConfig },
   }, async (request, reply) => {
-    const { token } = tokenParamSchema.parse(request.params);
-    const { answers } = submitSurveySchema.parse(request.body);
-
     try {
+      const { token } = tokenParamSchema.parse(request.params);
+      const { answers } = submitSurveySchema.parse(request.body);
       const result = await surveyTakingService.submitSurvey(token, answers);
       return result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to submit survey';
-      return reply.status(400).send({ message });
+      const { status, body } = publicErrorResponse(error, 'Failed to submit survey');
+      return reply.status(status).send(body);
     }
   });
 
@@ -118,15 +141,14 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   }>('/unsubscribe/:token', {
     config: { rateLimit: submitRateLimitConfig },
   }, async (request, reply) => {
-    const { token } = tokenParamSchema.parse(request.params);
-    const { scope, reason } = unsubscribeSchema.parse(request.body || {});
-
     try {
+      const { token } = tokenParamSchema.parse(request.params);
+      const { scope, reason } = unsubscribeSchema.parse(request.body || {});
       const result = await surveyTakingService.unsubscribe(token, scope, reason);
       return result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to unsubscribe';
-      return reply.status(400).send({ message });
+      const { status, body } = publicErrorResponse(error, 'Failed to unsubscribe');
+      return reply.status(status).send(body);
     }
   });
 
@@ -136,18 +158,22 @@ export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {
   }>('/unsubscribe/:token', {
     config: { rateLimit: publicRateLimitConfig },
   }, async (request, reply) => {
-    const { token } = tokenParamSchema.parse(request.params);
+    try {
+      const { token } = tokenParamSchema.parse(request.params);
 
-    // Validate token exists
-    const survey = await surveyTakingService.getSurveyByToken(token);
+      const survey = await surveyTakingService.getSurveyByToken(token);
 
-    if (!survey) {
-      return reply.status(404).send({ message: 'Invalid token' });
+      if (!survey) {
+        return reply.status(404).send({ message: 'Invalid token' });
+      }
+
+      return {
+        valid: true,
+        campaignName: survey.campaign.name,
+      };
+    } catch (error) {
+      const { status, body } = publicErrorResponse(error, 'Unable to process request');
+      return reply.status(status).send(body);
     }
-
-    return {
-      valid: true,
-      campaignName: survey.campaign.name,
-    };
   });
 };
