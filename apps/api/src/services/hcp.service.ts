@@ -3,6 +3,32 @@ import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { CreateHcpInput, UpdateHcpInput } from '@kol360/shared';
 
+/**
+ * Normalize specialty values to canonical credentials (MD, DO, OD).
+ * Handles common variants from NPI data and CSV imports.
+ */
+function normalizeSpecialty(raw: string): string {
+  const trimmed = raw.trim();
+  const upper = trimmed.toUpperCase();
+
+  // Direct credential matches
+  if (upper === 'MD' || upper === 'M.D.' || upper === 'M.D') return 'MD';
+  if (upper === 'DO' || upper === 'D.O.' || upper === 'D.O') return 'DO';
+  if (upper === 'OD' || upper === 'O.D.' || upper === 'O.D') return 'OD';
+
+  // Credential with suffixes (e.g., "OD, FAAO", "MD, PhD")
+  const commaMatch = upper.match(/^(MD|DO|OD)\s*,/);
+  if (commaMatch) return commaMatch[1];
+
+  // Common full-text mappings
+  const lower = trimmed.toLowerCase();
+  if (lower === 'ophthalmologist' || lower.includes('ophthalmolog')) return 'MD';
+  if (lower === 'optometrist' || lower.includes('optometr')) return 'OD';
+
+  // Return original if no mapping found
+  return trimmed;
+}
+
 interface SearchParams {
   query?: string;
   specialty?: string;
@@ -263,7 +289,7 @@ export class HcpService {
           const firstName = String(row['First Name'] || row['firstName'] || '').trim();
           const lastName = String(row['Last Name'] || row['lastName'] || '').trim();
           const email = (row['Email'] || row['email'] || null) as string | null;
-          const specialty = (row['Specialty'] || row['specialty'] || null) as string | null;
+          const rawSpecialty = (row['Specialty'] || row['specialty'] || null) as string | null;
 
           if (!firstName || !lastName) {
             throw new Error('First and last name required');
@@ -271,9 +297,11 @@ export class HcpService {
           if (!email) {
             throw new Error('Email is required');
           }
-          if (!specialty) {
+          if (!rawSpecialty) {
             throw new Error('Specialty is required');
           }
+
+          const specialty = normalizeSpecialty(rawSpecialty);
 
           validRows.push({
             rowIndex: i,
