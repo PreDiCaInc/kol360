@@ -117,85 +117,59 @@ export const DEFAULT_INVITATION_BODY = `
 
 // Default landing page templates - full-page HTML (editable like email templates)
 // Placeholders: {title}, {lastName}, {campaignName}, {honorariumBlock}, {questionCount}, {year}
+// NOTE: All templates use inline styles only (no <style> tags or CSS classes) for reliable
+// rendering through DOMPurify sanitization inside the Next.js app shell.
 export const DEFAULT_WELCOME_TITLE = 'Welcome to the KOL360 Survey';
 export const DEFAULT_WELCOME_MESSAGE = `
-<style>
-  .kol-welcome { display: flex; min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; }
-  .kol-welcome .brand-panel { width: 55%; position: relative; overflow: hidden; background: linear-gradient(135deg, hsl(175,72%,28%) 0%, hsl(175,72%,22%) 50%, hsl(195,60%,18%) 100%); }
-  .kol-welcome .content-panel { width: 45%; display: flex; align-items: center; justify-content: center; padding: 24px 48px; background: linear-gradient(to bottom right, #f9fafb, #f3f4f6); }
-  .kol-welcome .mobile-logo { display: none; }
-  @media (max-width: 1024px) {
-    .kol-welcome .brand-panel { display: none; }
-    .kol-welcome .content-panel { width: 100%; padding: 24px; }
-    .kol-welcome .mobile-logo { display: flex; justify-content: center; margin-bottom: 32px; }
-  }
-</style>
-<div class="kol-welcome">
-  <!-- Left Panel - Branding (hidden on mobile) -->
-  <div class="brand-panel">
-    <div style="position: absolute; top: 25%; left: -80px; width: 384px; height: 384px; background: rgba(255,255,255,0.1); border-radius: 50%; filter: blur(48px);"></div>
-    <div style="position: absolute; bottom: 25%; right: -80px; width: 320px; height: 320px; background: rgba(255,255,255,0.1); border-radius: 50%; filter: blur(48px);"></div>
-    <div style="position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 48px; color: white; height: 100%; box-sizing: border-box;">
-      <div>
-        <img src="/images/logo-white.png" alt="BioExec" style="height: 144px; width: auto; object-fit: contain;" />
-      </div>
-      <div style="max-width: 448px;">
-        <h1 style="font-size: 48px; font-weight: 600; line-height: 1.1; letter-spacing: -0.025em; margin: 0 0 24px 0; color: white;">KOL360</h1>
-        <p style="font-size: 20px; color: rgba(255,255,255,0.8); line-height: 1.6; margin: 0 0 32px 0;">
-          The comprehensive platform for Key Opinion Leader identification, assessment, and engagement analytics.
-        </p>
-        <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; color: rgba(255,255,255,0.6);">
-          <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block;"></span> National Leaders</span>
-          <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block;"></span> Peer Advisors</span>
-          <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block;"></span> Rising Stars and more</span>
-        </div>
-      </div>
-      <div>
-        <p style="font-size: 14px; color: rgba(255,255,255,0.4); margin: 0 0 4px 0;">&copy; {year} Bio-Exec KOL Research. All rights reserved.</p>
-        <p style="font-size: 12px; color: rgba(255,255,255,0.25); margin: 0;">Powered by PreDiCa.care</p>
-      </div>
-    </div>
+<div style="min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: linear-gradient(to bottom, #f9fafb, #f3f4f6);">
+  <!-- Branded Header -->
+  <div style="background: linear-gradient(135deg, hsl(175,72%,28%) 0%, hsl(175,72%,22%) 50%, hsl(195,60%,18%) 100%); padding: 40px 24px; text-align: center;">
+    <img src="/images/logo-white.png" alt="BioExec" style="height: 56px; width: auto; margin: 0 auto 12px; display: block;" />
+    <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin: 0; letter-spacing: 0.05em;">Key Opinion Leader Research</p>
   </div>
 
-  <!-- Right Panel - Welcome Content -->
-  <div class="content-panel">
-    <div style="width: 100%; max-width: 448px;">
-      <!-- Mobile Logo (shown only on small screens) -->
-      <div class="mobile-logo">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="display: flex; height: 40px; width: 40px; align-items: center; justify-content: center; border-radius: 12px; background: linear-gradient(to bottom right, #147a6d, rgba(20,122,109,0.8)); box-shadow: 0 4px 14px rgba(20,122,109,0.2);">
-            <span style="font-size: 14px; font-weight: 700; color: white;">K3</span>
-          </div>
-          <span style="font-size: 20px; font-weight: 600; color: #111827;">KOL360</span>
-        </div>
+  <!-- Content Card -->
+  <div style="max-width: 480px; margin: -24px auto 0; padding: 0 16px 32px;">
+    <div style="background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); overflow: hidden;">
+      <div style="padding: 32px 32px 0;">
+        <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 4px 0; color: #111827;">{title}</h2>
+        <p style="color: #6b7280; margin: 0 0 24px 0; font-size: 14px;">Welcome, Dr. {lastName}</p>
       </div>
+      <div style="padding: 0 32px 32px;">
+        <p style="color: #6b7280; line-height: 1.7; margin: 0 0 16px 0;">
+          Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.
+        </p>
 
-      <div style="background: rgba(255,255,255,0.8); border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.05); overflow: hidden;">
-        <div style="padding: 24px 32px 0;">
-          <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 4px 0; color: #111827;">{title}</h2>
-          <p style="color: #6b7280; margin: 0 0 24px 0; font-size: 14px;">Welcome, Dr. {lastName}</p>
-        </div>
-        <div style="padding: 0 32px 32px;">
-          <p style="color: #6b7280; line-height: 1.7; margin: 0 0 16px 0;">
-            Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.
+        <div style="background: #f0fdf9; border-left: 4px solid #147a6d; padding: 16px; border-radius: 0 8px 8px 0; margin: 0 0 16px 0;">
+          <p style="margin: 0; color: #0f5d54; font-size: 14px;">
+            This survey contains <strong>{questionCount} questions</strong> and takes approximately 5-10 minutes to complete.
           </p>
-
-          {honorariumBlock}
-
-          <p style="font-size: 14px; color: #6b7280; margin: 16px 0 20px 0;">
-            This survey contains {questionCount} questions. Your progress will be saved automatically.
-          </p>
-
-          <button data-action="begin-survey" style="width: 100%; padding: 12px 24px; font-size: 16px; font-weight: 500; color: white; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 14px rgba(20,122,109,0.3);">
-            Begin Survey
-          </button>
         </div>
+
+        {honorariumBlock}
+
+        <p style="font-size: 14px; color: #6b7280; margin: 16px 0 20px 0;">
+          Your progress will be saved automatically. You can return to complete the survey at any time.
+        </p>
+
+        <button data-action="begin-survey" style="width: 100%; padding: 14px 24px; font-size: 16px; font-weight: 600; color: white; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 14px rgba(20,122,109,0.3);">
+          Begin Survey
+        </button>
       </div>
+    </div>
 
-      <p style="text-align: center; font-size: 12px; color: #9ca3af; margin: 32px 0 0 0;">
-        Protected by enterprise-grade security. Need help?
-        <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">Contact support</a>
+    <div style="text-align: center; margin-top: 24px;">
+      <p style="font-size: 13px; color: #9ca3af; margin: 0;">
+        Your responses will be kept confidential and used only for research purposes.
       </p>
+      <p style="font-size: 12px; color: #9ca3af; margin: 8px 0 0 0;">
+        Need help? <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">Contact support</a>
+      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 12px; color: #d1d5db; margin: 0;">&copy; {year} Bio-Exec KOL Research. All rights reserved.</p>
     </div>
   </div>
 </div>
@@ -203,26 +177,40 @@ export const DEFAULT_WELCOME_MESSAGE = `
 
 export const DEFAULT_THANKYOU_TITLE = 'Thank You!';
 export const DEFAULT_THANKYOU_MESSAGE = `
-<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(to bottom, #f9fafb, #f3f4f6); padding: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 448px; width: 100%; background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); padding: 48px 32px;">
-    <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
-      <div style="width: 64px; height: 64px; border-radius: 50%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-          <polyline points="22 4 12 14.01 9 11.01"></polyline>
-        </svg>
+<div style="min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: linear-gradient(to bottom, #f9fafb, #f3f4f6);">
+  <!-- Branded Header -->
+  <div style="background: linear-gradient(135deg, hsl(175,72%,28%) 0%, hsl(175,72%,22%) 50%, hsl(195,60%,18%) 100%); padding: 40px 24px; text-align: center;">
+    <img src="/images/logo-white.png" alt="BioExec" style="height: 56px; width: auto; margin: 0 auto 12px; display: block;" />
+    <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin: 0; letter-spacing: 0.05em;">Key Opinion Leader Research</p>
+  </div>
+
+  <!-- Content Card -->
+  <div style="max-width: 480px; margin: -24px auto 0; padding: 0 16px 32px;">
+    <div style="background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); padding: 48px 32px;">
+      <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+        </div>
+        <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 12px 0; color: #111827;">{title}</h2>
+        <p style="color: #6b7280; line-height: 1.7; margin: 0 0 16px 0;">
+          Thank you for completing the survey, Dr. {lastName}. Your insights are invaluable to this research and will help shape the future of key opinion leader engagement.
+        </p>
+
+        {honorariumBlock}
+
+        <p style="color: #6b7280; line-height: 1.7; margin: 16px 0 0 0; font-size: 14px;">
+          If you have any questions, please contact
+          <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">support@bio-exec.com</a>.
+        </p>
       </div>
-      <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 12px 0; color: #111827;">{title}</h2>
-      <p style="color: #6b7280; line-height: 1.7; margin: 0 0 16px 0;">
-        Thank you for completing the survey, Dr. {lastName}. Your insights are invaluable to this research and will help shape the future of key opinion leader engagement.
-      </p>
+    </div>
 
-      {honorariumBlock}
-
-      <p style="color: #6b7280; line-height: 1.7; margin: 16px 0 0 0; font-size: 14px;">
-        If you have any questions, please contact
-        <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">support@bio-exec.com</a>.
-      </p>
+    <!-- Footer -->
+    <div style="text-align: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 12px; color: #d1d5db; margin: 0;">&copy; {year} Bio-Exec KOL Research. All rights reserved.</p>
     </div>
   </div>
 </div>
@@ -230,24 +218,38 @@ export const DEFAULT_THANKYOU_MESSAGE = `
 
 export const DEFAULT_ALREADYDONE_TITLE = 'Survey Already Completed';
 export const DEFAULT_ALREADYDONE_MESSAGE = `
-<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(to bottom, #f9fafb, #f3f4f6); padding: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 448px; width: 100%; background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); padding: 48px 32px;">
-    <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
-      <div style="width: 64px; height: 64px; border-radius: 50%; background: #f0fdf9; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#147a6d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="16" x2="12" y2="12"></line>
-          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-        </svg>
+<div style="min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: linear-gradient(to bottom, #f9fafb, #f3f4f6);">
+  <!-- Branded Header -->
+  <div style="background: linear-gradient(135deg, hsl(175,72%,28%) 0%, hsl(175,72%,22%) 50%, hsl(195,60%,18%) 100%); padding: 40px 24px; text-align: center;">
+    <img src="/images/logo-white.png" alt="BioExec" style="height: 56px; width: auto; margin: 0 auto 12px; display: block;" />
+    <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin: 0; letter-spacing: 0.05em;">Key Opinion Leader Research</p>
+  </div>
+
+  <!-- Content Card -->
+  <div style="max-width: 480px; margin: -24px auto 0; padding: 0 16px 32px;">
+    <div style="background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); padding: 48px 32px;">
+      <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: #f0fdf9; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#147a6d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </div>
+        <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 12px 0; color: #111827;">{title}</h2>
+        <p style="color: #6b7280; line-height: 1.7; margin: 0;">
+          You have already completed this survey. Thank you for your participation.
+        </p>
+        <p style="color: #6b7280; line-height: 1.7; margin: 16px 0 0 0; font-size: 14px;">
+          If you believe this is an error, please contact
+          <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">support@bio-exec.com</a>.
+        </p>
       </div>
-      <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 12px 0; color: #111827;">{title}</h2>
-      <p style="color: #6b7280; line-height: 1.7; margin: 0;">
-        You have already completed this survey. Thank you for your participation.
-      </p>
-      <p style="color: #6b7280; line-height: 1.7; margin: 16px 0 0 0; font-size: 14px;">
-        If you believe this is an error, please contact
-        <a href="mailto:support@bio-exec.com" style="color: #147a6d; text-decoration: none;">support@bio-exec.com</a>.
-      </p>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 12px; color: #d1d5db; margin: 0;">&copy; {year} Bio-Exec KOL Research. All rights reserved.</p>
     </div>
   </div>
 </div>
