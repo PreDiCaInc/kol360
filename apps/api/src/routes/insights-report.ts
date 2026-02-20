@@ -8,6 +8,49 @@ import {
 } from '@kol360/shared';
 
 export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
+  // List disease areas accessible to the current user, with campaign/KOL counts
+  fastify.get('/disease-areas', async (request) => {
+    const user = request.user!;
+
+    const clientFilter = user.role === 'PLATFORM_ADMIN'
+      ? {}
+      : { clientId: user.tenantId! };
+
+    const diseaseAreas = await fastify.prisma.diseaseArea.findMany({
+      where: {
+        isActive: true,
+        campaigns: { some: clientFilter },
+      },
+      select: {
+        id: true,
+        name: true,
+        therapeuticArea: true,
+        code: true,
+        _count: {
+          select: {
+            campaigns: { where: clientFilter },
+          },
+        },
+      },
+      orderBy: [{ therapeuticArea: 'asc' }, { name: 'asc' }],
+    });
+
+    const items = await Promise.all(
+      diseaseAreas.map(async (da) => ({
+        id: da.id,
+        name: da.name,
+        therapeuticArea: da.therapeuticArea,
+        code: da.code,
+        campaignCount: da._count.campaigns,
+        kolCount: await fastify.prisma.hcpDiseaseAreaScore.count({
+          where: { diseaseAreaId: da.id, isCurrent: true },
+        }),
+      }))
+    );
+
+    return { items };
+  });
+
   // Helper function to verify disease area access
   async function verifyDiseaseAreaAccess(
     diseaseAreaId: string,

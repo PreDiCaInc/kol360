@@ -621,6 +621,10 @@ export class ApiClient {
 
   // ==================== Insights Report ====================
 
+  async getInsightsDiseaseAreas() {
+    return this.request<{ items: InsightsDiseaseArea[] }>('GET', '/api/v1/insights/disease-areas');
+  }
+
   async getInsightsSummary(diseaseAreaId: string) {
     return this.request<InsightsSummary>('GET', `/api/v1/insights/${diseaseAreaId}/summary`);
   }
@@ -972,6 +976,15 @@ export interface ImportProgress {
 }
 
 // ==================== Insights Report Types ====================
+
+export interface InsightsDiseaseArea {
+  id: string;
+  name: string;
+  therapeuticArea: string;
+  code: string;
+  campaignCount: number;
+  kolCount: number;
+}
 
 export interface InsightsSummary {
   totalKols: number;
