@@ -24,6 +24,25 @@ describe('Insights Report API', () => {
     client = new ApiClient();
   });
 
+  describe('Disease Areas Endpoint', () => {
+    it('should return disease areas with campaign/KOL counts', async () => {
+      const { status, data } = await client.getInsightsDiseaseAreas();
+
+      expect(status).toBe(200);
+      expect(Array.isArray(data.items)).toBe(true);
+
+      if (data.items.length > 0) {
+        const first = data.items[0];
+        expect(first.id).toBeTruthy();
+        expect(first.name).toBeTruthy();
+        expect(typeof first.campaignCount).toBe('number');
+        expect(typeof first.kolCount).toBe('number');
+      }
+
+      console.log(`✅ Disease areas: ${data.items.length} items`);
+    });
+  });
+
   describe('Summary Endpoint', () => {
     it('should return insights summary for a disease area', async () => {
       const { status, data } = await client.getInsightsSummary(DRY_EYE_DISEASE_AREA_ID);

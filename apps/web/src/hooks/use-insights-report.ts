@@ -14,6 +14,28 @@ import type {
   NominationType,
 } from '@kol360/shared';
 
+// Disease area card for the dashboard landing page
+export interface DashboardDiseaseArea {
+  id: string;
+  name: string;
+  therapeuticArea: string;
+  code: string;
+  campaignCount: number;
+  kolCount: number;
+}
+
+/**
+ * Get disease areas accessible to the current user, with campaign/KOL counts
+ */
+export function useDashboardDiseaseAreas() {
+  return useQuery({
+    queryKey: ['dashboard-disease-areas'],
+    queryFn: () =>
+      apiClient.get<{ items: DashboardDiseaseArea[] }>('/api/v1/insights/disease-areas'),
+    staleTime: 60000,
+  });
+}
+
 // Filter options response
 interface FilterOptions {
   specialties: string[];

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Users, Trophy, User, Search, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useInsightsSummary, useInsightsFilterOptions } from '@/hooks/use-insights-report';
-import { useDiseaseAreas } from '@/hooks/use-hcps';
+import { useInsightsSummary, useDashboardDiseaseAreas } from '@/hooks/use-insights-report';
 
 // Tab components
 import { KolExplorerTab } from '@/components/insights/tabs/kol-explorer';
@@ -27,11 +25,13 @@ import { RespondentAnalyticsTab } from '@/components/insights/tabs/respondent-an
 import { GlobalFilters, GlobalFilterState, globalFiltersToApiFormat } from '@/components/insights/global-filters';
 import '@/components/insights/print-styles.css';
 
-export default function InsightsReportPage() {
-  const params = useParams();
-  const router = useRouter();
-  const diseaseAreaId = params.diseaseAreaId as string;
+interface InsightsDashboardProps {
+  diseaseAreaId: string;
+  onDiseaseAreaChange: (id: string) => void;
+  onBack: () => void;
+}
 
+export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }: InsightsDashboardProps) {
   const [activeTab, setActiveTab] = useState('kol-explorer');
   const [selectedKolId, setSelectedKolId] = useState<string | null>(null);
   const [globalFilters, setGlobalFilters] = useState<GlobalFilterState>({
@@ -40,34 +40,29 @@ export default function InsightsReportPage() {
     influencerType: null,
   });
 
-  // Handler for cross-tab KOL selection
   const handleKolSelect = useCallback((kolId: string) => {
     setSelectedKolId(kolId);
     setActiveTab('kol-profile');
   }, []);
 
-  // Handler for global filter changes
   const handleGlobalFilterChange = useCallback((filters: GlobalFilterState) => {
     setGlobalFilters(filters);
   }, []);
 
-  // Fetch disease areas for selector
-  const { data: diseaseAreas = [] } = useDiseaseAreas();
+  // Fetch disease areas for selector (scoped to user's access)
+  const { data: diseaseAreasData } = useDashboardDiseaseAreas();
+  const diseaseAreas = diseaseAreasData?.items || [];
   const currentDiseaseArea = diseaseAreas.find((da) => da.id === diseaseAreaId);
 
   // Fetch summary stats
   const { data: summary, isLoading: summaryLoading } = useInsightsSummary(diseaseAreaId);
-
-  const handleDiseaseAreaChange = (newDiseaseAreaId: string) => {
-    router.push(`/admin/reports/insights/${newDiseaseAreaId}`);
-  };
 
   // Convert global filters to API format for passing to tabs
   const apiFilters = globalFiltersToApiFormat(globalFilters);
 
   return (
     <div className="space-y-6">
-      {/* Print Header - Only visible when printing */}
+      {/* Print Header */}
       <div className="print-header print-only">
         <h1>KOL 360 Insights Report</h1>
         <p className="print-date">
@@ -78,11 +73,11 @@ export default function InsightsReportPage() {
       {/* Header */}
       <div className="flex items-center justify-between print:hidden">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+          <Button variant="ghost" size="icon" onClick={onBack}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">KOL 360 Insights Report</h1>
+            <h1 className="text-2xl font-bold">Insights Dashboard</h1>
             <p className="text-muted-foreground">
               Comprehensive KOL analytics and leader rankings
             </p>
@@ -92,7 +87,7 @@ export default function InsightsReportPage() {
         {/* Disease Area Selector */}
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Disease Area:</span>
-          <Select value={diseaseAreaId} onValueChange={handleDiseaseAreaChange}>
+          <Select value={diseaseAreaId} onValueChange={onDiseaseAreaChange}>
             <SelectTrigger className="w-[250px]">
               <SelectValue placeholder="Select disease area" />
             </SelectTrigger>
