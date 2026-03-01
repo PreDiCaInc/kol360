@@ -367,12 +367,14 @@ model Campaign {
   invitationEmailSubject   String?
   reminderEmailBody        String?
   reminderEmailSubject     String?
-  surveyAlreadyDoneMessage String?
-  surveyAlreadyDoneTitle   String?
-  surveyThankYouMessage    String?
-  surveyThankYouTitle      String?
-  surveyWelcomeMessage     String?
-  surveyWelcomeTitle       String?
+  surveyAlreadyDoneMessage   String?
+  surveyAlreadyDoneTitle     String?
+  surveyDisqualifiedMessage  String?
+  surveyDisqualifiedTitle    String?
+  surveyThankYouMessage      String?
+  surveyThankYouTitle        String?
+  surveyWelcomeMessage       String?
+  surveyWelcomeTitle         String?
   // Workflow step confirmation timestamps (when user explicitly reviewed/confirmed each step)
   scoreConfigConfirmedAt   DateTime?
   templatesConfirmedAt     DateTime?
@@ -731,6 +733,8 @@ enum QuestionType {
   MULTI_CHOICE
   DROPDOWN
   MULTI_TEXT
+  RANK_ORDER
+  QUALIFYING
 }
 
 // Nomination types for categorizing HCP nominations

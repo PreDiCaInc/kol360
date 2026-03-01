@@ -25,6 +25,8 @@ interface SurveyData {
     surveyThankYouMessage: string | null;
     surveyAlreadyDoneTitle: string | null;
     surveyAlreadyDoneMessage: string | null;
+    surveyDisqualifiedTitle: string | null;
+    surveyDisqualifiedMessage: string | null;
   };
   hcp: {
     firstName: string;
@@ -80,6 +82,8 @@ export class SurveyTakingService {
         surveyThankYouMessage: campaignHcp.campaign.surveyThankYouMessage,
         surveyAlreadyDoneTitle: campaignHcp.campaign.surveyAlreadyDoneTitle,
         surveyAlreadyDoneMessage: campaignHcp.campaign.surveyAlreadyDoneMessage,
+        surveyDisqualifiedTitle: campaignHcp.campaign.surveyDisqualifiedTitle,
+        surveyDisqualifiedMessage: campaignHcp.campaign.surveyDisqualifiedMessage,
       },
       hcp: campaignHcp.hcp,
       questions: campaignHcp.campaign.surveyQuestions.map((sq: {

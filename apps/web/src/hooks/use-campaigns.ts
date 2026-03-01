@@ -210,6 +210,8 @@ export interface LandingPageTemplates {
   surveyThankYouMessage: string | null;
   surveyAlreadyDoneTitle: string | null;
   surveyAlreadyDoneMessage: string | null;
+  surveyDisqualifiedTitle: string | null;
+  surveyDisqualifiedMessage: string | null;
 }
 
 export function useLandingPageTemplates(campaignId: string) {

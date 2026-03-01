@@ -44,10 +44,10 @@ const nextConfig = {
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              "style-src 'self' 'unsafe-inline'",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: https:",
-              "font-src 'self' data:",
-              "connect-src 'self' https://mpcu4inmtj.us-east-2.awsapprunner.com https://ik6dmnn2ra.us-east-2.awsapprunner.com https://cognito-idp.us-east-2.amazonaws.com",
+              "font-src 'self' data: https://fonts.gstatic.com",
+              "connect-src 'self' http://localhost:3001 https://mpcu4inmtj.us-east-2.awsapprunner.com https://ik6dmnn2ra.us-east-2.awsapprunner.com https://cognito-idp.us-east-2.amazonaws.com",
               "frame-ancestors 'none'",
             ].join('; '),
           },

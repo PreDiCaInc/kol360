@@ -32,6 +32,8 @@ interface SurveyData {
     surveyThankYouMessage: string | null;
     surveyAlreadyDoneTitle: string | null;
     surveyAlreadyDoneMessage: string | null;
+    surveyDisqualifiedTitle: string | null;
+    surveyDisqualifiedMessage: string | null;
   };
   hcp: {
     firstName: string;

@@ -211,11 +211,6 @@ function PreviewQuestion({ question, index }: PreviewQuestionProps) {
                 {i < (question.minEntries ?? 1) && (
                   <span className="text-red-500 text-sm">*</span>
                 )}
-                {i >= (question.minEntries ?? 1) && (
-                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
-                    <X className="w-4 h-4" />
-                  </Button>
-                )}
               </div>
             ))}
             <Button type="button" variant="outline" size="sm" disabled>
@@ -254,6 +249,33 @@ function PreviewQuestion({ question, index }: PreviewQuestionProps) {
               ))}
             </SelectContent>
           </Select>
+        );
+
+      case 'RANK_ORDER':
+        return (
+          <div className="space-y-2 max-w-md">
+            {question.options?.map((option, i) => (
+              <div key={i} className="flex items-center gap-2 bg-white border rounded-lg px-3 py-2 text-sm">
+                <span className="text-muted-foreground font-semibold w-6 text-center">{i + 1}</span>
+                <span>{option.text}</span>
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground">Respondents will drag to reorder</p>
+          </div>
+        );
+
+      case 'QUALIFYING':
+        return (
+          <RadioGroup className="flex gap-4" disabled>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="YES" disabled />
+              <Label className="text-sm font-normal">Yes</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="NO" disabled />
+              <Label className="text-sm font-normal">No</Label>
+            </div>
+          </RadioGroup>
         );
 
       default:

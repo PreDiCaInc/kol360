@@ -15,6 +15,8 @@ import {
   DEFAULT_WELCOME_MESSAGE,
   DEFAULT_THANKYOU_TITLE,
   DEFAULT_THANKYOU_MESSAGE,
+  DEFAULT_DISQUALIFIED_TITLE,
+  DEFAULT_DISQUALIFIED_MESSAGE,
 } from '@/components/campaigns/template-preview-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,13 +39,33 @@ import {
   CheckCircle2,
   Loader2,
   Plus,
-  X,
   Save,
   ChevronLeft,
   ChevronRight,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
-type QuestionType = 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN';
+type QuestionType = 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN' | 'RANK_ORDER' | 'QUALIFYING';
 
 interface QuestionOption {
   text: string;
@@ -81,6 +103,7 @@ export default function SurveyPage() {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
+  const [disqualified, setDisqualified] = useState(false);
 
   // Initialize answers from saved response
   // Only skip welcome screen if user has actually started (IN_PROGRESS status or has answers)
@@ -222,7 +245,18 @@ export default function SurveyPage() {
       console.error('Failed to save:', err);
     }
 
+    // Check for qualifying question disqualification
     const steps = buildSteps(survey!.questions);
+    const currentQuestions = steps[currentStep].questions;
+    const hasDisqualifyingAnswer = currentQuestions.some(
+      (q) => q.type === 'QUALIFYING' && answers[q.id] === 'NO'
+    );
+    if (hasDisqualifyingAnswer) {
+      setDisqualified(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
       // Scroll to top on mobile
@@ -239,6 +273,24 @@ export default function SurveyPage() {
 
   const handleSubmit = async () => {
     if (!validateAllAnswers()) {
+      return;
+    }
+
+    // Check for qualifying question disqualification on current (last) step
+    const steps = buildSteps(survey!.questions);
+    const currentQuestions = steps[currentStep].questions;
+    const hasDisqualifyingAnswer = currentQuestions.some(
+      (q) => q.type === 'QUALIFYING' && answers[q.id] === 'NO'
+    );
+    if (hasDisqualifyingAnswer) {
+      // Save progress so the "No" answer is recorded
+      try {
+        await saveProgress.mutateAsync({ token, answers });
+      } catch (err) {
+        console.error('Failed to save:', err);
+      }
+      setDisqualified(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
@@ -342,6 +394,23 @@ export default function SurveyPage() {
 
     return (
       <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(thankYouHtml) }} />
+    );
+  }
+
+  // Disqualified state - render disqualification template
+  if (disqualified) {
+    const disqualifiedHtml = replacePlaceholders(
+      survey.campaign.surveyDisqualifiedMessage || DEFAULT_DISQUALIFIED_MESSAGE.trim(),
+      survey.campaign.name || '',
+      survey.campaign.honorariumAmount,
+      {
+        title: survey.campaign.surveyDisqualifiedTitle || DEFAULT_DISQUALIFIED_TITLE,
+        lastName: survey.hcp.lastName,
+      }
+    );
+
+    return (
+      <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(disqualifiedHtml) }} />
     );
   }
 
@@ -690,6 +759,33 @@ function QuestionRenderer({ question, index, value, onChange, error, showNumber 
           </Select>
         );
 
+      case 'RANK_ORDER':
+        return (
+          <RankOrderInput
+            options={question.options || []}
+            value={value as string[]}
+            onChange={onChange}
+          />
+        );
+
+      case 'QUALIFYING':
+        return (
+          <RadioGroup
+            value={(value as string) || ''}
+            onValueChange={(val) => onChange(val)}
+            className="flex gap-4"
+          >
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="YES" id={`${question.id}-yes`} />
+              <Label htmlFor={`${question.id}-yes`} className="text-base font-normal cursor-pointer">Yes</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <RadioGroupItem value="NO" id={`${question.id}-no`} />
+              <Label htmlFor={`${question.id}-no`} className="text-base font-normal cursor-pointer">No</Label>
+            </div>
+          </RadioGroup>
+        );
+
       default:
         return null;
     }
@@ -740,12 +836,6 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
     onChange([...entries, '']);
   };
 
-  const removeEntry = (index: number) => {
-    if (entries.length > minRequired) {
-      onChange(entries.filter((_, i) => i !== index));
-    }
-  };
-
   const updateEntry = (index: number, newValue: string) => {
     const updated = [...entries];
     updated[index] = newValue;
@@ -765,17 +855,6 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
           {index < minRequired && (
             <span className="text-red-500 text-sm shrink-0">*</span>
           )}
-          {entries.length > minRequired && index >= minRequired && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => removeEntry(index)}
-              className="shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          )}
         </div>
       ))}
       <Button type="button" variant="outline" size="sm" onClick={addEntry}>
@@ -787,6 +866,107 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
           * Minimum {minRequired} names required
         </p>
       )}
+    </div>
+  );
+}
+
+// --- Sortable item for RankOrderInput ---
+function SortableRankItem({ id, rank, text, onMoveUp, onMoveDown, isFirst, isLast }: {
+  id: string;
+  rank: number;
+  text: string;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 bg-white border rounded-lg px-3 py-2.5 shadow-sm">
+      <button type="button" {...attributes} {...listeners} className="cursor-grab touch-none p-1 text-muted-foreground hover:text-foreground">
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <span className="text-sm font-semibold text-muted-foreground w-6 text-center">{rank}</span>
+      <span className="flex-1 text-base">{text}</span>
+      <div className="flex flex-col gap-0.5">
+        <button type="button" onClick={onMoveUp} disabled={isFirst} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
+          <ArrowUp className="w-3.5 h-3.5" />
+        </button>
+        <button type="button" onClick={onMoveDown} disabled={isLast} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
+          <ArrowDown className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface RankOrderInputProps {
+  options: QuestionOption[];
+  value: string[] | undefined;
+  onChange: (value: string[]) => void;
+}
+
+function RankOrderInput({ options, value, onChange }: RankOrderInputProps) {
+  const optionTexts = options.map((o) => o.text);
+  const items = value && value.length === optionTexts.length ? value : optionTexts;
+  // Use stable unique IDs for DnD (handles duplicate option texts)
+  const itemIds = items.map((_, i) => `rank-${i}`);
+
+  useEffect(() => {
+    if (!value || value.length !== optionTexts.length) {
+      onChange(optionTexts);
+    }
+  }, [optionTexts.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(TouchSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIndex = itemIds.indexOf(active.id as string);
+      const newIndex = itemIds.indexOf(over.id as string);
+      onChange(arrayMove(items, oldIndex, newIndex));
+    }
+  };
+
+  const moveItem = (index: number, direction: -1 | 1) => {
+    const newIndex = index + direction;
+    if (newIndex >= 0 && newIndex < items.length) {
+      onChange(arrayMove(items, index, newIndex));
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-muted-foreground mb-3">Drag items or use arrows to rank in order of preference</p>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {items.map((item, index) => (
+              <SortableRankItem
+                key={itemIds[index]}
+                id={itemIds[index]}
+                rank={index + 1}
+                text={item}
+                onMoveUp={() => moveItem(index, -1)}
+                onMoveDown={() => moveItem(index, 1)}
+                isFirst={index === 0}
+                isLast={index === items.length - 1}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }
