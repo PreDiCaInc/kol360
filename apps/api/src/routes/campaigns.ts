@@ -475,6 +475,8 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
       surveyThankYouMessage: campaign.surveyThankYouMessage,
       surveyAlreadyDoneTitle: campaign.surveyAlreadyDoneTitle,
       surveyAlreadyDoneMessage: campaign.surveyAlreadyDoneMessage,
+      surveyDisqualifiedTitle: campaign.surveyDisqualifiedTitle,
+      surveyDisqualifiedMessage: campaign.surveyDisqualifiedMessage,
     };
   });
 
@@ -519,6 +521,8 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
       surveyThankYouMessage: campaign.surveyThankYouMessage,
       surveyAlreadyDoneTitle: campaign.surveyAlreadyDoneTitle,
       surveyAlreadyDoneMessage: campaign.surveyAlreadyDoneMessage,
+      surveyDisqualifiedTitle: campaign.surveyDisqualifiedTitle,
+      surveyDisqualifiedMessage: campaign.surveyDisqualifiedMessage,
     };
   });
 

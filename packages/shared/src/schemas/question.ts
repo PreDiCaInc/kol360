@@ -32,6 +32,8 @@ export const questionTypeSchema = z.enum([
   'MULTI_CHOICE',
   'DROPDOWN',
   'MULTI_TEXT',
+  'RANK_ORDER',
+  'QUALIFYING',
 ]);
 
 // Nomination types for categorizing HCP nominations (7 categories)
@@ -84,7 +86,7 @@ export const createQuestionSchema = baseQuestionSchema
   .refine(
     (data) => {
       // Choice questions must have at least 2 options with non-empty text
-      if (['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN'].includes(data.type)) {
+      if (['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN', 'RANK_ORDER'].includes(data.type)) {
         if (!data.options || data.options.length < 2) return false;
         const validOptions = data.options.filter((opt) => opt.text && opt.text.trim().length > 0);
         return validOptions.length >= 2;

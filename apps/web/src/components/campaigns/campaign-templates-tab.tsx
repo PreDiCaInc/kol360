@@ -38,9 +38,11 @@ import {
   DEFAULT_THANKYOU_MESSAGE,
   DEFAULT_ALREADYDONE_TITLE,
   DEFAULT_ALREADYDONE_MESSAGE,
+  DEFAULT_DISQUALIFIED_TITLE,
+  DEFAULT_DISQUALIFIED_MESSAGE,
 } from './template-preview-dialog';
 
-type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done';
+type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done' | 'disqualified';
 
 interface CampaignTemplatesTabProps {
   campaignId: string;
@@ -66,6 +68,8 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
   const [thankYouMessage, setThankYouMessage] = useState('');
   const [alreadyDoneTitle, setAlreadyDoneTitle] = useState('');
   const [alreadyDoneMessage, setAlreadyDoneMessage] = useState('');
+  const [disqualifiedTitle, setDisqualifiedTitle] = useState('');
+  const [disqualifiedMessage, setDisqualifiedMessage] = useState('');
 
   // Track unsaved changes
   const [emailDirty, setEmailDirty] = useState(false);
@@ -94,6 +98,8 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
       setThankYouMessage(landingTemplates.surveyThankYouMessage || DEFAULT_THANKYOU_MESSAGE.trim());
       setAlreadyDoneTitle(landingTemplates.surveyAlreadyDoneTitle || DEFAULT_ALREADYDONE_TITLE);
       setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || DEFAULT_ALREADYDONE_MESSAGE.trim());
+      setDisqualifiedTitle(landingTemplates.surveyDisqualifiedTitle || DEFAULT_DISQUALIFIED_TITLE);
+      setDisqualifiedMessage(landingTemplates.surveyDisqualifiedMessage || DEFAULT_DISQUALIFIED_MESSAGE.trim());
       setLandingDirty(false);
     }
   }, [landingTemplates]);
@@ -121,6 +127,8 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
         surveyThankYouMessage: thankYouMessage || null,
         surveyAlreadyDoneTitle: alreadyDoneTitle || null,
         surveyAlreadyDoneMessage: alreadyDoneMessage || null,
+        surveyDisqualifiedTitle: disqualifiedTitle || null,
+        surveyDisqualifiedMessage: disqualifiedMessage || null,
       },
     });
     setLandingDirty(false);
@@ -144,6 +152,8 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
       setThankYouMessage(landingTemplates.surveyThankYouMessage || DEFAULT_THANKYOU_MESSAGE.trim());
       setAlreadyDoneTitle(landingTemplates.surveyAlreadyDoneTitle || DEFAULT_ALREADYDONE_TITLE);
       setAlreadyDoneMessage(landingTemplates.surveyAlreadyDoneMessage || DEFAULT_ALREADYDONE_MESSAGE.trim());
+      setDisqualifiedTitle(landingTemplates.surveyDisqualifiedTitle || DEFAULT_DISQUALIFIED_TITLE);
+      setDisqualifiedMessage(landingTemplates.surveyDisqualifiedMessage || DEFAULT_DISQUALIFIED_MESSAGE.trim());
       setLandingDirty(false);
     }
   };
@@ -458,6 +468,52 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
                 </div>
               </AccordionContent>
             </AccordionItem>
+            <AccordionItem value="disqualified">
+              <AccordionTrigger className="flex-1">
+                <div className="flex items-center justify-between w-full pr-2">
+                  <span>Disqualification Page</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTemplatePreviewType('disqualified');
+                    }}
+                  >
+                    <Eye className="w-4 h-4 mr-1" />
+                    Preview
+                  </Button>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="space-y-4 pt-4">
+                <div>
+                  <label className="text-sm font-medium">Title</label>
+                  <Input
+                    value={disqualifiedTitle}
+                    onChange={(e) => {
+                      setDisqualifiedTitle(e.target.value);
+                      setLandingDirty(true);
+                    }}
+                    placeholder="Default: Thank You"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Page HTML</label>
+                  <Textarea
+                    value={disqualifiedMessage}
+                    onChange={(e) => {
+                      setDisqualifiedMessage(e.target.value);
+                      setLandingDirty(true);
+                    }}
+                    placeholder="Full-page HTML template. Shown when a respondent answers 'No' to a qualifying question."
+                    rows={20}
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
           </Accordion>
         </CardContent>
       </Card>
@@ -488,6 +544,8 @@ export function CampaignTemplatesTab({ campaignId }: CampaignTemplatesTabProps) 
         thankYouMessage={thankYouMessage}
         alreadyDoneTitle={alreadyDoneTitle}
         alreadyDoneMessage={alreadyDoneMessage}
+        disqualifiedTitle={disqualifiedTitle}
+        disqualifiedMessage={disqualifiedMessage}
       />
     </div>
   );

@@ -324,6 +324,8 @@ export class CampaignService {
         surveyThankYouMessage: data.surveyThankYouMessage,
         surveyAlreadyDoneTitle: data.surveyAlreadyDoneTitle,
         surveyAlreadyDoneMessage: data.surveyAlreadyDoneMessage,
+        surveyDisqualifiedTitle: data.surveyDisqualifiedTitle,
+        surveyDisqualifiedMessage: data.surveyDisqualifiedMessage,
       },
     });
   }

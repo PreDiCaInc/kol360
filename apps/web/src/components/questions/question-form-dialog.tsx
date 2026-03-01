@@ -41,6 +41,8 @@ const questionTypes = [
   { value: 'MULTI_CHOICE', label: 'Multi', hasOptions: true },
   { value: 'DROPDOWN', label: 'Dropdown', hasOptions: true },
   { value: 'MULTI_TEXT', label: 'Nominations', hasOptions: false },
+  { value: 'RANK_ORDER', label: 'Rank Order', hasOptions: true },
+  { value: 'QUALIFYING', label: 'Qualifying (Yes/No)', hasOptions: false },
 ];
 
 interface QuestionOption {
@@ -82,7 +84,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
 
   const selectedType = form.watch('type');
   const currentTags = form.watch('tags') || [];
-  const needsOptions = ['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN'].includes(selectedType);
+  const needsOptions = ['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN', 'RANK_ORDER'].includes(selectedType);
   const isNominations = selectedType === 'MULTI_TEXT';
 
   useEffect(() => {
@@ -229,7 +231,12 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Question Type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={(val) => {
+                      field.onChange(val);
+                      if (val === 'QUALIFYING') {
+                        form.setValue('isRequired', true);
+                      }
+                    }} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue />
@@ -279,6 +286,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                       placeholder={`Option ${index + 1}`}
                       className="flex-1"
                     />
+                    {selectedType !== 'RANK_ORDER' && (
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
                       <Checkbox
                         checked={option.requiresText}
@@ -286,6 +294,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                       />
                       + Text
                     </label>
+                    )}
                     {options.length > 2 && (
                       <Button
                         type="button"
@@ -428,6 +437,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                     <Checkbox
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      disabled={selectedType === 'QUALIFYING'}
                     />
                   </FormControl>
                   <FormLabel className="!mt-0">Required question</FormLabel>

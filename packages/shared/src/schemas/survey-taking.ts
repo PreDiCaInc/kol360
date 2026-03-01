@@ -48,6 +48,8 @@ export const surveyQuestionTypeSchema = z.enum([
   'RATING',
   'TEXT',
   'MULTI_TEXT',
+  'RANK_ORDER',
+  'QUALIFYING',
 ]);
 
 export type SurveyQuestionType = z.infer<typeof surveyQuestionTypeSchema>;

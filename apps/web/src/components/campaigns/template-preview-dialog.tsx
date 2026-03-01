@@ -29,7 +29,7 @@ export const sanitizeHtml = (html: string): string => {
   });
 };
 
-type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done';
+type PreviewType = 'invitation' | 'reminder' | 'welcome' | 'thankyou' | 'already-done' | 'disqualified';
 
 interface TemplatePreviewDialogProps {
   open: boolean;
@@ -49,6 +49,8 @@ interface TemplatePreviewDialogProps {
   thankYouMessage?: string;
   alreadyDoneTitle?: string;
   alreadyDoneMessage?: string;
+  disqualifiedTitle?: string;
+  disqualifiedMessage?: string;
 }
 
 // Sample data for preview
@@ -255,6 +257,44 @@ export const DEFAULT_ALREADYDONE_MESSAGE = `
 </div>
 `;
 
+export const DEFAULT_DISQUALIFIED_TITLE = 'Thank You';
+export const DEFAULT_DISQUALIFIED_MESSAGE = `
+<div style="min-height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: linear-gradient(to bottom, #f9fafb, #f3f4f6);">
+  <!-- Branded Header -->
+  <div style="background: linear-gradient(135deg, hsl(175,72%,28%) 0%, hsl(175,72%,22%) 50%, hsl(195,60%,18%) 100%); padding: 40px 24px; text-align: center;">
+    <img src="/images/logo-white.png" alt="BioExec" style="height: 56px; width: auto; margin: 0 auto 12px; display: block;" />
+    <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin: 0; letter-spacing: 0.05em;">Key Opinion Leader Research</p>
+  </div>
+
+  <!-- Content Card -->
+  <div style="max-width: 480px; margin: -24px auto 0; padding: 0 16px 32px;">
+    <div style="background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); padding: 48px 32px;">
+      <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: #f0fdf9; display: flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#147a6d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </div>
+        <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 12px 0; color: #111827;">{title}</h2>
+        <p style="color: #6b7280; line-height: 1.7; margin: 0;">
+          Thank you for your interest. Unfortunately, based on your responses, you do not qualify for this survey at this time.
+        </p>
+        <p style="color: #6b7280; line-height: 1.7; margin: 16px 0 0 0; font-size: 14px;">
+          We appreciate your time and willingness to participate.
+        </p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 12px; color: #d1d5db; margin: 0;">&copy; {year} Bio-Exec KOL Research. All rights reserved.</p>
+    </div>
+  </div>
+</div>
+`;
+
 export const DEFAULT_REMINDER_SUBJECT = 'Reminder: {campaignName} KOL Survey - We value your input';
 export const DEFAULT_REMINDER_BODY = `
 <!DOCTYPE html>
@@ -357,6 +397,8 @@ export function TemplatePreviewDialog({
   thankYouMessage,
   alreadyDoneTitle,
   alreadyDoneMessage,
+  disqualifiedTitle,
+  disqualifiedMessage,
 }: TemplatePreviewDialogProps) {
   const [activeTab, setActiveTab] = useState<PreviewType>(type);
 
@@ -419,7 +461,7 @@ export function TemplatePreviewDialog({
   };
 
   const renderLandingPagePreview = (
-    previewType: 'welcome' | 'thankyou' | 'already-done'
+    previewType: 'welcome' | 'thankyou' | 'already-done' | 'disqualified'
   ) => {
     let title: string;
     let message: string;
@@ -448,6 +490,13 @@ export function TemplatePreviewDialog({
         defaultTitle = DEFAULT_ALREADYDONE_TITLE;
         defaultMessage = DEFAULT_ALREADYDONE_MESSAGE;
         label = 'Already Completed Page';
+        break;
+      case 'disqualified':
+        title = disqualifiedTitle || '';
+        message = disqualifiedMessage || '';
+        defaultTitle = DEFAULT_DISQUALIFIED_TITLE;
+        defaultMessage = DEFAULT_DISQUALIFIED_MESSAGE;
+        label = 'Disqualified Page';
         break;
     }
 
@@ -484,6 +533,7 @@ export function TemplatePreviewDialog({
     { key: 'welcome', label: 'Welcome', icon: <FileText className="w-4 h-4" /> },
     { key: 'thankyou', label: 'Thank You', icon: <FileText className="w-4 h-4" /> },
     { key: 'already-done', label: 'Already Done', icon: <FileText className="w-4 h-4" /> },
+    { key: 'disqualified', label: 'Disqualified', icon: <FileText className="w-4 h-4" /> },
   ];
 
   return (
@@ -531,6 +581,7 @@ export function TemplatePreviewDialog({
           {activeTab === 'welcome' && renderLandingPagePreview('welcome')}
           {activeTab === 'thankyou' && renderLandingPagePreview('thankyou')}
           {activeTab === 'already-done' && renderLandingPagePreview('already-done')}
+          {activeTab === 'disqualified' && renderLandingPagePreview('disqualified')}
         </div>
 
         <div className="flex justify-end pt-4 border-t border-border/60">

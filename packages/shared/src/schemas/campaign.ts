@@ -38,6 +38,8 @@ export const landingPageTemplatesSchema = z.object({
   surveyThankYouMessage: z.string().max(50000).optional().nullable(),
   surveyAlreadyDoneTitle: z.string().max(200).optional().nullable(),
   surveyAlreadyDoneMessage: z.string().max(50000).optional().nullable(),
+  surveyDisqualifiedTitle: z.string().max(200).optional().nullable(),
+  surveyDisqualifiedMessage: z.string().max(50000).optional().nullable(),
 });
 
 // CampaignStatus type is exported from types/index.ts
