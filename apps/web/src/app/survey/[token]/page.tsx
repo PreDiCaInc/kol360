@@ -248,9 +248,14 @@ export default function SurveyPage() {
     // Check for qualifying question disqualification
     const steps = buildSteps(survey!.questions);
     const currentQuestions = steps[currentStep].questions;
-    const hasDisqualifyingAnswer = currentQuestions.some(
-      (q) => q.type === 'QUALIFYING' && answers[q.id] === 'NO'
-    );
+    const hasDisqualifyingAnswer = currentQuestions.some((q) => {
+      if (q.type !== 'QUALIFYING') return false;
+      const ans = answers[q.id];
+      if (!ans) return false;
+      // Disqualify if answer matches the second option (disqualify option)
+      const disqualifyText = q.options?.[1]?.text || 'No';
+      return ans === disqualifyText;
+    });
     if (hasDisqualifyingAnswer) {
       setDisqualified(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -279,9 +284,13 @@ export default function SurveyPage() {
     // Check for qualifying question disqualification on current (last) step
     const steps = buildSteps(survey!.questions);
     const currentQuestions = steps[currentStep].questions;
-    const hasDisqualifyingAnswer = currentQuestions.some(
-      (q) => q.type === 'QUALIFYING' && answers[q.id] === 'NO'
-    );
+    const hasDisqualifyingAnswer = currentQuestions.some((q) => {
+      if (q.type !== 'QUALIFYING') return false;
+      const ans = answers[q.id];
+      if (!ans) return false;
+      const disqualifyText = q.options?.[1]?.text || 'No';
+      return ans === disqualifyText;
+    });
     if (hasDisqualifyingAnswer) {
       // Save progress so the "No" answer is recorded
       try {
@@ -768,23 +777,25 @@ function QuestionRenderer({ question, index, value, onChange, error, showNumber 
           />
         );
 
-      case 'QUALIFYING':
+      case 'QUALIFYING': {
+        const qualOptions = question.options?.length === 2
+          ? question.options
+          : [{ text: 'Yes', requiresText: false }, { text: 'No', requiresText: false }];
         return (
           <RadioGroup
             value={(value as string) || ''}
             onValueChange={(val) => onChange(val)}
             className="flex gap-4"
           >
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="YES" id={`${question.id}-yes`} />
-              <Label htmlFor={`${question.id}-yes`} className="text-base font-normal cursor-pointer">Yes</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="NO" id={`${question.id}-no`} />
-              <Label htmlFor={`${question.id}-no`} className="text-base font-normal cursor-pointer">No</Label>
-            </div>
+            {qualOptions.map((opt, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <RadioGroupItem value={opt.text} id={`${question.id}-opt-${i}`} />
+                <Label htmlFor={`${question.id}-opt-${i}`} className="text-base font-normal cursor-pointer">{opt.text}</Label>
+              </div>
+            ))}
           </RadioGroup>
         );
+      }
 
       default:
         return null;

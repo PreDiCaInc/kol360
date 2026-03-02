@@ -85,8 +85,8 @@ const baseQuestionSchema = z.object({
 export const createQuestionSchema = baseQuestionSchema
   .refine(
     (data) => {
-      // Choice questions must have at least 2 options with non-empty text
-      if (['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN', 'RANK_ORDER'].includes(data.type)) {
+      // Choice/qualifying questions must have at least 2 options with non-empty text
+      if (['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN', 'RANK_ORDER', 'QUALIFYING'].includes(data.type)) {
         if (!data.options || data.options.length < 2) return false;
         const validOptions = data.options.filter((opt) => opt.text && opt.text.trim().length > 0);
         return validOptions.length >= 2;

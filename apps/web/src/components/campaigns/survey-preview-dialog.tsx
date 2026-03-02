@@ -451,19 +451,21 @@ function PreviewQuestion({ question, index, showNumber = true }: PreviewQuestion
           </div>
         );
 
-      case 'QUALIFYING':
+      case 'QUALIFYING': {
+        const qualOpts = question.options?.length === 2
+          ? question.options
+          : [{ text: 'Yes' }, { text: 'No' }];
         return (
           <RadioGroup className="flex gap-4" disabled>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="YES" disabled />
-              <Label className="text-sm font-normal">Yes</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="NO" disabled />
-              <Label className="text-sm font-normal">No</Label>
-            </div>
+            {qualOpts.map((opt: { text: string }, i: number) => (
+              <div key={i} className="flex items-center gap-2">
+                <RadioGroupItem value={opt.text} disabled />
+                <Label className="text-sm font-normal">{opt.text}</Label>
+              </div>
+            ))}
           </RadioGroup>
         );
+      }
 
       default:
         return null;
