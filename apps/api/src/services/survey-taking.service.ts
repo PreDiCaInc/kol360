@@ -6,6 +6,7 @@ interface SurveyQuestion {
   text: string;
   type: string;
   section: string | null;
+  sectionDescription: string | null;
   isRequired: boolean;
   options: unknown;
   minEntries: number | null;
@@ -50,6 +51,13 @@ export class SurveyTakingService {
               include: { question: true },
               orderBy: { sortOrder: 'asc' },
             },
+            surveyTemplate: {
+              include: {
+                sections: {
+                  include: { section: { select: { name: true, description: true } } },
+                },
+              },
+            },
           },
         },
         hcp: {
@@ -86,24 +94,38 @@ export class SurveyTakingService {
         surveyDisqualifiedMessage: campaignHcp.campaign.surveyDisqualifiedMessage,
       },
       hcp: campaignHcp.hcp,
-      questions: campaignHcp.campaign.surveyQuestions.map((sq: {
-        id: string;
-        questionId: string;
-        questionTextSnapshot: string;
-        sectionName: string | null;
-        isRequired: boolean;
-        question: { type: string; options: unknown; minEntries: number | null; defaultEntries: number | null };
-      }) => ({
-        id: sq.id,
-        questionId: sq.questionId,
-        text: sq.questionTextSnapshot,
-        type: sq.question.type,
-        section: sq.sectionName,
-        isRequired: sq.isRequired,
-        options: sq.question.options,
-        minEntries: sq.question.minEntries,
-        defaultEntries: sq.question.defaultEntries,
-      })),
+      questions: (() => {
+        // Build section name → description map from template
+        const sectionDescMap: Record<string, string> = {};
+        const tmpl = campaignHcp.campaign.surveyTemplate as { sections: { section: { name: string; description: string | null } }[] } | null;
+        if (tmpl?.sections) {
+          for (const ts of tmpl.sections) {
+            if (ts.section.description) {
+              sectionDescMap[ts.section.name] = ts.section.description;
+            }
+          }
+        }
+
+        return campaignHcp.campaign.surveyQuestions.map((sq: {
+          id: string;
+          questionId: string;
+          questionTextSnapshot: string;
+          sectionName: string | null;
+          isRequired: boolean;
+          question: { type: string; options: unknown; minEntries: number | null; defaultEntries: number | null };
+        }) => ({
+          id: sq.id,
+          questionId: sq.questionId,
+          text: sq.questionTextSnapshot,
+          type: sq.question.type,
+          section: sq.sectionName,
+          sectionDescription: sq.sectionName ? (sectionDescMap[sq.sectionName] || null) : null,
+          isRequired: sq.isRequired,
+          options: sq.question.options,
+          minEntries: sq.question.minEntries,
+          defaultEntries: sq.question.defaultEntries,
+        }));
+      })(),
       response: response
         ? {
             status: response.status,

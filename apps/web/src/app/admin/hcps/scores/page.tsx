@@ -46,9 +46,9 @@ const SURVEY_SCORE_COLUMNS = [
   { key: 'scoreDiscussionLeaders', countKey: 'countDiscussionLeaders', label: 'Discussion Leaders' },
   { key: 'scoreReferralLeaders', countKey: 'countReferralLeaders', label: 'Referral Leaders' },
   { key: 'scoreAdviceLeaders', countKey: 'countAdviceLeaders', label: 'Advice Leaders' },
-  { key: 'scoreNationalLeader', countKey: 'countNationalLeader', label: 'National Leader' },
-  { key: 'scoreRisingStar', countKey: 'countRisingStar', label: 'Rising Star' },
-  { key: 'scoreSocialLeader', countKey: 'countSocialLeader', label: 'Social Leader' },
+  { key: 'scoreNationalLeader', countKey: 'countNationalLeader', label: 'National Leaders' },
+  { key: 'scoreRisingStar', countKey: 'countRisingStar', label: 'Rising Stars' },
+  { key: 'scoreSocialLeader', countKey: 'countSocialLeader', label: 'Social Media Leaders' },
   { key: 'scoreSurvey', countKey: 'totalNominationCount', label: 'Survey Score' },
   { key: 'compositeScore', countKey: null, label: 'Composite' },
 ] as const;

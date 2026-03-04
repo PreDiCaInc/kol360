@@ -78,6 +78,7 @@ interface Question {
   text: string;
   type: QuestionType;
   section: string | null;
+  sectionDescription: string | null;
   isRequired: boolean;
   options: QuestionOption[] | null;
   minEntries: number | null;
@@ -312,12 +313,13 @@ export default function SurveyPage() {
   };
 
   // Build steps from questions - group certain sections, show others one at a time
-  const buildSteps = (questions: Question[]): { title: string; questions: Question[] }[] => {
-    const steps: { title: string; questions: Question[] }[] = [];
-    let currentGroupedSection: { title: string; questions: Question[] } | null = null;
+  const buildSteps = (questions: Question[]): { title: string; description: string | null; questions: Question[] }[] => {
+    const steps: { title: string; description: string | null; questions: Question[] }[] = [];
+    let currentGroupedSection: { title: string; description: string | null; questions: Question[] } | null = null;
 
     for (const question of questions) {
       const section = question.section || 'General';
+      const description = question.sectionDescription || null;
       const isGrouped = GROUPED_SECTIONS.some(gs =>
         section.toLowerCase().includes(gs.toLowerCase())
       );
@@ -331,7 +333,7 @@ export default function SurveyPage() {
           if (currentGroupedSection) {
             steps.push(currentGroupedSection);
           }
-          currentGroupedSection = { title: section, questions: [question] };
+          currentGroupedSection = { title: section, description, questions: [question] };
         }
       } else {
         // Save any pending grouped section
@@ -340,7 +342,7 @@ export default function SurveyPage() {
           currentGroupedSection = null;
         }
         // Each non-grouped question gets its own step
-        steps.push({ title: section, questions: [question] });
+        steps.push({ title: section, description, questions: [question] });
       }
     }
 
@@ -494,11 +496,8 @@ export default function SurveyPage() {
           <CardContent className="py-4">
             <div className="space-y-3">
               {/* Step indicator */}
-              <div className="flex justify-between items-center text-sm">
-                <span className="font-medium">{currentStepData.title}</span>
-                <span className="text-muted-foreground">
-                  Step {currentStep + 1} of {totalSteps}
-                </span>
+              <div className="text-sm text-muted-foreground text-center">
+                Step {currentStep + 1} of {totalSteps}
               </div>
               {/* Progress bar */}
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -535,6 +534,11 @@ export default function SurveyPage() {
         {/* Question(s) Card */}
         <Card>
           <CardContent className="py-6 space-y-6">
+            {currentStepData.description && (
+              <p className="text-lg font-medium leading-relaxed">
+                {currentStepData.description}
+              </p>
+            )}
             {currentStepData.questions.map((question, idx) => (
               <QuestionRenderer
                 key={question.id}
@@ -784,11 +788,11 @@ function QuestionRenderer({ question, index, value, onChange, error, showNumber 
           <RadioGroup
             value={(value as string) || ''}
             onValueChange={(val) => onChange(val)}
-            className="flex gap-4"
+            className="space-y-3"
           >
             {qualOptions.map((opt, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <RadioGroupItem value={opt.text} id={`${question.id}-opt-${i}`} />
+              <div key={i} className="flex items-start gap-3">
+                <RadioGroupItem value={opt.text} id={`${question.id}-opt-${i}`} className="mt-1" />
                 <Label htmlFor={`${question.id}-opt-${i}`} className="text-base font-normal cursor-pointer">{opt.text}</Label>
               </div>
             ))}

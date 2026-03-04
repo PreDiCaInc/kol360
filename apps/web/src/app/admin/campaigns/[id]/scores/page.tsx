@@ -63,9 +63,9 @@ const NOMINATION_TYPE_LABELS: Record<string, string> = {
   DISCUSSION_LEADERS: 'Discussion Leaders',
   REFERRAL_LEADERS: 'Referral Leaders',
   ADVICE_LEADERS: 'Advice Leaders',
-  NATIONAL_LEADER: 'National Leader',
-  RISING_STAR: 'Rising Star',
-  SOCIAL_LEADER: 'Social Leader',
+  NATIONAL_LEADER: 'National Leaders',
+  RISING_STAR: 'Rising Stars',
+  SOCIAL_LEADER: 'Social Media Leaders',
   // Legacy nomination types (for backwards compatibility)
   NATIONAL_KOL: 'National KOL',
   REGIONAL_EXPERT: 'Regional Expert',

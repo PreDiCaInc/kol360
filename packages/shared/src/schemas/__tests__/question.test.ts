@@ -256,19 +256,20 @@ describe('Question Schemas', () => {
 
   describe('constants', () => {
     it('should have predefined question tags', () => {
-      expect(QUESTION_TAGS).toContain('Demographics');
-      expect(QUESTION_TAGS).toContain('Core');
-      expect(QUESTION_TAGS).toContain('Treatment');
-      expect(QUESTION_TAGS.length).toBeGreaterThan(0);
+      expect(QUESTION_TAGS).toContain('Qualifier');
+      expect(QUESTION_TAGS).toContain('Demographic');
+      expect(QUESTION_TAGS).toContain('Nomination');
+      expect(QUESTION_TAGS).toContain('Other');
+      expect(QUESTION_TAGS.length).toBe(4);
     });
 
     it('should have labels for all nomination types', () => {
       expect(NOMINATION_TYPE_LABELS.DISCUSSION_LEADERS).toBe('Discussion Leaders');
       expect(NOMINATION_TYPE_LABELS.REFERRAL_LEADERS).toBe('Referral Leaders');
       expect(NOMINATION_TYPE_LABELS.ADVICE_LEADERS).toBe('Advice Leaders');
-      expect(NOMINATION_TYPE_LABELS.NATIONAL_LEADER).toBe('National Leader');
-      expect(NOMINATION_TYPE_LABELS.RISING_STAR).toBe('Rising Star');
-      expect(NOMINATION_TYPE_LABELS.SOCIAL_LEADER).toBe('Social Leader');
+      expect(NOMINATION_TYPE_LABELS.NATIONAL_LEADER).toBe('National Leaders');
+      expect(NOMINATION_TYPE_LABELS.RISING_STAR).toBe('Rising Stars');
+      expect(NOMINATION_TYPE_LABELS.SOCIAL_LEADER).toBe('Social Media Leaders');
     });
   });
 });

@@ -30,6 +30,7 @@ import {
 import { Plus, Eye, Loader2, FileQuestion } from 'lucide-react';
 import { useSurveyPreview, SurveyPreviewQuestion } from '@/hooks/use-campaigns';
 import { NOMINATION_TYPE_LABELS, NominationType } from '@kol360/shared';
+import { sanitizeHtml } from './template-preview-dialog';
 
 interface SurveyPreviewDialogProps {
   open: boolean;
@@ -58,10 +59,13 @@ export function SurveyPreviewDialog({
         <CardDescription>Welcome, Dr. [Respondent Name]</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p>
-          {preview?.welcomeMessage ||
-            'Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.'}
-        </p>
+        {preview?.welcomeMessage ? (
+          <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.welcomeMessage) }} />
+        ) : (
+          <p className="text-sm text-muted-foreground italic border border-dashed rounded-md p-3">
+            Configure welcome page content in the Templates tab below.
+          </p>
+        )}
         {preview?.honorariumAmount && (
           <p className="text-sm bg-green-50 text-green-800 p-3 rounded-md">
             Upon completion, you will receive a ${preview.honorariumAmount} honorarium.
@@ -90,10 +94,13 @@ export function SurveyPreviewDialog({
           <h2 className="text-xl font-semibold mb-2">
             {preview?.thankYouTitle || 'Thank You!'}
           </h2>
-          <p className="text-muted-foreground">
-            {preview?.thankYouMessage ||
-              'Thank you for completing the survey, Dr. [Respondent Name].'}
-          </p>
+          {preview?.thankYouMessage ? (
+            <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(preview.thankYouMessage) }} />
+          ) : (
+            <p className="text-sm text-muted-foreground italic border border-dashed rounded-md p-3">
+              Configure thank you page content in the Templates tab below.
+            </p>
+          )}
           {preview?.honorariumAmount && (
             <p className="mt-4 text-sm">
               Your ${preview.honorariumAmount} honorarium will be processed shortly.
@@ -105,12 +112,13 @@ export function SurveyPreviewDialog({
   );
 
   // Build steps from questions - matches actual survey behavior
-  const buildSteps = (questions: SurveyPreviewQuestion[]): { title: string; questions: SurveyPreviewQuestion[] }[] => {
-    const steps: { title: string; questions: SurveyPreviewQuestion[] }[] = [];
-    let currentGroupedSection: { title: string; questions: SurveyPreviewQuestion[] } | null = null;
+  const buildSteps = (questions: SurveyPreviewQuestion[]): { title: string; description: string | null; questions: SurveyPreviewQuestion[] }[] => {
+    const steps: { title: string; description: string | null; questions: SurveyPreviewQuestion[] }[] = [];
+    let currentGroupedSection: { title: string; description: string | null; questions: SurveyPreviewQuestion[] } | null = null;
 
     for (const question of questions) {
       const section = question.section || 'General';
+      const description = question.sectionDescription || null;
       const isGrouped = GROUPED_SECTIONS.some(gs =>
         section.toLowerCase().includes(gs.toLowerCase())
       );
@@ -122,14 +130,14 @@ export function SurveyPreviewDialog({
           if (currentGroupedSection) {
             steps.push(currentGroupedSection);
           }
-          currentGroupedSection = { title: section, questions: [question] };
+          currentGroupedSection = { title: section, description, questions: [question] };
         }
       } else {
         if (currentGroupedSection) {
           steps.push(currentGroupedSection);
           currentGroupedSection = null;
         }
-        steps.push({ title: section, questions: [question] });
+        steps.push({ title: section, description, questions: [question] });
       }
     }
 
@@ -155,11 +163,8 @@ export function SurveyPreviewDialog({
         <Card>
           <CardContent className="py-4">
             <div className="space-y-3">
-              <div className="flex justify-between items-center text-sm">
-                <span className="font-medium">{currentStepData.title}</span>
-                <span className="text-muted-foreground">
-                  Step {currentStep + 1} of {totalSteps}
-                </span>
+              <div className="text-sm text-muted-foreground text-center">
+                Step {currentStep + 1} of {totalSteps}
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
@@ -190,6 +195,11 @@ export function SurveyPreviewDialog({
         {/* Current Step Questions */}
         <Card>
           <CardContent className="py-6 space-y-6">
+            {currentStepData.description && (
+              <p className="text-lg font-medium leading-relaxed">
+                {currentStepData.description}
+              </p>
+            )}
             {currentStepData.questions.map((question, idx) => (
               <PreviewQuestion
                 key={question.id}
@@ -456,10 +466,10 @@ function PreviewQuestion({ question, index, showNumber = true }: PreviewQuestion
           ? question.options
           : [{ text: 'Yes' }, { text: 'No' }];
         return (
-          <RadioGroup className="flex gap-4" disabled>
+          <RadioGroup className="space-y-2" disabled>
             {qualOpts.map((opt: { text: string }, i: number) => (
-              <div key={i} className="flex items-center gap-2">
-                <RadioGroupItem value={opt.text} disabled />
+              <div key={i} className="flex items-start gap-3">
+                <RadioGroupItem value={opt.text} disabled className="mt-0.5" />
                 <Label className="text-sm font-normal">{opt.text}</Label>
               </div>
             ))}
