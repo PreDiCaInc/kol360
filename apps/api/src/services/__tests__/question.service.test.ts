@@ -215,6 +215,7 @@ describe('QuestionService', () => {
 
   describe('update', () => {
     it('should update question', async () => {
+      (prisma.question.findUnique as Mock).mockResolvedValue({ text: 'Old text' });
       (prisma.surveyQuestion.count as Mock).mockResolvedValue(0);
       (prisma.question.update as Mock).mockResolvedValue({ id: 'q-1', text: 'Updated' });
 
@@ -224,6 +225,7 @@ describe('QuestionService', () => {
     });
 
     it('should throw error when modifying text of question in active campaign', async () => {
+      (prisma.question.findUnique as Mock).mockResolvedValue({ text: 'Original text' });
       (prisma.surveyQuestion.count as Mock).mockResolvedValue(1);
 
       await expect(
