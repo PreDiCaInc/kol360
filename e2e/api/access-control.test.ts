@@ -182,41 +182,48 @@ describe('Access Control', () => {
     });
 
     describe('Nominations Access (Read-Only)', () => {
-      let testCampaignId: string | undefined;
+      let ownCampaignId: string | null = null;
 
       beforeAll(async () => {
-        // Find a campaign owned by the test client
-        client.clearImpersonation(); // Temporarily clear to list all campaigns
-        const { data: campaigns } = await client.listCampaigns({ clientId: TEST_IDS.CLIENT_ID });
-        client.setImpersonation(TEST_IDS.CLIENT_ID); // Resume impersonation
+        // Create our own campaign to avoid race conditions with other test files
+        client.clearImpersonation();
+        const { status, data: campaign } = await client.createTestCampaign();
+        expect([200, 201]).toContain(status);
+        ownCampaignId = campaign.id;
 
-        const campaign = campaigns?.items?.find(
-          (c) => c.status === 'ACTIVE' || c.status === 'CLOSED' || c.status === 'PUBLISHED'
-        );
-        testCampaignId = campaign?.id;
-        if (testCampaignId) {
-          console.log(`Using campaign ${campaign?.name} for nomination tests`);
+        await client.assignHcpsToCampaign(campaign.id, [
+          TEST_IDS.HCP_1.id,
+          TEST_IDS.HCP_2.id,
+          TEST_IDS.HCP_3.id,
+        ]);
+        const { status: activateStatus } = await client.activateCampaign(campaign.id);
+        expect(activateStatus).toBe(200);
+        console.log(`✅ Created own campaign ${campaign.id} for nomination tests`);
+
+        // Resume impersonation for the tests
+        client.setImpersonation(TEST_IDS.CLIENT_ID);
+      });
+
+      afterAll(async () => {
+        client.clearImpersonation();
+        if (ownCampaignId) {
+          try {
+            await client.cleanupTestCampaign(ownCampaignId);
+            console.log(`🧹 Cleaned up nomination test campaign: ${ownCampaignId}`);
+          } catch {
+            console.log(`⚠️ Failed to clean up campaign ${ownCampaignId}`);
+          }
         }
       });
 
       it('should allow CLIENT_ADMIN to list nominations', async () => {
-        if (!testCampaignId) {
-          console.log('Skipping: no test campaign available');
-          return;
-        }
-
-        const { status } = await client.listNominations(testCampaignId);
+        const { status } = await client.listNominations(ownCampaignId!);
         expect(status).toBe(200);
         console.log('CLIENT_ADMIN can list nominations (read access)');
       });
 
       it('should deny CLIENT_ADMIN from bulk matching nominations', async () => {
-        if (!testCampaignId) {
-          console.log('Skipping: no test campaign available');
-          return;
-        }
-
-        const { status } = await client.bulkMatchNominations(testCampaignId);
+        const { status } = await client.bulkMatchNominations(ownCampaignId!);
         expect(status).toBe(403);
         console.log('CLIENT_ADMIN correctly denied bulk match (write access blocked)');
       });
@@ -251,51 +258,59 @@ describe('Access Control', () => {
   // ==================== Security: Survey Token Visibility ====================
 
   describe('Survey Token Security', () => {
-    let testCampaignId: string | undefined;
+    let ownCampaignId: string | null = null;
 
     beforeAll(async () => {
-      // Find a campaign with assigned HCPs
-      const { data: campaigns } = await client.listCampaigns({ clientId: TEST_IDS.CLIENT_ID });
-      const campaign = campaigns?.items?.find(
-        (c) => c.status === 'ACTIVE' || c.status === 'CLOSED' || c.status === 'PUBLISHED'
-      );
-      testCampaignId = campaign?.id;
+      // Create our own campaign so we don't depend on other test files' campaigns
+      client.clearImpersonation();
+      const { status, data: campaign } = await client.createTestCampaign();
+      expect([200, 201]).toContain(status);
+      ownCampaignId = campaign.id;
+
+      // Assign HCPs (required for activation and survey tokens)
+      await client.assignHcpsToCampaign(campaign.id, [
+        TEST_IDS.HCP_1.id,
+        TEST_IDS.HCP_2.id,
+        TEST_IDS.HCP_3.id,
+      ]);
+
+      // Activate — this generates survey tokens for assigned HCPs
+      const { status: activateStatus } = await client.activateCampaign(campaign.id);
+      expect(activateStatus).toBe(200);
+      console.log(`✅ Created own campaign ${campaign.id} for survey token tests`);
+    });
+
+    afterAll(async () => {
+      if (ownCampaignId) {
+        try {
+          await client.cleanupTestCampaign(ownCampaignId);
+          console.log(`🧹 Cleaned up survey token test campaign: ${ownCampaignId}`);
+        } catch {
+          console.log(`⚠️ Failed to clean up campaign ${ownCampaignId}`);
+        }
+      }
     });
 
     it('should expose surveyToken to PLATFORM_ADMIN', async () => {
-      if (!testCampaignId) {
-        console.log('Skipping: no campaign with HCPs available');
-        return;
-      }
-
       client.clearImpersonation();
-      const { status, data } = await client.listCampaignHcps(testCampaignId);
+      const { status, data } = await client.listCampaignHcps(ownCampaignId!);
 
       expect(status).toBe(200);
-      if (data.items.length > 0) {
-        // PLATFORM_ADMIN should see surveyToken
-        const hasToken = data.items.some((h) => h.surveyToken);
-        expect(hasToken).toBe(true);
-        console.log('PLATFORM_ADMIN can see surveyTokens');
-      }
+      expect(data.items.length).toBeGreaterThan(0);
+      const hasToken = data.items.some((h) => h.surveyToken);
+      expect(hasToken).toBe(true);
+      console.log('PLATFORM_ADMIN can see surveyTokens');
     });
 
     it('should hide surveyToken from CLIENT_ADMIN (impersonated)', async () => {
-      if (!testCampaignId) {
-        console.log('Skipping: no campaign with HCPs available');
-        return;
-      }
-
       client.setImpersonation(TEST_IDS.CLIENT_ID);
-      const { status, data } = await client.listCampaignHcps(testCampaignId);
+      const { status, data } = await client.listCampaignHcps(ownCampaignId!);
 
       expect(status).toBe(200);
-      if (data.items.length > 0) {
-        // CLIENT_ADMIN should NOT see surveyToken
-        const hasToken = data.items.some((h) => h.surveyToken);
-        expect(hasToken).toBe(false);
-        console.log('CLIENT_ADMIN correctly cannot see surveyTokens');
-      }
+      expect(data.items.length).toBeGreaterThan(0);
+      const hasToken = data.items.some((h) => h.surveyToken);
+      expect(hasToken).toBe(false);
+      console.log('CLIENT_ADMIN correctly cannot see surveyTokens');
 
       client.clearImpersonation();
     });
