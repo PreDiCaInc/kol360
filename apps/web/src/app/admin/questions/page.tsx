@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   useQuestions,
   useQuestionCategories,
+  useQuestionTags,
   useArchiveQuestion,
   useRestoreQuestion,
 } from '@/hooks/use-questions';
@@ -33,9 +34,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { QuestionFormDialog } from '@/components/questions/question-form-dialog';
-import { Plus, Pencil, Archive, RotateCcw, MoreHorizontal, Search, ChevronLeft, ChevronRight, MessageSquare, Layers, Tag } from 'lucide-react';
-import { NOMINATION_TYPE_LABELS, NominationType } from '@kol360/shared';
+import { Plus, Pencil, Archive, RotateCcw, MoreHorizontal, Search, ChevronLeft, ChevronRight, MessageSquare, Layers, Tag, ArrowUpDown, X } from 'lucide-react';
+import { NOMINATION_TYPE_LABELS, NominationType, questionTypeSchema } from '@kol360/shared';
 
+// Derive type labels from the schema so new types are never missing
+const questionTypes = questionTypeSchema.options;
 const typeLabels: Record<string, string> = {
   TEXT: 'Text',
   NUMBER: 'Number',
@@ -43,7 +46,9 @@ const typeLabels: Record<string, string> = {
   SINGLE_CHOICE: 'Radio',
   MULTI_CHOICE: 'Multi',
   DROPDOWN: 'Dropdown',
-  MULTI_TEXT: 'Multi Text',
+  MULTI_TEXT: 'Nominations',
+  RANK_ORDER: 'Rank Order',
+  QUALIFYING: 'Qualifying',
 };
 
 const typeBadgeVariants: Record<string, 'default' | 'secondary' | 'outline'> = {
@@ -54,25 +59,41 @@ const typeBadgeVariants: Record<string, 'default' | 'secondary' | 'outline'> = {
   MULTI_CHOICE: 'default',
   DROPDOWN: 'default',
   MULTI_TEXT: 'secondary',
+  RANK_ORDER: 'secondary',
+  QUALIFYING: 'default',
 };
+
+function formatDate(dateString: string) {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+interface Filters {
+  search?: string;
+  category?: string;
+  type?: string;
+  tags?: string;
+  status: string;
+  page: number;
+  sortBy?: string;
+  sortOrder?: string;
+}
 
 export default function QuestionsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<{
-    search?: string;
-    category?: string;
-    type?: string;
-    status: string;
-    page: number;
-  }>({ status: 'active', page: 1 });
+  const [filters, setFilters] = useState<Filters>({ status: 'active', page: 1 });
 
   const { data, isLoading } = useQuestions({
     ...filters,
     search: filters.search,
   });
   const { data: categories } = useQuestionCategories();
+  const { data: tagsList } = useQuestionTags();
   const archiveQuestion = useArchiveQuestion();
   const restoreQuestion = useRestoreQuestion();
 
@@ -103,6 +124,22 @@ export default function QuestionsPage() {
     } catch (error) {
       console.error('Failed to restore question:', error);
     }
+  };
+
+  const toggleDateSort = () => {
+    setFilters((prev) => {
+      if (prev.sortBy === 'createdAt') {
+        return { ...prev, sortOrder: prev.sortOrder === 'desc' ? 'asc' : 'desc', page: 1 };
+      }
+      return { ...prev, sortBy: 'createdAt', sortOrder: 'desc', page: 1 };
+    });
+  };
+
+  const hasActiveFilters = filters.category || filters.type || filters.tags || filters.search || filters.sortBy;
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setFilters({ status: filters.status, page: 1 });
   };
 
   const uniqueTypes = Array.from(new Set(questions.map(q => q.type))).length;
@@ -155,7 +192,7 @@ export default function QuestionsPage() {
           </div>
         )}
 
-        {/* Search and Filters */}
+        {/* Search and Filters — compact bar */}
         <div className="flex flex-col lg:flex-row gap-4 mb-6">
           <div className="flex-1 flex gap-2">
             <div className="relative flex-1 max-w-md">
@@ -174,6 +211,52 @@ export default function QuestionsPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <Select
+              value={filters.type || 'all'}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  type: value === 'all' ? undefined : value,
+                  page: 1,
+                }))
+              }
+            >
+              <SelectTrigger className="w-44 bg-card">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {questionTypes.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {typeLabels[value] || value}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={filters.tags || 'all'}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  tags: value === 'all' ? undefined : value,
+                  page: 1,
+                }))
+              }
+            >
+              <SelectTrigger className="w-44 bg-card">
+                <SelectValue placeholder="All tags" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All tags</SelectItem>
+                {tagsList?.map((tag) => (
+                  <SelectItem key={tag.name} value={tag.name}>
+                    {tag.name} ({tag.count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Select
               value={filters.category || 'all'}
               onValueChange={(value) =>
@@ -198,29 +281,6 @@ export default function QuestionsPage() {
             </Select>
 
             <Select
-              value={filters.type || 'all'}
-              onValueChange={(value) =>
-                setFilters((prev) => ({
-                  ...prev,
-                  type: value === 'all' ? undefined : value,
-                  page: 1,
-                }))
-              }
-            >
-              <SelectTrigger className="w-44 bg-card">
-                <SelectValue placeholder="All types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {Object.entries(typeLabels).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
               value={filters.status}
               onValueChange={(value) =>
                 setFilters((prev) => ({ ...prev, status: value, page: 1 }))
@@ -234,6 +294,13 @@ export default function QuestionsPage() {
                 <SelectItem value="archived">Archived</SelectItem>
               </SelectContent>
             </Select>
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-10 px-3">
+                <X className="w-4 h-4 mr-1" />
+                Clear
+              </Button>
+            )}
           </div>
         </div>
 
@@ -262,7 +329,7 @@ export default function QuestionsPage() {
             </div>
             <h3 className="text-lg font-medium mb-2">No questions found</h3>
             <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-              {filters.search || filters.category || filters.type
+              {filters.search || filters.category || filters.type || filters.tags
                 ? 'Try adjusting your filters to find more questions.'
                 : 'Create your first question to get started building surveys.'}
             </p>
@@ -276,12 +343,26 @@ export default function QuestionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-1/3">Question</TableHead>
+                  <TableHead className="w-1/4">Question</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Nomination Type</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Tags</TableHead>
                   <TableHead>Required</TableHead>
                   <TableHead>Usage</TableHead>
+                  <TableHead>
+                    <button
+                      onClick={toggleDateSort}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Created
+                      <ArrowUpDown className="w-3.5 h-3.5" />
+                      {filters.sortBy === 'createdAt' && (
+                        <span className="text-xs text-primary">
+                          {filters.sortOrder === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="w-20">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -290,31 +371,31 @@ export default function QuestionsPage() {
                   <TableRow key={q.id}>
                     <TableCell>
                       <div className="line-clamp-2">{q.text}</div>
-                      {q.tags?.length > 0 && (
-                        <div className="flex gap-1 mt-1 flex-wrap">
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={typeBadgeVariants[q.type] || 'secondary'}>
+                        {typeLabels[q.type] || q.type}
+                      </Badge>
+                      {q.nominationType && (
+                        <Badge variant="outline" className="text-xs ml-1">
+                          {NOMINATION_TYPE_LABELS[q.nominationType as NominationType] || q.nominationType}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{q.category || '—'}</TableCell>
+                    <TableCell>
+                      {q.tags?.length > 0 ? (
+                        <div className="flex gap-1 flex-wrap">
                           {q.tags.map((tag: string) => (
                             <Badge key={tag} variant="outline" className="text-xs">
                               {tag}
                             </Badge>
                           ))}
                         </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={typeBadgeVariants[q.type] || 'secondary'}>
-                        {typeLabels[q.type] || q.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {q.nominationType ? (
-                        <Badge variant="outline" className="text-xs">
-                          {NOMINATION_TYPE_LABELS[q.nominationType as NominationType] || q.nominationType}
-                        </Badge>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{q.category || '—'}</TableCell>
                     <TableCell>
                       <Badge variant={q.isRequired ? 'success' : 'muted'}>
                         {q.isRequired ? 'Yes' : 'No'}
@@ -322,6 +403,9 @@ export default function QuestionsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {(q._count?.sectionQuestions ?? 0) + (q._count?.surveyQuestions ?? 0)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {q.createdAt ? formatDate(q.createdAt) : '—'}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

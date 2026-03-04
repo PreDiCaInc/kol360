@@ -56,6 +56,8 @@ interface QuestionsQuery {
   status?: string;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: string;
 }
 
 interface CategoryCount {

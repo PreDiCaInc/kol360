@@ -21,7 +21,7 @@ export const questionRoutes: FastifyPluginAsync = async (fastify) => {
 
   // List questions
   fastify.get('/', async (request) => {
-    const { category, type, tags, status, search, page, limit } = request.query as {
+    const { category, type, tags, status, search, page, limit, sortBy, sortOrder } = request.query as {
       category?: string;
       type?: string;
       tags?: string;
@@ -29,6 +29,8 @@ export const questionRoutes: FastifyPluginAsync = async (fastify) => {
       search?: string;
       page?: string;
       limit?: string;
+      sortBy?: string;
+      sortOrder?: string;
     };
 
     return questionService.list({
@@ -39,6 +41,8 @@ export const questionRoutes: FastifyPluginAsync = async (fastify) => {
       search,
       page: parseInt(page || '1', 10),
       limit: parseInt(limit || '50', 10),
+      sortBy,
+      sortOrder,
     });
   });
 

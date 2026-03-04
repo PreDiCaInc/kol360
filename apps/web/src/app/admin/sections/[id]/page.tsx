@@ -10,7 +10,7 @@ import {
   useRemoveQuestionFromSection,
   useReorderSectionQuestions,
 } from '@/hooks/use-sections';
-import { useQuestions } from '@/hooks/use-questions';
+import { useQuestions, useQuestionCategories, useQuestionTags } from '@/hooks/use-questions';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,17 +50,29 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   ArrowLeft,
   Plus,
   Trash2,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Lock,
   Search,
   Eye,
+  X,
 } from 'lucide-react';
 import { SectionPreviewDialog } from '@/components/sections/section-preview-dialog';
+import { questionTypeSchema } from '@kol360/shared';
 
+const questionTypes = questionTypeSchema.options;
 const typeLabels: Record<string, string> = {
   TEXT: 'Text',
   NUMBER: 'Number',
@@ -68,7 +80,9 @@ const typeLabels: Record<string, string> = {
   SINGLE_CHOICE: 'Radio',
   MULTI_CHOICE: 'Multi',
   DROPDOWN: 'Dropdown',
-  MULTI_TEXT: 'Multi Text',
+  MULTI_TEXT: 'Nominations',
+  RANK_ORDER: 'Rank Order',
+  QUALIFYING: 'Qualifying',
 };
 
 export default function SectionDetailPage() {
@@ -77,7 +91,6 @@ export default function SectionDetailPage() {
   const sectionId = params.id as string;
 
   const { data: section, isLoading } = useSection(sectionId);
-  const { data: questionsData } = useQuestions({ status: 'active', limit: 100 });
   const updateSection = useUpdateSection();
   const addQuestion = useAddQuestionToSection();
   const removeQuestion = useRemoveQuestionFromSection();
@@ -88,20 +101,32 @@ export default function SectionDetailPage() {
   const [editDescription, setEditDescription] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [dialogSearch, setDialogSearch] = useState('');
+  const [dialogType, setDialogType] = useState<string>();
+  const [dialogTags, setDialogTags] = useState<string>();
+  const [dialogCategory, setDialogCategory] = useState<string>();
+  const [dialogPage, setDialogPage] = useState(1);
   const [questionToRemove, setQuestionToRemove] = useState<{ id: string; text: string } | null>(null);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
   const [isAddingQuestions, setIsAddingQuestions] = useState(false);
 
+  // Server-side filtered query for the "Add Questions" dialog
+  const { data: questionsData } = useQuestions({
+    status: 'active',
+    limit: 50,
+    page: dialogPage,
+    search: dialogSearch || undefined,
+    type: dialogType,
+    tags: dialogTags,
+    category: dialogCategory,
+  });
+  const { data: categories } = useQuestionCategories();
+  const { data: tagsList } = useQuestionTags();
+
   const availableQuestions = questionsData?.items.filter(
     (q) => !section?.questions.some((sq) => sq.questionId === q.id)
   ) || [];
-
-  const filteredQuestions = availableQuestions.filter(
-    (q) =>
-      q.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      q.category?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const dialogPagination = questionsData?.pagination;
 
   const handleStartEdit = () => {
     if (section) {
@@ -386,22 +411,102 @@ export default function SectionDetailPage() {
         {/* Add Question Dialog */}
         <Dialog open={showAddDialog} onOpenChange={(open) => {
           setShowAddDialog(open);
-          if (!open) setSelectedQuestionIds([]);
+          if (!open) {
+            setSelectedQuestionIds([]);
+            setDialogSearch('');
+            setDialogType(undefined);
+            setDialogTags(undefined);
+            setDialogCategory(undefined);
+            setDialogPage(1);
+          }
         }}>
-          <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogContent className="max-w-3xl max-h-[85vh]">
             <DialogHeader>
               <DialogTitle>Add Questions to Section</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Search questions..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                <Button variant="outline" size="icon">
-                  <Search className="w-4 h-4" />
-                </Button>
+              {/* Search + Filters */}
+              <div className="flex flex-wrap gap-2">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search questions..."
+                    value={dialogSearch}
+                    onChange={(e) => {
+                      setDialogSearch(e.target.value);
+                      setDialogPage(1);
+                    }}
+                    className="pl-9"
+                  />
+                </div>
+                <Select
+                  value={dialogType || 'all'}
+                  onValueChange={(value) => {
+                    setDialogType(value === 'all' ? undefined : value);
+                    setDialogPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="All types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All types</SelectItem>
+                    {questionTypes.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {typeLabels[value] || value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={dialogTags || 'all'}
+                  onValueChange={(value) => {
+                    setDialogTags(value === 'all' ? undefined : value);
+                    setDialogPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="All tags" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All tags</SelectItem>
+                    {tagsList?.map((tag) => (
+                      <SelectItem key={tag.name} value={tag.name}>
+                        {tag.name} ({tag.count})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={dialogCategory || 'all'}
+                  onValueChange={(value) => {
+                    setDialogCategory(value === 'all' ? undefined : (value === 'uncategorized' ? '' : value));
+                    setDialogPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-44">
+                    <SelectValue placeholder="All categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    {categories?.map((cat) => (
+                      <SelectItem key={cat.name || 'uncategorized'} value={cat.name || 'uncategorized'}>
+                        {cat.name || 'Uncategorized'} ({cat.count})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(dialogSearch || dialogType || dialogTags || dialogCategory) && (
+                  <Button variant="ghost" size="icon" onClick={() => {
+                    setDialogSearch('');
+                    setDialogType(undefined);
+                    setDialogTags(undefined);
+                    setDialogCategory(undefined);
+                    setDialogPage(1);
+                  }}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
               <div className="max-h-96 overflow-y-auto">
                 <Table>
@@ -410,10 +515,11 @@ export default function SectionDetailPage() {
                       <TableHead className="w-12">Select</TableHead>
                       <TableHead>Question</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>Category</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredQuestions.map((q) => (
+                    {availableQuestions.map((q) => (
                       <TableRow
                         key={q.id}
                         className={selectedQuestionIds.includes(q.id) ? 'bg-muted/50' : ''}
@@ -426,19 +532,28 @@ export default function SectionDetailPage() {
                         </TableCell>
                         <TableCell>
                           <div className="line-clamp-2 text-sm">{q.text}</div>
-                          {q.category && (
-                            <span className="text-xs text-muted-foreground">{q.category}</span>
+                          {q.tags?.length > 0 && (
+                            <div className="flex gap-1 mt-1 flex-wrap">
+                              {q.tags.map((tag: string) => (
+                                <Badge key={tag} variant="outline" className="text-[10px]">
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
                           )}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{typeLabels[q.type] || q.type}</Badge>
                         </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {q.category || '—'}
+                        </TableCell>
                       </TableRow>
                     ))}
-                    {filteredQuestions.length === 0 && (
+                    {availableQuestions.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                          {searchQuery
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          {dialogSearch || dialogType || dialogTags || dialogCategory
                             ? 'No matching questions found'
                             : 'All available questions have been added'}
                         </TableCell>
@@ -447,10 +562,37 @@ export default function SectionDetailPage() {
                   </TableBody>
                 </Table>
               </div>
+              {/* Pagination + Action bar */}
               <div className="flex justify-between items-center pt-2 border-t">
-                <span className="text-sm text-muted-foreground">
-                  {selectedQuestionIds.length} question{selectedQuestionIds.length !== 1 ? 's' : ''} selected
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">
+                    {selectedQuestionIds.length} selected
+                  </span>
+                  {dialogPagination && dialogPagination.pages > 1 && (
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <span>|</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        disabled={dialogPage <= 1}
+                        onClick={() => setDialogPage((p) => p - 1)}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </Button>
+                      <span>{dialogPage}/{dialogPagination.pages}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        disabled={dialogPage >= dialogPagination.pages}
+                        onClick={() => setDialogPage((p) => p + 1)}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setShowAddDialog(false)}>
                     Cancel

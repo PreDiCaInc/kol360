@@ -134,19 +134,13 @@ export const DEFAULT_WELCOME_MESSAGE = `
   <div style="max-width: 480px; margin: -24px auto 0; padding: 0 16px 32px;">
     <div style="background: white; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.1); overflow: hidden;">
       <div style="padding: 32px 32px 0;">
-        <h2 style="font-size: 24px; font-weight: 600; letter-spacing: -0.025em; margin: 0 0 4px 0; color: #111827;">{title}</h2>
+        <h2 style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 24px; font-weight: 500; letter-spacing: -0.025em; margin: 0 0 4px 0; color: #111827;">{title}</h2>
         <p style="color: #6b7280; margin: 0 0 24px 0; font-size: 14px;">Welcome, Dr. {lastName}</p>
       </div>
       <div style="padding: 0 32px 32px;">
         <p style="color: #6b7280; line-height: 1.7; margin: 0 0 16px 0;">
           Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.
         </p>
-
-        <div style="background: #f0fdf9; border-left: 4px solid #147a6d; padding: 16px; border-radius: 0 8px 8px 0; margin: 0 0 16px 0;">
-          <p style="margin: 0; color: #0f5d54; font-size: 14px;">
-            This survey contains <strong>{questionCount} questions</strong> and takes approximately 5-10 minutes to complete.
-          </p>
-        </div>
 
         {honorariumBlock}
 

@@ -10,11 +10,13 @@ interface ListParams {
   search?: string;
   page: number;
   limit: number;
+  sortBy?: string;
+  sortOrder?: string;
 }
 
 export class QuestionService {
   async list(params: ListParams) {
-    const { category, type, tags, status, search, page, limit } = params;
+    const { category, type, tags, status, search, page, limit, sortBy, sortOrder } = params;
 
     const where: Record<string, unknown> = {};
 
@@ -24,6 +26,14 @@ export class QuestionService {
     if (tags?.length) where.tags = { hasSome: tags };
     if (search) {
       where.text = { contains: search, mode: 'insensitive' };
+    }
+
+    // Dynamic ordering — default: category asc, createdAt desc
+    const validSortFields = ['createdAt', 'text', 'category', 'type'];
+    let orderBy: Prisma.QuestionOrderByWithRelationInput[] = [{ category: 'asc' }, { createdAt: 'desc' }];
+    if (sortBy && validSortFields.includes(sortBy)) {
+      const order = sortOrder === 'asc' ? 'asc' : 'desc';
+      orderBy = [{ [sortBy]: order }];
     }
 
     const [total, items] = await Promise.all([
@@ -38,7 +48,7 @@ export class QuestionService {
             },
           },
         },
-        orderBy: [{ category: 'asc' }, { createdAt: 'desc' }],
+        orderBy,
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -82,16 +92,20 @@ export class QuestionService {
   }
 
   async update(id: string, data: UpdateQuestionInput) {
-    // Check if question is used in active campaigns
-    const usageCount = await prisma.surveyQuestion.count({
-      where: {
-        questionId: id,
-        campaign: { status: { in: ['ACTIVE'] } },
-      },
-    });
-
-    if (usageCount > 0 && data.text) {
-      throw new Error('Cannot modify text of question used in active campaigns');
+    // Check if question text is being changed while used in active campaigns
+    if (data.text !== undefined) {
+      const existing = await prisma.question.findUnique({ where: { id }, select: { text: true } });
+      if (existing && data.text !== existing.text) {
+        const usageCount = await prisma.surveyQuestion.count({
+          where: {
+            questionId: id,
+            campaign: { status: { in: ['ACTIVE'] } },
+          },
+        });
+        if (usageCount > 0) {
+          throw new Error('Cannot modify text of question used in active campaigns');
+        }
+      }
     }
 
     return prisma.question.update({

@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, AlertCircle } from 'lucide-react';
 
 const questionTypes = [
   { value: 'TEXT', label: 'Text', hasOptions: false },
@@ -66,6 +66,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
     { text: '', requiresText: false },
     { text: '', requiresText: false },
   ]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm<CreateQuestionInput>({
     resolver: zodResolver(createQuestionSchema),
@@ -133,6 +134,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         { text: '', requiresText: false },
       ]);
     }
+    setSubmitError(null);
   }, [question, questionId, form]);
 
   // Sync options with form - store as objects with requiresText flag
@@ -147,6 +149,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
   }, [options, needsOptions, form]);
 
   async function onSubmit(data: CreateQuestionInput) {
+    setSubmitError(null);
     try {
       if (isEdit) {
         await updateQuestion.mutateAsync({ id: questionId!, data });
@@ -160,7 +163,13 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         { text: '', requiresText: false },
       ]);
     } catch (error) {
-      console.error('Failed to save question:', error);
+      // Check for 409 Conflict (question used in active campaign)
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('409') || message.includes('active campaign')) {
+        setSubmitError('This question is used in an active campaign. Question text cannot be modified while the campaign is active.');
+      } else {
+        setSubmitError('Failed to save question. Please try again.');
+      }
     }
   }
 
@@ -300,7 +309,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                       placeholder={isQualifying ? (index === 0 ? 'e.g., Yes' : 'e.g., No') : `Option ${index + 1}`}
                       className="flex-1"
                     />
-                    {!isQualifying && selectedType !== 'RANK_ORDER' && (
+                    {!isQualifying && (
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
                       <Checkbox
                         checked={option.requiresText}
@@ -460,6 +469,13 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                 </FormItem>
               )}
             />
+
+            {submitError && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
