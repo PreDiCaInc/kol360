@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, AlertCircle } from 'lucide-react';
 
 const questionTypes = [
   { value: 'TEXT', label: 'Text', hasOptions: false },
@@ -42,7 +42,7 @@ const questionTypes = [
   { value: 'DROPDOWN', label: 'Dropdown', hasOptions: true },
   { value: 'MULTI_TEXT', label: 'Nominations', hasOptions: false },
   { value: 'RANK_ORDER', label: 'Rank Order', hasOptions: true },
-  { value: 'QUALIFYING', label: 'Qualifying (Yes/No)', hasOptions: false },
+  { value: 'QUALIFYING', label: 'Qualifying', hasOptions: true },
 ];
 
 interface QuestionOption {
@@ -66,6 +66,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
     { text: '', requiresText: false },
     { text: '', requiresText: false },
   ]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm<CreateQuestionInput>({
     resolver: zodResolver(createQuestionSchema),
@@ -84,8 +85,9 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
 
   const selectedType = form.watch('type');
   const currentTags = form.watch('tags') || [];
-  const needsOptions = ['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN', 'RANK_ORDER'].includes(selectedType);
+  const needsOptions = ['SINGLE_CHOICE', 'MULTI_CHOICE', 'DROPDOWN', 'RANK_ORDER', 'QUALIFYING'].includes(selectedType);
   const isNominations = selectedType === 'MULTI_TEXT';
+  const isQualifying = selectedType === 'QUALIFYING';
 
   useEffect(() => {
     if (question) {
@@ -132,6 +134,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         { text: '', requiresText: false },
       ]);
     }
+    setSubmitError(null);
   }, [question, questionId, form]);
 
   // Sync options with form - store as objects with requiresText flag
@@ -146,6 +149,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
   }, [options, needsOptions, form]);
 
   async function onSubmit(data: CreateQuestionInput) {
+    setSubmitError(null);
     try {
       if (isEdit) {
         await updateQuestion.mutateAsync({ id: questionId!, data });
@@ -159,7 +163,13 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
         { text: '', requiresText: false },
       ]);
     } catch (error) {
-      console.error('Failed to save question:', error);
+      // Check for 409 Conflict (question used in active campaign)
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('409') || message.includes('active campaign')) {
+        setSubmitError('This question is used in an active campaign. Question text cannot be modified while the campaign is active.');
+      } else {
+        setSubmitError('Failed to save question. Please try again.');
+      }
     }
   }
 
@@ -235,6 +245,10 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                       field.onChange(val);
                       if (val === 'QUALIFYING') {
                         form.setValue('isRequired', true);
+                        setOptions([
+                          { text: 'Yes', requiresText: false },
+                          { text: 'No', requiresText: false },
+                        ]);
                       }
                     }} value={field.value}>
                       <FormControl>
@@ -277,16 +291,25 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
 
             {needsOptions && (
               <div className="space-y-2">
-                <FormLabel>Options (minimum 2 required)</FormLabel>
+                <FormLabel>
+                  {isQualifying
+                    ? 'Options (first = pass, second = disqualify)'
+                    : 'Options (minimum 2 required)'}
+                </FormLabel>
                 {options.map((option, index) => (
                   <div key={index} className="flex items-center gap-2">
+                    {isQualifying && (
+                      <span className="text-xs text-muted-foreground w-16 shrink-0">
+                        {index === 0 ? 'Pass:' : 'Disqualify:'}
+                      </span>
+                    )}
                     <Input
                       value={option.text}
                       onChange={(e) => updateOptionText(index, e.target.value)}
-                      placeholder={`Option ${index + 1}`}
+                      placeholder={isQualifying ? (index === 0 ? 'e.g., Yes' : 'e.g., No') : `Option ${index + 1}`}
                       className="flex-1"
                     />
-                    {selectedType !== 'RANK_ORDER' && (
+                    {!isQualifying && (
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
                       <Checkbox
                         checked={option.requiresText}
@@ -295,7 +318,7 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                       + Text
                     </label>
                     )}
-                    {options.length > 2 && (
+                    {!isQualifying && options.length > 2 && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -307,10 +330,12 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                     )}
                   </div>
                 ))}
-                <Button type="button" variant="outline" size="sm" onClick={addOption}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Option
-                </Button>
+                {!isQualifying && (
+                  <Button type="button" variant="outline" size="sm" onClick={addOption}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Option
+                  </Button>
+                )}
                 <FormField
                   control={form.control}
                   name="options"
@@ -444,6 +469,13 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                 </FormItem>
               )}
             />
+
+            {submitError && (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{submitError}</span>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

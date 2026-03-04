@@ -248,9 +248,14 @@ export default function SurveyPage() {
     // Check for qualifying question disqualification
     const steps = buildSteps(survey!.questions);
     const currentQuestions = steps[currentStep].questions;
-    const hasDisqualifyingAnswer = currentQuestions.some(
-      (q) => q.type === 'QUALIFYING' && answers[q.id] === 'NO'
-    );
+    const hasDisqualifyingAnswer = currentQuestions.some((q) => {
+      if (q.type !== 'QUALIFYING') return false;
+      const ans = answers[q.id];
+      if (!ans) return false;
+      // Disqualify if answer matches the second option (disqualify option)
+      const disqualifyText = q.options?.[1]?.text || 'No';
+      return ans === disqualifyText;
+    });
     if (hasDisqualifyingAnswer) {
       setDisqualified(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -279,9 +284,13 @@ export default function SurveyPage() {
     // Check for qualifying question disqualification on current (last) step
     const steps = buildSteps(survey!.questions);
     const currentQuestions = steps[currentStep].questions;
-    const hasDisqualifyingAnswer = currentQuestions.some(
-      (q) => q.type === 'QUALIFYING' && answers[q.id] === 'NO'
-    );
+    const hasDisqualifyingAnswer = currentQuestions.some((q) => {
+      if (q.type !== 'QUALIFYING') return false;
+      const ans = answers[q.id];
+      if (!ans) return false;
+      const disqualifyText = q.options?.[1]?.text || 'No';
+      return ans === disqualifyText;
+    });
     if (hasDisqualifyingAnswer) {
       // Save progress so the "No" answer is recorded
       try {
@@ -445,7 +454,6 @@ export default function SurveyPage() {
       {
         title: survey.campaign.surveyWelcomeTitle || survey.campaign.name || DEFAULT_WELCOME_TITLE,
         lastName: survey.hcp.lastName,
-        questionCount: totalQuestions,
       }
     );
 
@@ -763,28 +771,30 @@ function QuestionRenderer({ question, index, value, onChange, error, showNumber 
         return (
           <RankOrderInput
             options={question.options || []}
-            value={value as string[]}
+            value={value as RankOrderValue}
             onChange={onChange}
           />
         );
 
-      case 'QUALIFYING':
+      case 'QUALIFYING': {
+        const qualOptions = question.options?.length === 2
+          ? question.options
+          : [{ text: 'Yes', requiresText: false }, { text: 'No', requiresText: false }];
         return (
           <RadioGroup
             value={(value as string) || ''}
             onValueChange={(val) => onChange(val)}
             className="flex gap-4"
           >
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="YES" id={`${question.id}-yes`} />
-              <Label htmlFor={`${question.id}-yes`} className="text-base font-normal cursor-pointer">Yes</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="NO" id={`${question.id}-no`} />
-              <Label htmlFor={`${question.id}-no`} className="text-base font-normal cursor-pointer">No</Label>
-            </div>
+            {qualOptions.map((opt, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <RadioGroupItem value={opt.text} id={`${question.id}-opt-${i}`} />
+                <Label htmlFor={`${question.id}-opt-${i}`} className="text-base font-normal cursor-pointer">{opt.text}</Label>
+              </div>
+            ))}
           </RadioGroup>
         );
+      }
 
       default:
         return null;
@@ -871,10 +881,13 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
 }
 
 // --- Sortable item for RankOrderInput ---
-function SortableRankItem({ id, rank, text, onMoveUp, onMoveDown, isFirst, isLast }: {
+function SortableRankItem({ id, rank, text, requiresText, textValue, onTextChange, onMoveUp, onMoveDown, isFirst, isLast }: {
   id: string;
   rank: number;
   text: string;
+  requiresText?: boolean;
+  textValue?: string;
+  onTextChange?: (val: string) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   isFirst: boolean;
@@ -888,39 +901,69 @@ function SortableRankItem({ id, rank, text, onMoveUp, onMoveDown, isFirst, isLas
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-2 bg-white border rounded-lg px-3 py-2.5 shadow-sm">
-      <button type="button" {...attributes} {...listeners} className="cursor-grab touch-none p-1 text-muted-foreground hover:text-foreground">
-        <GripVertical className="w-4 h-4" />
-      </button>
-      <span className="text-sm font-semibold text-muted-foreground w-6 text-center">{rank}</span>
-      <span className="flex-1 text-base">{text}</span>
-      <div className="flex flex-col gap-0.5">
-        <button type="button" onClick={onMoveUp} disabled={isFirst} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
-          <ArrowUp className="w-3.5 h-3.5" />
+    <div ref={setNodeRef} style={style} className="bg-white border rounded-lg px-3 py-2.5 shadow-sm">
+      <div className="flex items-center gap-2">
+        <button type="button" {...attributes} {...listeners} className="cursor-grab touch-none p-1 text-muted-foreground hover:text-foreground">
+          <GripVertical className="w-4 h-4" />
         </button>
-        <button type="button" onClick={onMoveDown} disabled={isLast} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
-          <ArrowDown className="w-3.5 h-3.5" />
-        </button>
+        <span className="text-sm font-semibold text-muted-foreground w-6 text-center">{rank}</span>
+        <span className="flex-1 text-base">{text}</span>
+        <div className="flex flex-col gap-0.5">
+          <button type="button" onClick={onMoveUp} disabled={isFirst} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
+            <ArrowUp className="w-3.5 h-3.5" />
+          </button>
+          <button type="button" onClick={onMoveDown} disabled={isLast} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
+            <ArrowDown className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
+      {requiresText && (
+        <div className="ml-12 mt-2">
+          <input
+            type="text"
+            placeholder="Please specify..."
+            value={textValue || ''}
+            onChange={(e) => onTextChange?.(e.target.value)}
+            className="w-full px-3 py-1.5 text-sm border rounded-md bg-background"
+          />
+        </div>
+      )}
     </div>
   );
 }
 
+// Answer shape: string[] (legacy) or { ranked: string[], texts?: Record<string, string> }
+type RankOrderValue = string[] | { ranked: string[]; texts?: Record<string, string> };
+
 interface RankOrderInputProps {
   options: QuestionOption[];
-  value: string[] | undefined;
-  onChange: (value: string[]) => void;
+  value: RankOrderValue | undefined;
+  onChange: (value: RankOrderValue) => void;
 }
 
 function RankOrderInput({ options, value, onChange }: RankOrderInputProps) {
   const optionTexts = options.map((o) => o.text);
-  const items = value && value.length === optionTexts.length ? value : optionTexts;
+  const hasRequiresText = options.some((o) => o.requiresText);
+
+  // Extract ranked array and texts from value (handle both legacy and new shapes)
+  const ranked = Array.isArray(value) ? value : value?.ranked;
+  const texts = Array.isArray(value) ? {} : (value?.texts || {});
+  const items = ranked && ranked.length === optionTexts.length ? ranked : optionTexts;
+
   // Use stable unique IDs for DnD (handles duplicate option texts)
   const itemIds = items.map((_, i) => `rank-${i}`);
 
+  // Build a lookup for requiresText from options
+  const requiresTextMap: Record<string, boolean> = {};
+  options.forEach((o) => { if (o.requiresText) requiresTextMap[o.text] = true; });
+
   useEffect(() => {
-    if (!value || value.length !== optionTexts.length) {
-      onChange(optionTexts);
+    if (!ranked || ranked.length !== optionTexts.length) {
+      if (hasRequiresText) {
+        onChange({ ranked: optionTexts, texts: {} });
+      } else {
+        onChange(optionTexts);
+      }
     }
   }, [optionTexts.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -930,20 +973,32 @@ function RankOrderInput({ options, value, onChange }: RankOrderInputProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  const emitChange = (newRanked: string[], newTexts?: Record<string, string>) => {
+    if (hasRequiresText) {
+      onChange({ ranked: newRanked, texts: newTexts || texts });
+    } else {
+      onChange(newRanked);
+    }
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
       const oldIndex = itemIds.indexOf(active.id as string);
       const newIndex = itemIds.indexOf(over.id as string);
-      onChange(arrayMove(items, oldIndex, newIndex));
+      emitChange(arrayMove(items, oldIndex, newIndex));
     }
   };
 
   const moveItem = (index: number, direction: -1 | 1) => {
     const newIndex = index + direction;
     if (newIndex >= 0 && newIndex < items.length) {
-      onChange(arrayMove(items, index, newIndex));
+      emitChange(arrayMove(items, index, newIndex));
     }
+  };
+
+  const handleTextChange = (optionText: string, val: string) => {
+    emitChange(items, { ...texts, [optionText]: val });
   };
 
   return (
@@ -958,6 +1013,9 @@ function RankOrderInput({ options, value, onChange }: RankOrderInputProps) {
                 id={itemIds[index]}
                 rank={index + 1}
                 text={item}
+                requiresText={requiresTextMap[item]}
+                textValue={texts[item]}
+                onTextChange={(val) => handleTextChange(item, val)}
                 onMoveUp={() => moveItem(index, -1)}
                 onMoveDown={() => moveItem(index, 1)}
                 isFirst={index === 0}

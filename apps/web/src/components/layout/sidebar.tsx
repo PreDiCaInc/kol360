@@ -81,7 +81,7 @@ const platformAdminNavigation: NavItem[] = [
     ],
   },
   {
-    title: 'Dashboards',
+    title: 'Insights',
     href: '/admin/dashboards',
     icon: BarChart3,
     roles: ['PLATFORM_ADMIN'],
@@ -112,7 +112,7 @@ const clientAdminNavigation: NavItem[] = [
     icon: Megaphone,
   },
   {
-    title: 'Dashboards',
+    title: 'Insights',
     href: '/admin/dashboards',
     icon: BarChart3,
   },

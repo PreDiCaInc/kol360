@@ -120,7 +120,7 @@ export default function CampaignScoresPage() {
     try {
       await publishCampaign.mutateAsync(campaignId);
       setShowPublishConfirm(false);
-      router.push(`/admin/campaigns/${campaignId}/dashboard`);
+      router.push(`/admin/campaigns/${campaignId}`);
     } catch (error) {
       console.error('Publish failed:', error);
     }
@@ -177,12 +177,7 @@ export default function CampaignScoresPage() {
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             )}
-            {campaign?.status === 'PUBLISHED' && (
-              <Button onClick={() => router.push(`/admin/campaigns/${campaignId}/dashboard`)} variant="outline">
-                <LayoutDashboard className="w-4 h-4 mr-2" />
-                View Dashboard
-              </Button>
-            )}
+            {/* Dashboard button disabled until campaign-level config is ready */}
           </div>
         </div>
 

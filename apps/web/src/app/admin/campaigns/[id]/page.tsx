@@ -108,7 +108,7 @@ const WORKFLOW_STEPS = [
   { id: 'initiate', label: 'Initiate Survey', icon: Send, description: 'Launch campaign', phase: 'setup' },
   { id: 'nominations', label: 'Nominations', icon: UserCheck, description: 'Match nominations', phase: 'active', external: true },
   { id: 'survey-scores', label: 'Survey Scores', icon: Calculator, description: 'Calculate scores', phase: 'closed', external: true },
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'View results', phase: 'published', external: true },
+  // { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'View results', phase: 'published', external: true },
   { id: 'payments', label: 'Payments', icon: DollarSign, description: 'Honorarium tracking', phase: 'published', external: true },
 ];
 
@@ -323,9 +323,9 @@ export default function CampaignDetailPage() {
         case 'payments':
           router.push(`/admin/campaigns/${campaignId}/payments`);
           break;
-        case 'dashboard':
-          router.push(`/admin/campaigns/${campaignId}/dashboard`);
-          break;
+        // case 'dashboard':
+        //   router.push(`/admin/campaigns/${campaignId}/dashboard`);
+        //   break;
       }
     } else {
       setActiveStep(stepId);
@@ -488,12 +488,7 @@ export default function CampaignDetailPage() {
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             )}
-            {campaign.status === 'PUBLISHED' && (
-              <Button onClick={() => handleStepClick('dashboard')} variant="outline">
-                <LayoutDashboard className="w-4 h-4 mr-2" />
-                View Dashboard
-              </Button>
-            )}
+            {/* Dashboard button disabled until campaign-level config is ready */}
           </div>
         </div>
 
