@@ -613,6 +613,70 @@ export class ApiClient {
     return hcp?.surveyToken || null;
   }
 
+  // ==================== Questions ====================
+
+  async listQuestions(params?: {
+    category?: string;
+    type?: string;
+    tags?: string;
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: string;
+  }) {
+    const query = new URLSearchParams();
+    if (params?.category) query.set('category', params.category);
+    if (params?.type) query.set('type', params.type);
+    if (params?.tags) query.set('tags', params.tags);
+    if (params?.status) query.set('status', params.status);
+    if (params?.search) query.set('search', params.search);
+    if (params?.page) query.set('page', params.page.toString());
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.sortBy) query.set('sortBy', params.sortBy);
+    if (params?.sortOrder) query.set('sortOrder', params.sortOrder);
+    const queryStr = query.toString() ? `?${query.toString()}` : '';
+    return this.request<{ items: Question[]; pagination: Pagination }>(
+      'GET',
+      `/api/v1/questions${queryStr}`
+    );
+  }
+
+  async getQuestion(id: string) {
+    return this.request<Question>('GET', `/api/v1/questions/${id}`);
+  }
+
+  async createQuestion(data: CreateQuestionInput) {
+    return this.request<Question>('POST', '/api/v1/questions', data);
+  }
+
+  async updateQuestion(id: string, data: Partial<CreateQuestionInput>) {
+    return this.request<Question>('PUT', `/api/v1/questions/${id}`, data);
+  }
+
+  async archiveQuestion(id: string) {
+    return this.request<Question>('POST', `/api/v1/questions/${id}/archive`);
+  }
+
+  async restoreQuestion(id: string) {
+    return this.request<Question>('POST', `/api/v1/questions/${id}/restore`);
+  }
+
+  async getQuestionCategories() {
+    return this.request<Array<{ category: string; _count: number }>>(
+      'GET',
+      '/api/v1/questions/categories'
+    );
+  }
+
+  async getQuestionTags() {
+    return this.request<Array<{ name: string; count: number }>>(
+      'GET',
+      '/api/v1/questions/tags'
+    );
+  }
+
   // ==================== Import Progress ====================
 
   async getImportProgress(importId: string) {
@@ -1101,4 +1165,34 @@ export interface FilterOptions {
   states: string[];
   influencerTypes: string[];
   nominationTypes: string[];
+}
+
+// ==================== Question Types ====================
+
+export interface Question {
+  id: string;
+  text: string;
+  type: string;
+  category?: string;
+  isRequired: boolean;
+  options?: Array<{ text: string; requiresText?: boolean }>;
+  tags?: string[];
+  status: string;
+  nominationType?: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    sectionQuestions: number;
+    surveyQuestions: number;
+  };
+}
+
+export interface CreateQuestionInput {
+  text: string;
+  type: string;
+  category?: string;
+  isRequired?: boolean;
+  options?: Array<{ text: string; requiresText?: boolean }>;
+  tags?: string[];
+  nominationType?: string;
 }

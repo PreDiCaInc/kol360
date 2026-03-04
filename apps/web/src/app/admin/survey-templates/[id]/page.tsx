@@ -140,7 +140,18 @@ export default function SurveyTemplateDetailPage() {
       // Remove edit query param
       router.replace(`/admin/survey-templates/${templateId}`);
     } catch (error) {
-      console.error('Failed to update template:', error);
+      const message = error instanceof Error ? error.message : 'Failed to update template';
+      // Parse Zod validation errors from API response
+      try {
+        const parsed = JSON.parse(message);
+        if (Array.isArray(parsed)) {
+          alert(parsed.map((e: { path?: string[]; message?: string }) => `${e.path?.join('.')}: ${e.message}`).join('\n'));
+        } else {
+          alert(message);
+        }
+      } catch {
+        alert(message);
+      }
     }
   };
 
@@ -269,7 +280,11 @@ export default function SurveyTemplateDetailPage() {
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
                       rows={3}
+                      maxLength={1000}
                     />
+                    <p className={`text-xs mt-1 ${editDescription.length > 900 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                      {editDescription.length}/1000
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     <Button
