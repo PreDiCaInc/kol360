@@ -178,9 +178,9 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     { name: 'Discussion Leaders', field: 'scoreDiscussionLeaders' },
     { name: 'Referral Leaders', field: 'scoreReferralLeaders' },
     { name: 'Advice Leaders', field: 'scoreAdviceLeaders' },
-    { name: 'National Leader', field: 'scoreNationalLeader' },
-    { name: 'Rising Star', field: 'scoreRisingStar' },
-    { name: 'Social Leader', field: 'scoreSocialLeader' },
+    { name: 'National Leaders', field: 'scoreNationalLeader' },
+    { name: 'Rising Stars', field: 'scoreRisingStar' },
+    { name: 'Social Media Leaders', field: 'scoreSocialLeader' },
   ];
 
   const columns = scoreType === 'survey' ? surveyColumns : segmentColumns;

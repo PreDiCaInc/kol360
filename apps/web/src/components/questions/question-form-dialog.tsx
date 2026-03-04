@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createQuestionSchema, CreateQuestionInput, QUESTION_TAGS, NOMINATION_TYPE_LABELS, NominationType } from '@kol360/shared';
+import { createQuestionSchema, CreateQuestionInput, QUESTION_TAGS, QUESTION_CATEGORIES, NOMINATION_TYPE_LABELS, NominationType } from '@kol360/shared';
 import { useQuestion, useCreateQuestion, useUpdateQuestion } from '@/hooks/use-questions';
 import {
   Dialog,
@@ -275,14 +275,23 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Category</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value || null)}
-                        placeholder="e.g., Demographics"
-                      />
-                    </FormControl>
+                    <Select
+                      value={field.value || ''}
+                      onValueChange={(val) => field.onChange(val || null)}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select category..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {QUESTION_CATEGORIES.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -389,12 +398,12 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
                         <FormControl>
                           <Input
                             type="number"
-                            min={1}
+                            min={0}
                             placeholder="e.g., 3"
                             value={field.value ?? ''}
                             onChange={(e) => {
                               const val = e.target.value;
-                              field.onChange(val ? parseInt(val, 10) : null);
+                              field.onChange(val !== '' ? parseInt(val, 10) : null);
                             }}
                           />
                         </FormControl>

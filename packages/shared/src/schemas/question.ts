@@ -1,25 +1,23 @@
 import { z } from 'zod';
 
+// Predefined question categories (disease areas)
+export const QUESTION_CATEGORIES = [
+  'Dry Eye',
+  'Glaucoma',
+  'Retina',
+  'Cornea',
+  'Cataract',
+  'Refractive',
+] as const;
+
+export type QuestionCategory = (typeof QUESTION_CATEGORIES)[number];
+
 // Predefined question tags for categorization
 export const QUESTION_TAGS = [
-  'Demographics',
-  'Core',
-  'Dry Eye',
-  'Retina',
-  'Glaucoma',
-  'Cataract',
-  'Cornea',
-  'Pediatric',
-  'Oculoplastics',
-  'Neuro-Ophthalmology',
-  'Uveitis',
-  'Clinical Practice',
-  'Research',
-  'Treatment',
-  'Diagnosis',
-  'Patient Care',
-  'Technology',
-  'Outcomes',
+  'Qualifier',
+  'Demographic',
+  'Nomination',
+  'Other',
 ] as const;
 
 export type QuestionTag = (typeof QUESTION_TAGS)[number];
@@ -54,10 +52,10 @@ export const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
   DISCUSSION_LEADERS: 'Discussion Leaders',
   REFERRAL_LEADERS: 'Referral Leaders',
   ADVICE_LEADERS: 'Advice Leaders',
-  NATIONAL_LEADER: 'National Leader',
-  RISING_STAR: 'Rising Star',
-  SOCIAL_LEADER: 'Social Leader',
-  REGIONAL_LEADER: 'Regional Leader',
+  NATIONAL_LEADER: 'National Leaders',
+  RISING_STAR: 'Rising Stars',
+  SOCIAL_LEADER: 'Social Media Leaders',
+  REGIONAL_LEADER: 'Regional Leaders',
 };
 
 // Option object with text and optional requiresText flag
@@ -77,7 +75,7 @@ const baseQuestionSchema = z.object({
   options: z.array(questionOptionSchema).optional().nullable(),
   tags: z.array(z.string()).default([]),
   // For MULTI_TEXT (nominations) questions
-  minEntries: z.number().int().min(1).optional().nullable(), // Minimum required entries
+  minEntries: z.number().int().min(0).optional().nullable(), // Minimum required entries (0 = optional)
   defaultEntries: z.number().int().min(1).optional().nullable(), // Initial text boxes to show (user can add more with +)
   nominationType: nominationTypeSchema.optional().nullable(), // For nomination questions: which type of KOL
 });

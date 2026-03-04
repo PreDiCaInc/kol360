@@ -539,6 +539,13 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
           },
           orderBy: { sortOrder: 'asc' },
         },
+        surveyTemplate: {
+          include: {
+            sections: {
+              include: { section: { select: { name: true, description: true } } },
+            },
+          },
+        },
       },
     });
 
@@ -559,6 +566,16 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    // Build section name → description map from template
+    const sectionDescMap: Record<string, string> = {};
+    if (campaign.surveyTemplate?.sections) {
+      for (const ts of campaign.surveyTemplate.sections) {
+        if (ts.section.description) {
+          sectionDescMap[ts.section.name] = ts.section.description;
+        }
+      }
+    }
+
     // Transform questions for preview
     const questions = campaign.surveyQuestions.map((sq) => ({
       id: sq.id,
@@ -566,6 +583,7 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
       text: sq.questionTextSnapshot,
       type: sq.question.type,
       section: sq.sectionName,
+      sectionDescription: sq.sectionName ? (sectionDescMap[sq.sectionName] || null) : null,
       isRequired: sq.isRequired,
       options: sq.question.options,
       minEntries: sq.question.minEntries,

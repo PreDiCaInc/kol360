@@ -246,6 +246,7 @@ export interface SurveyPreviewQuestion {
   text: string;
   type: string;
   section: string | null;
+  sectionDescription: string | null;
   isRequired: boolean;
   options: QuestionOption[] | null;
   minEntries: number | null;

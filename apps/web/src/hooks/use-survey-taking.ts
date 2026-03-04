@@ -13,6 +13,7 @@ interface SurveyQuestion {
   text: string;
   type: 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN';
   section: string | null;
+  sectionDescription: string | null;
   isRequired: boolean;
   options: QuestionOption[] | null;
   minEntries: number | null;

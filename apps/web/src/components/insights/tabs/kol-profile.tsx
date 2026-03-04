@@ -68,10 +68,10 @@ const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
   DISCUSSION_LEADERS: 'Discussion',
   REFERRAL_LEADERS: 'Referral',
   ADVICE_LEADERS: 'Advice',
-  NATIONAL_LEADER: 'National',
-  RISING_STAR: 'Rising Star',
-  SOCIAL_LEADER: 'Social',
-  REGIONAL_LEADER: 'Regional',
+  NATIONAL_LEADER: 'National Leaders',
+  RISING_STAR: 'Rising Stars',
+  SOCIAL_LEADER: 'Social Media',
+  REGIONAL_LEADER: 'Regional Leaders',
 };
 
 const PIE_COLORS = [
