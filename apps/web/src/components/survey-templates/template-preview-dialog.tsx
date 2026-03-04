@@ -69,13 +69,11 @@ export function TemplatePreviewDialog({
         <CardDescription>Welcome, Dr. [Respondent Name]</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p>
-          {template?.description ||
-            'Thank you for participating in this survey. Your responses will help us better understand key opinion leaders in this field.'}
-        </p>
+        <div className="rounded-md border border-dashed border-muted-foreground/40 p-4 text-center text-sm text-muted-foreground">
+          Welcome page content is configured per campaign in the Templates tab (Welcome Page template).
+        </div>
         <p className="text-sm text-muted-foreground">
-          This survey contains {getTotalQuestions()} questions across {template?.sections.length || 0} section(s).
-          Your progress will be saved automatically.
+          This template has {getTotalQuestions()} questions across {template?.sections.length || 0} section(s).
         </p>
         <Button className="w-full" onClick={() => setCurrentView('survey')}>
           Begin Survey
@@ -94,9 +92,9 @@ export function TemplatePreviewDialog({
             </svg>
           </div>
           <h2 className="text-xl font-semibold mb-2">Thank You!</h2>
-          <p className="text-muted-foreground">
-            Thank you for completing the survey, Dr. [Respondent Name].
-          </p>
+          <div className="rounded-md border border-dashed border-muted-foreground/40 p-4 text-sm text-muted-foreground mt-2">
+            Thank you page content is configured per campaign in the Templates tab (Thank You Page template).
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -68,7 +68,9 @@ import {
   Search,
   Eye,
   X,
+  ArrowUpDown,
 } from 'lucide-react';
+import { format } from 'date-fns';
 import { SectionPreviewDialog } from '@/components/sections/section-preview-dialog';
 import { questionTypeSchema } from '@kol360/shared';
 
@@ -106,6 +108,7 @@ export default function SectionDetailPage() {
   const [dialogTags, setDialogTags] = useState<string>();
   const [dialogCategory, setDialogCategory] = useState<string>();
   const [dialogPage, setDialogPage] = useState(1);
+  const [dialogSortOrder, setDialogSortOrder] = useState<'desc' | 'asc'>('desc');
   const [questionToRemove, setQuestionToRemove] = useState<{ id: string; text: string } | null>(null);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
   const [isAddingQuestions, setIsAddingQuestions] = useState(false);
@@ -119,6 +122,8 @@ export default function SectionDetailPage() {
     type: dialogType,
     tags: dialogTags,
     category: dialogCategory,
+    sortBy: 'createdAt',
+    sortOrder: dialogSortOrder,
   });
   const { data: categories } = useQuestionCategories();
   const { data: tagsList } = useQuestionTags();
@@ -516,6 +521,20 @@ export default function SectionDetailPage() {
                       <TableHead>Question</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Category</TableHead>
+                      <TableHead>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto p-0 font-medium hover:bg-transparent"
+                          onClick={() => {
+                            setDialogSortOrder(dialogSortOrder === 'desc' ? 'asc' : 'desc');
+                            setDialogPage(1);
+                          }}
+                        >
+                          Created
+                          <ArrowUpDown className="ml-1 h-3 w-3" />
+                        </Button>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -548,11 +567,14 @@ export default function SectionDetailPage() {
                         <TableCell className="text-sm text-muted-foreground">
                           {q.category || '—'}
                         </TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                          {q.createdAt ? format(new Date(q.createdAt), 'MMM d, yyyy') : '—'}
+                        </TableCell>
                       </TableRow>
                     ))}
                     {availableQuestions.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                           {dialogSearch || dialogType || dialogTags || dialogCategory
                             ? 'No matching questions found'
                             : 'All available questions have been added'}
