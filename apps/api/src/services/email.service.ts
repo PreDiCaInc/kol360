@@ -6,7 +6,7 @@ const ses = new SESClient({
   region: process.env.AWS_REGION || 'us-east-2',
 });
 
-const FROM_EMAIL = process.env.SES_FROM_EMAIL || 'noreply@bio-exec.com';
+const FROM_EMAIL = process.env.SES_FROM_EMAIL || 'research@bio-exec.com';
 const FROM_NAME = process.env.SES_FROM_NAME || 'BioExec KOL Research';
 const MOCK_MODE = process.env.EMAIL_MOCK_MODE === 'true';
 const SEND_EXTERNAL_EMAIL = process.env.SEND_EXTERNAL_EMAIL === 'true';

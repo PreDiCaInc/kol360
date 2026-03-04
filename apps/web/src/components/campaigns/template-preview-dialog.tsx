@@ -432,7 +432,7 @@ export function TemplatePreviewDialog({
           <div className="bg-muted/50 p-4 border-b border-border/60 space-y-2">
             <div className="flex gap-2 text-sm">
               <span className="text-muted-foreground w-16 shrink-0">From:</span>
-              <span>BioExec KOL Research &lt;noreply@bio-exec.com&gt;</span>
+              <span>BioExec KOL Research &lt;research@bio-exec.com&gt;</span>
             </div>
             <div className="flex gap-2 text-sm">
               <span className="text-muted-foreground w-16 shrink-0">To:</span>
