@@ -11,7 +11,7 @@ interface SurveyQuestion {
   id: string;
   questionId: string;
   text: string;
-  type: 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN';
+  type: 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN' | 'RANK_ORDER' | 'QUALIFYING';
   section: string | null;
   sectionDescription: string | null;
   isRequired: boolean;

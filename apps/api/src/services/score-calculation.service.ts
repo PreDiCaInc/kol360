@@ -320,116 +320,123 @@ export class ScoreCalculationService {
     // Helper to safely get number from Decimal or null
     const toNum = (val: unknown): number => val ? Number(val) : 0;
 
-    // Get all campaign scores
+    // Get only unpublished campaign scores (idempotency guard)
     const campaignScores = await prisma.hcpCampaignScore.findMany({
-      where: { campaignId },
+      where: { campaignId, publishedAt: null },
     });
+
+    if (campaignScores.length === 0) {
+      return { processed: 0 };
+    }
 
     let processed = 0;
 
-    for (const score of campaignScores) {
-      // Get current disease area score
-      const currentDaScore = await prisma.hcpDiseaseAreaScore.findFirst({
-        where: {
-          hcpId: score.hcpId,
-          diseaseAreaId: campaign.diseaseAreaId,
-          isCurrent: true,
-        },
-      });
-
-      const now = new Date();
-
-      if (currentDaScore) {
-        // SCD Type 2: Close out the current record
-        await prisma.hcpDiseaseAreaScore.update({
-          where: { id: currentDaScore.id },
-          data: {
-            isCurrent: false,
-            effectiveTo: now,
-          },
-        });
-
-        // Create new current record with updated survey score
-        // Aggregate survey score across campaigns (simple average for now, could be weighted)
-        const allCampaignScores = await prisma.hcpCampaignScore.findMany({
+    // Wrap entire publish loop in a transaction for atomicity
+    await prisma.$transaction(async (tx) => {
+      for (const score of campaignScores) {
+        // Get current disease area score
+        const currentDaScore = await tx.hcpDiseaseAreaScore.findFirst({
           where: {
             hcpId: score.hcpId,
-            campaign: { diseaseAreaId: campaign.diseaseAreaId },
-            scoreSurvey: { not: null },
-          },
-        });
-
-        const avgSurveyScore = allCampaignScores.length > 0
-          ? allCampaignScores.reduce(
-              (sum: number, s: { scoreSurvey?: unknown }) => sum + Number(s.scoreSurvey || 0),
-              0
-            ) / allCampaignScores.length
-          : Number(score.scoreSurvey || 0);
-
-        // Calculate composite score using weights
-        const compositeScore =
-          (toNum(currentDaScore.scorePublications) * toNum(weights.weightPublications) / 100) +
-          (toNum(currentDaScore.scoreClinicalTrials) * toNum(weights.weightClinicalTrials) / 100) +
-          (toNum(currentDaScore.scoreTradePubs) * toNum(weights.weightTradePubs) / 100) +
-          (toNum(currentDaScore.scoreOrgLeadership) * toNum(weights.weightOrgLeadership) / 100) +
-          (toNum(currentDaScore.scoreOrgAwards) * toNum(weights.weightOrgAwards) / 100) +
-          (toNum(currentDaScore.scoreConference) * toNum(weights.weightConference) / 100) +
-          (toNum(currentDaScore.scoreSocialMedia) * toNum(weights.weightSocialMedia) / 100) +
-          (toNum(currentDaScore.scoreMediaPodcasts) * toNum(weights.weightMediaPodcasts) / 100) +
-          (toNum(avgSurveyScore) * toNum(weights.weightSurvey) / 100);
-
-        await prisma.hcpDiseaseAreaScore.create({
-          data: {
-            hcpId: score.hcpId,
             diseaseAreaId: campaign.diseaseAreaId,
-            // Copy objective scores from previous record
-            scorePublications: currentDaScore.scorePublications,
-            scoreClinicalTrials: currentDaScore.scoreClinicalTrials,
-            scoreTradePubs: currentDaScore.scoreTradePubs,
-            scoreOrgLeadership: currentDaScore.scoreOrgLeadership,
-            scoreOrgAwards: currentDaScore.scoreOrgAwards,
-            scoreConference: currentDaScore.scoreConference,
-            scoreSocialMedia: currentDaScore.scoreSocialMedia,
-            scoreMediaPodcasts: currentDaScore.scoreMediaPodcasts,
-            // Update survey score
-            scoreSurvey: avgSurveyScore,
-            totalNominationCount: currentDaScore.totalNominationCount + score.nominationCount,
-            campaignCount: currentDaScore.campaignCount + 1,
-            // Calculated composite score
-            compositeScore,
             isCurrent: true,
-            effectiveFrom: now,
-            lastCalculatedAt: now,
           },
         });
-      } else {
-        // No existing disease area score - create first record
-        // Calculate composite with just survey score (no segment scores yet)
-        const compositeScore = toNum(score.scoreSurvey) * toNum(weights.weightSurvey) / 100;
 
-        await prisma.hcpDiseaseAreaScore.create({
-          data: {
-            hcpId: score.hcpId,
-            diseaseAreaId: campaign.diseaseAreaId,
-            scoreSurvey: score.scoreSurvey,
-            totalNominationCount: score.nominationCount,
-            campaignCount: 1,
-            compositeScore,
-            isCurrent: true,
-            effectiveFrom: now,
-            lastCalculatedAt: now,
-          },
+        const now = new Date();
+
+        if (currentDaScore) {
+          // SCD Type 2: Close out the current record
+          await tx.hcpDiseaseAreaScore.update({
+            where: { id: currentDaScore.id },
+            data: {
+              isCurrent: false,
+              effectiveTo: now,
+            },
+          });
+
+          // Create new current record with updated survey score
+          // Aggregate survey score across campaigns (simple average for now, could be weighted)
+          const allCampaignScores = await tx.hcpCampaignScore.findMany({
+            where: {
+              hcpId: score.hcpId,
+              campaign: { diseaseAreaId: campaign.diseaseAreaId },
+              scoreSurvey: { not: null },
+            },
+          });
+
+          const avgSurveyScore = allCampaignScores.length > 0
+            ? allCampaignScores.reduce(
+                (sum: number, s: { scoreSurvey?: unknown }) => sum + Number(s.scoreSurvey || 0),
+                0
+              ) / allCampaignScores.length
+            : Number(score.scoreSurvey || 0);
+
+          // Calculate composite score using weights
+          const compositeScore =
+            (toNum(currentDaScore.scorePublications) * toNum(weights.weightPublications) / 100) +
+            (toNum(currentDaScore.scoreClinicalTrials) * toNum(weights.weightClinicalTrials) / 100) +
+            (toNum(currentDaScore.scoreTradePubs) * toNum(weights.weightTradePubs) / 100) +
+            (toNum(currentDaScore.scoreOrgLeadership) * toNum(weights.weightOrgLeadership) / 100) +
+            (toNum(currentDaScore.scoreOrgAwards) * toNum(weights.weightOrgAwards) / 100) +
+            (toNum(currentDaScore.scoreConference) * toNum(weights.weightConference) / 100) +
+            (toNum(currentDaScore.scoreSocialMedia) * toNum(weights.weightSocialMedia) / 100) +
+            (toNum(currentDaScore.scoreMediaPodcasts) * toNum(weights.weightMediaPodcasts) / 100) +
+            (toNum(avgSurveyScore) * toNum(weights.weightSurvey) / 100);
+
+          await tx.hcpDiseaseAreaScore.create({
+            data: {
+              hcpId: score.hcpId,
+              diseaseAreaId: campaign.diseaseAreaId,
+              // Copy objective scores from previous record
+              scorePublications: currentDaScore.scorePublications,
+              scoreClinicalTrials: currentDaScore.scoreClinicalTrials,
+              scoreTradePubs: currentDaScore.scoreTradePubs,
+              scoreOrgLeadership: currentDaScore.scoreOrgLeadership,
+              scoreOrgAwards: currentDaScore.scoreOrgAwards,
+              scoreConference: currentDaScore.scoreConference,
+              scoreSocialMedia: currentDaScore.scoreSocialMedia,
+              scoreMediaPodcasts: currentDaScore.scoreMediaPodcasts,
+              // Update survey score
+              scoreSurvey: avgSurveyScore,
+              totalNominationCount: currentDaScore.totalNominationCount + score.nominationCount,
+              campaignCount: currentDaScore.campaignCount + 1,
+              // Calculated composite score
+              compositeScore,
+              isCurrent: true,
+              effectiveFrom: now,
+              lastCalculatedAt: now,
+            },
+          });
+        } else {
+          // No existing disease area score - create first record
+          // Calculate composite with just survey score (no segment scores yet)
+          const compositeScore = toNum(score.scoreSurvey) * toNum(weights.weightSurvey) / 100;
+
+          await tx.hcpDiseaseAreaScore.create({
+            data: {
+              hcpId: score.hcpId,
+              diseaseAreaId: campaign.diseaseAreaId,
+              scoreSurvey: score.scoreSurvey,
+              totalNominationCount: score.nominationCount,
+              campaignCount: 1,
+              compositeScore,
+              isCurrent: true,
+              effectiveFrom: now,
+              lastCalculatedAt: now,
+            },
+          });
+        }
+
+        // Mark campaign score as published
+        await tx.hcpCampaignScore.update({
+          where: { id: score.id },
+          data: { publishedAt: now },
         });
+
+        processed++;
       }
-
-      // Mark campaign score as published
-      await prisma.hcpCampaignScore.update({
-        where: { id: score.id },
-        data: { publishedAt: now },
-      });
-
-      processed++;
-    }
+    });
 
     return { processed };
   }

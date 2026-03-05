@@ -350,16 +350,7 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const campaign = await campaignService.publish(request.params.id, request.user!.sub);
 
-      // Auto-publish scores to disease area level (SCD Type 2 pattern)
-      try {
-        const publishResult = await scoreCalculationService.publishScores(
-          request.params.id,
-          request.user!.sub
-        );
-        fastify.log.info({ campaignId: request.params.id, processed: publishResult.processed }, 'Scores published to disease area');
-      } catch (scoreError) {
-        fastify.log.warn({ campaignId: request.params.id, error: scoreError }, 'Auto score publishing failed');
-      }
+      // Note: publishScores is already called inside campaignService.publish() — do NOT call it again here
 
       await createAuditLog(request.user!.sub, {
         action: 'campaign.published',

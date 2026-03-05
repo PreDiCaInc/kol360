@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { PrismaPromise } from '@prisma/client';
 
 interface SurveyQuestion {
   id: string;
@@ -197,42 +198,52 @@ export class SurveyTakingService {
       throw new Error('Cannot save to completed survey');
     }
 
-    // Update status to IN_PROGRESS
-    await prisma.surveyResponse.update({
-      where: { id: response.id },
-      data: { status: 'IN_PROGRESS' },
+    // Fetch all existing answers in one query to avoid N+1
+    const existingAnswers = await prisma.surveyResponseAnswer.findMany({
+      where: { responseId: response.id },
     });
+    const existingByQuestionId = new Map(existingAnswers.map((a) => [a.questionId, a]));
 
-    // Upsert answers
+    // Batch all operations in a single transaction
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const operations: PrismaPromise<any>[] = [
+      prisma.surveyResponse.update({
+        where: { id: response.id },
+        data: { status: 'IN_PROGRESS' },
+      }),
+    ];
+
     for (const [questionId, value] of Object.entries(answers)) {
       if (value === null || value === undefined) continue;
 
       const isJson = typeof value === 'object';
-
-      // Find existing answer
-      const existing = await prisma.surveyResponseAnswer.findFirst({
-        where: { responseId: response.id, questionId },
-      });
+      const existing = existingByQuestionId.get(questionId);
 
       if (existing) {
-        await prisma.surveyResponseAnswer.update({
-          where: { id: existing.id },
-          data: {
-            answerText: isJson ? null : String(value),
-            answerJson: isJson ? (value as object) : undefined,
-          },
-        });
+        operations.push(
+          prisma.surveyResponseAnswer.update({
+            where: { id: existing.id },
+            data: {
+              answerText: isJson ? null : String(value),
+              answerJson: isJson ? (value as object) : undefined,
+            },
+          })
+        );
       } else {
-        await prisma.surveyResponseAnswer.create({
-          data: {
-            responseId: response.id,
-            questionId,
-            answerText: isJson ? null : String(value),
-            answerJson: isJson ? (value as object) : undefined,
-          },
-        });
+        operations.push(
+          prisma.surveyResponseAnswer.create({
+            data: {
+              responseId: response.id,
+              questionId,
+              answerText: isJson ? null : String(value),
+              answerJson: isJson ? (value as object) : undefined,
+            },
+          })
+        );
       }
     }
+
+    await prisma.$transaction(operations);
 
     return { saved: true };
   }
@@ -271,13 +282,18 @@ export class SurveyTakingService {
       const answer = response.answers.find((a) => a.questionId === sq.id);
       const answerValue = answer?.answerJson ?? answer?.answerText;
 
-      // Check required questions
-      if (sq.question.isRequired) {
+      // Check required questions (use sq.isRequired — campaign-specific override, not question bank global)
+      if (sq.isRequired) {
         const isEmpty =
           answerValue === undefined ||
           answerValue === null ||
           answerValue === '' ||
-          (Array.isArray(answerValue) && answerValue.filter(Boolean).length === 0);
+          (Array.isArray(answerValue) && answerValue.filter(Boolean).length === 0) ||
+          // MULTI_CHOICE stores { selected: string[], texts: {} }
+          (typeof answerValue === 'object' && !Array.isArray(answerValue) && answerValue !== null &&
+            'selected' in (answerValue as Record<string, unknown>) &&
+            Array.isArray((answerValue as { selected: unknown[] }).selected) &&
+            (answerValue as { selected: unknown[] }).selected.length === 0);
 
         if (isEmpty) {
           validationErrors.push(`Question "${sq.question.text}" is required`);
@@ -286,7 +302,7 @@ export class SurveyTakingService {
       }
 
       // Check minEntries for MULTI_TEXT questions
-      if (sq.question.type === 'MULTI_TEXT' && sq.question.minEntries && sq.question.minEntries > 1) {
+      if (sq.question.type === 'MULTI_TEXT' && sq.question.minEntries != null && sq.question.minEntries > 0) {
         const filledEntries = Array.isArray(answerValue) ? answerValue.filter(Boolean).length : 0;
         if (filledEntries < sq.question.minEntries) {
           validationErrors.push(

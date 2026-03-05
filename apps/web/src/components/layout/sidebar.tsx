@@ -136,7 +136,12 @@ function NavItemComponent({
   level?: number;
 }) {
   // Check if this item or any of its children are active
-  const isActive = item.href ? (pathname === item.href || pathname.startsWith(item.href + '/')) : false;
+  // Use exact match for top-level '/admin' (Dashboard) to avoid highlighting on every sub-page
+  const isActive = item.href
+    ? item.href === '/admin'
+      ? pathname === '/admin'
+      : (pathname === item.href || pathname.startsWith(item.href + '/'))
+    : false;
   const hasActiveChild = item.children?.some(child =>
     child.href && (pathname === child.href || pathname.startsWith(child.href + '/'))
   );

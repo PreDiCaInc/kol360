@@ -100,7 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Call API to update lastLoginAt and verify user status
+      // Call API to update lastLoginAt, verify user status, and get authoritative role
+      let dbRole: string | undefined;
+      let dbTenantId: string | undefined;
+      let dbFirstName: string | undefined;
+      let dbLastName: string | undefined;
       if (tokenString) {
         const apiUrl = process.env.NEXT_PUBLIC_API_URL;
         try {
@@ -125,6 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (response.status !== 404) {
               console.error('Failed to fetch user from API:', error.message);
             }
+          } else {
+            // Use DB as authoritative source for role and user info
+            const userData = await response.json();
+            if (userData.role) dbRole = userData.role;
+            if (userData.clientId) dbTenantId = userData.clientId;
+            if (userData.firstName) dbFirstName = userData.firstName;
+            if (userData.lastName) dbLastName = userData.lastName;
           }
         } catch (apiError) {
           // API call failed - continue with Cognito data only
@@ -135,10 +146,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({
         sub: currentUser.userId,
         email: attributes.email || '',
-        role,
-        tenantId: accessToken?.payload['custom:tenant_id'] as string,
-        firstName: attributes.given_name,
-        lastName: attributes.family_name,
+        role: dbRole || role,
+        tenantId: dbTenantId || (accessToken?.payload['custom:tenant_id'] as string),
+        firstName: dbFirstName || attributes.given_name,
+        lastName: dbLastName || attributes.family_name,
       });
     } catch (error) {
       // Clear any stale auth state that might be causing issues
