@@ -138,7 +138,7 @@ export default function SurveyPage() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [started, submitted, answers, token, saveProgress]);
+  }, [started, submitted, answers, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStart = async () => {
     try {
@@ -179,17 +179,23 @@ export default function SurveyPage() {
     const answer = answers[question.id];
 
     if (question.isRequired) {
-      if (
+      const isEmpty =
         answer === undefined ||
         answer === null ||
         answer === '' ||
-        (Array.isArray(answer) && answer.filter(Boolean).length === 0)
-      ) {
+        (Array.isArray(answer) && answer.filter(Boolean).length === 0) ||
+        // MULTI_CHOICE stores { selected: string[], texts: {} }
+        (typeof answer === 'object' && !Array.isArray(answer) && answer !== null &&
+          'selected' in (answer as Record<string, unknown>) &&
+          Array.isArray((answer as { selected: unknown[] }).selected) &&
+          (answer as { selected: unknown[] }).selected.length === 0);
+
+      if (isEmpty) {
         return 'This question is required';
       }
     }
 
-    if (question.type === 'MULTI_TEXT' && question.minEntries && question.minEntries > 1) {
+    if (question.type === 'MULTI_TEXT' && question.minEntries != null && question.minEntries > 0) {
       const filledEntries = Array.isArray(answer) ? answer.filter(Boolean).length : 0;
       if (filledEntries < question.minEntries) {
         return `Please provide at least ${question.minEntries} names`;
@@ -309,6 +315,9 @@ export default function SurveyPage() {
       setSubmitted(true);
     } catch (err) {
       console.error('Failed to submit:', err);
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred while submitting your survey. Please try again.';
+      setSaveMessage(`Submit failed: ${errorMessage}`);
+      setTimeout(() => setSaveMessage(null), 10000);
     }
   };
 
@@ -841,10 +850,10 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
   const entries = (value && value.length >= defaultCount) ? value : Array(defaultCount).fill('');
 
   useEffect(() => {
-    if (!value || value.length < defaultCount) {
+    if (!value || value.length === 0) {
       onChange(Array(defaultCount).fill(''));
     }
-  }, [defaultCount]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const addEntry = () => {
     onChange([...entries, '']);

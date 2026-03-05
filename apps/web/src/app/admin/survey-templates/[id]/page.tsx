@@ -75,6 +75,8 @@ const typeLabels: Record<string, string> = {
   MULTI_CHOICE: 'Multi',
   DROPDOWN: 'Dropdown',
   MULTI_TEXT: 'Multi Text',
+  RANK_ORDER: 'Rank Order',
+  QUALIFYING: 'Qualifying',
 };
 
 export default function SurveyTemplateDetailPage() {
