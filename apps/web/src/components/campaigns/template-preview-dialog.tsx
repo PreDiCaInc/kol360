@@ -85,7 +85,7 @@ export const DEFAULT_INVITATION_BODY = `
 
       <p style="margin: 0 0 16px 0; color: #374151;">Your input will help us understand the physicians you turn to for trusted insights, whether established key opinion leaders or emerging voices advancing the diagnosis and treatment of dry eye disease.</p>
 
-      {honorariumBlock}
+      <p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>{honorarium} gift card</strong> for completing the survey.*</p>
 
       <div style="text-align: center; margin: 32px 0;">
         <a href="{surveyLink}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
@@ -319,7 +319,7 @@ export const DEFAULT_REMINDER_BODY = `
 
       <p style="margin: 0 0 16px 0; color: #374151;">Your insights are <strong>invaluable</strong> to this research. The survey takes only about 10 minutes to complete.</p>
 
-      {honorariumBlock}
+      <p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>{honorarium} gift card</strong> for completing the survey.*</p>
 
       <div style="text-align: center; margin: 32px 0;">
         <a href="{surveyLink}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
@@ -359,7 +359,7 @@ export function replacePlaceholders(
   const honorariumBlock = honorariumAmount
     ? `<p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>$${honorariumAmount} gift card</strong> for completing the survey.*</p>`
     : '';
-  const honorariumText = honorariumAmount ? `$${honorariumAmount}` : '';
+  const honorariumText = honorariumAmount ? `$${honorariumAmount}` : '$XYZ';
 
   return template
     .replace(/\{firstName\}/g, options?.lastName ? SAMPLE_DATA.firstName : SAMPLE_DATA.firstName)
