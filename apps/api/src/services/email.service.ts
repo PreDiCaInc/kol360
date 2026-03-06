@@ -193,21 +193,17 @@ export class EmailService {
     const unsubscribeUrl = `${APP_URL}/unsubscribe/${surveyToken}`;
 
     const honorariumText = honorariumAmount
-      ? `As a thank you for your participation, you will receive a $${honorariumAmount} honorarium upon completion.`
+      ? `As a thank you for your time, you will receive a $${honorariumAmount} gift card for completing the survey.*`
       : '';
 
     // Use custom subject/body if provided, otherwise use default
     const subject = customSubject
       ? this.replaceTemplatePlaceholders(customSubject, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount })
-      : `Your expertise needed: ${campaignName} KOL Survey`;
+      : `Who do you trust for Dry Eye insights?`;
 
     // Build honorarium block for default template
     const honorariumBlock = honorariumAmount
-      ? `<div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin: 24px 0; text-align: center;">
-          <p style="margin: 0 0 4px 0; font-size: 14px; color: #065f46;">Upon completion, you will receive</p>
-          <p style="margin: 0; font-size: 28px; font-weight: 700; color: #047857;">$${honorariumAmount}</p>
-          <p style="margin: 4px 0 0 0; font-size: 13px; color: #065f46;">honorarium</p>
-        </div>`
+      ? `<p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>$${honorariumAmount} gift card</strong> for completing the survey.*</p>`
       : '';
 
     // If custom body provided, use it with placeholder replacement
@@ -230,17 +226,11 @@ export class EmailService {
     </div>
 
     <div style="padding: 32px 24px;">
-      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Dear Dr. ${lastName},</h2>
+      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Dear ${firstName} ${lastName},</h2>
 
-      <p style="margin: 0 0 16px 0; color: #374151;">You have been identified as a <strong>key opinion leader</strong> in your field, and we would greatly value your insights.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">We invite you to participate in a short 10-minute survey to identify your colleagues shaping the field of dry eye disease.</p>
 
-      <p style="margin: 0 0 16px 0; color: #374151;">We are conducting the <strong style="color: #147a6d;">${campaignName}</strong> research study and would like to invite you to participate in a brief survey about thought leaders in your specialty area.</p>
-
-      <div style="background: #f0fdf9; border-left: 4px solid #147a6d; padding: 16px; border-radius: 0 8px 8px 0; margin: 24px 0;">
-        <p style="margin: 0; color: #0f5d54; font-size: 14px;">
-          <strong>Estimated time:</strong> 5-10 minutes
-        </p>
-      </div>
+      <p style="margin: 0 0 16px 0; color: #374151;">Your input will help us understand the physicians you turn to for trusted insights, whether established key opinion leaders or emerging voices advancing the diagnosis and treatment of dry eye disease.</p>
 
       ${honorariumBlock}
 
@@ -249,6 +239,14 @@ export class EmailService {
           Start Survey
         </a>
       </div>
+
+      <p style="margin: 0 0 16px 0; color: #374151;">Thank you for your participation!</p>
+
+      <p style="margin: 0 0 4px 0; color: #374151;">Sincerely,</p>
+      <p style="margin: 0 0 2px 0; color: #374151; font-weight: 600;">Joe Boyd</p>
+      <p style="margin: 0 0 0 0; color: #6b7280; font-size: 14px;">COO, Bio-Exec, LLC</p>
+
+      <p style="font-size: 12px; color: #9ca3af; margin: 24px 0 0 0;">*Please note: Due to state laws, we are unable to provide honoraria/payments to physicians in Vermont or Maine.</p>
 
       <p style="font-size: 13px; color: #6b7280; margin: 24px 0 8px 0;">If the button doesn't work, copy this link:</p>
       <p style="word-break: break-all; color: #147a6d; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 0;">${surveyUrl}</p>
@@ -272,26 +270,27 @@ export class EmailService {
     const textBody = customBody
       ? htmlBody.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
       : `
-Dear Dr. ${lastName},
+Dear ${firstName} ${lastName},
 
-You have been identified as a key opinion leader in your field, and we would greatly value your insights.
+We invite you to participate in a short 10-minute survey to identify your colleagues shaping the field of dry eye disease.
 
-We are conducting the ${campaignName} research study and would like to invite you to participate in a brief survey about thought leaders in your specialty area.
-
-The survey takes approximately 5-10 minutes to complete.
+Your input will help us understand the physicians you turn to for trusted insights, whether established key opinion leaders or emerging voices advancing the diagnosis and treatment of dry eye disease.
 
 ${honorariumText}
 
 To start the survey, visit:
 ${surveyUrl}
 
-Your responses will be kept confidential and used only for research purposes.
+Thank you for your participation!
+
+Sincerely,
+Joe Boyd
+COO, Bio-Exec, LLC
+
+*Please note: Due to state laws, we are unable to provide honoraria/payments to physicians in Vermont or Maine.
 
 To unsubscribe from this survey, visit:
 ${unsubscribeUrl}
-
----
-BioExec Research | Confidential KOL Survey
     `.trim();
 
     const result = await this.sendEmail({
@@ -379,11 +378,7 @@ BioExec Research | Confidential KOL Survey
 
     // Build honorarium block for default template
     const honorariumBlock = honorariumAmount
-      ? `<div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; padding: 20px; border-radius: 12px; margin: 24px 0; text-align: center;">
-          <p style="margin: 0 0 4px 0; font-size: 14px; color: #065f46;">Upon completion, you will receive</p>
-          <p style="margin: 0; font-size: 28px; font-weight: 700; color: #047857;">$${honorariumAmount}</p>
-          <p style="margin: 4px 0 0 0; font-size: 13px; color: #065f46;">honorarium</p>
-        </div>`
+      ? `<p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>$${honorariumAmount} gift card</strong> for completing the survey.*</p>`
       : '';
 
     let htmlBody: string;
@@ -409,17 +404,11 @@ BioExec Research | Confidential KOL Survey
         Friendly Reminder
       </div>
 
-      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Dear Dr. ${lastName},</h2>
+      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Dear ${firstName} ${lastName},</h2>
 
-      <p style="margin: 0 0 16px 0; color: #374151;">We recently invited you to participate in the <strong style="color: #147a6d;">${campaignName}</strong> research study, and we noticed you haven't yet completed the survey.</p>
+      <p style="margin: 0 0 16px 0; color: #374151;">We recently invited you to participate in a short survey to identify your colleagues shaping the field of dry eye disease, and we noticed you haven't yet completed it.</p>
 
-      <p style="margin: 0 0 16px 0; color: #374151;">${urgencyText}Your insights as a key opinion leader are <strong>invaluable</strong> to this research.</p>
-
-      <div style="background: #f0fdf9; border-left: 4px solid #147a6d; padding: 16px; border-radius: 0 8px 8px 0; margin: 24px 0;">
-        <p style="margin: 0; color: #0f5d54; font-size: 14px;">
-          <strong>Only 5-10 minutes</strong> to complete
-        </p>
-      </div>
+      <p style="margin: 0 0 16px 0; color: #374151;">${urgencyText}Your insights are <strong>invaluable</strong> to this research. The survey takes only about 10 minutes to complete.</p>
 
       ${honorariumBlock}
 
@@ -428,6 +417,14 @@ BioExec Research | Confidential KOL Survey
           Complete Survey Now
         </a>
       </div>
+
+      <p style="margin: 0 0 16px 0; color: #374151;">Thank you for your participation!</p>
+
+      <p style="margin: 0 0 4px 0; color: #374151;">Sincerely,</p>
+      <p style="margin: 0 0 2px 0; color: #374151; font-weight: 600;">Joe Boyd</p>
+      <p style="margin: 0 0 0 0; color: #6b7280; font-size: 14px;">COO, Bio-Exec, LLC</p>
+
+      <p style="font-size: 12px; color: #9ca3af; margin: 24px 0 0 0;">*Please note: Due to state laws, we are unable to provide honoraria/payments to physicians in Vermont or Maine.</p>
 
       <p style="font-size: 13px; color: #6b7280; margin: 24px 0 8px 0;">If the button doesn't work, copy this link:</p>
       <p style="word-break: break-all; color: #147a6d; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 0;">${surveyUrl}</p>
@@ -448,24 +445,27 @@ BioExec Research | Confidential KOL Survey
     const textBody = customBody
       ? htmlBody.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
       : `
-Dear Dr. ${lastName},
+Dear ${firstName} ${lastName},
 
-We recently invited you to participate in the ${campaignName} research study, and we noticed you haven't yet completed the survey.
+We recently invited you to participate in a short survey to identify your colleagues shaping the field of dry eye disease, and we noticed you haven't yet completed it.
 
-${urgencyText}Your insights as a key opinion leader are invaluable to this research.
-
-The survey takes only 5-10 minutes to complete.
+${urgencyText}Your insights are invaluable to this research. The survey takes only about 10 minutes to complete.
 
 ${honorariumText}
 
 To complete the survey, visit:
 ${surveyUrl}
 
+Thank you for your participation!
+
+Sincerely,
+Joe Boyd
+COO, Bio-Exec, LLC
+
+*Please note: Due to state laws, we are unable to provide honoraria/payments to physicians in Vermont or Maine.
+
 To unsubscribe, visit:
 ${unsubscribeUrl}
-
----
-BioExec Research | Confidential KOL Survey
     `.trim();
 
     const result = await this.sendEmail({
