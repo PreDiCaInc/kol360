@@ -192,19 +192,16 @@ export class EmailService {
     const surveyUrl = `${APP_URL}/survey/${surveyToken}`;
     const unsubscribeUrl = `${APP_URL}/unsubscribe/${surveyToken}`;
 
-    const honorariumText = honorariumAmount
-      ? `As a thank you for your time, you will receive a $${honorariumAmount} gift card for completing the survey.*`
-      : '';
+    const honorariumDisplay = honorariumAmount ? `$${honorariumAmount}` : '$XYZ';
+    const honorariumText = `As a thank you for your time, you will receive a ${honorariumDisplay} gift card for completing the survey.*`;
 
     // Use custom subject/body if provided, otherwise use default
     const subject = customSubject
       ? this.replaceTemplatePlaceholders(customSubject, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount })
       : `Who do you trust for Dry Eye insights?`;
 
-    // Build honorarium block for default template
-    const honorariumBlock = honorariumAmount
-      ? `<p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>$${honorariumAmount} gift card</strong> for completing the survey.*</p>`
-      : '';
+    // Build honorarium block for custom template placeholder replacement
+    const honorariumBlock = `<p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>${honorariumDisplay} gift card</strong> for completing the survey.*</p>`;
 
     // If custom body provided, use it with placeholder replacement
     let htmlBody: string;
@@ -232,7 +229,7 @@ export class EmailService {
 
       <p style="margin: 0 0 16px 0; color: #374151;">Your input will help us understand the physicians you turn to for trusted insights, whether established key opinion leaders or emerging voices advancing the diagnosis and treatment of dry eye disease.</p>
 
-      ${honorariumBlock}
+      <p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>${honorariumDisplay} gift card</strong> for completing the survey.*</p>
 
       <div style="text-align: center; margin: 32px 0;">
         <a href="${surveyUrl}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
@@ -363,9 +360,8 @@ ${unsubscribeUrl}
     const surveyUrl = `${APP_URL}/survey/${surveyToken}`;
     const unsubscribeUrl = `${APP_URL}/unsubscribe/${surveyToken}`;
 
-    const honorariumText = honorariumAmount
-      ? `Remember, you will receive a $${honorariumAmount} honorarium upon completion.`
-      : '';
+    const honorariumDisplay = honorariumAmount ? `$${honorariumAmount}` : '$XYZ';
+    const honorariumText = `As a thank you for your time, you will receive a ${honorariumDisplay} gift card for completing the survey.*`;
 
     const urgencyText = reminderNumber >= 2
       ? 'This survey will be closing soon. '
@@ -376,10 +372,8 @@ ${unsubscribeUrl}
       ? this.replaceTemplatePlaceholders(customSubject, { firstName, lastName, surveyUrl, unsubscribeUrl, campaignName, honorariumAmount })
       : `Reminder: ${campaignName} KOL Survey - We value your input`;
 
-    // Build honorarium block for default template
-    const honorariumBlock = honorariumAmount
-      ? `<p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>$${honorariumAmount} gift card</strong> for completing the survey.*</p>`
-      : '';
+    // Build honorarium block for custom template placeholder replacement
+    const honorariumBlock = `<p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>${honorariumDisplay} gift card</strong> for completing the survey.*</p>`;
 
     let htmlBody: string;
     if (customBody) {
@@ -410,7 +404,7 @@ ${unsubscribeUrl}
 
       <p style="margin: 0 0 16px 0; color: #374151;">${urgencyText}Your insights are <strong>invaluable</strong> to this research. The survey takes only about 10 minutes to complete.</p>
 
-      ${honorariumBlock}
+      <p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>${honorariumDisplay} gift card</strong> for completing the survey.*</p>
 
       <div style="text-align: center; margin: 32px 0;">
         <a href="${surveyUrl}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
