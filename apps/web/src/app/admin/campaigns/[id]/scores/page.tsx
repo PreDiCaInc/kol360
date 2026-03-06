@@ -67,6 +67,7 @@ const NOMINATION_TYPE_LABELS: Record<string, string> = {
   RISING_STAR: 'Rising Stars',
   SOCIAL_LEADER: 'Social Media Leaders',
   REGIONAL_LEADER: 'Regional Leaders',
+  BIASED_LEADER: 'Biased Leaders',
   // Legacy nomination types (for backwards compatibility)
   NATIONAL_KOL: 'National KOL',
   REGIONAL_EXPERT: 'Regional Expert',
@@ -84,6 +85,7 @@ const NOMINATION_TYPE_FIELDS: Record<string, { score: string; count: string }> =
   RISING_STAR: { score: 'scoreRisingStar', count: 'countRisingStar' },
   SOCIAL_LEADER: { score: 'scoreSocialLeader', count: 'countSocialLeader' },
   REGIONAL_LEADER: { score: 'scoreRegionalLeader', count: 'countRegionalLeader' },
+  BIASED_LEADER: { score: 'scoreBiasedLeader', count: 'countBiasedLeader' },
   // Legacy nomination types (for backwards compatibility)
   NATIONAL_KOL: { score: 'scoreNationalKol', count: 'countNationalKol' },
   REGIONAL_EXPERT: { score: 'scoreRegionalExpert', count: 'countRegionalExpert' },

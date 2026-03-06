@@ -189,7 +189,7 @@ describe('Question Schemas', () => {
       });
 
       it('should accept all nomination types', () => {
-        const types = ['DISCUSSION_LEADERS', 'REFERRAL_LEADERS', 'ADVICE_LEADERS', 'NATIONAL_LEADER', 'RISING_STAR', 'SOCIAL_LEADER'];
+        const types = ['DISCUSSION_LEADERS', 'REFERRAL_LEADERS', 'ADVICE_LEADERS', 'NATIONAL_LEADER', 'RISING_STAR', 'SOCIAL_LEADER', 'REGIONAL_LEADER', 'BIASED_LEADER'];
 
         types.forEach((type) => {
           const result = createQuestionSchema.parse({

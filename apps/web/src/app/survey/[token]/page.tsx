@@ -42,28 +42,9 @@ import {
   Save,
   ChevronLeft,
   ChevronRight,
-  GripVertical,
-  ArrowUp,
-  ArrowDown,
+  RotateCcw,
+  X,
 } from 'lucide-react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
 type QuestionType = 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'RATING' | 'TEXT' | 'MULTI_TEXT' | 'NUMBER' | 'DROPDOWN' | 'RANK_ORDER' | 'QUALIFYING';
 
@@ -85,8 +66,6 @@ interface Question {
   defaultEntries: number | null;
 }
 
-// Sections that should show all questions together (like form fields)
-const GROUPED_SECTIONS = ['Demographics', 'Contact Information', 'Profile'];
 
 export default function SurveyPage() {
   const params = useParams();
@@ -188,7 +167,12 @@ export default function SurveyPage() {
         (typeof answer === 'object' && !Array.isArray(answer) && answer !== null &&
           'selected' in (answer as Record<string, unknown>) &&
           Array.isArray((answer as { selected: unknown[] }).selected) &&
-          (answer as { selected: unknown[] }).selected.length === 0);
+          (answer as { selected: unknown[] }).selected.length === 0) ||
+        // RANK_ORDER stores { ranked: string[], texts?: {} }
+        (typeof answer === 'object' && !Array.isArray(answer) && answer !== null &&
+          'ranked' in (answer as Record<string, unknown>) &&
+          Array.isArray((answer as { ranked: unknown[] }).ranked) &&
+          (answer as { ranked: unknown[] }).ranked.length === 0);
 
       if (isEmpty) {
         return 'This question is required';
@@ -199,6 +183,13 @@ export default function SurveyPage() {
       const filledEntries = Array.isArray(answer) ? answer.filter(Boolean).length : 0;
       if (filledEntries < question.minEntries) {
         return `Please provide at least ${question.minEntries} names`;
+      }
+    }
+
+    if (question.type === 'RANK_ORDER' && question.minEntries != null && question.minEntries > 0) {
+      const ranked = Array.isArray(answer) ? answer : (answer as { ranked?: string[] })?.ranked || [];
+      if (ranked.length < question.minEntries) {
+        return `Please rank at least ${question.minEntries} items`;
       }
     }
 
@@ -324,40 +315,18 @@ export default function SurveyPage() {
   // Build steps from questions - group certain sections, show others one at a time
   const buildSteps = (questions: Question[]): { title: string; description: string | null; questions: Question[] }[] => {
     const steps: { title: string; description: string | null; questions: Question[] }[] = [];
-    let currentGroupedSection: { title: string; description: string | null; questions: Question[] } | null = null;
 
     for (const question of questions) {
       const section = question.section || 'General';
       const description = question.sectionDescription || null;
-      const isGrouped = GROUPED_SECTIONS.some(gs =>
-        section.toLowerCase().includes(gs.toLowerCase())
-      );
 
-      if (isGrouped) {
-        // Group all questions from this section together
-        if (currentGroupedSection && currentGroupedSection.title === section) {
-          currentGroupedSection.questions.push(question);
-        } else {
-          // Save previous grouped section if exists
-          if (currentGroupedSection) {
-            steps.push(currentGroupedSection);
-          }
-          currentGroupedSection = { title: section, description, questions: [question] };
-        }
+      // Group all questions from the same section into one step/page
+      const lastStep = steps[steps.length - 1];
+      if (lastStep && lastStep.title === section) {
+        lastStep.questions.push(question);
       } else {
-        // Save any pending grouped section
-        if (currentGroupedSection) {
-          steps.push(currentGroupedSection);
-          currentGroupedSection = null;
-        }
-        // Each non-grouped question gets its own step
         steps.push({ title: section, description, questions: [question] });
       }
-    }
-
-    // Don't forget the last grouped section
-    if (currentGroupedSection) {
-      steps.push(currentGroupedSection);
     }
 
     return steps;
@@ -753,9 +722,14 @@ function QuestionRenderer({ question, index, value, onChange, error, showNumber 
       case 'NUMBER':
         return (
           <Input
-            type="number"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={(value as string | number) ?? ''}
-            onChange={(e) => onChange(e.target.value ? Number(e.target.value) : '')}
+            onChange={(e) => {
+              const v = e.target.value.replace(/[^0-9]/g, '');
+              onChange(v ? Number(v) : '');
+            }}
             placeholder="Enter a number..."
             className="text-base"
           />
@@ -893,58 +867,6 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
   );
 }
 
-// --- Sortable item for RankOrderInput ---
-function SortableRankItem({ id, rank, text, requiresText, textValue, onTextChange, onMoveUp, onMoveDown, isFirst, isLast }: {
-  id: string;
-  rank: number;
-  text: string;
-  requiresText?: boolean;
-  textValue?: string;
-  onTextChange?: (val: string) => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  isFirst: boolean;
-  isLast: boolean;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} className="bg-white border rounded-lg px-3 py-2.5 shadow-sm">
-      <div className="flex items-center gap-2">
-        <button type="button" {...attributes} {...listeners} className="cursor-grab touch-none p-1 text-muted-foreground hover:text-foreground">
-          <GripVertical className="w-4 h-4" />
-        </button>
-        <span className="text-sm font-semibold text-muted-foreground w-6 text-center">{rank}</span>
-        <span className="flex-1 text-base">{text}</span>
-        <div className="flex flex-col gap-0.5">
-          <button type="button" onClick={onMoveUp} disabled={isFirst} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
-            <ArrowUp className="w-3.5 h-3.5" />
-          </button>
-          <button type="button" onClick={onMoveDown} disabled={isLast} className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30">
-            <ArrowDown className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-      {requiresText && (
-        <div className="ml-12 mt-2">
-          <input
-            type="text"
-            placeholder="Please specify..."
-            value={textValue || ''}
-            onChange={(e) => onTextChange?.(e.target.value)}
-            className="w-full px-3 py-1.5 text-sm border rounded-md bg-background"
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Answer shape: string[] (legacy) or { ranked: string[], texts?: Record<string, string> }
 type RankOrderValue = string[] | { ranked: string[]; texts?: Record<string, string> };
 
@@ -958,86 +880,124 @@ function RankOrderInput({ options, value, onChange }: RankOrderInputProps) {
   const optionTexts = options.map((o) => o.text);
   const hasRequiresText = options.some((o) => o.requiresText);
 
-  // Extract ranked array and texts from value (handle both legacy and new shapes)
-  const ranked = Array.isArray(value) ? value : value?.ranked;
+  // Extract ranked array and texts from value
+  const ranked = Array.isArray(value) ? value : (value?.ranked || []);
   const texts = Array.isArray(value) ? {} : (value?.texts || {});
-  const items = ranked && ranked.length === optionTexts.length ? ranked : optionTexts;
 
-  // Use stable unique IDs for DnD (handles duplicate option texts)
-  const itemIds = items.map((_, i) => `rank-${i}`);
+  // Items not yet ranked (maintain original order)
+  const available = optionTexts.filter((t) => !ranked.includes(t));
 
   // Build a lookup for requiresText from options
   const requiresTextMap: Record<string, boolean> = {};
   options.forEach((o) => { if (o.requiresText) requiresTextMap[o.text] = true; });
 
-  useEffect(() => {
-    if (!ranked || ranked.length !== optionTexts.length) {
-      if (hasRequiresText) {
-        onChange({ ranked: optionTexts, texts: {} });
-      } else {
-        onChange(optionTexts);
-      }
-    }
-  }, [optionTexts.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(TouchSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
   const emitChange = (newRanked: string[], newTexts?: Record<string, string>) => {
     if (hasRequiresText) {
       onChange({ ranked: newRanked, texts: newTexts || texts });
     } else {
-      onChange(newRanked);
+      onChange(newRanked.length > 0 ? newRanked : []);
     }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = itemIds.indexOf(active.id as string);
-      const newIndex = itemIds.indexOf(over.id as string);
-      emitChange(arrayMove(items, oldIndex, newIndex));
-    }
+  const rankItem = (item: string) => {
+    emitChange([...ranked, item]);
   };
 
-  const moveItem = (index: number, direction: -1 | 1) => {
-    const newIndex = index + direction;
-    if (newIndex >= 0 && newIndex < items.length) {
-      emitChange(arrayMove(items, index, newIndex));
+  const unrankItem = (item: string) => {
+    const newRanked = ranked.filter((r) => r !== item);
+    const newTexts = { ...texts };
+    delete newTexts[item];
+    emitChange(newRanked, newTexts);
+  };
+
+  const resetAll = () => {
+    if (hasRequiresText) {
+      onChange({ ranked: [], texts: {} });
+    } else {
+      onChange([]);
     }
   };
 
   const handleTextChange = (optionText: string, val: string) => {
-    emitChange(items, { ...texts, [optionText]: val });
+    emitChange(ranked, { ...texts, [optionText]: val });
   };
 
   return (
-    <div className="space-y-2">
-      <p className="text-sm text-muted-foreground mb-3">Drag items or use arrows to rank in order of preference</p>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {items.map((item, index) => (
-              <SortableRankItem
-                key={itemIds[index]}
-                id={itemIds[index]}
-                rank={index + 1}
-                text={item}
-                requiresText={requiresTextMap[item]}
-                textValue={texts[item]}
-                onTextChange={(val) => handleTextChange(item, val)}
-                onMoveUp={() => moveItem(index, -1)}
-                onMoveDown={() => moveItem(index, 1)}
-                isFirst={index === 0}
-                isLast={index === items.length - 1}
-              />
-            ))}
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">Click items to rank them in your preferred order</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Left: Available items */}
+        <div>
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Available</p>
+          <div className="min-h-[80px] space-y-1.5 rounded-lg border border-dashed border-border/60 p-2">
+            {available.length === 0 ? (
+              <p className="text-sm text-muted-foreground/50 text-center py-4">All items ranked</p>
+            ) : (
+              available.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => rankItem(item)}
+                  className="w-full text-left bg-white border rounded-lg px-3 py-2.5 shadow-sm hover:bg-accent hover:border-primary/30 transition-colors cursor-pointer"
+                >
+                  <span className="text-base">{item}</span>
+                </button>
+              ))
+            )}
           </div>
-        </SortableContext>
-      </DndContext>
+        </div>
+
+        {/* Right: Ranked items */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Your Rankings</p>
+            {ranked.length > 0 && (
+              <button
+                type="button"
+                onClick={resetAll}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="min-h-[80px] space-y-1.5 rounded-lg border border-dashed border-border/60 p-2">
+            {ranked.length === 0 ? (
+              <p className="text-sm text-muted-foreground/50 text-center py-4">Click items on the left to rank them</p>
+            ) : (
+              ranked.map((item, index) => (
+                <div key={item}>
+                  <button
+                    type="button"
+                    onClick={() => unrankItem(item)}
+                    className="w-full text-left bg-primary/5 border border-primary/20 rounded-lg px-3 py-2.5 hover:bg-destructive/5 hover:border-destructive/30 transition-colors group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white text-xs font-bold shrink-0">
+                        {index + 1}
+                      </span>
+                      <span className="flex-1 text-base">{item}</span>
+                      <X className="w-3.5 h-3.5 text-muted-foreground/40 group-hover:text-destructive transition-colors shrink-0" />
+                    </div>
+                  </button>
+                  {requiresTextMap[item] && (
+                    <div className="ml-9 mt-1.5 mb-1">
+                      <input
+                        type="text"
+                        placeholder="Please specify..."
+                        value={texts[item] || ''}
+                        onChange={(e) => handleTextChange(item, e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm border rounded-md bg-background"
+                      />
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

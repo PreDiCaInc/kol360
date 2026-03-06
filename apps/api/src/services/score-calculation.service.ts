@@ -10,6 +10,7 @@ const NOMINATION_TYPE_FIELDS = {
   RISING_STAR: { score: 'scoreRisingStar', count: 'countRisingStar' },
   SOCIAL_LEADER: { score: 'scoreSocialLeader', count: 'countSocialLeader' },
   REGIONAL_LEADER: { score: 'scoreRegionalLeader', count: 'countRegionalLeader' },
+  BIASED_LEADER: { score: 'scoreBiasedLeader', count: 'countBiasedLeader' },
 } as const;
 
 export class ScoreCalculationService {

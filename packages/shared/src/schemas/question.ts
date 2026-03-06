@@ -43,6 +43,7 @@ export const nominationTypeSchema = z.enum([
   'RISING_STAR',        // Emerging/up-and-coming KOL
   'SOCIAL_LEADER',      // Social media/digital presence leaders
   'REGIONAL_LEADER',    // Regional influencer / local leader
+  'BIASED_LEADER',      // Biased / conflicted leader
 ]);
 
 export type NominationType = z.infer<typeof nominationTypeSchema>;
@@ -56,6 +57,7 @@ export const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
   RISING_STAR: 'Rising Stars',
   SOCIAL_LEADER: 'Social Media Leaders',
   REGIONAL_LEADER: 'Regional Leaders',
+  BIASED_LEADER: 'Biased Leaders',
 };
 
 // Option object with text and optional requiresText flag

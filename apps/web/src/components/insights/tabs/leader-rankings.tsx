@@ -35,6 +35,7 @@ const NOMINATION_TYPES: { value: NominationType; label: string; color: string; b
   { value: 'RISING_STAR', label: 'Rising Stars', color: 'bg-pink-500', bgColor: 'bg-pink-100 dark:bg-pink-950' },
   { value: 'SOCIAL_LEADER', label: 'Social Leaders', color: 'bg-cyan-500', bgColor: 'bg-cyan-100 dark:bg-cyan-950' },
   { value: 'REGIONAL_LEADER', label: 'Regional Leaders', color: 'bg-slate-500', bgColor: 'bg-slate-100 dark:bg-slate-950' },
+  { value: 'BIASED_LEADER', label: 'Biased Leaders', color: 'bg-red-500', bgColor: 'bg-red-100 dark:bg-red-950' },
 ];
 
 interface RankingTableProps {

@@ -244,6 +244,8 @@ model HcpCampaignScore {
   countSocialLeader      Int       @default(0)
   scoreRegionalLeader    Decimal?  @db.Decimal(5, 2)
   countRegionalLeader    Int       @default(0)
+  scoreBiasedLeader      Decimal?  @db.Decimal(5, 2)
+  countBiasedLeader      Int       @default(0)
   // Consolidated score
   scoreSurvey            Decimal?  @db.Decimal(5, 2)
   nominationCount        Int       @default(0)
@@ -746,6 +748,7 @@ enum NominationType {
   RISING_STAR        // Emerging/up-and-coming KOL
   SOCIAL_LEADER      // Social media / digital influencer
   REGIONAL_LEADER    // Regional influencer / local leader
+  BIASED_LEADER      // Biased / conflicted leader
 }
 
 enum ActorType {
