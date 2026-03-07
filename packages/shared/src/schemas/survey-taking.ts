@@ -1,11 +1,12 @@
 import { z } from 'zod';
 
 // Answer value can be:
-// - string (TEXT, DROPDOWN)
+// - string (TEXT, DROPDOWN, QUALIFYING)
 // - number (NUMBER, RATING)
-// - string[] (MULTI_TEXT)
+// - string[] (MULTI_TEXT, RANK_ORDER without requiresText)
 // - object with selected/text for SINGLE_CHOICE: { selected: string, text?: string }
 // - object with selected/texts for MULTI_CHOICE: { selected: string[], texts?: Record<string, string> }
+// - object with ranked/texts for RANK_ORDER: { ranked: string[], texts?: Record<string, string> }
 // - null (unanswered)
 const answerValueSchema = z.union([
   z.string(),
@@ -14,6 +15,10 @@ const answerValueSchema = z.union([
   z.object({
     selected: z.union([z.string(), z.array(z.string())]),
     text: z.string().optional(),
+    texts: z.record(z.string(), z.string()).optional(),
+  }),
+  z.object({
+    ranked: z.array(z.string()),
     texts: z.record(z.string(), z.string()).optional(),
   }),
   z.null(),

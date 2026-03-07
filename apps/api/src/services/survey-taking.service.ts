@@ -293,7 +293,12 @@ export class SurveyTakingService {
           (typeof answerValue === 'object' && !Array.isArray(answerValue) && answerValue !== null &&
             'selected' in (answerValue as Record<string, unknown>) &&
             Array.isArray((answerValue as { selected: unknown[] }).selected) &&
-            (answerValue as { selected: unknown[] }).selected.length === 0);
+            (answerValue as { selected: unknown[] }).selected.length === 0) ||
+          // RANK_ORDER stores { ranked: string[], texts?: {} }
+          (typeof answerValue === 'object' && !Array.isArray(answerValue) && answerValue !== null &&
+            'ranked' in (answerValue as Record<string, unknown>) &&
+            Array.isArray((answerValue as { ranked: unknown[] }).ranked) &&
+            (answerValue as { ranked: unknown[] }).ranked.length === 0);
 
         if (isEmpty) {
           validationErrors.push(`Question "${sq.question.text}" is required`);
