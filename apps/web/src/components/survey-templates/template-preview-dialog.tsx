@@ -368,14 +368,24 @@ function PreviewQuestion({ question, index }: PreviewQuestionProps) {
 
       case 'RANK_ORDER':
         return (
-          <div className="space-y-2 max-w-md">
-            {question.options?.map((option, i) => (
-              <div key={i} className="flex items-center gap-2 bg-white border rounded-lg px-3 py-2 text-sm">
-                <span className="text-muted-foreground font-semibold w-6 text-center">{i + 1}</span>
-                <span>{option.text}</span>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Click items to rank them in preferred order</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Available</p>
+                <div className="min-h-[60px] space-y-1 rounded-lg border border-dashed border-border/60 p-2">
+                  {question.options?.map((option, i) => (
+                    <div key={i} className="bg-white border rounded-lg px-3 py-2 text-sm">{option.text}</div>
+                  ))}
+                </div>
               </div>
-            ))}
-            <p className="text-xs text-muted-foreground">Respondents will drag to reorder</p>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Your Rankings</p>
+                <div className="min-h-[60px] rounded-lg border border-dashed border-border/60 p-2">
+                  <p className="text-sm text-muted-foreground/50 text-center py-4">Click items on the left to rank them</p>
+                </div>
+              </div>
+            </div>
           </div>
         );
 
