@@ -30,6 +30,7 @@ const NOMINATION_TYPE_FIELDS: Record<NominationType, { score: string; count: str
   RISING_STAR: { score: 'scoreRisingStar', count: 'countRisingStar' },
   SOCIAL_LEADER: { score: 'scoreSocialLeader', count: 'countSocialLeader' },
   REGIONAL_LEADER: { score: 'scoreRegionalLeader', count: 'countRegionalLeader' },
+  BIASED_LEADER: { score: 'scoreBiasedLeader', count: 'countBiasedLeader' },
 };
 
 /**
@@ -503,6 +504,7 @@ export class InsightsReportService {
       nationalLeader: 0,
       risingStar: 0,
       socialLeader: 0,
+      biasedLeader: 0,
     };
 
     for (const cs of campaignScores) {
@@ -512,6 +514,7 @@ export class InsightsReportService {
       nominationsByType.nationalLeader += cs.countNationalLeader || 0;
       nominationsByType.risingStar += cs.countRisingStar || 0;
       nominationsByType.socialLeader += cs.countSocialLeader || 0;
+      nominationsByType.biasedLeader += cs.countBiasedLeader || 0;
     }
 
     const primarySpecialty = hcp.specialties[0]?.specialty?.name || hcp.specialty;
@@ -658,6 +661,7 @@ export class InsightsReportService {
       let nationalLeaders = 0;
       let risingStars = 0;
       let socialLeaders = 0;
+      let biasedLeaders = 0;
 
       for (const cs of hcp.campaignScores) {
         discussionLeaders += cs.countDiscussionLeaders || 0;
@@ -666,6 +670,7 @@ export class InsightsReportService {
         nationalLeaders += cs.countNationalLeader || 0;
         risingStars += cs.countRisingStar || 0;
         socialLeaders += cs.countSocialLeader || 0;
+        biasedLeaders += cs.countBiasedLeader || 0;
       }
 
       const totalNominations =
@@ -674,7 +679,8 @@ export class InsightsReportService {
         adviceLeaders +
         nationalLeaders +
         risingStars +
-        socialLeaders;
+        socialLeaders +
+        biasedLeaders;
 
       return {
         rank: (page - 1) * limit + index + 1,
@@ -690,13 +696,14 @@ export class InsightsReportService {
         nationalLeaders,
         risingStars,
         socialLeaders,
+        biasedLeaders,
         regional: score?.totalNominationCount || 0,
         total: totalNominations,
       };
     });
 
     // Server-side sorting based on sortBy parameter
-    const validSortFields = ['total', 'discussionLeaders', 'referralLeaders', 'adviceLeaders', 'nationalLeaders', 'risingStars', 'socialLeaders', 'regional', 'name'];
+    const validSortFields = ['total', 'discussionLeaders', 'referralLeaders', 'adviceLeaders', 'nationalLeaders', 'risingStars', 'socialLeaders', 'biasedLeaders', 'regional', 'name'];
     const field = validSortFields.includes(sortBy || '') ? sortBy : 'total';
     const order = sortOrder === 'asc' ? 1 : -1;
 

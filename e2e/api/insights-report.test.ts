@@ -184,6 +184,9 @@ describe('Insights Report API', () => {
         'adviceLeaders',
         'nationalLeader',
         'risingStar',
+        'socialLeader',
+        'regionalLeader',
+        'biasedLeader',
       ];
 
       for (const nominationType of nominationTypes) {

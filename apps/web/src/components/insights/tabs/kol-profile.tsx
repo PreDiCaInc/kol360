@@ -62,6 +62,7 @@ const NOMINATION_COLORS: Record<string, string> = {
   RISING_STAR: '#EC4899',
   SOCIAL_LEADER: '#06B6D4',
   REGIONAL_LEADER: '#64748B',
+  BIASED_LEADER: '#EF4444',
 };
 
 const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
@@ -72,6 +73,7 @@ const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
   RISING_STAR: 'Rising Stars',
   SOCIAL_LEADER: 'Social Media',
   REGIONAL_LEADER: 'Regional Leaders',
+  BIASED_LEADER: 'Biased Leaders',
 };
 
 const PIE_COLORS = [
@@ -142,6 +144,7 @@ export function KolProfileTab({ diseaseAreaId, initialKolId, globalFilters }: Pr
         { name: 'National', value: profile.nominations.nationalLeader, color: NOMINATION_COLORS.nationalLeader },
         { name: 'Rising Star', value: profile.nominations.risingStar, color: NOMINATION_COLORS.risingStar },
         { name: 'Social', value: profile.nominations.socialLeader, color: NOMINATION_COLORS.socialLeader },
+        { name: 'Biased', value: profile.nominations.biasedLeader, color: NOMINATION_COLORS.BIASED_LEADER },
       ]
     : [];
 

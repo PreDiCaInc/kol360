@@ -173,7 +173,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     { name: 'Media/Podcasts', field: 'scoreMediaPodcasts' },
   ];
 
-  // The 6 survey nomination type columns
+  // The 8 survey nomination type columns
   const surveyColumns = [
     { name: 'Discussion Leaders', field: 'scoreDiscussionLeaders' },
     { name: 'Referral Leaders', field: 'scoreReferralLeaders' },
@@ -181,12 +181,14 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     { name: 'National Leaders', field: 'scoreNationalLeader' },
     { name: 'Rising Stars', field: 'scoreRisingStar' },
     { name: 'Social Media Leaders', field: 'scoreSocialLeader' },
+    { name: 'Regional Leaders', field: 'scoreRegionalLeader' },
+    { name: 'Biased Leaders', field: 'scoreBiasedLeader' },
   ];
 
   const columns = scoreType === 'survey' ? surveyColumns : segmentColumns;
   const title = scoreType === 'survey' ? 'Import Survey Scores' : 'Import Segment Scores';
   const description = scoreType === 'survey'
-    ? 'Upload an Excel file with HCP survey nomination scores across 6 categories.'
+    ? 'Upload an Excel file with HCP survey nomination scores across 8 categories.'
     : 'Upload an Excel file with HCP segment scores across 8 categories.';
 
   const handleDownloadTemplate = () => {

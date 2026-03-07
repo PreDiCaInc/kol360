@@ -208,7 +208,7 @@ export const kolProfileSchema = z.object({
     compositeScore: z.number().nullable(),
   }),
 
-  // 6 nomination counts
+  // 8 nomination counts
   nominations: z.object({
     discussionLeaders: z.number(),
     referralLeaders: z.number(),
@@ -216,6 +216,7 @@ export const kolProfileSchema = z.object({
     nationalLeader: z.number(),
     risingStar: z.number(),
     socialLeader: z.number(),
+    biasedLeader: z.number(),
     total: z.number(),
   }),
 
@@ -242,6 +243,7 @@ export const sociometricSummaryItemSchema = z.object({
   risingStars: z.number(),
   socialLeaders: z.number(),
   regional: z.number(),
+  biasedLeaders: z.number(),
   total: z.number(),
 });
 

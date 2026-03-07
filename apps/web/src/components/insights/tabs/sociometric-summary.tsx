@@ -28,7 +28,7 @@ interface Props {
   globalFilters?: Partial<InsightsFilterInput>;
 }
 
-type SortField = 'total' | 'discussionLeaders' | 'referralLeaders' | 'adviceLeaders' | 'nationalLeaders' | 'risingStars' | 'socialLeaders' | 'regional' | 'name';
+type SortField = 'total' | 'discussionLeaders' | 'referralLeaders' | 'adviceLeaders' | 'nationalLeaders' | 'risingStars' | 'socialLeaders' | 'biasedLeaders' | 'regional' | 'name';
 type SortOrder = 'asc' | 'desc';
 
 const NOMINATION_COLORS = {
@@ -38,6 +38,7 @@ const NOMINATION_COLORS = {
   nationalLeaders: { bg: 'bg-yellow-50 dark:bg-yellow-950', text: 'text-yellow-700 dark:text-yellow-300', header: 'bg-yellow-100 dark:bg-yellow-900' },
   risingStars: { bg: 'bg-pink-50 dark:bg-pink-950', text: 'text-pink-700 dark:text-pink-300', header: 'bg-pink-100 dark:bg-pink-900' },
   socialLeaders: { bg: 'bg-cyan-50 dark:bg-cyan-950', text: 'text-cyan-700 dark:text-cyan-300', header: 'bg-cyan-100 dark:bg-cyan-900' },
+  biasedLeaders: { bg: 'bg-red-50 dark:bg-red-950', text: 'text-red-700 dark:text-red-300', header: 'bg-red-100 dark:bg-red-900' },
   regional: { bg: 'bg-slate-50 dark:bg-slate-950', text: 'text-slate-700 dark:text-slate-300', header: 'bg-slate-100 dark:bg-slate-900' },
 };
 
@@ -102,7 +103,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, globalFilter
   const sortedItems = data?.items || [];
 
   // Export headers and row builder - shared between CSV and Excel
-  const exportHeaders = ['Rank', 'Name', 'Specialty', 'State', 'Type', 'Discussion', 'Referral', 'Advice', 'National', 'Rising', 'Social', 'Regional', 'Total'];
+  const exportHeaders = ['Rank', 'Name', 'Specialty', 'State', 'Type', 'Discussion', 'Referral', 'Advice', 'National', 'Rising', 'Social', 'Biased', 'Regional', 'Total'];
 
   const buildExportRows = useCallback(() => {
     if (!sortedItems.length) return [];
@@ -118,6 +119,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, globalFilter
       item.nationalLeaders,
       item.risingStars,
       item.socialLeaders,
+      item.biasedLeaders,
       item.regional,
       item.total,
     ]);
@@ -294,6 +296,9 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, globalFilter
                 <SortableHeader field="socialLeaders" className={NOMINATION_COLORS.socialLeaders.header}>
                   Social
                 </SortableHeader>
+                <SortableHeader field="biasedLeaders" className={NOMINATION_COLORS.biasedLeaders.header}>
+                  Biased
+                </SortableHeader>
                 <SortableHeader field="regional" className={NOMINATION_COLORS.regional.header}>
                   Regional
                 </SortableHeader>
@@ -353,6 +358,9 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, globalFilter
                     </TableCell>
                     <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.socialLeaders.bg, NOMINATION_COLORS.socialLeaders.text)}>
                       {item.socialLeaders || '-'}
+                    </TableCell>
+                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.biasedLeaders.bg, NOMINATION_COLORS.biasedLeaders.text)}>
+                      {item.biasedLeaders || '-'}
                     </TableCell>
                     <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.regional.bg, NOMINATION_COLORS.regional.text)}>
                       {item.regional || '-'}

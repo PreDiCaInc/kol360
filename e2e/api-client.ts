@@ -1154,6 +1154,8 @@ export interface SociometricSummary {
     nationalLeader: number;
     risingStar: number;
     socialLeader: number;
+    regionalLeader: number;
+    biasedLeader: number;
   }>;
   total: number;
   page: number;
