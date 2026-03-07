@@ -587,9 +587,9 @@ export default function SurveyPage() {
             </Button>
 
             {saveMessage && (
-              <div className={`text-sm mt-3 p-3 rounded text-center flex items-center justify-center gap-2 ${saveMessage.includes('Failed') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                {!saveMessage.includes('Failed') && <CheckCircle2 className="w-4 h-4" />}
-                {saveMessage.includes('Failed') && <AlertCircle className="w-4 h-4" />}
+              <div className={`text-sm mt-3 p-3 rounded text-center flex items-center justify-center gap-2 ${saveMessage.toLowerCase().includes('failed') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                {!saveMessage.toLowerCase().includes('failed') && <CheckCircle2 className="w-4 h-4" />}
+                {saveMessage.toLowerCase().includes('failed') && <AlertCircle className="w-4 h-4" />}
                 <span>{saveMessage}</span>
               </div>
             )}
