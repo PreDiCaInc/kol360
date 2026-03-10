@@ -2,6 +2,20 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+export class SurveyAlreadyCompletedError extends Error {
+  completed = true;
+  customTitle: string | null;
+  honorariumAmount: number | null;
+  htmlMessage: string;
+
+  constructor(data: { message: string; customTitle?: string | null; honorariumAmount?: number | null }) {
+    super('Survey already completed');
+    this.htmlMessage = data.message;
+    this.customTitle = data.customTitle || null;
+    this.honorariumAmount = data.honorariumAmount || null;
+  }
+}
+
 interface QuestionOption {
   text: string;
   requiresText: boolean;
@@ -56,6 +70,9 @@ async function fetchSurvey(token: string): Promise<SurveyData> {
   const res = await fetch(`${API_BASE}/api/v1/survey/take/${token}`);
   if (!res.ok) {
     const error = await res.json();
+    if (error.completed) {
+      throw new SurveyAlreadyCompletedError(error);
+    }
     throw new Error(error.message || 'Failed to load survey');
   }
   return res.json();

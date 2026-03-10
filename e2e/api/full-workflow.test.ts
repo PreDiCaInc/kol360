@@ -132,9 +132,9 @@ describe('Full Workflow E2E Tests', () => {
     it('should update campaign email templates', async () => {
       const templates = {
         invitationEmailSubject: 'E2E Test: You are invited to participate in our survey',
-        invitationEmailBody: 'Dear {{hcp_name}},\n\nYou have been selected...\n\n{{survey_link}}',
+        invitationEmailBody: 'Dear {firstName} {lastName},\n\nYou have been selected to participate in our survey.\n\n{surveyLink}',
         reminderEmailSubject: 'E2E Test: Reminder to complete your survey',
-        reminderEmailBody: 'Dear {{hcp_name}},\n\nThis is a reminder...\n\n{{survey_link}}',
+        reminderEmailBody: 'Dear {firstName} {lastName},\n\nThis is a reminder to complete your survey.\n\n{surveyLink}',
       };
 
       const { status, data } = await client.updateEmailTemplates(testCampaign.id, templates);
