@@ -7,6 +7,7 @@ import {
   useStartSurvey,
   useSaveProgress,
   useSubmitSurvey,
+  SurveyAlreadyCompletedError,
 } from '@/hooks/use-survey-taking';
 import {
   sanitizeHtml,
@@ -15,6 +16,8 @@ import {
   DEFAULT_WELCOME_MESSAGE,
   DEFAULT_THANKYOU_TITLE,
   DEFAULT_THANKYOU_MESSAGE,
+  DEFAULT_ALREADYDONE_TITLE,
+  DEFAULT_ALREADYDONE_MESSAGE,
   DEFAULT_DISQUALIFIED_TITLE,
   DEFAULT_DISQUALIFIED_MESSAGE,
 } from '@/components/campaigns/template-preview-dialog';
@@ -341,23 +344,34 @@ export default function SurveyPage() {
     );
   }
 
+  // Already completed state - render custom HTML template
+  if (error instanceof SurveyAlreadyCompletedError) {
+    const alreadyDoneHtml = replacePlaceholders(
+      error.htmlMessage || DEFAULT_ALREADYDONE_MESSAGE.trim(),
+      '',
+      error.honorariumAmount,
+      {
+        title: error.customTitle || DEFAULT_ALREADYDONE_TITLE,
+      }
+    );
+
+    return (
+      <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(alreadyDoneHtml) }} />
+    );
+  }
+
   // Error state
   if (error || !survey) {
     const errorMessage = error instanceof Error ? error.message : 'This survey link is invalid or has expired.';
-    const isAlreadyCompleted = errorMessage.includes('already completed') || errorMessage.includes('You have already');
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center text-center">
-              {isAlreadyCompleted ? (
-                <CheckCircle2 className="w-12 h-12 text-green-500 mb-4" />
-              ) : (
-                <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
-              )}
+              <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
               <h2 className="text-xl font-semibold mb-2">
-                {isAlreadyCompleted ? 'Survey Already Completed' : 'Survey Not Available'}
+                Survey Not Available
               </h2>
               <p className="text-muted-foreground">
                 {errorMessage}
