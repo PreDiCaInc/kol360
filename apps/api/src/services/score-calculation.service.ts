@@ -26,6 +26,13 @@ export class ScoreCalculationService {
    * This should be called after nomination matching is complete.
    */
   async calculateSurveyScores(campaignId: string): Promise<{ processed: number; updated: number }> {
+    // Check if campaign excludes internal (bio-exec) emails
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { excludeInternalEmails: true },
+    });
+    const excludeInternal = campaign?.excludeInternalEmails ?? false;
+
     // 1. Get nomination types used in this campaign from survey questions
     const surveyQuestions = await prisma.surveyQuestion.findMany({
       where: {
@@ -49,7 +56,12 @@ export class ScoreCalculationService {
     // 2. Get all MATCHED/NEW_HCP nominations grouped by HCP and nomination type
     const nominations = await prisma.nomination.findMany({
       where: {
-        response: { campaignId },
+        response: {
+          campaignId,
+          ...(excludeInternal && {
+            respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+          }),
+        },
         matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
         matchedHcpId: { not: null },
       },
@@ -148,10 +160,22 @@ export class ScoreCalculationService {
    * Used when campaign has no nomination type assignments
    */
   private async calculateSurveyScoresLegacy(campaignId: string): Promise<{ processed: number; updated: number }> {
+    // Check if campaign excludes internal (bio-exec) emails
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { excludeInternalEmails: true },
+    });
+    const excludeInternal = campaign?.excludeInternalEmails ?? false;
+
     const nominationCounts = await prisma.nomination.groupBy({
       by: ['matchedHcpId'],
       where: {
-        response: { campaignId },
+        response: {
+          campaignId,
+          ...(excludeInternal && {
+            respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+          }),
+        },
         matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
         matchedHcpId: { not: null },
       },

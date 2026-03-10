@@ -4,6 +4,8 @@ import { assignHcpsSchema } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { distributionService } from '../services/distribution.service';
 import { createAuditLog } from '../lib/audit';
+import { importProgressStore } from '../services/import-progress.service';
+import { logger } from '../lib/logger';
 import multipart from '@fastify/multipart';
 
 const campaignIdSchema = z.object({
@@ -179,122 +181,164 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // Send all pending invitations
+  // Send all pending invitations (fire-and-forget with progress tracking)
   fastify.post<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/distribution/send-invitations',
     async (request, reply) => {
-      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      const { campaignId } = request.params;
+      const hasAccess = await verifyCampaignAccess(campaignId, request.user!, reply);
       if (!hasAccess) return;
 
-      try {
-        const result = await distributionService.sendInvitations(request.params.campaignId);
+      // Concurrent-send guard: check if already running for this campaign
+      const activeKey = `email-inv:${campaignId}`;
+      const existing = importProgressStore.findActiveByKey(activeKey);
+      if (existing) {
+        return { progressId: existing.id, status: 'already-running' };
+      }
 
-        await createAuditLog(request.user!.sub, {
-          action: 'distribution.invitations_sent',
-          entityType: 'Campaign',
-          entityId: request.params.campaignId,
-          newValues: {
-            sent: result.sent,
-            failed: result.failed,
-            skipped: result.skipped,
-          },
+      const progressId = `${activeKey}:${Date.now()}`;
+
+      // Fire and forget — don't await
+      distributionService.sendInvitations(campaignId, progressId)
+        .then(async (result) => {
+          await createAuditLog(request.user!.sub, {
+            action: 'distribution.invitations_sent',
+            entityType: 'Campaign',
+            entityId: campaignId,
+            newValues: { sent: result.sent, failed: result.failed, skipped: result.skipped },
+          });
+        })
+        .catch((error) => {
+          logger.error('Background send-invitations failed', { campaignId, progressId }, error instanceof Error ? error : undefined);
         });
 
-        return result;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to send invitations';
-        return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
-      }
+      return { progressId, status: 'started' };
     }
   );
 
-  // Legacy endpoint for sending invitations (backward compatibility)
+  // Legacy endpoint for sending invitations (backward compatibility — also fire-and-forget)
   fastify.post<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/send-invitations',
     async (request, reply) => {
-      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      const { campaignId } = request.params;
+      const hasAccess = await verifyCampaignAccess(campaignId, request.user!, reply);
       if (!hasAccess) return;
 
-      try {
-        const result = await distributionService.sendInvitations(request.params.campaignId);
-
-        await createAuditLog(request.user!.sub, {
-          action: 'campaign.invitations_sent',
-          entityType: 'Campaign',
-          entityId: request.params.campaignId,
-          newValues: { sent: result.sent, failed: result.failed },
-        });
-
-        return result;
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Bad Request',
-          message: error instanceof Error ? error.message : 'Cannot send invitations',
-          statusCode: 400,
-        });
+      const activeKey = `email-inv:${campaignId}`;
+      const existing = importProgressStore.findActiveByKey(activeKey);
+      if (existing) {
+        return { progressId: existing.id, status: 'already-running' };
       }
+
+      const progressId = `${activeKey}:${Date.now()}`;
+
+      distributionService.sendInvitations(campaignId, progressId)
+        .then(async (result) => {
+          await createAuditLog(request.user!.sub, {
+            action: 'campaign.invitations_sent',
+            entityType: 'Campaign',
+            entityId: campaignId,
+            newValues: { sent: result.sent, failed: result.failed },
+          });
+        })
+        .catch((error) => {
+          logger.error('Background send-invitations (legacy) failed', { campaignId, progressId }, error instanceof Error ? error : undefined);
+        });
+
+      return { progressId, status: 'started' };
     }
   );
 
-  // Send reminders to non-responders
+  // Send reminders to non-responders (fire-and-forget with progress tracking)
   fastify.post<{
     Params: { campaignId: string };
     Body: { maxReminders?: number };
   }>(
     '/campaigns/:campaignId/distribution/send-reminders',
     async (request, reply) => {
-      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      const { campaignId } = request.params;
+      const hasAccess = await verifyCampaignAccess(campaignId, request.user!, reply);
       if (!hasAccess) return;
 
-      try {
-        const { maxReminders = 3 } = request.body || {};
-        const result = await distributionService.sendReminders(request.params.campaignId, maxReminders);
+      // Concurrent-send guard
+      const activeKey = `email-rem:${campaignId}`;
+      const existing = importProgressStore.findActiveByKey(activeKey);
+      if (existing) {
+        return { progressId: existing.id, status: 'already-running' };
+      }
 
-        await createAuditLog(request.user!.sub, {
-          action: 'distribution.reminders_sent',
-          entityType: 'Campaign',
-          entityId: request.params.campaignId,
-          newValues: {
-            sent: result.sent,
-            failed: result.failed,
-            skipped: result.skipped,
-            maxReminders,
-          },
+      const progressId = `${activeKey}:${Date.now()}`;
+      const { maxReminders = 3 } = request.body || {};
+
+      // Fire and forget — don't await
+      distributionService.sendReminders(campaignId, maxReminders, progressId)
+        .then(async (result) => {
+          await createAuditLog(request.user!.sub, {
+            action: 'distribution.reminders_sent',
+            entityType: 'Campaign',
+            entityId: campaignId,
+            newValues: { sent: result.sent, failed: result.failed, skipped: result.skipped, maxReminders },
+          });
+        })
+        .catch((error) => {
+          logger.error('Background send-reminders failed', { campaignId, progressId }, error instanceof Error ? error : undefined);
         });
 
-        return result;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to send reminders';
-        return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
-      }
+      return { progressId, status: 'started' };
     }
   );
 
-  // Legacy endpoint for sending reminders (backward compatibility)
+  // Poll email send progress
+  fastify.get<{ Params: { campaignId: string; progressId: string } }>(
+    '/campaigns/:campaignId/distribution/progress/:progressId',
+    async (request, reply) => {
+      const { campaignId, progressId } = request.params;
+      const hasAccess = await verifyCampaignAccess(campaignId, request.user!, reply);
+      if (!hasAccess) return;
+
+      const progress = importProgressStore.get(progressId);
+      if (!progress) {
+        return reply.status(404).send({
+          error: 'Not Found',
+          message: 'Progress not found or expired',
+          statusCode: 404,
+        });
+      }
+
+      return progress;
+    }
+  );
+
+  // Legacy endpoint for sending reminders (backward compatibility — also fire-and-forget)
   fastify.post<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/send-reminders',
     async (request, reply) => {
-      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      const { campaignId } = request.params;
+      const hasAccess = await verifyCampaignAccess(campaignId, request.user!, reply);
       if (!hasAccess) return;
 
-      try {
-        const result = await distributionService.sendReminders(request.params.campaignId);
-
-        await createAuditLog(request.user!.sub, {
-          action: 'campaign.reminders_sent',
-          entityType: 'Campaign',
-          entityId: request.params.campaignId,
-          newValues: { sent: result.sent },
-        });
-
-        return result;
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Bad Request',
-          message: error instanceof Error ? error.message : 'Cannot send reminders',
-          statusCode: 400,
-        });
+      const activeKey = `email-rem:${campaignId}`;
+      const existing = importProgressStore.findActiveByKey(activeKey);
+      if (existing) {
+        return { progressId: existing.id, status: 'already-running' };
       }
+
+      const progressId = `${activeKey}:${Date.now()}`;
+
+      distributionService.sendReminders(campaignId, 3, progressId)
+        .then(async (result) => {
+          await createAuditLog(request.user!.sub, {
+            action: 'campaign.reminders_sent',
+            entityType: 'Campaign',
+            entityId: campaignId,
+            newValues: { sent: result.sent },
+          });
+        })
+        .catch((error) => {
+          logger.error('Background send-reminders (legacy) failed', { campaignId, progressId }, error instanceof Error ? error : undefined);
+        });
+
+      return { progressId, status: 'started' };
     }
   );
 

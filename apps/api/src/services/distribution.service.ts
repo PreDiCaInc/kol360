@@ -113,12 +113,12 @@ export class DistributionService {
     return { removed: true };
   }
 
-  async sendInvitations(campaignId: string) {
-    return emailService.sendBulkInvitations(campaignId);
+  async sendInvitations(campaignId: string, progressId?: string) {
+    return emailService.sendBulkInvitations(campaignId, progressId);
   }
 
-  async sendReminders(campaignId: string, maxReminders: number = 3) {
-    return emailService.sendBulkReminders(campaignId, maxReminders);
+  async sendReminders(campaignId: string, maxReminders: number = 3, progressId?: string) {
+    return emailService.sendBulkReminders(campaignId, maxReminders, progressId);
   }
 
   async sendSingleInvitation(campaignId: string, hcpId: string) {

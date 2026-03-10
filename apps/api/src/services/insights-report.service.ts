@@ -331,7 +331,8 @@ export class InsightsReportService {
    */
   async getLeaderRankings(
     diseaseAreaId: string,
-    query: LeaderRankingQuery
+    query: LeaderRankingQuery,
+    excludeInternalEmails = false
   ): Promise<LeaderRankingsResponse> {
     try {
     const { nominationType, page, limit, specialty, state, specialties, states } = query;
@@ -346,6 +347,11 @@ export class InsightsReportService {
           nominationType,
           campaign: { diseaseAreaId },
         },
+        ...(excludeInternalEmails && {
+          response: {
+            respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+          },
+        }),
       },
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
@@ -434,7 +440,7 @@ export class InsightsReportService {
   /**
    * Get individual KOL profile with all scores and nomination counts
    */
-  async getKolProfile(diseaseAreaId: string, hcpId: string): Promise<KolProfileWithNominators | null> {
+  async getKolProfile(diseaseAreaId: string, hcpId: string, excludeInternalEmails = false): Promise<KolProfileWithNominators | null> {
     try {
     // Get HCP with disease area score
     const hcp = await prisma.hcp.findUnique({
@@ -462,7 +468,12 @@ export class InsightsReportService {
       where: {
         matchedHcpId: hcpId,
         matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
-        response: { campaign: { diseaseAreaId } },
+        response: {
+          campaign: { diseaseAreaId },
+          ...(excludeInternalEmails && {
+            respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+          }),
+        },
       },
       include: {
         question: {

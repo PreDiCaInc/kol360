@@ -9,6 +9,7 @@ import {
   useRemoveHcp,
   useSendInvitations,
   useSendReminders,
+  useEmailProgress,
 } from '@/hooks/use-distribution';
 import { useHcps } from '@/hooks/use-hcps';
 import { Button } from '@/components/ui/button';
@@ -61,7 +62,9 @@ import {
   Eye,
   Loader2,
   Upload,
+  Mail,
 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { CampaignHcpImportDialog } from './campaign-hcp-import-dialog';
 
 interface CampaignHcpsTabProps {
@@ -81,12 +84,20 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
   const [selectedHcpIds, setSelectedHcpIds] = useState<string[]>([]);
   const [hcpToRemove, setHcpToRemove] = useState<{ id: string; name: string } | null>(null);
   const [showSendConfirm, setShowSendConfirm] = useState<'invitations' | 'reminders' | null>(null);
-  const [sendResult, setSendResult] = useState<{ sent: number; failed?: number; skipped?: number; skippedCompleted?: number; skippedRecentlyReminded?: number; skippedMaxReminders?: number; errors: Array<{ email: string; error: string }> } | null>(null);
+  const [sendProgressId, setSendProgressId] = useState<string | null>(null);
+  const [sendResult, setSendResult] = useState<{ sent: number; failed?: number; skipped?: number; skippedCompleted?: number; skippedRecentlyReminded?: number; skippedMaxReminders?: number; skippedNoEmail?: number; skippedOptedOut?: number; skippedRecentlySurveyed?: number; errors: Array<{ email: string; error: string }> } | null>(null);
 
   const assignHcps = useAssignHcps();
   const removeHcp = useRemoveHcp();
   const sendInvitations = useSendInvitations();
   const sendReminders = useSendReminders();
+  const { data: emailProgress } = useEmailProgress(campaignId, sendProgressId);
+
+  // When progress completes or fails, extract the final result
+  const progressDone = emailProgress?.status === 'completed' || emailProgress?.status === 'failed';
+  const progressPct = emailProgress && emailProgress.total > 0
+    ? Math.round((emailProgress.processed / emailProgress.total) * 100)
+    : 0;
 
   const assignedHcpIds = new Set(campaignHcps?.map((ch) => ch.hcpId) || []);
   const availableHcps = allHcps?.items.filter((hcp) => !assignedHcpIds.has(hcp.id)) || [];
@@ -114,17 +125,27 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
 
   const handleSend = async () => {
     try {
+      let result;
       if (showSendConfirm === 'invitations') {
-        const result = await sendInvitations.mutateAsync(campaignId);
-        setSendResult(result);
+        result = await sendInvitations.mutateAsync(campaignId);
       } else if (showSendConfirm === 'reminders') {
-        const result = await sendReminders.mutateAsync(campaignId);
-        setSendResult(result);
+        result = await sendReminders.mutateAsync(campaignId);
+      }
+      if (result?.progressId) {
+        setSendProgressId(result.progressId);
       }
       setShowSendConfirm(null);
     } catch (error) {
       console.error('Failed to send:', error);
     }
+  };
+
+  const handleProgressClose = () => {
+    // Extract final result from progress data if available
+    if (emailProgress?.resultData) {
+      setSendResult(emailProgress.resultData as typeof sendResult);
+    }
+    setSendProgressId(null);
   };
 
   const toggleHcpSelection = (hcpId: string) => {
@@ -404,6 +425,88 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Email Send Progress Dialog */}
+      <Dialog open={!!sendProgressId} onOpenChange={(open) => { if (!open) handleProgressClose(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="w-5 h-5 text-blue-500" />
+              {emailProgress?.status === 'completed' ? 'Emails Sent' :
+               emailProgress?.status === 'failed' ? 'Send Failed' :
+               'Sending Emails...'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            {/* Progress bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>{emailProgress?.processed || 0} / {emailProgress?.total || 0} processed</span>
+                <span>{progressPct}%</span>
+              </div>
+              <Progress value={progressPct} className="h-3" />
+            </div>
+
+            {/* Live stats */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center p-2 bg-green-50 rounded-lg">
+                <p className="text-lg font-bold text-green-600">{emailProgress?.created || 0}</p>
+                <p className="text-xs text-muted-foreground">Sent</p>
+              </div>
+              <div className="text-center p-2 bg-gray-50 rounded-lg">
+                <p className="text-lg font-bold text-muted-foreground">{emailProgress?.updated || 0}</p>
+                <p className="text-xs text-muted-foreground">Skipped</p>
+              </div>
+              <div className="text-center p-2 bg-red-50 rounded-lg">
+                <p className="text-lg font-bold text-red-600">{emailProgress?.errors || 0}</p>
+                <p className="text-xs text-muted-foreground">Failed</p>
+              </div>
+            </div>
+
+            {/* Current item / ETA */}
+            {emailProgress?.status === 'processing' && (
+              <div className="space-y-1">
+                {emailProgress.currentItem && (
+                  <p className="text-xs text-muted-foreground truncate">
+                    {emailProgress.currentItem}
+                  </p>
+                )}
+                {emailProgress.estimatedSecondsRemaining != null && emailProgress.estimatedSecondsRemaining > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Est. remaining: {Math.floor(emailProgress.estimatedSecondsRemaining / 60)}m {emailProgress.estimatedSecondsRemaining % 60}s
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Failure message */}
+            {emailProgress?.status === 'failed' && emailProgress.currentItem && (
+              <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                <p className="text-sm text-red-700">{emailProgress.currentItem}</p>
+              </div>
+            )}
+
+            {/* Completion message */}
+            {emailProgress?.status === 'completed' && (
+              <p className="text-sm text-green-600 flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4" />
+                All emails processed successfully
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            {progressDone ? (
+              <Button onClick={handleProgressClose}>
+                {emailProgress?.resultData ? 'View Details' : 'Close'}
+              </Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                You can close this dialog — sending will continue in the background.
+              </p>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Send Result Dialog */}
       <Dialog open={!!sendResult} onOpenChange={() => setSendResult(null)}>
         <DialogContent>
@@ -431,19 +534,26 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
                 <p className="text-lg">
                   Skipped: <strong className="text-muted-foreground">{sendResult?.skipped}</strong>
                 </p>
-                {((sendResult?.skippedCompleted ?? 0) > 0 || (sendResult?.skippedRecentlyReminded ?? 0) > 0 || (sendResult?.skippedMaxReminders ?? 0) > 0) && (
-                  <ul className="text-sm text-muted-foreground ml-4 list-disc">
-                    {(sendResult?.skippedCompleted ?? 0) > 0 && (
-                      <li>{sendResult?.skippedCompleted} already completed</li>
-                    )}
-                    {(sendResult?.skippedMaxReminders ?? 0) > 0 && (
-                      <li>{sendResult?.skippedMaxReminders} reached max reminders</li>
-                    )}
-                    {(sendResult?.skippedRecentlyReminded ?? 0) > 0 && (
-                      <li>{sendResult?.skippedRecentlyReminded} received a reminder within the last 24 hrs</li>
-                    )}
-                  </ul>
-                )}
+                <ul className="text-sm text-muted-foreground ml-4 list-disc">
+                  {(sendResult?.skippedCompleted ?? 0) > 0 && (
+                    <li>{sendResult?.skippedCompleted} already completed</li>
+                  )}
+                  {(sendResult?.skippedMaxReminders ?? 0) > 0 && (
+                    <li>{sendResult?.skippedMaxReminders} reached max reminders</li>
+                  )}
+                  {(sendResult?.skippedRecentlyReminded ?? 0) > 0 && (
+                    <li>{sendResult?.skippedRecentlyReminded} received a reminder within the last 24 hrs</li>
+                  )}
+                  {(sendResult?.skippedNoEmail ?? 0) > 0 && (
+                    <li>{sendResult?.skippedNoEmail} have no email address</li>
+                  )}
+                  {(sendResult?.skippedOptedOut ?? 0) > 0 && (
+                    <li>{sendResult?.skippedOptedOut} opted out</li>
+                  )}
+                  {(sendResult?.skippedRecentlySurveyed ?? 0) > 0 && (
+                    <li>{sendResult?.skippedRecentlySurveyed} recently surveyed</li>
+                  )}
+                </ul>
               </div>
             )}
             {sendResult?.errors && sendResult.errors.length > 0 && (

@@ -297,13 +297,21 @@ describe('Full Workflow E2E Tests', () => {
   // ==================== Phase 4: Invitation Flow ====================
 
   describe('Phase 4: Invitation Flow', () => {
-    it('should send invitations to HCPs', async () => {
+    it('should send invitations to HCPs (background with progress)', async () => {
       const { status, data } = await client.sendInvitations(testCampaign.id);
 
       expect(status).toBe(200);
-      expect(data.sent).toBeGreaterThanOrEqual(0);
+      expect(data.progressId).toBeTruthy();
+      expect(data.status).toBe('started');
 
-      console.log(`✅ Sent ${data.sent} invitations (${data.failed} failed, ${data.skipped} skipped)`);
+      // Wait for email sending to complete
+      const progress = await client.waitForEmailProgress(testCampaign.id, data.progressId, 60000);
+      expect(progress.status).toBe('completed');
+
+      const sent = progress.resultData?.sent ?? progress.created;
+      const failed = progress.resultData?.failed ?? progress.errors;
+      const skipped = progress.resultData?.skipped ?? progress.updated;
+      console.log(`✅ Sent ${sent} invitations (${failed} failed, ${skipped} skipped)`);
 
       // Note: Check hcp2@bio-exec.com inbox to verify email received
       const realEmailHcp = getRealEmailHcp();

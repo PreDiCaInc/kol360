@@ -19,10 +19,10 @@ export class ExportService {
    * Export all completed survey responses for a campaign
    */
   async exportResponses(campaignId: string): Promise<ExportResult> {
-    // Get campaign info for filename
+    // Get campaign info for filename and internal email setting
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { name: true },
+      select: { name: true, excludeInternalEmails: true },
     });
 
     if (!campaign) {
@@ -45,6 +45,9 @@ export class ExportService {
       where: {
         campaignId,
         status: 'COMPLETED',
+        ...(campaign.excludeInternalEmails && {
+          respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+        }),
       },
       include: {
         respondentHcp: {
@@ -150,14 +153,20 @@ export class ExportService {
         compositeScoreConfig: true,
       },
     });
+    const excludeInternal = campaign?.excludeInternalEmails ?? false;
 
     if (!campaign) {
       throw new Error('Campaign not found');
     }
 
-    // Get campaign scores with HCP info
+    // Get campaign scores with HCP info (exclude internal emails if configured)
     const scores = await prisma.hcpCampaignScore.findMany({
-      where: { campaignId },
+      where: {
+        campaignId,
+        ...(excludeInternal && {
+          hcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+        }),
+      },
       include: {
         hcp: {
           select: {

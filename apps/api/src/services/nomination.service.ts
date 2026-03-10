@@ -55,8 +55,20 @@ export class NominationService {
   async listForCampaign(campaignId: string, params: ListParams) {
     const { status, page, limit } = params;
 
+    // Check if campaign excludes internal (bio-exec) emails
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { excludeInternalEmails: true },
+    });
+    const excludeInternal = campaign?.excludeInternalEmails ?? false;
+
     const where: Record<string, unknown> = {
-      response: { campaignId },
+      response: {
+        campaignId,
+        ...(excludeInternal && {
+          respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+        }),
+      },
     };
     if (status) where.matchStatus = status;
 
