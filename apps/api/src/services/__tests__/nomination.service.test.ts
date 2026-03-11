@@ -19,6 +19,9 @@ vi.mock('../../lib/prisma', () => {
       update: vi.fn(),
       groupBy: vi.fn(),
     },
+    campaign: {
+      findUnique: vi.fn(),
+    },
     hcp: mockHcp,
     hcpAlias: {
       findFirst: vi.fn(),
@@ -54,6 +57,7 @@ describe('NominationService', () => {
         },
       ];
 
+      (prisma.campaign.findUnique as Mock).mockResolvedValue({ excludeInternalEmails: false });
       (prisma.nomination.count as Mock).mockResolvedValue(1);
       (prisma.nomination.findMany as Mock).mockResolvedValue(mockNominations);
 
@@ -67,6 +71,7 @@ describe('NominationService', () => {
     });
 
     it('should filter by status', async () => {
+      (prisma.campaign.findUnique as Mock).mockResolvedValue({ excludeInternalEmails: false });
       (prisma.nomination.count as Mock).mockResolvedValue(0);
       (prisma.nomination.findMany as Mock).mockResolvedValue([]);
 
