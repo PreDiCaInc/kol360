@@ -34,6 +34,7 @@ interface Campaign {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  excludeInternalEmails: boolean;
   // Workflow step confirmations
   scoreConfigConfirmedAt: string | null;
   templatesConfirmedAt: string | null;

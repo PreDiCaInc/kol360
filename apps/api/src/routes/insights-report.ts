@@ -148,7 +148,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const query = leaderRankingQuerySchema.parse(request.query);
-      return insightsReportService.getLeaderRankings(diseaseAreaId, query);
+      const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
+      return insightsReportService.getLeaderRankings(diseaseAreaId, query, excludeInternal);
     }
   );
 
@@ -163,7 +164,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
         return;
       }
 
-      const profile = await insightsReportService.getKolProfile(diseaseAreaId, hcpId);
+      const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
+      const profile = await insightsReportService.getKolProfile(diseaseAreaId, hcpId, excludeInternal);
       if (!profile) {
         return reply.status(404).send({
           error: 'Not Found',
@@ -203,7 +205,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
         return;
       }
 
-      return insightsReportService.getRespondentAnalytics(diseaseAreaId);
+      const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
+      return insightsReportService.getRespondentAnalytics(diseaseAreaId, excludeInternal);
     }
   );
 

@@ -1,6 +1,7 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
+import { importProgressStore } from './import-progress.service';
 
 const ses = new SESClient({
   region: process.env.AWS_REGION || 'us-east-2',
@@ -486,7 +487,7 @@ ${unsubscribeUrl}
   /**
    * Send invitations to all uninvited HCPs in a campaign
    */
-  async sendBulkInvitations(campaignId: string): Promise<BulkSendResult> {
+  async sendBulkInvitations(campaignId: string, progressId?: string): Promise<BulkSendResult> {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       select: {
@@ -580,148 +581,197 @@ ${unsubscribeUrl}
       errors: [],
     };
 
-    for (const campaignHcp of uninvitedHcps) {
-      const { hcp, surveyToken } = campaignHcp;
+    // Start progress tracking if progressId provided
+    if (progressId) {
+      importProgressStore.start(progressId, 'email-invitations', uninvitedHcps.length);
+    }
 
-      // Check: No email
-      if (!hcp.email) {
-        result.skipped++;
-        result.skippedNoEmail = (result.skippedNoEmail || 0) + 1;
-        result.errors.push({ email: 'N/A', error: `HCP ${hcp.firstName} ${hcp.lastName} has no email` });
-        continue;
-      }
+    try {
+      for (let i = 0; i < uninvitedHcps.length; i++) {
+        const campaignHcp = uninvitedHcps[i];
+        const { hcp, surveyToken } = campaignHcp;
 
-      // Check: Opted out
-      if (optedOutEmails.has(hcp.email.toLowerCase())) {
-        result.skipped++;
-        result.skippedOptedOut = (result.skippedOptedOut || 0) + 1;
-        result.errors.push({ email: hcp.email, error: 'Opted out' });
-        continue;
-      }
-
-      // Check: Recently surveyed in same disease area
-      if (recentlySurveyedHcpIds.has(hcp.id)) {
-        result.skipped++;
-        result.skippedRecentlySurveyed = (result.skippedRecentlySurveyed || 0) + 1;
-
-        // Find the most recent completed survey for this HCP in same disease area
-        const previousSurvey = recentlyCompletedSurveys.find(r => r.respondentHcpId === hcp.id);
-
-        // Create a SurveyResponse with RECENTLY_SURVEYED status
-        await prisma.surveyResponse.upsert({
-          where: {
-            surveyToken: surveyToken,
-          },
-          create: {
-            campaignId,
-            respondentHcpId: hcp.id,
-            surveyToken,
-            status: 'RECENTLY_SURVEYED',
-            completedAt: previousSurvey?.completedAt, // Carry over completion date for reference
-          },
-          update: {
-            status: 'RECENTLY_SURVEYED',
-            completedAt: previousSurvey?.completedAt,
-          },
-        });
-
-        // Copy nominations (survey responses) from the previous campaign to current campaign
-        // This copies how the HCP rated/nominated others, not the scores they received
-        const previousResponse = await prisma.surveyResponse.findFirst({
-          where: {
-            respondentHcpId: hcp.id,
-            status: 'COMPLETED',
-            completedAt: { gte: oneYearAgo },
-            campaign: {
-              diseaseAreaId: campaign.diseaseAreaId,
-              id: { not: campaignId },
-            },
-          },
-          include: {
-            nominations: {
-              include: {
-                question: { select: { nominationType: true } },
-              },
-            },
-          },
-          orderBy: { completedAt: 'desc' },
-        });
-
-        let nominationsCopied = 0;
-        if (previousResponse && previousResponse.nominations.length > 0) {
-          // Get the SurveyResponse we just created for the new campaign
-          const newResponse = await prisma.surveyResponse.findUnique({
-            where: { surveyToken },
-          });
-
-          if (newResponse) {
-            // Get survey questions for the current campaign (mapped by nominationType)
-            const currentCampaignQuestions = await prisma.surveyQuestion.findMany({
-              where: { campaignId, nominationType: { not: null } },
+        // Check: No email
+        if (!hcp.email) {
+          result.skipped++;
+          result.skippedNoEmail = (result.skippedNoEmail || 0) + 1;
+          result.errors.push({ email: 'N/A', error: `HCP ${hcp.firstName} ${hcp.lastName} has no email` });
+          if (progressId) {
+            importProgressStore.update(progressId, {
+              processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
+              currentItem: `Skipped: ${hcp.firstName} ${hcp.lastName} (no email)`,
             });
-            const questionByType = new Map(
-              currentCampaignQuestions.map(q => [q.nominationType, q.id])
-            );
-
-            // Copy each nomination to the new campaign
-            for (const nomination of previousResponse.nominations) {
-              const nominationType = nomination.question?.nominationType;
-              if (!nominationType) continue;
-
-              const targetQuestionId = questionByType.get(nominationType);
-              if (!targetQuestionId) continue;
-
-              await prisma.nomination.create({
-                data: {
-                  responseId: newResponse.id,
-                  questionId: targetQuestionId,
-                  nominatorHcpId: hcp.id,
-                  rawNameEntered: nomination.rawNameEntered,
-                  matchedHcpId: nomination.matchedHcpId,
-                  matchStatus: nomination.matchStatus,
-                  matchedBy: nomination.matchedBy,
-                  matchedAt: nomination.matchedAt,
-                  matchConfidence: nomination.matchConfidence,
-                  matchType: nomination.matchType,
-                  excludeReason: nomination.excludeReason,
-                },
-              });
-              nominationsCopied++;
-            }
           }
+          continue;
         }
 
-        result.errors.push({
-          email: hcp.email,
-          error: `Recently surveyed in same disease area - ${nominationsCopied} nominations copied`,
-        });
-        continue;
+        // Check: Opted out
+        if (optedOutEmails.has(hcp.email.toLowerCase())) {
+          result.skipped++;
+          result.skippedOptedOut = (result.skippedOptedOut || 0) + 1;
+          result.errors.push({ email: hcp.email, error: 'Opted out' });
+          if (progressId) {
+            importProgressStore.update(progressId, {
+              processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
+              currentItem: `Skipped: ${hcp.email} (opted out)`,
+            });
+          }
+          continue;
+        }
+
+        // Check: Recently surveyed in same disease area
+        if (recentlySurveyedHcpIds.has(hcp.id)) {
+          result.skipped++;
+          result.skippedRecentlySurveyed = (result.skippedRecentlySurveyed || 0) + 1;
+
+          // Find the most recent completed survey for this HCP in same disease area
+          const previousSurvey = recentlyCompletedSurveys.find(r => r.respondentHcpId === hcp.id);
+
+          // Create a SurveyResponse with RECENTLY_SURVEYED status
+          await prisma.surveyResponse.upsert({
+            where: {
+              surveyToken: surveyToken,
+            },
+            create: {
+              campaignId,
+              respondentHcpId: hcp.id,
+              surveyToken,
+              status: 'RECENTLY_SURVEYED',
+              completedAt: previousSurvey?.completedAt,
+            },
+            update: {
+              status: 'RECENTLY_SURVEYED',
+              completedAt: previousSurvey?.completedAt,
+            },
+          });
+
+          // Copy nominations from the previous campaign to current campaign
+          const previousResponse = await prisma.surveyResponse.findFirst({
+            where: {
+              respondentHcpId: hcp.id,
+              status: 'COMPLETED',
+              completedAt: { gte: oneYearAgo },
+              campaign: {
+                diseaseAreaId: campaign.diseaseAreaId,
+                id: { not: campaignId },
+              },
+            },
+            include: {
+              nominations: {
+                include: {
+                  question: { select: { nominationType: true } },
+                },
+              },
+            },
+            orderBy: { completedAt: 'desc' },
+          });
+
+          let nominationsCopied = 0;
+          if (previousResponse && previousResponse.nominations.length > 0) {
+            const newResponse = await prisma.surveyResponse.findUnique({
+              where: { surveyToken },
+            });
+
+            if (newResponse) {
+              const currentCampaignQuestions = await prisma.surveyQuestion.findMany({
+                where: { campaignId, nominationType: { not: null } },
+              });
+              const questionByType = new Map(
+                currentCampaignQuestions.map(q => [q.nominationType, q.id])
+              );
+
+              for (const nomination of previousResponse.nominations) {
+                const nominationType = nomination.question?.nominationType;
+                if (!nominationType) continue;
+
+                const targetQuestionId = questionByType.get(nominationType);
+                if (!targetQuestionId) continue;
+
+                await prisma.nomination.create({
+                  data: {
+                    responseId: newResponse.id,
+                    questionId: targetQuestionId,
+                    nominatorHcpId: hcp.id,
+                    rawNameEntered: nomination.rawNameEntered,
+                    matchedHcpId: nomination.matchedHcpId,
+                    matchStatus: nomination.matchStatus,
+                    matchedBy: nomination.matchedBy,
+                    matchedAt: nomination.matchedAt,
+                    matchConfidence: nomination.matchConfidence,
+                    matchType: nomination.matchType,
+                    excludeReason: nomination.excludeReason,
+                  },
+                });
+                nominationsCopied++;
+              }
+            }
+          }
+
+          result.errors.push({
+            email: hcp.email,
+            error: `Recently surveyed in same disease area - ${nominationsCopied} nominations copied`,
+          });
+          if (progressId) {
+            importProgressStore.update(progressId, {
+              processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
+              currentItem: `Skipped: ${hcp.email} (recently surveyed)`,
+            });
+          }
+          continue;
+        }
+
+        try {
+          await this.sendSurveyInvitation({
+            campaignId,
+            hcpId: hcp.id,
+            email: hcp.email,
+            firstName: hcp.firstName,
+            lastName: hcp.lastName,
+            surveyToken,
+            campaignName: campaign.name,
+            honorariumAmount: campaign.honorariumAmount ? Number(campaign.honorariumAmount) : null,
+            customSubject: campaign.invitationEmailSubject,
+            customBody: campaign.invitationEmailBody,
+          });
+          result.sent++;
+
+          // Small delay to avoid SES rate limits (14 emails/sec for sandbox)
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          result.failed++;
+          result.errors.push({
+            email: hcp.email,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+
+        // Update progress after each HCP (sent or failed)
+        if (progressId) {
+          importProgressStore.update(progressId, {
+            processed: i + 1,
+            created: result.sent,
+            updated: result.skipped,
+            errors: result.failed,
+            currentItem: `${hcp.email}`,
+          });
+        }
       }
 
-      try {
-        await this.sendSurveyInvitation({
-          campaignId,
-          hcpId: hcp.id,
-          email: hcp.email,
-          firstName: hcp.firstName,
-          lastName: hcp.lastName,
-          surveyToken,
-          campaignName: campaign.name,
-          honorariumAmount: campaign.honorariumAmount ? Number(campaign.honorariumAmount) : null,
-          customSubject: campaign.invitationEmailSubject,
-          customBody: campaign.invitationEmailBody,
-        });
-        result.sent++;
-
-        // Small delay to avoid SES rate limits (14 emails/sec for sandbox)
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        result.failed++;
-        result.errors.push({
-          email: hcp.email,
-          error: error instanceof Error ? error.message : 'Unknown error',
+      // Mark complete with full result data
+      if (progressId) {
+        importProgressStore.complete(progressId, {
+          created: result.sent,
+          updated: result.skipped,
+          errors: result.failed,
+          resultData: result as unknown as Record<string, unknown>,
         });
       }
+    } catch (error) {
+      // Catastrophic failure (auth error, etc.)
+      if (progressId) {
+        importProgressStore.fail(progressId, error instanceof Error ? error.message : 'Unknown error');
+      }
+      throw error;
     }
 
     return result;
@@ -730,7 +780,7 @@ ${unsubscribeUrl}
   /**
    * Send reminders to all HCPs who haven't completed the survey
    */
-  async sendBulkReminders(campaignId: string, maxReminders: number = 3): Promise<BulkSendResult> {
+  async sendBulkReminders(campaignId: string, maxReminders: number = 3, progressId?: string): Promise<BulkSendResult> {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       select: {
@@ -791,60 +841,118 @@ ${unsubscribeUrl}
       errors: [],
     };
 
-    for (const campaignHcp of allInvitedHcps) {
-      const { hcp, surveyToken, reminderCount, lastReminderAt } = campaignHcp;
+    // Start progress tracking if progressId provided
+    if (progressId) {
+      importProgressStore.start(progressId, 'email-reminders', allInvitedHcps.length);
+    }
 
-      // Check if completed (highest priority - count all completed)
-      if (completedHcpIds.has(hcp.id)) {
-        result.skipped++;
-        result.skippedCompleted!++;
-        continue;
+    try {
+      for (let i = 0; i < allInvitedHcps.length; i++) {
+        const campaignHcp = allInvitedHcps[i];
+        const { hcp, surveyToken, reminderCount, lastReminderAt } = campaignHcp;
+
+        // Check if completed (highest priority - count all completed)
+        if (completedHcpIds.has(hcp.id)) {
+          result.skipped++;
+          result.skippedCompleted!++;
+          if (progressId) {
+            importProgressStore.update(progressId, {
+              processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
+              currentItem: `Skipped: ${hcp.email || hcp.firstName} (completed)`,
+            });
+          }
+          continue;
+        }
+
+        // Check if max reminders reached
+        if (reminderCount >= maxReminders) {
+          result.skipped++;
+          result.skippedMaxReminders!++;
+          if (progressId) {
+            importProgressStore.update(progressId, {
+              processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
+              currentItem: `Skipped: ${hcp.email || hcp.firstName} (max reminders)`,
+            });
+          }
+          continue;
+        }
+
+        // Check 24-hour cooldown (only in production mode)
+        if (!MOCK_MODE && lastReminderAt && lastReminderAt >= oneDayAgo) {
+          result.skipped++;
+          result.skippedRecentlyReminded!++;
+          if (progressId) {
+            importProgressStore.update(progressId, {
+              processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
+              currentItem: `Skipped: ${hcp.email || hcp.firstName} (recently reminded)`,
+            });
+          }
+          continue;
+        }
+
+        if (!hcp.email) {
+          result.skipped++;
+          if (progressId) {
+            importProgressStore.update(progressId, {
+              processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
+              currentItem: `Skipped: ${hcp.firstName} ${hcp.lastName} (no email)`,
+            });
+          }
+          continue;
+        }
+
+        try {
+          await this.sendReminderEmail({
+            campaignId,
+            hcpId: hcp.id,
+            email: hcp.email,
+            firstName: hcp.firstName,
+            lastName: hcp.lastName,
+            surveyToken,
+            campaignName: campaign.name,
+            honorariumAmount: campaign.honorariumAmount ? Number(campaign.honorariumAmount) : null,
+            reminderNumber: reminderCount + 1,
+            customSubject: campaign.reminderEmailSubject,
+            customBody: campaign.reminderEmailBody,
+          });
+          result.sent++;
+
+          // Small delay to avoid SES rate limits
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          result.failed++;
+          result.errors.push({
+            email: hcp.email,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+
+        // Update progress after each HCP
+        if (progressId) {
+          importProgressStore.update(progressId, {
+            processed: i + 1,
+            created: result.sent,
+            updated: result.skipped,
+            errors: result.failed,
+            currentItem: `${hcp.email}`,
+          });
+        }
       }
 
-      // Check if max reminders reached
-      if (reminderCount >= maxReminders) {
-        result.skipped++;
-        result.skippedMaxReminders!++;
-        continue;
-      }
-
-      // Check 24-hour cooldown (only in production mode)
-      if (!MOCK_MODE && lastReminderAt && lastReminderAt >= oneDayAgo) {
-        result.skipped++;
-        result.skippedRecentlyReminded!++;
-        continue;
-      }
-
-      if (!hcp.email) {
-        result.skipped++;
-        continue;
-      }
-
-      try {
-        await this.sendReminderEmail({
-          campaignId,
-          hcpId: hcp.id,
-          email: hcp.email,
-          firstName: hcp.firstName,
-          lastName: hcp.lastName,
-          surveyToken,
-          campaignName: campaign.name,
-          honorariumAmount: campaign.honorariumAmount ? Number(campaign.honorariumAmount) : null,
-          reminderNumber: reminderCount + 1,
-          customSubject: campaign.reminderEmailSubject,
-          customBody: campaign.reminderEmailBody,
+      // Mark complete with full result data
+      if (progressId) {
+        importProgressStore.complete(progressId, {
+          created: result.sent,
+          updated: result.skipped,
+          errors: result.failed,
+          resultData: result as unknown as Record<string, unknown>,
         });
-        result.sent++;
-
-        // Small delay to avoid SES rate limits
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        result.failed++;
-        result.errors.push({
-          email: hcp.email,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
       }
+    } catch (error) {
+      if (progressId) {
+        importProgressStore.fail(progressId, error instanceof Error ? error.message : 'Unknown error');
+      }
+      throw error;
     }
 
     return result;

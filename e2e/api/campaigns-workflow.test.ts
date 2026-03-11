@@ -149,6 +149,26 @@ describe.skipIf(skipIfNoAuth)('Campaign Workflow E2E', () => {
       expect(status).toBe(200);
       expect(data.description).toBe(newDescription);
     });
+
+    it('should toggle excludeInternalEmails', async () => {
+      // Enable exclude internal emails
+      const { status: s1, data: d1 } = await api.updateCampaign(testCampaignId!, {
+        excludeInternalEmails: true,
+      });
+      expect(s1).toBe(200);
+      expect(d1.excludeInternalEmails).toBe(true);
+
+      // Verify it persists on fetch
+      const { data: fetched } = await api.getCampaign(testCampaignId!);
+      expect(fetched.excludeInternalEmails).toBe(true);
+
+      // Disable it
+      const { status: s2, data: d2 } = await api.updateCampaign(testCampaignId!, {
+        excludeInternalEmails: false,
+      });
+      expect(s2).toBe(200);
+      expect(d2.excludeInternalEmails).toBe(false);
+    });
   });
 
   describe('Step 5: Remove HCP', () => {

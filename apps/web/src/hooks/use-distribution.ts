@@ -42,6 +42,38 @@ interface SendResult {
   errors: Array<{ email: string; error: string }>;
 }
 
+interface SendStartResult {
+  progressId: string;
+  status: 'started' | 'already-running';
+}
+
+interface EmailProgress {
+  id: string;
+  type: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  total: number;
+  processed: number;
+  created: number;   // sent count
+  updated: number;   // skipped count
+  errors: number;    // failed count
+  startedAt: string;
+  completedAt?: string;
+  currentItem?: string;
+  estimatedSecondsRemaining?: number;
+  resultData?: {
+    sent: number;
+    failed: number;
+    skipped: number;
+    skippedNoEmail?: number;
+    skippedOptedOut?: number;
+    skippedRecentlySurveyed?: number;
+    skippedCompleted?: number;
+    skippedRecentlyReminded?: number;
+    skippedMaxReminders?: number;
+    errors: Array<{ email: string; error: string }>;
+  };
+}
+
 export function useCampaignHcps(campaignId: string) {
   return useQuery({
     queryKey: ['campaigns', campaignId, 'hcps'],
@@ -90,27 +122,40 @@ export function useRemoveHcp() {
 }
 
 export function useSendInvitations() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: (campaignId: string) =>
-      apiClient.post<SendResult>(`/api/v1/campaigns/${campaignId}/distribution/send-invitations`),
-    onSuccess: (_, campaignId) => {
-      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'hcps'] });
-      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'distribution-stats'] });
-    },
+      apiClient.post<SendStartResult>(`/api/v1/campaigns/${campaignId}/distribution/send-invitations`),
   });
 }
 
 export function useSendReminders() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: (campaignId: string) =>
-      apiClient.post<SendResult>(`/api/v1/campaigns/${campaignId}/distribution/send-reminders`),
-    onSuccess: (_, campaignId) => {
-      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'hcps'] });
-      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'distribution-stats'] });
+      apiClient.post<SendStartResult>(`/api/v1/campaigns/${campaignId}/distribution/send-reminders`),
+  });
+}
+
+/**
+ * Poll email send progress every 2 seconds.
+ * Stops polling when status is 'completed' or 'failed', then invalidates caches.
+ */
+export function useEmailProgress(campaignId: string, progressId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useQuery({
+    queryKey: ['email-progress', progressId],
+    queryFn: () =>
+      apiClient.get<EmailProgress>(`/api/v1/campaigns/${campaignId}/distribution/progress/${progressId}`),
+    enabled: !!progressId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === 'completed' || status === 'failed') {
+        // Invalidate distribution data once done
+        queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'hcps'] });
+        queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'distribution-stats'] });
+        return false; // stop polling
+      }
+      return 2000; // poll every 2s
     },
   });
 }

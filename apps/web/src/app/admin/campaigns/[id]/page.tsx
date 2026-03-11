@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useImpersonation } from '@/lib/impersonation-context';
@@ -16,7 +16,7 @@ import {
 } from '@/hooks/use-campaigns';
 import { useSurveyTemplates } from '@/hooks/use-survey-templates';
 import { useScoreConfig, useUpdateScoreConfig, useResetScoreConfig } from '@/hooks/use-score-config';
-import { useSendReminders, useSendInvitations, useDistributionStats } from '@/hooks/use-distribution';
+import { useSendReminders, useSendInvitations, useDistributionStats, useEmailProgress } from '@/hooks/use-distribution';
 import { useCampaignScores } from '@/hooks/use-campaign-scores';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { ScoreConfigForm } from '@/components/campaigns/score-config-form';
@@ -149,8 +149,45 @@ export default function CampaignDetailPage() {
   const [statusAction, setStatusAction] = useState<'activate' | 'close' | 'reopen' | 'publish' | null>(null);
   const [showReminderConfirm, setShowReminderConfirm] = useState(false);
   const [showInvitationConfirm, setShowInvitationConfirm] = useState(false);
+  const [invitationProgressId, setInvitationProgressId] = useState<string | null>(null);
+  const [reminderProgressId, setReminderProgressId] = useState<string | null>(null);
   const [invitationResult, setInvitationResult] = useState<{ sent: number; failed?: number; skipped?: number; errors: Array<{ email: string; error: string }> } | null>(null);
   const [reminderResult, setReminderResult] = useState<{ sent: number; failed?: number; skipped?: number; skippedCompleted?: number; skippedRecentlyReminded?: number; skippedMaxReminders?: number; errors: Array<{ email: string; error: string }> } | null>(null);
+
+  const { data: invitationProgress } = useEmailProgress(campaignId, invitationProgressId);
+  const { data: reminderProgress } = useEmailProgress(campaignId, reminderProgressId);
+
+  // When invitation progress completes, extract result and clear progressId
+  useEffect(() => {
+    if (invitationProgress?.status === 'completed' && invitationProgress.resultData) {
+      setInvitationResult(invitationProgress.resultData as typeof invitationResult);
+      setInvitationProgressId(null);
+    } else if (invitationProgress?.status === 'failed') {
+      setInvitationResult({
+        sent: invitationProgress.created || 0,
+        failed: invitationProgress.errors || 0,
+        skipped: invitationProgress.updated || 0,
+        errors: [{ email: 'system', error: invitationProgress.currentItem || 'Send failed' }],
+      });
+      setInvitationProgressId(null);
+    }
+  }, [invitationProgress?.status]);
+
+  // When reminder progress completes, extract result and clear progressId
+  useEffect(() => {
+    if (reminderProgress?.status === 'completed' && reminderProgress.resultData) {
+      setReminderResult(reminderProgress.resultData as typeof reminderResult);
+      setReminderProgressId(null);
+    } else if (reminderProgress?.status === 'failed') {
+      setReminderResult({
+        sent: reminderProgress.created || 0,
+        failed: reminderProgress.errors || 0,
+        skipped: reminderProgress.updated || 0,
+        errors: [{ email: 'system', error: reminderProgress.currentItem || 'Send failed' }],
+      });
+      setReminderProgressId(null);
+    }
+  }, [reminderProgress?.status]);
 
   const handleStartEdit = () => {
     if (campaign) {
@@ -222,7 +259,9 @@ export default function CampaignDetailPage() {
   const handleSendReminders = async () => {
     try {
       const result = await sendReminders.mutateAsync(campaignId);
-      setReminderResult(result);
+      if (result?.progressId) {
+        setReminderProgressId(result.progressId);
+      }
       setShowReminderConfirm(false);
     } catch (error) {
       console.error('Failed to send reminders:', error);
@@ -232,7 +271,9 @@ export default function CampaignDetailPage() {
   const handleSendInvitations = async () => {
     try {
       const result = await sendInvitations.mutateAsync(campaignId);
-      setInvitationResult(result);
+      if (result?.progressId) {
+        setInvitationProgressId(result.progressId);
+      }
       setShowInvitationConfirm(false);
     } catch (error) {
       console.error('Failed to send invitations:', error);
@@ -677,6 +718,39 @@ export default function CampaignDetailPage() {
                           : 'Not set'}
                       </p>
                     </div>
+                  </div>
+                  <div className="flex items-center justify-between border rounded-lg p-3 bg-muted/30">
+                    <div>
+                      <label className="text-sm font-medium">Exclude Internal Emails</label>
+                      <p className="text-xs text-muted-foreground">
+                        Hide @bio-exec.com respondents from nominations, scores, and exports
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={campaign.excludeInternalEmails ?? false}
+                      onClick={async () => {
+                        try {
+                          await updateCampaign.mutateAsync({
+                            id: campaignId,
+                            data: { excludeInternalEmails: !campaign.excludeInternalEmails },
+                          });
+                        } catch (error) {
+                          console.error('Failed to toggle exclude internal emails:', error);
+                        }
+                      }}
+                      disabled={updateCampaign.isPending}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        campaign.excludeInternalEmails ? 'bg-primary' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          campaign.excludeInternalEmails ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
                   </div>
                   <div>
                     <label className="text-sm text-muted-foreground">Created</label>

@@ -227,18 +227,40 @@ export class ApiClient {
   }
 
   async sendInvitations(campaignId: string) {
-    return this.request<{ sent: number; failed: number; skipped: number }>(
+    return this.request<SendStartResult>(
       'POST',
       `/api/v1/campaigns/${campaignId}/distribution/send-invitations`
     );
   }
 
   async sendReminders(campaignId: string, maxReminders?: number) {
-    return this.request<{ sent: number; failed: number; skipped: number }>(
+    return this.request<SendStartResult>(
       'POST',
       `/api/v1/campaigns/${campaignId}/distribution/send-reminders`,
       { maxReminders }
     );
+  }
+
+  async getEmailProgress(campaignId: string, progressId: string) {
+    return this.request<EmailProgress>(
+      'GET',
+      `/api/v1/campaigns/${campaignId}/distribution/progress/${progressId}`
+    );
+  }
+
+  /**
+   * Poll email progress until completed or failed (with timeout)
+   */
+  async waitForEmailProgress(campaignId: string, progressId: string, timeoutMs = 60000): Promise<EmailProgress> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const { data } = await this.getEmailProgress(campaignId, progressId);
+      if (data.status === 'completed' || data.status === 'failed') {
+        return data;
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    throw new Error(`Email progress ${progressId} did not complete within ${timeoutMs}ms`);
   }
 
   async sendSingleInvitation(campaignId: string, hcpId: string) {
@@ -576,8 +598,13 @@ export class ApiClient {
       throw new Error(`Failed to activate campaign: ${activateStatus}`);
     }
 
-    // Send invitations
+    // Send invitations (fire-and-forget with progress tracking)
     const { data: inviteResult } = await this.sendInvitations(campaign.id);
+
+    // Wait for completion if progressId is returned
+    if (inviteResult.progressId) {
+      await this.waitForEmailProgress(campaign.id, inviteResult.progressId);
+    }
 
     return { campaign, inviteResult };
   }
@@ -769,6 +796,7 @@ export interface Campaign {
   status: CampaignStatus;
   description?: string;
   honorariumAmount?: number;
+  excludeInternalEmails?: boolean;
   surveyOpenDate?: string;
   surveyCloseDate?: string;
   publishedAt?: string;
@@ -785,8 +813,35 @@ export interface CreateCampaignInput {
   surveyTemplateId?: string;
   description?: string;
   honorariumAmount?: number;
+  excludeInternalEmails?: boolean;
   surveyOpenDate?: string;
   surveyCloseDate?: string;
+}
+
+export interface SendStartResult {
+  progressId: string;
+  status: 'started' | 'already-running';
+}
+
+export interface EmailProgress {
+  id: string;
+  type: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  errors: number;
+  startedAt: string;
+  completedAt?: string;
+  currentItem?: string;
+  estimatedSecondsRemaining?: number;
+  resultData?: {
+    sent: number;
+    failed: number;
+    skipped: number;
+    errors: Array<{ email: string; error: string }>;
+  };
 }
 
 export interface CampaignHcp {
@@ -1028,15 +1083,17 @@ export interface Pagination {
 
 export interface ImportProgress {
   id: string;
-  type: 'hcp' | 'segment-scores' | 'survey-scores';
+  type: 'hcp' | 'segment-scores' | 'survey-scores' | 'email-invitations' | 'email-reminders';
   status: 'pending' | 'processing' | 'completed' | 'failed';
   total: number;
   processed: number;
   created: number;
   updated: number;
   errors: number;
+  skipped?: number;
   currentItem?: string;
   estimatedSecondsRemaining?: number;
+  resultData?: Record<string, unknown>;
 }
 
 // ==================== Insights Report Types ====================
