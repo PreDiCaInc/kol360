@@ -293,18 +293,21 @@ export class ExportService {
   async exportPayments(campaignId: string, exportedBy: string): Promise<ExportResult> {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { name: true },
+      select: { name: true, excludeInternalEmails: true },
     });
 
     if (!campaign) {
       throw new Error('Campaign not found');
     }
 
-    // Get pending payments
+    // Get pending payments (exclude internal HCPs if configured)
     const payments = await prisma.payment.findMany({
       where: {
         campaignId,
         status: 'PENDING_EXPORT',
+        ...(campaign.excludeInternalEmails && {
+          hcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+        }),
       },
       include: {
         hcp: {
@@ -433,18 +436,21 @@ export class ExportService {
   async reExportPayments(campaignId: string): Promise<ExportResult> {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { name: true },
+      select: { name: true, excludeInternalEmails: true },
     });
 
     if (!campaign) {
       throw new Error('Campaign not found');
     }
 
-    // Get exported payments (not claimed/bounced/etc)
+    // Get exported payments (not claimed/bounced/etc, exclude internal HCPs if configured)
     const payments = await prisma.payment.findMany({
       where: {
         campaignId,
         status: 'EXPORTED',
+        ...(campaign.excludeInternalEmails && {
+          hcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+        }),
       },
       include: {
         hcp: {
@@ -711,8 +717,18 @@ export class ExportService {
   ) {
     const { status, page, limit } = params;
 
-    const where: { campaignId: string; status?: PaymentStatus } = { campaignId };
+    // Check if campaign excludes internal emails
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { excludeInternalEmails: true },
+    });
+    const excludeInternal = campaign?.excludeInternalEmails ?? false;
+
+    const where: Record<string, unknown> = { campaignId };
     if (status) where.status = status;
+    if (excludeInternal) {
+      where.hcp = { email: { not: { endsWith: '@bio-exec.com' } } };
+    }
 
     const [total, items] = await Promise.all([
       prisma.payment.count({ where }),
@@ -756,15 +772,29 @@ export class ExportService {
    * Get payment stats for a campaign
    */
   async getPaymentStats(campaignId: string) {
+    // Check if campaign excludes internal emails
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { excludeInternalEmails: true },
+    });
+    const excludeInternal = campaign?.excludeInternalEmails ?? false;
+
+    const paymentWhere = {
+      campaignId,
+      ...(excludeInternal && {
+        hcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+      }),
+    };
+
     const stats = await prisma.payment.groupBy({
       by: ['status'],
-      where: { campaignId },
+      where: paymentWhere,
       _count: true,
       _sum: { amount: true },
     });
 
     const total = await prisma.payment.aggregate({
-      where: { campaignId },
+      where: paymentWhere,
       _count: true,
       _sum: { amount: true },
     });

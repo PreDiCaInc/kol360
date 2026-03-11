@@ -743,8 +743,13 @@ export class InsightsReportService {
   /**
    * Get respondent analytics - demographics and survey behavior
    */
-  async getRespondentAnalytics(diseaseAreaId: string): Promise<RespondentAnalytics> {
+  async getRespondentAnalytics(diseaseAreaId: string, excludeInternalEmails = false): Promise<RespondentAnalytics> {
     try {
+    // Build HCP email filter for excluding internal emails
+    const hcpEmailFilter = excludeInternalEmails
+      ? { email: { not: { endsWith: '@bio-exec.com' } } }
+      : undefined;
+
     // Get all campaigns for this disease area
     const campaigns = await prisma.campaign.findMany({
       where: { diseaseAreaId },
@@ -754,7 +759,10 @@ export class InsightsReportService {
 
     // Get all campaign HCPs (potential respondents)
     const campaignHcps = await prisma.campaignHcp.findMany({
-      where: { campaignId: { in: campaignIds } },
+      where: {
+        campaignId: { in: campaignIds },
+        ...(hcpEmailFilter && { hcp: hcpEmailFilter }),
+      },
       include: {
         hcp: {
           select: {
@@ -768,7 +776,10 @@ export class InsightsReportService {
 
     // Get all survey responses
     const responses = await prisma.surveyResponse.findMany({
-      where: { campaignId: { in: campaignIds } },
+      where: {
+        campaignId: { in: campaignIds },
+        ...(hcpEmailFilter && { respondentHcp: hcpEmailFilter }),
+      },
       select: {
         id: true,
         status: true,

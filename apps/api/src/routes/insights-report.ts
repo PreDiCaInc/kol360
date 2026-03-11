@@ -205,7 +205,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
         return;
       }
 
-      return insightsReportService.getRespondentAnalytics(diseaseAreaId);
+      const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
+      return insightsReportService.getRespondentAnalytics(diseaseAreaId, excludeInternal);
     }
   );
 
