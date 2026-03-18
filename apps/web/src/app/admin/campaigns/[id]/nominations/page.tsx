@@ -76,6 +76,18 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+const NOMINATION_TYPE_LABELS: Record<string, string> = {
+  DISCUSSION_LEADERS: 'Discussion Leaders',
+  REFERRAL_LEADERS: 'Referral Leaders',
+  ADVICE_LEADERS: 'Advice Leaders',
+  NATIONAL_LEADER: 'National Leaders',
+  RISING_STAR: 'Rising Stars',
+  SOCIAL_LEADER: 'Social Media Leaders',
+  REGIONAL_LEADER: 'Regional Leaders',
+  BIASED_LEADER: 'Biased Leaders',
+  NATIONAL_KOL: 'National KOL',
+};
+
 const STATUS_COLORS: Record<string, string> = {
   UNMATCHED: 'bg-yellow-100 text-yellow-700',
   MATCHED: 'bg-green-100 text-green-700',
@@ -389,7 +401,7 @@ export default function NominationsPage() {
                     <TableRow>
                       <TableHead>Raw Name Entered</TableHead>
                       <TableHead>Nominated By</TableHead>
-                      <TableHead>Question</TableHead>
+                      <TableHead>Nomination Type</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Matched To</TableHead>
                       <TableHead className="w-[150px]">Actions</TableHead>
@@ -404,8 +416,8 @@ export default function NominationsPage() {
                         <TableCell>
                           {nomination.nominatorHcp.firstName} {nomination.nominatorHcp.lastName}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                          {nomination.question.questionTextSnapshot}
+                        <TableCell className="text-sm text-muted-foreground">
+                          {(nomination.question.question?.nominationType && NOMINATION_TYPE_LABELS[nomination.question.question.nominationType]) || nomination.question.question?.nominationType || '—'}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">

@@ -552,7 +552,7 @@ export default function CampaignDetailPage() {
               const isSetupStep = step.phase === 'setup';
               // Payments step is only accessible after campaign is published
               const isPaymentsStep = step.id === 'payments';
-              const canAccessPayments = isPaymentsStep && campaign.status === 'PUBLISHED';
+              const canAccessPayments = isPaymentsStep && ['ACTIVE', 'CLOSED', 'PUBLISHED'].includes(campaign.status);
               // Other external steps are accessible once campaign is not in DRAFT
               const canAccessOtherExternal = step.external && !isPaymentsStep && campaign.status !== 'DRAFT';
               const isClickable = isSetupStep || canAccessPayments || canAccessOtherExternal;

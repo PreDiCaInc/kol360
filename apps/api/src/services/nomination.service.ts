@@ -78,7 +78,7 @@ export class NominationService {
         where,
         include: {
           matchedHcp: { select: { id: true, npi: true, firstName: true, lastName: true } },
-          question: { include: { question: true } },
+          question: { include: { question: { select: { id: true, type: true, nominationType: true } } } },
           nominatorHcp: { select: { firstName: true, lastName: true } },
         },
         orderBy: [{ matchStatus: 'asc' }, { rawNameEntered: 'asc' }],
