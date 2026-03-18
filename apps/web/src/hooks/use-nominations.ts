@@ -19,6 +19,7 @@ interface NominationQuestion {
   question: {
     id: string;
     type: string;
+    nominationType: string | null;
   };
 }
 
