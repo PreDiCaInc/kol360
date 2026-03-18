@@ -719,6 +719,35 @@ export default function CampaignDetailPage() {
                       </p>
                     </div>
                   </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">Honorarium Amount ($)</label>
+                    {canEdit && ['DRAFT', 'ACTIVE'].includes(campaign.status) ? (
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="e.g. 150"
+                        defaultValue={campaign.honorariumAmount ?? ''}
+                        key={`hon-${campaign.honorariumAmount}`}
+                        onBlur={async (e) => {
+                          const val = e.target.value === '' ? null : Number(e.target.value);
+                          if (val === campaign.honorariumAmount) return;
+                          try {
+                            await updateCampaign.mutateAsync({
+                              id: campaignId,
+                              data: { honorariumAmount: val },
+                            });
+                          } catch (error) {
+                            console.error('Failed to update honorarium amount:', error);
+                          }
+                        }}
+                        className="mt-1 max-w-[200px]"
+                        disabled={updateCampaign.isPending}
+                      />
+                    ) : (
+                      <p className="font-medium">{campaign.honorariumAmount ? `$${campaign.honorariumAmount}` : 'Not set'}</p>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between border rounded-lg p-3 bg-muted/30">
                     <div>
                       <label className="text-sm font-medium">Exclude Internal Emails</label>
