@@ -66,8 +66,21 @@ interface UnsubscribeInfo {
   campaignName: string;
 }
 
+async function fetchWithRetry(url: string, options?: RequestInit, maxRetries = 3): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.status === 429 && attempt < maxRetries) {
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      continue;
+    }
+    return res;
+  }
+  throw new Error('Too many requests. Please try again in a moment.');
+}
+
 async function fetchSurvey(token: string): Promise<SurveyData> {
-  const res = await fetch(`${API_BASE}/api/v1/survey/take/${token}`);
+  const res = await fetchWithRetry(`${API_BASE}/api/v1/survey/take/${token}`);
   if (!res.ok) {
     const error = await res.json();
     if (error.completed) {
@@ -79,7 +92,7 @@ async function fetchSurvey(token: string): Promise<SurveyData> {
 }
 
 async function startSurvey(token: string): Promise<{ status: string; startedAt: string }> {
-  const res = await fetch(`${API_BASE}/api/v1/survey/take/${token}/start`, {
+  const res = await fetchWithRetry(`${API_BASE}/api/v1/survey/take/${token}/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
@@ -95,7 +108,7 @@ async function saveProgress(
   token: string,
   answers: Record<string, unknown>
 ): Promise<{ saved: boolean }> {
-  const res = await fetch(`${API_BASE}/api/v1/survey/take/${token}/save`, {
+  const res = await fetchWithRetry(`${API_BASE}/api/v1/survey/take/${token}/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ answers }),
@@ -111,7 +124,7 @@ async function submitSurvey(
   token: string,
   answers: Record<string, unknown>
 ): Promise<{ submitted: boolean }> {
-  const res = await fetch(`${API_BASE}/api/v1/survey/take/${token}/submit`, {
+  const res = await fetchWithRetry(`${API_BASE}/api/v1/survey/take/${token}/submit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ answers }),
@@ -154,7 +167,12 @@ export function useSurvey(token: string) {
     queryKey: ['survey', token],
     queryFn: () => fetchSurvey(token),
     enabled: !!token,
-    retry: false,
+    retry: (failureCount, error) => {
+      if (error instanceof SurveyAlreadyCompletedError) return false;
+      if (error.message?.includes('Too many requests')) return failureCount < 3;
+      return false;
+    },
+    retryDelay: (attempt) => Math.min(1000 * Math.pow(2, attempt), 8000),
   });
 }
 

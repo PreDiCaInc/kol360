@@ -74,7 +74,7 @@ export default function SurveyPage() {
   const params = useParams();
   const token = params.token as string;
 
-  const { data: survey, isLoading, error } = useSurvey(token);
+  const { data: survey, isLoading, isFetching, error } = useSurvey(token);
   const startSurvey = useStartSurvey();
   const saveProgress = useSaveProgress();
   const submitSurvey = useSubmitSurvey();
@@ -335,11 +335,17 @@ export default function SurveyPage() {
     return steps;
   };
 
-  // Loading state
-  if (isLoading) {
+  // Loading state (includes retry after rate limiting)
+  if (isLoading || (isFetching && !survey)) {
+    const isRetrying = error?.message?.includes('Too many requests');
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          {isRetrying && (
+            <p className="text-sm text-muted-foreground">Please wait, loading your survey...</p>
+          )}
+        </div>
       </div>
     );
   }

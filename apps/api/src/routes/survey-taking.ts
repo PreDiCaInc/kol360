@@ -8,9 +8,10 @@ const tokenParamSchema = z.object({
   token: z.string().min(1),
 });
 
-// Stricter rate limit config for public endpoints
+// Rate limit config for public survey endpoints — generous for read-only GET,
+// since reminder blasts can cause hundreds of concurrent survey loads
 const publicRateLimitConfig = {
-  max: 30, // 30 requests per minute (stricter than global 100)
+  max: 5000, // High limit — reminder blasts cause hundreds of concurrent survey loads
   timeWindow: '1 minute',
 };
 
