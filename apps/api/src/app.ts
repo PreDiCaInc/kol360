@@ -52,7 +52,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
     credentials: true,
   });
   await fastify.register(rateLimit, {
-    max: 500,
+    max: 5000,
     timeWindow: '1 minute',
   });
 
