@@ -25,9 +25,10 @@ const NOMINATION_TYPES: {
   { value: 'SOCIAL_LEADER', label: 'Social Media Influencers', color: 'bg-cyan-500' },
 ];
 
-const COLUMNS: LeaderTableColumn[] = ['name', 'specialty', 'city', 'state', 'count'];
+// Tab 4 columns: Name, Specialty, Influencer Type, State, Count (no City)
+const COLUMNS: LeaderTableColumn[] = ['name', 'specialty', 'influencerType', 'state', 'count'];
 
-function LeaderRankingPanel({
+function SociometricPanel({
   diseaseAreaId,
   nominationType,
   label,
@@ -72,7 +73,7 @@ function LeaderRankingPanel({
     name: item.name,
     hcpId: item.hcpId,
     specialty: item.specialty,
-    city: item.city,
+    influencerType: item.influencerType,
     state: item.state,
     count: item.count,
   }));
@@ -118,19 +119,19 @@ function LeaderRankingPanel({
   );
 }
 
-export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Props) {
+export function SociometricTablesTab({ diseaseAreaId, onKolSelect, clientId }: Props) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold">KOL360 Leaders</h2>
+        <h2 className="text-xl font-bold">Sociometric Tables</h2>
         <p className="text-sm text-muted-foreground">
-          Top leaders ranked by nomination count across 6 categories
+          Per-category leader tables with influencer type classification
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {NOMINATION_TYPES.map((type) => (
-          <LeaderRankingPanel
+          <SociometricPanel
             key={type.value}
             diseaseAreaId={diseaseAreaId}
             nominationType={type.value}

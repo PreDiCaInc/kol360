@@ -25,3 +25,4 @@ export * from './response';
 export * from './nomination';
 export * from './dashboard';
 export * from './insights-report';
+export * from './insights2';

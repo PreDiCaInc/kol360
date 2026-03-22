@@ -378,6 +378,7 @@ model Campaign {
   surveyWelcomeMessage       String?
   surveyWelcomeTitle         String?
   excludeInternalEmails    Boolean                 @default(false)
+  showTopicsDiscussed      Boolean                 @default(false)
   // Workflow step confirmation timestamps (when user explicitly reviewed/confirmed each step)
   scoreConfigConfirmedAt   DateTime?
   templatesConfirmedAt     DateTime?

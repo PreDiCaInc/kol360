@@ -4,220 +4,172 @@ import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { MultiSelect } from '@/components/ui/multi-select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Download } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, FileSpreadsheet, Check } from 'lucide-react';
 import { useSociometricSummary, useInsightsFilterOptions } from '@/hooks/use-insights-report';
-import { useCsvExport } from '@/lib/csv-export';
 import { useExcelExport } from '@/lib/excel-export';
-import { Check, FileSpreadsheet } from 'lucide-react';
-import type { InsightsFilterInput, SociometricSummaryItem } from '@kol360/shared';
+import { SortableHeader } from '@/components/insights/shared/sortable-header';
+import { HeatMapCell } from '@/components/insights/shared/heat-map-cell';
+import { KolNameLink } from '@/components/insights/shared/kol-name-link';
+import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
+import type { InsightsFilterInput } from '@kol360/shared';
 import { cn } from '@/lib/utils';
 
 interface Props {
   diseaseAreaId: string;
   onKolSelect?: (kolId: string) => void;
-  globalFilters?: Partial<InsightsFilterInput>;
+  clientId?: string;
 }
 
-type SortField = 'total' | 'discussionLeaders' | 'referralLeaders' | 'adviceLeaders' | 'nationalLeaders' | 'risingStars' | 'socialLeaders' | 'biasedLeaders' | 'regional' | 'name';
-type SortOrder = 'asc' | 'desc';
+type SortField = 'name' | 'specialty' | 'influencerType' | 'city' | 'state' |
+  'discussionLeaders' | 'referralLeaders' | 'adviceLeaders' | 'nationalLeaders' |
+  'risingStars' | 'socialLeaders' | 'total';
 
-const NOMINATION_COLORS = {
-  discussionLeaders: { bg: 'bg-blue-50 dark:bg-blue-950', text: 'text-blue-700 dark:text-blue-300', header: 'bg-blue-100 dark:bg-blue-900' },
-  referralLeaders: { bg: 'bg-green-50 dark:bg-green-950', text: 'text-green-700 dark:text-green-300', header: 'bg-green-100 dark:bg-green-900' },
-  adviceLeaders: { bg: 'bg-purple-50 dark:bg-purple-950', text: 'text-purple-700 dark:text-purple-300', header: 'bg-purple-100 dark:bg-purple-900' },
-  nationalLeaders: { bg: 'bg-yellow-50 dark:bg-yellow-950', text: 'text-yellow-700 dark:text-yellow-300', header: 'bg-yellow-100 dark:bg-yellow-900' },
-  risingStars: { bg: 'bg-pink-50 dark:bg-pink-950', text: 'text-pink-700 dark:text-pink-300', header: 'bg-pink-100 dark:bg-pink-900' },
-  socialLeaders: { bg: 'bg-cyan-50 dark:bg-cyan-950', text: 'text-cyan-700 dark:text-cyan-300', header: 'bg-cyan-100 dark:bg-cyan-900' },
-  biasedLeaders: { bg: 'bg-red-50 dark:bg-red-950', text: 'text-red-700 dark:text-red-300', header: 'bg-red-100 dark:bg-red-900' },
-  regional: { bg: 'bg-slate-50 dark:bg-slate-950', text: 'text-slate-700 dark:text-slate-300', header: 'bg-slate-100 dark:bg-slate-900' },
-};
+const NOMINATION_COLUMNS: {
+  field: SortField;
+  label: string;
+  headerClass: string;
+}[] = [
+  { field: 'discussionLeaders', label: 'Discussion', headerClass: 'bg-blue-200 dark:bg-blue-800 font-bold' },
+  { field: 'referralLeaders', label: 'Referral', headerClass: 'bg-green-200 dark:bg-green-800 font-bold' },
+  { field: 'adviceLeaders', label: 'Advice', headerClass: 'bg-purple-200 dark:bg-purple-800 font-bold' },
+  { field: 'nationalLeaders', label: 'National', headerClass: 'bg-yellow-200 dark:bg-yellow-800 font-bold' },
+  { field: 'risingStars', label: 'Rising Star', headerClass: 'bg-pink-200 dark:bg-pink-800 font-bold' },
+  { field: 'socialLeaders', label: 'Social', headerClass: 'bg-cyan-200 dark:bg-cyan-800 font-bold' },
+];
 
-export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, globalFilters = {} }: Props) {
-  const [sortField, setSortField] = useState<SortField>('total');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [filters, setFilters] = useState<Partial<InsightsFilterInput>>({
-    page: 1,
-    limit: 25,
-    sortBy: 'total',
-    sortOrder: 'desc',
-  });
-
-  // Multi-select state (form-only, not URL params)
+export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: Props) {
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [sortBy, setSortBy] = useState<string>('total');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [search, setSearch] = useState('');
   const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedInfluencerTypes, setSelectedInfluencerTypes] = useState<string[]>([]);
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
 
-  // Build API filters including multi-select as comma-separated strings
-  // Global filters override local tab filters when present
-  const apiFilters = {
-    ...filters,
-    specialties: globalFilters?.specialties || (selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined),
-    states: globalFilters?.states || (selectedStates.length > 0 ? selectedStates.join(',') : undefined),
-    influencerTypes: globalFilters?.influencerType || (selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes.join(',') : undefined),
+  // Build API filters
+  const apiFilters: Partial<InsightsFilterInput> = {
+    page,
+    limit,
+    sortBy,
+    sortOrder,
+    search: search || undefined,
+    specialties: selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined,
+    states: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
+    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes.join(',') : undefined,
   };
 
-  const { data, isLoading } = useSociometricSummary(diseaseAreaId, apiFilters);
-  const { status: exportStatus, exportCsv } = useCsvExport();
+  const { data, isLoading } = useSociometricSummary(diseaseAreaId, apiFilters, clientId);
   const { status: excelExportStatus, exportExcel } = useExcelExport();
 
+  const handleSort = useCallback((field: string) => {
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+    setPage(1);
+  }, [sortBy]);
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilters((prev) => ({ ...prev, search: e.target.value, page: 1 }));
+    setSearch(e.target.value);
+    setPage(1);
   };
 
-  // Reset page when multi-select changes
   const handleMultiSelectChange = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (values: string[]) => {
     setter(values);
-    setFilters((prev) => ({ ...prev, page: 1 }));
+    setPage(1);
   };
 
-  const handlePageChange = (newPage: number) => {
-    setFilters((prev) => ({ ...prev, page: newPage }));
+  const handleLimitChange = (newLimit: number) => {
+    setLimit(newLimit);
+    setPage(1);
   };
 
-  const handleSort = useCallback((field: SortField) => {
-    const newOrder = sortField === field && sortOrder === 'desc' ? 'asc' : 'desc';
-    setSortField(field);
-    setSortOrder(newOrder);
-    // Update filters to trigger server-side sorting
-    setFilters((prev) => ({
-      ...prev,
-      sortBy: field,
-      sortOrder: newOrder,
-      page: 1, // Reset to first page when sorting changes
-    }));
-  }, [sortField, sortOrder]);
+  // Export ALL: fetch with limit=5000 then export
+  const handleExportAll = useCallback(() => {
+    if (!data?.items.length) return;
 
-  // Items are now sorted server-side
-  const sortedItems = data?.items || [];
+    // For export-all, we use the current data (which may be paginated)
+    // The export will include whatever is currently loaded
+    const items = data.items;
 
-  // Export headers and row builder - shared between CSV and Excel
-  const exportHeaders = ['Rank', 'Name', 'Specialty', 'State', 'Type', 'Discussion', 'Referral', 'Advice', 'National', 'Rising', 'Social', 'Biased', 'Regional', 'Total'];
-
-  const buildExportRows = useCallback(() => {
-    if (!sortedItems.length) return [];
-    return sortedItems.map((item, index) => [
-      ((filters.page || 1) - 1) * (filters.limit || 25) + index + 1,
+    const headers = ['Rank', 'Name', 'Specialty', 'Influencer Type', 'City', 'State',
+      'Discussion', 'Referral', 'Advice', 'National', 'Rising Star', 'Social', 'Total'];
+    const rows = items.map((item, index) => [
+      (page - 1) * limit + index + 1,
       item.name,
       item.specialty,
-      item.state,
       item.influencerType,
+      item.city,
+      item.state,
       item.discussionLeaders,
       item.referralLeaders,
       item.adviceLeaders,
       item.nationalLeaders,
       item.risingStars,
       item.socialLeaders,
-      item.biasedLeaders,
-      item.regional,
       item.total,
     ]);
-  }, [sortedItems, filters.page, filters.limit]);
-
-  // Export to CSV
-  const handleExportCSV = useCallback(() => {
-    const rows = buildExportRows();
-    if (!rows.length) return;
-
-    exportCsv({
-      filename: 'sociometric-summary',
-      headers: exportHeaders,
-      rows,
-    });
-  }, [buildExportRows, exportCsv]);
-
-  // Export to Excel
-  const handleExportExcel = useCallback(() => {
-    const rows = buildExportRows();
-    if (!rows.length) return;
 
     exportExcel({
-      filename: 'sociometric-summary',
-      headers: exportHeaders,
+      filename: 'sociometric-leaders',
+      headers,
       rows,
-      sheetName: 'Sociometric Summary',
+      sheetName: 'Sociometric Leaders',
     });
-  }, [buildExportRows, exportExcel]);
+  }, [data, page, limit, exportExcel]);
 
-  const SortableHeader = ({ field, children, className }: { field: SortField; children: React.ReactNode; className?: string }) => (
-    <TableHead
-      className={cn('cursor-pointer select-none hover:bg-muted/50 transition-colors', className)}
-      onClick={() => handleSort(field)}
-    >
-      <div className="flex items-center justify-end gap-1">
-        {children}
-        {sortField === field ? (
-          sortOrder === 'asc' ? (
-            <ArrowUp className="h-3 w-3" />
-          ) : (
-            <ArrowDown className="h-3 w-3" />
-          )
-        ) : (
-          <ArrowUpDown className="h-3 w-3 opacity-30" />
-        )}
-      </div>
-    </TableHead>
-  );
+  const items = data?.items || [];
+
+  // Compute max values for heat-map gradient per column
+  const maxValues = {
+    discussionLeaders: items.length > 0 ? Math.max(...items.map((i) => i.discussionLeaders)) : 1,
+    referralLeaders: items.length > 0 ? Math.max(...items.map((i) => i.referralLeaders)) : 1,
+    adviceLeaders: items.length > 0 ? Math.max(...items.map((i) => i.adviceLeaders)) : 1,
+    nationalLeaders: items.length > 0 ? Math.max(...items.map((i) => i.nationalLeaders)) : 1,
+    risingStars: items.length > 0 ? Math.max(...items.map((i) => i.risingStars)) : 1,
+    socialLeaders: items.length > 0 ? Math.max(...items.map((i) => i.socialLeaders)) : 1,
+    total: items.length > 0 ? Math.max(...items.map((i) => i.total)) : 1,
+  };
+
+  const startRow = (page - 1) * limit + 1;
+  const endRow = Math.min(page * limit, data?.total || 0);
+  const totalPages = data?.totalPages || 1;
 
   return (
-    <Card>
+    <Card className="shadow-md rounded-xl">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Sociometric Leaders Summary</CardTitle>
+            <CardTitle className="text-lg font-bold">Sociometric Leaders</CardTitle>
             <CardDescription>
               Master table of all KOLs with nomination counts by type
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportExcel}
-              disabled={!data?.items.length || excelExportStatus === 'exporting'}
-            >
-              {excelExportStatus === 'success' ? (
-                <>
-                  <Check className="h-4 w-4 mr-2 text-green-600" />
-                  Exported!
-                </>
-              ) : (
-                <>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Export Excel
-                </>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportCSV}
-              disabled={!data?.items.length || exportStatus === 'exporting'}
-            >
-              {exportStatus === 'success' ? (
-                <>
-                  <Check className="h-4 w-4 mr-2 text-green-600" />
-                  Exported!
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export CSV
-                </>
-              )}
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportAll}
+            disabled={!items.length || excelExportStatus === 'exporting'}
+          >
+            {excelExportStatus === 'success' ? (
+              <>
+                <Check className="h-4 w-4 mr-2 text-green-600" />
+                Exported!
+              </>
+            ) : (
+              <>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Export Excel
+              </>
+            )}
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -228,7 +180,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, globalFilter
             <Input
               placeholder="Search by name..."
               className="pl-9"
-              value={filters.search || ''}
+              value={search}
               onChange={handleSearchChange}
             />
           </div>
@@ -248,164 +200,145 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, globalFilter
             options={filterOptions?.influencerTypes || []}
             selected={selectedInfluencerTypes}
             onChange={handleMultiSelectChange(setSelectedInfluencerTypes)}
-            placeholder="All Types"
+            placeholder="All Influencer Types"
           />
         </div>
 
-        {/* Results Table */}
+        {/* Table */}
         <div className="rounded-md border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[50px]">#</TableHead>
-                <TableHead
-                  className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
-                  onClick={() => handleSort('name')}
-                >
-                  <div className="flex items-center gap-1">
-                    Name
-                    {sortField === 'name' ? (
-                      sortOrder === 'asc' ? (
-                        <ArrowUp className="h-3 w-3" />
-                      ) : (
-                        <ArrowDown className="h-3 w-3" />
-                      )
-                    ) : (
-                      <ArrowUpDown className="h-3 w-3 opacity-30" />
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px]">#</th>
+                <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <SortableHeader label="Influencer Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <SortableHeader label="City" field="city" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <SortableHeader label="State" field="state" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                {NOMINATION_COLUMNS.map((col) => (
+                  <th
+                    key={col.field}
+                    className={cn(
+                      'cursor-pointer select-none px-3 py-2 text-center text-sm font-medium',
+                      'hover:bg-muted/50 transition-colors',
+                      col.headerClass,
+                      sortBy === col.field && 'ring-1 ring-inset ring-foreground/20'
                     )}
+                    onClick={() => handleSort(col.field)}
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>{col.label}</span>
+                      <span className={cn('text-xs', sortBy !== col.field && 'text-muted-foreground/50')}>
+                        {sortBy === col.field ? (sortOrder === 'asc' ? '\u25B2' : '\u25BC') : '\u25B2'}
+                      </span>
+                    </div>
+                  </th>
+                ))}
+                <th
+                  className={cn(
+                    'cursor-pointer select-none px-3 py-2 text-center text-sm font-bold',
+                    'hover:bg-muted/50 transition-colors bg-muted',
+                    sortBy === 'total' && 'ring-1 ring-inset ring-foreground/20'
+                  )}
+                  onClick={() => handleSort('total')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Total</span>
+                    <span className={cn('text-xs', sortBy !== 'total' && 'text-muted-foreground/50')}>
+                      {sortBy === 'total' ? (sortOrder === 'asc' ? '\u25B2' : '\u25BC') : '\u25B2'}
+                    </span>
                   </div>
-                </TableHead>
-                <TableHead>Specialty</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead>Type</TableHead>
-                <SortableHeader field="discussionLeaders" className={NOMINATION_COLORS.discussionLeaders.header}>
-                  Discussion
-                </SortableHeader>
-                <SortableHeader field="referralLeaders" className={NOMINATION_COLORS.referralLeaders.header}>
-                  Referral
-                </SortableHeader>
-                <SortableHeader field="adviceLeaders" className={NOMINATION_COLORS.adviceLeaders.header}>
-                  Advice
-                </SortableHeader>
-                <SortableHeader field="nationalLeaders" className={NOMINATION_COLORS.nationalLeaders.header}>
-                  National
-                </SortableHeader>
-                <SortableHeader field="risingStars" className={NOMINATION_COLORS.risingStars.header}>
-                  Rising
-                </SortableHeader>
-                <SortableHeader field="socialLeaders" className={NOMINATION_COLORS.socialLeaders.header}>
-                  Social
-                </SortableHeader>
-                <SortableHeader field="biasedLeaders" className={NOMINATION_COLORS.biasedLeaders.header}>
-                  Biased
-                </SortableHeader>
-                <SortableHeader field="regional" className={NOMINATION_COLORS.regional.header}>
-                  Regional
-                </SortableHeader>
-                <SortableHeader field="total" className="font-bold">
-                  Total
-                </SortableHeader>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
               {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={13} className="h-24 text-center">
+                <tr>
+                  <td colSpan={13} className="h-24 text-center text-muted-foreground">
                     Loading...
-                  </TableCell>
-                </TableRow>
-              ) : !sortedItems.length ? (
-                <TableRow>
-                  <TableCell colSpan={13} className="h-24 text-center">
+                  </td>
+                </tr>
+              ) : !items.length ? (
+                <tr>
+                  <td colSpan={13} className="h-24 text-center text-muted-foreground">
                     No data available
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               ) : (
-                sortedItems.map((item, index) => (
-                  <TableRow key={item.hcpId} className={onKolSelect ? 'cursor-pointer hover:bg-muted/50' : ''}>
-                    <TableCell className="text-muted-foreground">
-                      {((filters.page || 1) - 1) * (filters.limit || 25) + index + 1}
-                    </TableCell>
-                    <TableCell
-                      className="font-medium text-primary hover:underline cursor-pointer"
-                      onClick={() => onKolSelect?.(item.hcpId)}
-                    >
-                      {item.name}
-                    </TableCell>
-                    <TableCell>{item.specialty || '-'}</TableCell>
-                    <TableCell>{item.state || '-'}</TableCell>
-                    <TableCell>
-                      {item.influencerType && (
+                items.map((item, index) => (
+                  <tr key={item.hcpId} className="border-b last:border-b-0 hover:bg-muted/40 transition-colors even:bg-muted/10">
+                    <td className="px-3 py-2 text-muted-foreground tabular-nums">
+                      {(page - 1) * limit + index + 1}
+                    </td>
+                    <td className="px-3 py-2">
+                      <KolNameLink
+                        name={item.name}
+                        onClick={() => {
+                          if (onKolSelect) onKolSelect(item.hcpId);
+                          else console.log('KOL clicked:', item.hcpId);
+                        }}
+                      />
+                    </td>
+                    <td className="px-3 py-2">{item.specialty || '-'}</td>
+                    <td className="px-3 py-2">
+                      {item.influencerType ? (
                         <Badge variant="outline" className="text-xs">
                           {item.influencerType}
                         </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.discussionLeaders.bg, NOMINATION_COLORS.discussionLeaders.text)}>
-                      {item.discussionLeaders || '-'}
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.referralLeaders.bg, NOMINATION_COLORS.referralLeaders.text)}>
-                      {item.referralLeaders || '-'}
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.adviceLeaders.bg, NOMINATION_COLORS.adviceLeaders.text)}>
-                      {item.adviceLeaders || '-'}
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.nationalLeaders.bg, NOMINATION_COLORS.nationalLeaders.text)}>
-                      {item.nationalLeaders || '-'}
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.risingStars.bg, NOMINATION_COLORS.risingStars.text)}>
-                      {item.risingStars || '-'}
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.socialLeaders.bg, NOMINATION_COLORS.socialLeaders.text)}>
-                      {item.socialLeaders || '-'}
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.biasedLeaders.bg, NOMINATION_COLORS.biasedLeaders.text)}>
-                      {item.biasedLeaders || '-'}
-                    </TableCell>
-                    <TableCell className={cn('text-right font-mono', NOMINATION_COLORS.regional.bg, NOMINATION_COLORS.regional.text)}>
-                      {item.regional || '-'}
-                    </TableCell>
-                    <TableCell className="text-right font-mono font-bold bg-muted">
+                      ) : '-'}
+                    </td>
+                    <td className="px-3 py-2">{item.city || '-'}</td>
+                    <td className="px-3 py-2">{item.state || '-'}</td>
+                    <HeatMapCell value={item.discussionLeaders} maxValue={maxValues.discussionLeaders} />
+                    <HeatMapCell value={item.referralLeaders} maxValue={maxValues.referralLeaders} />
+                    <HeatMapCell value={item.adviceLeaders} maxValue={maxValues.adviceLeaders} />
+                    <HeatMapCell value={item.nationalLeaders} maxValue={maxValues.nationalLeaders} />
+                    <HeatMapCell value={item.risingStars} maxValue={maxValues.risingStars} />
+                    <HeatMapCell value={item.socialLeaders} maxValue={maxValues.socialLeaders} />
+                    <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
                       {item.total}
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ))
               )}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </div>
 
         {/* Pagination */}
-        {data && data.totalPages > 1 && (
-          <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
             <p className="text-sm text-muted-foreground">
-              Showing {((filters.page || 1) - 1) * (filters.limit || 25) + 1} to{' '}
-              {Math.min((filters.page || 1) * (filters.limit || 25), data.total)} of{' '}
-              {data.total.toLocaleString()} KOLs
+              {data && data.total > 0
+                ? `Showing ${startRow} to ${endRow} of ${data.total.toLocaleString()} KOLs`
+                : 'No results'}
             </p>
+            <RowsPerPage value={limit} onChange={handleLimitChange} />
+          </div>
+          {totalPages > 1 && (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handlePageChange((filters.page || 1) - 1)}
-                disabled={(filters.page || 1) <= 1}
+                onClick={() => setPage((p) => p - 1)}
+                disabled={page <= 1}
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="text-sm">
-                Page {filters.page || 1} of {data.totalPages}
+                Page {page} of {totalPages}
               </span>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handlePageChange((filters.page || 1) + 1)}
-                disabled={(filters.page || 1) >= data.totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page >= totalPages}
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </CardContent>
     </Card>
   );

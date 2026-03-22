@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { ArrowLeft, Users, Trophy, User, Search, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Users, UserCheck, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,16 +13,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useInsightsSummary, useDashboardDiseaseAreas } from '@/hooks/use-insights-report';
+import { useClients } from '@/hooks/use-clients';
+import { useAuth } from '@/lib/auth/auth-provider';
 
 // Tab components
-import { KolExplorerTab } from '@/components/insights/tabs/kol-explorer';
+import { IntroductionTab } from '@/components/insights/tabs/introduction-tab';
 import { LeaderRankingsTab } from '@/components/insights/tabs/leader-rankings';
-import { KolProfileTab } from '@/components/insights/tabs/kol-profile';
 import { SociometricSummaryTab } from '@/components/insights/tabs/sociometric-summary';
-import { RespondentAnalyticsTab } from '@/components/insights/tabs/respondent-analytics';
+import { SociometricTablesTab } from '@/components/insights/tabs/sociometric-tables-tab';
+import { KolExplorerTab } from '@/components/insights/tabs/kol-explorer';
+import { DemographicsTab } from '@/components/insights/tabs/demographics-tab';
 
-// Global filters and print styles
-import { GlobalFilters, GlobalFilterState, globalFiltersToApiFormat } from '@/components/insights/global-filters';
 import '@/components/insights/print-styles.css';
 
 interface InsightsDashboardProps {
@@ -32,33 +33,45 @@ interface InsightsDashboardProps {
 }
 
 export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }: InsightsDashboardProps) {
-  const [activeTab, setActiveTab] = useState('kol-explorer');
+  const [activeTab, setActiveTab] = useState('introduction');
   const [selectedKolId, setSelectedKolId] = useState<string | null>(null);
-  const [globalFilters, setGlobalFilters] = useState<GlobalFilterState>({
-    states: [],
-    specialties: [],
-    influencerType: null,
-  });
+  const [selectedClientId, setSelectedClientId] = useState<string>('all');
 
-  const handleKolSelect = useCallback((kolId: string) => {
-    setSelectedKolId(kolId);
-    setActiveTab('kol-profile');
-  }, []);
+  const { user } = useAuth();
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
-  const handleGlobalFilterChange = useCallback((filters: GlobalFilterState) => {
-    setGlobalFilters(filters);
-  }, []);
+  // Fetch clients for PLATFORM_ADMIN client selector
+  const { data: clientsData } = useClients();
+  const clients = clientsData?.items || [];
 
   // Fetch disease areas for selector (scoped to user's access)
   const { data: diseaseAreasData } = useDashboardDiseaseAreas();
   const diseaseAreas = diseaseAreasData?.items || [];
   const currentDiseaseArea = diseaseAreas.find((da) => da.id === diseaseAreaId);
 
+  // Determine effective clientId for campaign-scoped data
+  // PLATFORM_ADMIN: uses selected client (undefined if "all")
+  // CLIENT_ADMIN: uses their own tenantId (always set)
+  const effectiveClientId = isPlatformAdmin
+    ? (selectedClientId === 'all' ? undefined : selectedClientId)
+    : user?.tenantId;
+
   // Fetch summary stats
   const { data: summary, isLoading: summaryLoading } = useInsightsSummary(diseaseAreaId);
 
-  // Convert global filters to API format for passing to tabs
-  const apiFilters = globalFiltersToApiFormat(globalFilters);
+  // Cross-tab KOL navigation: switches to KOL Insights tab and opens profile view
+  const handleKolSelect = useCallback((kolId: string) => {
+    setSelectedKolId(kolId);
+    setActiveTab('kol-insights');
+  }, []);
+
+  // Reset selected KOL when switching away from KOL Insights tab
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
+    if (tab !== 'kol-insights') {
+      setSelectedKolId(null);
+    }
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -77,155 +90,136 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Insights Dashboard</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Insights Dashboard</h1>
             <p className="text-muted-foreground">
               Comprehensive KOL analytics and leader rankings
             </p>
           </div>
         </div>
 
-        {/* Disease Area Selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Disease Area:</span>
-          <Select value={diseaseAreaId} onValueChange={onDiseaseAreaChange}>
-            <SelectTrigger className="w-[250px]">
-              <SelectValue placeholder="Select disease area" />
-            </SelectTrigger>
-            <SelectContent>
-              {diseaseAreas.map((da) => (
-                <SelectItem key={da.id} value={da.id}>
-                  {da.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Selectors */}
+        <div className="flex items-center gap-4">
+          {/* Client Selector (PLATFORM_ADMIN only) */}
+          {isPlatformAdmin && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Client:</span>
+              <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Select client" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Clients</SelectItem>
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Disease Area Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Disease Area:</span>
+            <Select value={diseaseAreaId} onValueChange={onDiseaseAreaChange}>
+              <SelectTrigger className="w-[250px]">
+                <SelectValue placeholder="Select disease area" />
+              </SelectTrigger>
+              <SelectContent>
+                {diseaseAreas.map((da) => (
+                  <SelectItem key={da.id} value={da.id}>
+                    {da.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
-      {/* Global Filters */}
-      <GlobalFilters
-        diseaseAreaId={diseaseAreaId}
-        onFilterChange={handleGlobalFilterChange}
-      />
-
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="border-l-4 border-l-blue-500 shadow-md hover:shadow-lg transition-shadow rounded-xl">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-blue-50 dark:bg-blue-950">
+                <Users className="h-4 w-4 text-blue-500" />
+              </div>
               Total KOLs
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-3xl font-extrabold text-blue-600 dark:text-blue-400">
               {summaryLoading ? '...' : (summary?.totalKols ?? 0).toLocaleString()}
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-emerald-500 shadow-md hover:shadow-lg transition-shadow rounded-xl">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-emerald-50 dark:bg-emerald-950">
+                <UserCheck className="h-4 w-4 text-emerald-500" />
+              </div>
               Total Respondents
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
               {summaryLoading ? '...' : (summary?.totalRespondents ?? 0).toLocaleString()}
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-amber-500 shadow-md hover:shadow-lg transition-shadow rounded-xl">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-amber-50 dark:bg-amber-950">
+                <MessageSquare className="h-4 w-4 text-amber-500" />
+              </div>
               Total Nominations
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-3xl font-extrabold text-amber-600 dark:text-amber-400">
               {summaryLoading ? '...' : (summary?.totalNominations ?? 0).toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Avg Composite Score
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {summaryLoading
-                ? '...'
-                : summary?.averageCompositeScore
-                  ? summary.averageCompositeScore.toFixed(1)
-                  : 'N/A'}
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5 print:hidden">
-          <TabsTrigger value="kol-explorer" className="flex items-center gap-2">
-            <Search className="h-4 w-4" />
-            <span className="hidden sm:inline">KOL Explorer</span>
-          </TabsTrigger>
-          <TabsTrigger value="leader-rankings" className="flex items-center gap-2">
-            <Trophy className="h-4 w-4" />
-            <span className="hidden sm:inline">Leader Rankings</span>
-          </TabsTrigger>
-          <TabsTrigger value="kol-profile" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            <span className="hidden sm:inline">KOL Profile</span>
-          </TabsTrigger>
-          <TabsTrigger value="sociometric-summary" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">Sociometric</span>
-          </TabsTrigger>
-          <TabsTrigger value="respondent-analytics" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            <span className="hidden sm:inline">Analytics</span>
-          </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
+        <TabsList className="grid w-full grid-cols-6 print:hidden h-12">
+          <TabsTrigger value="introduction">Introduction</TabsTrigger>
+          <TabsTrigger value="demographics">Demographics</TabsTrigger>
+          <TabsTrigger value="kol360-leaders">KOL360 Leaders</TabsTrigger>
+          <TabsTrigger value="sociometric-leaders">Sociometric Leaders</TabsTrigger>
+          <TabsTrigger value="sociometric-tables">Sociometric Tables</TabsTrigger>
+          <TabsTrigger value="kol-insights">KOL Insights</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="kol-explorer" className="mt-6">
-          <KolExplorerTab
-            diseaseAreaId={diseaseAreaId}
-            onKolSelect={handleKolSelect}
-            globalFilters={apiFilters}
-          />
+        <TabsContent value="introduction" className="mt-6">
+          <IntroductionTab diseaseAreaId={diseaseAreaId} />
         </TabsContent>
 
-        <TabsContent value="leader-rankings" className="mt-6">
-          <LeaderRankingsTab
-            diseaseAreaId={diseaseAreaId}
-            onKolSelect={handleKolSelect}
-            globalFilters={apiFilters}
-          />
+        <TabsContent value="demographics" className="mt-6">
+          <DemographicsTab diseaseAreaId={diseaseAreaId} clientId={effectiveClientId} />
         </TabsContent>
 
-        <TabsContent value="kol-profile" className="mt-6">
-          <KolProfileTab
-            diseaseAreaId={diseaseAreaId}
-            initialKolId={selectedKolId}
-            globalFilters={apiFilters}
-          />
+        <TabsContent value="kol360-leaders" className="mt-6">
+          <LeaderRankingsTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
         </TabsContent>
 
-        <TabsContent value="sociometric-summary" className="mt-6">
-          <SociometricSummaryTab
-            diseaseAreaId={diseaseAreaId}
-            onKolSelect={handleKolSelect}
-            globalFilters={apiFilters}
-          />
+        <TabsContent value="sociometric-leaders" className="mt-6">
+          <SociometricSummaryTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
         </TabsContent>
 
-        <TabsContent value="respondent-analytics" className="mt-6">
-          <RespondentAnalyticsTab
-            diseaseAreaId={diseaseAreaId}
-            globalFilters={apiFilters}
-          />
+        <TabsContent value="sociometric-tables" className="mt-6">
+          <SociometricTablesTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
+        </TabsContent>
+
+        <TabsContent value="kol-insights" className="mt-6">
+          <KolExplorerTab diseaseAreaId={diseaseAreaId} initialKolId={selectedKolId} clientId={effectiveClientId} />
         </TabsContent>
       </Tabs>
     </div>

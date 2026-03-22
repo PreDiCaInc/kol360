@@ -30,6 +30,7 @@ interface NavItem {
   roles?: string[];
   children?: NavItem[];
   collapsible?: boolean;
+  disabled?: boolean;
 }
 
 // Navigation structure for Platform Admin
@@ -85,6 +86,7 @@ const platformAdminNavigation: NavItem[] = [
     href: '/admin/dashboards',
     icon: BarChart3,
     roles: ['PLATFORM_ADMIN'],
+    disabled: true,
   },
   {
     title: 'Users',
@@ -115,6 +117,7 @@ const clientAdminNavigation: NavItem[] = [
     title: 'Insights',
     href: '/admin/dashboards',
     icon: BarChart3,
+    disabled: true,
   },
   {
     title: 'Users',
@@ -208,6 +211,27 @@ function NavItemComponent({
             ))}
           </ul>
         </div>
+      </li>
+    );
+  }
+
+  // Disabled item (greyed out, not clickable)
+  if (item.disabled && item.href) {
+    return (
+      <li>
+        <span
+          className={cn(
+            'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
+            'text-[hsl(var(--sidebar-foreground))]/30 cursor-not-allowed',
+            collapsed && 'justify-center px-2',
+          )}
+          title={collapsed ? `${item.title} (coming soon)` : 'Coming soon'}
+        >
+          <div className="relative">
+            <Icon className="h-[18px] w-[18px] flex-shrink-0 text-[hsl(var(--sidebar-foreground))]/20" />
+          </div>
+          {!collapsed && <span>{item.title}</span>}
+        </span>
       </li>
     );
   }

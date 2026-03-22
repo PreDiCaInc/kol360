@@ -781,6 +781,39 @@ export default function CampaignDetailPage() {
                       />
                     </button>
                   </div>
+                  <div className="flex items-center justify-between border rounded-lg p-3 bg-muted/30">
+                    <div>
+                      <label className="text-sm font-medium">Show Topics Discussed Charts</label>
+                      <p className="text-xs text-muted-foreground">
+                        When enabled, the Topics Discussed charts will appear in the insights dashboard for this campaign
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={campaign.showTopicsDiscussed ?? false}
+                      onClick={async () => {
+                        try {
+                          await updateCampaign.mutateAsync({
+                            id: campaignId,
+                            data: { showTopicsDiscussed: !campaign.showTopicsDiscussed },
+                          });
+                        } catch (error) {
+                          console.error('Failed to toggle show topics discussed:', error);
+                        }
+                      }}
+                      disabled={updateCampaign.isPending}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        campaign.showTopicsDiscussed ? 'bg-primary' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          campaign.showTopicsDiscussed ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                   <div>
                     <label className="text-sm text-muted-foreground">Created</label>
                     <p>{new Date(campaign.createdAt).toLocaleString()}</p>
