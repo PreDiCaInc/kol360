@@ -10,6 +10,7 @@ export const createCampaignSchema = z.object({
   surveyTemplateId: z.string().cuid().optional().nullable(),
   honorariumAmount: z.number().min(0).optional().nullable(),
   excludeInternalEmails: z.boolean().optional(),
+  showTopicsDiscussed: z.boolean().optional(),
   surveyOpenDate: z.string().datetime().optional().nullable(),
   surveyCloseDate: z.string().datetime().optional().nullable(),
 });

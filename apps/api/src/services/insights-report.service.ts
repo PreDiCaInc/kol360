@@ -332,10 +332,15 @@ export class InsightsReportService {
   async getLeaderRankings(
     diseaseAreaId: string,
     query: LeaderRankingQuery,
-    excludeInternalEmails = false
+    excludeInternalEmails = false,
+    clientId?: string
   ): Promise<LeaderRankingsResponse> {
     try {
     const { nominationType, page, limit, specialty, state, specialties, states } = query;
+
+    // Build campaign filter — scoped to client if provided
+    const campaignFilter: Record<string, unknown> = { diseaseAreaId };
+    if (clientId) campaignFilter.clientId = clientId;
 
     // Get nomination counts grouped by matched HCP
     const nominations = await prisma.nomination.groupBy({
@@ -345,7 +350,7 @@ export class InsightsReportService {
         matchedHcpId: { not: null },
         question: {
           nominationType,
-          campaign: { diseaseAreaId },
+          campaign: campaignFilter,
         },
         ...(excludeInternalEmails && {
           response: {
@@ -440,8 +445,12 @@ export class InsightsReportService {
   /**
    * Get individual KOL profile with all scores and nomination counts
    */
-  async getKolProfile(diseaseAreaId: string, hcpId: string, excludeInternalEmails = false): Promise<KolProfileWithNominators | null> {
+  async getKolProfile(diseaseAreaId: string, hcpId: string, excludeInternalEmails = false, clientId?: string): Promise<KolProfileWithNominators | null> {
     try {
+    // Build campaign filter — scoped to client if provided
+    const campaignFilter: Record<string, unknown> = { diseaseAreaId };
+    if (clientId) campaignFilter.clientId = clientId;
+
     // Get HCP with disease area score
     const hcp = await prisma.hcp.findUnique({
       where: { id: hcpId },
@@ -469,7 +478,7 @@ export class InsightsReportService {
         matchedHcpId: hcpId,
         matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
         response: {
-          campaign: { diseaseAreaId },
+          campaign: campaignFilter,
           ...(excludeInternalEmails && {
             respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
           }),
@@ -499,11 +508,11 @@ export class InsightsReportService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Get campaign scores for nomination breakdown by type
+    // Get campaign scores for nomination breakdown by type (scoped to client if provided)
     const campaignScores = await prisma.hcpCampaignScore.findMany({
       where: {
         hcpId,
-        campaign: { diseaseAreaId },
+        campaign: { diseaseAreaId, ...(clientId && { clientId }) },
       },
     });
 
@@ -614,7 +623,8 @@ export class InsightsReportService {
    */
   async getSociometricSummary(
     diseaseAreaId: string,
-    filters: InsightsFilter
+    filters: InsightsFilter,
+    clientId?: string
   ): Promise<SociometricSummaryResponse> {
     try {
     const { page, limit, search, specialty, state, sortBy, sortOrder } = filters;
@@ -652,7 +662,7 @@ export class InsightsReportService {
             take: 1,
           },
           campaignScores: {
-            where: { campaign: { diseaseAreaId } },
+            where: { campaign: { diseaseAreaId, ...(clientId && { clientId }) } },
           },
         },
         skip: (page - 1) * limit,
@@ -743,16 +753,16 @@ export class InsightsReportService {
   /**
    * Get respondent analytics - demographics and survey behavior
    */
-  async getRespondentAnalytics(diseaseAreaId: string, excludeInternalEmails = false): Promise<RespondentAnalytics> {
+  async getRespondentAnalytics(diseaseAreaId: string, excludeInternalEmails = false, clientId?: string): Promise<RespondentAnalytics> {
     try {
     // Build HCP email filter for excluding internal emails
     const hcpEmailFilter = excludeInternalEmails
       ? { email: { not: { endsWith: '@bio-exec.com' } } }
       : undefined;
 
-    // Get all campaigns for this disease area
+    // Get all campaigns for this disease area (scoped to client if provided)
     const campaigns = await prisma.campaign.findMany({
-      where: { diseaseAreaId },
+      where: { diseaseAreaId, ...(clientId && { clientId }) },
       select: { id: true },
     });
     const campaignIds = campaigns.map((c) => c.id);
@@ -940,6 +950,702 @@ export class InsightsReportService {
       logger.error('Error fetching filter options', { diseaseAreaId, error });
       throw error;
     }
+  }
+
+  /**
+   * Get demographics data from survey response answers
+   */
+  async getDemographics(diseaseAreaId: string, clientId?: string) {
+    try {
+      // Get all campaigns for this disease area (scoped to client if provided)
+      const campaigns = await prisma.campaign.findMany({
+        where: { diseaseAreaId, ...(clientId && { clientId }) },
+        select: { id: true, excludeInternalEmails: true, showTopicsDiscussed: true },
+      });
+      const campaignIds = campaigns.map((c) => c.id);
+      const anyShowTopics = campaigns.some((c) => c.showTopicsDiscussed);
+      const excludeInternal = campaigns.some((c) => c.excludeInternalEmails);
+
+      if (campaignIds.length === 0) {
+        return this.emptyDemographics();
+      }
+
+      // Get all completed survey response answers with question text and type
+      const answers = await prisma.surveyResponseAnswer.findMany({
+        where: {
+          response: {
+            campaignId: { in: campaignIds },
+            status: 'COMPLETED',
+            ...(excludeInternal && {
+              respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+            }),
+          },
+        },
+        select: {
+          answerText: true,
+          answerJson: true,
+          question: {
+            select: {
+              questionTextSnapshot: true,
+              campaignId: true,
+              question: {
+                select: { type: true },
+              },
+            },
+          },
+          response: {
+            select: {
+              id: true,
+              respondentHcpId: true,
+              campaignId: true,
+              respondentHcp: {
+                select: { state: true },
+              },
+            },
+          },
+        },
+      });
+
+      // Get unique respondent IDs for total count
+      const respondentIds = new Set(answers.map((a) => a.response.respondentHcpId));
+      const totalRespondents = respondentIds.size;
+
+      // Get decile data from CampaignHcp
+      const campaignHcps = await prisma.campaignHcp.findMany({
+        where: {
+          campaignId: { in: campaignIds },
+          hcpId: { in: Array.from(respondentIds) },
+        },
+        select: {
+          hcpId: true,
+          marketDecile: true,
+        },
+      });
+
+      // Build decile map (hcpId -> marketDecile)
+      const decileMap = new Map<string, number>();
+      for (const ch of campaignHcps) {
+        if (ch.marketDecile !== null) {
+          decileMap.set(ch.hcpId, ch.marketDecile);
+        }
+      }
+
+      // Campaign showTopicsDiscussed map
+      const campaignTopicsMap = new Map(campaigns.map((c) => [c.id, c.showTopicsDiscussed]));
+
+      // Aggregate distributions
+      const roleCounts = new Map<string, number>();
+      const practiceSettingCounts = new Map<string, number>();
+      const coreFocusCounts = new Map<string, number>();
+      const monthlyPatientValues: number[] = [];
+      const dedPatientValues: number[] = [];
+      const yearsValues: number[] = [];
+      const stateCounts = new Map<string, number>();
+      const educationalRanks: Record<string, Record<string, number>> = {};
+      const educationalRanksAcademic: Record<string, Record<string, number>> = {};
+      const educationalRanksOther: Record<string, Record<string, number>> = {};
+      const topicsDiscussedCounts = new Map<string, number>();
+      // Track core focus per respondent for cross-tabulation
+      const respondentCoreFocus = new Map<string, string>();
+      const respondentMonthlyPatients = new Map<string, number>();
+
+      // Track states from respondent HCPs (only count each respondent once)
+      const stateTracked = new Set<string>();
+
+      for (const answer of answers) {
+        const qt = answer.question.questionTextSnapshot.toLowerCase();
+        const questionType = answer.question.question.type;
+        const json = answer.answerJson as Record<string, unknown> | null;
+        const text = answer.answerText;
+        const respondentId = answer.response.respondentHcpId;
+        const campaignId = answer.response.campaignId;
+
+        // C1.2 Role / Primary Medical Specialty
+        if (qt.includes('primary medical specialty')) {
+          const value = this.extractSingleChoice(json, text, questionType);
+          if (value) {
+            roleCounts.set(value, (roleCounts.get(value) || 0) + 1);
+          }
+        }
+
+        // C1.8 Practice Setting
+        if (qt.includes('practice setting')) {
+          if (questionType === 'MULTI_CHOICE' && json) {
+            const selected = (json as { selected?: string[] }).selected;
+            if (Array.isArray(selected)) {
+              for (const s of selected) {
+                practiceSettingCounts.set(s, (practiceSettingCounts.get(s) || 0) + 1);
+              }
+            }
+          } else {
+            const value = this.extractSingleChoice(json, text, questionType);
+            if (value) {
+              practiceSettingCounts.set(value, (practiceSettingCounts.get(value) || 0) + 1);
+            }
+          }
+        }
+
+        // C1.9 Core Focus
+        if (qt.includes('core focus')) {
+          const value = text || this.extractSingleChoice(json, text, questionType);
+          if (value) {
+            coreFocusCounts.set(value, (coreFocusCounts.get(value) || 0) + 1);
+            respondentCoreFocus.set(respondentId, value);
+          }
+        }
+
+        // C1.3 Monthly Patients (not DED)
+        if (qt.includes('how many patients') && !qt.includes('dry eye')) {
+          const num = this.parseNumber(text);
+          if (num !== null) {
+            monthlyPatientValues.push(num);
+            respondentMonthlyPatients.set(respondentId, num);
+          }
+        }
+
+        // C1.4 DED Patients
+        if (qt.includes('dry eye') && qt.includes('patient')) {
+          const num = this.parseNumber(text);
+          if (num !== null) {
+            dedPatientValues.push(num);
+          }
+        }
+
+        // C1.5 Years in Practice
+        if (qt.includes('years') && qt.includes('practice')) {
+          const num = this.parseNumber(text);
+          if (num !== null) {
+            yearsValues.push(num);
+          }
+        }
+
+        // C1.7 Location by state (from HCP)
+        if (!stateTracked.has(respondentId)) {
+          const state = answer.response.respondentHcp?.state;
+          if (state) {
+            stateCounts.set(state, (stateCounts.get(state) || 0) + 1);
+            stateTracked.add(respondentId);
+          }
+        }
+
+        // C1.10-12 Educational Resources (RANK_ORDER)
+        if (qt.includes('educational') || qt.includes('seek educational')) {
+          if (questionType === 'RANK_ORDER' && json) {
+            const rankings = json as unknown;
+            if (Array.isArray(rankings)) {
+              // Determine which bucket (academic vs other vs general)
+              let bucket = educationalRanks;
+              if (qt.includes('academic')) {
+                bucket = educationalRanksAcademic;
+              } else if (qt.includes('non-academic') || qt.includes('community') || qt.includes('other')) {
+                bucket = educationalRanksOther;
+              }
+              for (const item of rankings as Array<{ rank?: number; text?: string }>) {
+                if (item.text && item.rank && item.rank >= 1 && item.rank <= 5) {
+                  if (!bucket[item.text]) {
+                    bucket[item.text] = { rank1: 0, rank2: 0, rank3: 0, rank4: 0, rank5: 0 };
+                  }
+                  const rankKey = `rank${item.rank}` as keyof typeof bucket[string];
+                  bucket[item.text][rankKey] = (bucket[item.text][rankKey] || 0) + 1;
+                }
+              }
+            }
+          }
+        }
+
+        // C1.13-14 Topics Discussed (only if campaign has showTopicsDiscussed=true)
+        if (qt.includes('topics discussed') && campaignTopicsMap.get(campaignId)) {
+          if (questionType === 'MULTI_CHOICE' && json) {
+            const selected = (json as { selected?: string[] }).selected;
+            if (Array.isArray(selected)) {
+              for (const s of selected) {
+                topicsDiscussedCounts.set(s, (topicsDiscussedCounts.get(s) || 0) + 1);
+              }
+            }
+          } else {
+            const value = this.extractSingleChoice(json, text, questionType);
+            if (value) {
+              topicsDiscussedCounts.set(value, (topicsDiscussedCounts.get(value) || 0) + 1);
+            }
+          }
+        }
+      }
+
+      // Build distributions
+      const byRole = this.mapToDistribution(roleCounts, totalRespondents);
+      const byPracticeSetting = this.mapToDistribution(practiceSettingCounts, totalRespondents);
+      const byCoreFocus = this.mapToDistribution(coreFocusCounts, totalRespondents);
+
+      const byMonthlyPatients = this.bucketNumbers(monthlyPatientValues, [
+        { label: '0-100', min: 0, max: 100 },
+        { label: '101-200', min: 101, max: 200 },
+        { label: '201-300', min: 201, max: 300 },
+        { label: '301-400', min: 301, max: 400 },
+        { label: '401-500', min: 401, max: 500 },
+        { label: '501-750', min: 501, max: 750 },
+        { label: '751-1000', min: 751, max: 1000 },
+        { label: '1000+', min: 1001, max: 999999 },
+      ]);
+
+      const byDedPatients = this.bucketNumbers(dedPatientValues, [
+        { label: '0-25', min: 0, max: 25 },
+        { label: '26-50', min: 26, max: 50 },
+        { label: '51-100', min: 51, max: 100 },
+        { label: '101-200', min: 101, max: 200 },
+        { label: '201-300', min: 201, max: 300 },
+        { label: '300+', min: 301, max: 999999 },
+      ]);
+
+      const byYearsInPractice = this.bucketNumbers(yearsValues, [
+        { label: '0-5', min: 0, max: 5 },
+        { label: '6-10', min: 6, max: 10 },
+        { label: '11-15', min: 11, max: 15 },
+        { label: '16-20', min: 16, max: 20 },
+        { label: '21-25', min: 21, max: 25 },
+        { label: '26-30', min: 26, max: 30 },
+        { label: '31+', min: 31, max: 999999 },
+      ]);
+
+      const byState = this.mapToDistribution(stateCounts, totalRespondents);
+
+      // C1.1 Decile distribution
+      const decileCounts = new Map<string, number>();
+      for (const [, decile] of decileMap) {
+        const label = `Decile ${decile}`;
+        decileCounts.set(label, (decileCounts.get(label) || 0) + 1);
+      }
+      const byDecile = this.mapToDistribution(decileCounts, totalRespondents);
+
+      // Educational resources
+      const educationalResources = this.buildEducationalResources(educationalRanks);
+      const educationalResourcesAcademic = this.buildEducationalResources(educationalRanksAcademic);
+      const educationalResourcesOther = this.buildEducationalResources(educationalRanksOther);
+
+      // Topics discussed (only if any campaign has it enabled)
+      const topicsDiscussed = anyShowTopics && topicsDiscussedCounts.size > 0
+        ? this.mapToDistribution(topicsDiscussedCounts, totalRespondents)
+        : undefined;
+
+      // Core focus by patients cross-tabulation
+      const coreFocusByPatients: { coreFocus: string; totalPatients: number; count: number }[] = [];
+      const cfpMap = new Map<string, { totalPatients: number; count: number }>();
+      for (const [respondentId, cf] of respondentCoreFocus) {
+        const patients = respondentMonthlyPatients.get(respondentId);
+        if (patients !== undefined) {
+          const existing = cfpMap.get(cf) || { totalPatients: 0, count: 0 };
+          existing.totalPatients += patients;
+          existing.count += 1;
+          cfpMap.set(cf, existing);
+        }
+      }
+      for (const [coreFocus, data] of cfpMap) {
+        coreFocusByPatients.push({ coreFocus, totalPatients: data.totalPatients, count: data.count });
+      }
+      coreFocusByPatients.sort((a, b) => b.totalPatients - a.totalPatients);
+
+      return {
+        totalRespondents,
+        byRole,
+        byPracticeSetting,
+        byCoreFocus,
+        byMonthlyPatients,
+        byDedPatients,
+        byYearsInPractice,
+        byState,
+        byDecile,
+        educationalResources,
+        educationalResourcesAcademic,
+        educationalResourcesOther,
+        topicsDiscussed,
+        coreFocusByPatients,
+      };
+    } catch (error) {
+      logger.error('Error fetching demographics', { diseaseAreaId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get KOL nomination metadata - nominator survey answers for a specific KOL
+   */
+  async getKolNominationMetadata(diseaseAreaId: string, hcpId: string, clientId?: string) {
+    try {
+      // Get campaigns for disease area (scoped to client if provided)
+      const campaigns = await prisma.campaign.findMany({
+        where: { diseaseAreaId, ...(clientId && { clientId }) },
+        select: { id: true, showTopicsDiscussed: true, excludeInternalEmails: true },
+      });
+      const campaignIds = campaigns.map((c) => c.id);
+      const anyShowTopics = campaigns.some((c) => c.showTopicsDiscussed);
+      const excludeInternal = campaigns.some((c) => c.excludeInternalEmails);
+
+      if (campaignIds.length === 0) {
+        return { byPracticeSetting: [], byCoreFocus: [], byMonthlyPatients: [], byDedPatients: [], byYearsInPractice: [], byDecile: [], nominators: [] };
+      }
+
+      // Find all nominations for this KOL
+      const nominations = await prisma.nomination.findMany({
+        where: {
+          matchedHcpId: hcpId,
+          matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
+          response: {
+            campaignId: { in: campaignIds },
+            ...(excludeInternal && {
+              respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+            }),
+          },
+        },
+        select: {
+          response: {
+            select: {
+              id: true,
+              respondentHcpId: true,
+              campaignId: true,
+              respondentHcp: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  specialty: true,
+                  state: true,
+                  city: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      // Get unique nominator respondent HCP IDs and their response IDs
+      const nominatorMap = new Map<string, { name: string; role: string; state: string; city: string; count: number; responseIds: string[] }>();
+      for (const nom of nominations) {
+        const hcp = nom.response.respondentHcp;
+        const existing = nominatorMap.get(hcp.id);
+        if (existing) {
+          existing.count++;
+          if (!existing.responseIds.includes(nom.response.id)) {
+            existing.responseIds.push(nom.response.id);
+          }
+        } else {
+          nominatorMap.set(hcp.id, {
+            name: `${hcp.firstName} ${hcp.lastName}`,
+            role: hcp.specialty || 'Unknown',
+            state: hcp.state || 'Unknown',
+            city: hcp.city || 'Unknown',
+            count: 1,
+            responseIds: [nom.response.id],
+          });
+        }
+      }
+
+      const nominatorHcpIds = Array.from(nominatorMap.keys());
+      const responseIds = nominations.map((n) => n.response.id);
+
+      if (nominatorHcpIds.length === 0) {
+        return { byPracticeSetting: [], byCoreFocus: [], byMonthlyPatients: [], byDedPatients: [], byYearsInPractice: [], byDecile: [], nominators: [] };
+      }
+
+      // Get survey answers for all nominator responses
+      const answers = await prisma.surveyResponseAnswer.findMany({
+        where: {
+          responseId: { in: [...new Set(responseIds)] },
+        },
+        select: {
+          answerText: true,
+          answerJson: true,
+          responseId: true,
+          question: {
+            select: {
+              questionTextSnapshot: true,
+              campaignId: true,
+              question: {
+                select: { type: true },
+              },
+            },
+          },
+          response: {
+            select: {
+              respondentHcpId: true,
+            },
+          },
+        },
+      });
+
+      // Get decile data
+      const campaignHcps = await prisma.campaignHcp.findMany({
+        where: {
+          campaignId: { in: campaignIds },
+          hcpId: { in: nominatorHcpIds },
+        },
+        select: {
+          hcpId: true,
+          marketDecile: true,
+        },
+      });
+
+      const decileMap = new Map<string, number>();
+      for (const ch of campaignHcps) {
+        if (ch.marketDecile !== null) {
+          decileMap.set(ch.hcpId, ch.marketDecile);
+        }
+      }
+
+      // Aggregate per nominator
+      const practiceSettingCounts = new Map<string, number>();
+      const coreFocusCounts = new Map<string, number>();
+      const monthlyPatientValues: number[] = [];
+      const dedPatientValues: number[] = [];
+      const yearsValues: number[] = [];
+      const topicsDiscussedCounts = new Map<string, number>();
+      const nominatorPracticeSetting = new Map<string, string>();
+      const nominatorCoreFocus = new Map<string, string>();
+
+      const campaignTopicsMap = new Map(campaigns.map((c) => [c.id, c.showTopicsDiscussed]));
+
+      for (const answer of answers) {
+        const qt = answer.question.questionTextSnapshot.toLowerCase();
+        const questionType = answer.question.question.type;
+        const json = answer.answerJson as Record<string, unknown> | null;
+        const text = answer.answerText;
+        const respondentId = answer.response.respondentHcpId;
+        const campaignId = answer.question.campaignId;
+
+        if (qt.includes('practice setting')) {
+          const value = this.extractSingleChoice(json, text, questionType);
+          if (value) {
+            practiceSettingCounts.set(value, (practiceSettingCounts.get(value) || 0) + 1);
+            nominatorPracticeSetting.set(respondentId, value);
+          }
+        }
+
+        if (qt.includes('core focus')) {
+          const value = text || this.extractSingleChoice(json, text, questionType);
+          if (value) {
+            coreFocusCounts.set(value, (coreFocusCounts.get(value) || 0) + 1);
+            nominatorCoreFocus.set(respondentId, value);
+          }
+        }
+
+        if (qt.includes('how many patients') && !qt.includes('dry eye')) {
+          const num = this.parseNumber(text);
+          if (num !== null) monthlyPatientValues.push(num);
+        }
+
+        if (qt.includes('dry eye') && qt.includes('patient')) {
+          const num = this.parseNumber(text);
+          if (num !== null) dedPatientValues.push(num);
+        }
+
+        if (qt.includes('years') && qt.includes('practice')) {
+          const num = this.parseNumber(text);
+          if (num !== null) yearsValues.push(num);
+        }
+
+        if (qt.includes('topics discussed') && anyShowTopics && campaignTopicsMap.get(campaignId)) {
+          if (questionType === 'MULTI_CHOICE' && json) {
+            const selected = (json as { selected?: string[] }).selected;
+            if (Array.isArray(selected)) {
+              for (const s of selected) {
+                topicsDiscussedCounts.set(s, (topicsDiscussedCounts.get(s) || 0) + 1);
+              }
+            }
+          } else {
+            const value = this.extractSingleChoice(json, text, questionType);
+            if (value) {
+              topicsDiscussedCounts.set(value, (topicsDiscussedCounts.get(value) || 0) + 1);
+            }
+          }
+        }
+      }
+
+      // Decile distribution
+      const decileCounts = new Map<string, number>();
+      for (const hcpId of nominatorHcpIds) {
+        const decile = decileMap.get(hcpId);
+        if (decile !== undefined) {
+          const label = `Decile ${decile}`;
+          decileCounts.set(label, (decileCounts.get(label) || 0) + 1);
+        }
+      }
+
+      // Build nominator details
+      const nominators = Array.from(nominatorMap.entries()).map(([hcpId, data]) => ({
+        name: data.name,
+        role: data.role,
+        practiceSetting: nominatorPracticeSetting.get(hcpId) || 'Unknown',
+        coreFocus: nominatorCoreFocus.get(hcpId) || 'Unknown',
+        state: data.state,
+        city: data.city,
+        totalNominations: data.count,
+      }));
+
+      const byMonthlyPatients = this.bucketNumbersSimple(monthlyPatientValues, [
+        { label: '0-100', min: 0, max: 100 },
+        { label: '101-200', min: 101, max: 200 },
+        { label: '201-300', min: 201, max: 300 },
+        { label: '301-400', min: 301, max: 400 },
+        { label: '401-500', min: 401, max: 500 },
+        { label: '501-750', min: 501, max: 750 },
+        { label: '751-1000', min: 751, max: 1000 },
+        { label: '1000+', min: 1001, max: 999999 },
+      ]);
+
+      const byDedPatients = this.bucketNumbersSimple(dedPatientValues, [
+        { label: '0-25', min: 0, max: 25 },
+        { label: '26-50', min: 26, max: 50 },
+        { label: '51-100', min: 51, max: 100 },
+        { label: '101-200', min: 101, max: 200 },
+        { label: '201-300', min: 201, max: 300 },
+        { label: '300+', min: 301, max: 999999 },
+      ]);
+
+      const byYearsInPractice = this.bucketNumbersSimple(yearsValues, [
+        { label: '0-5', min: 0, max: 5 },
+        { label: '6-10', min: 6, max: 10 },
+        { label: '11-15', min: 11, max: 15 },
+        { label: '16-20', min: 16, max: 20 },
+        { label: '21-25', min: 21, max: 25 },
+        { label: '26-30', min: 26, max: 30 },
+        { label: '31+', min: 31, max: 999999 },
+      ]);
+
+      const topicsDiscussed = anyShowTopics && topicsDiscussedCounts.size > 0
+        ? Array.from(topicsDiscussedCounts.entries())
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count)
+        : undefined;
+
+      return {
+        byPracticeSetting: this.mapToSimpleDistribution(practiceSettingCounts),
+        byCoreFocus: this.mapToSimpleDistribution(coreFocusCounts),
+        byMonthlyPatients,
+        byDedPatients,
+        byYearsInPractice,
+        byDecile: this.mapToSimpleDistribution(decileCounts),
+        topicsDiscussed,
+        nominators,
+      };
+    } catch (error) {
+      logger.error('Error fetching KOL nomination metadata', { diseaseAreaId, hcpId, error });
+      throw error;
+    }
+  }
+
+  // --- Helper methods ---
+
+  private extractSingleChoice(json: Record<string, unknown> | null, text: string | null, questionType: string): string | null {
+    if (questionType === 'SINGLE_CHOICE' && json) {
+      const selected = (json as { selected?: string }).selected;
+      if (typeof selected === 'string') return selected;
+    }
+    if (questionType === 'DROPDOWN' && text) {
+      return text;
+    }
+    if (text) return text;
+    return null;
+  }
+
+  private parseNumber(text: string | null): number | null {
+    if (!text) return null;
+    const cleaned = text.replace(/[^0-9.-]/g, '');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : num;
+  }
+
+  private mapToDistribution(counts: Map<string, number>, total: number): { name: string; count: number; percentage: number }[] {
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: total > 0 ? (count / total) * 100 : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  private mapToSimpleDistribution(counts: Map<string, number>): { name: string; count: number }[] {
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  private bucketNumbers(
+    values: number[],
+    ranges: { label: string; min: number; max: number }[]
+  ): { name: string; count: number; percentage: number }[] {
+    const total = values.length;
+    const counts = new Map<string, number>();
+    for (const range of ranges) {
+      counts.set(range.label, 0);
+    }
+    for (const val of values) {
+      for (const range of ranges) {
+        if (val >= range.min && val <= range.max) {
+          counts.set(range.label, (counts.get(range.label) || 0) + 1);
+          break;
+        }
+      }
+    }
+    return ranges.map(({ label }) => ({
+      name: label,
+      count: counts.get(label) || 0,
+      percentage: total > 0 ? ((counts.get(label) || 0) / total) * 100 : 0,
+    }));
+  }
+
+  private bucketNumbersSimple(
+    values: number[],
+    ranges: { label: string; min: number; max: number }[]
+  ): { name: string; count: number }[] {
+    const counts = new Map<string, number>();
+    for (const range of ranges) {
+      counts.set(range.label, 0);
+    }
+    for (const val of values) {
+      for (const range of ranges) {
+        if (val >= range.min && val <= range.max) {
+          counts.set(range.label, (counts.get(range.label) || 0) + 1);
+          break;
+        }
+      }
+    }
+    return ranges.map(({ label }) => ({
+      name: label,
+      count: counts.get(label) || 0,
+    }));
+  }
+
+  private buildEducationalResources(
+    ranks: Record<string, Record<string, number>>
+  ): { resource: string; rank1: number; rank2: number; rank3: number; rank4: number; rank5: number }[] {
+    return Object.entries(ranks)
+      .map(([resource, counts]) => ({
+        resource,
+        rank1: counts.rank1 || 0,
+        rank2: counts.rank2 || 0,
+        rank3: counts.rank3 || 0,
+        rank4: counts.rank4 || 0,
+        rank5: counts.rank5 || 0,
+      }))
+      .sort((a, b) => (b.rank1 + b.rank2 + b.rank3) - (a.rank1 + a.rank2 + a.rank3));
+  }
+
+  private emptyDemographics() {
+    return {
+      totalRespondents: 0,
+      byRole: [],
+      byPracticeSetting: [],
+      byCoreFocus: [],
+      byMonthlyPatients: [],
+      byDedPatients: [],
+      byYearsInPractice: [],
+      byState: [],
+      byDecile: [],
+      educationalResources: [],
+      educationalResourcesAcademic: [],
+      educationalResourcesOther: [],
+      topicsDiscussed: undefined,
+      coreFocusByPatients: [],
+    };
   }
 
   /**

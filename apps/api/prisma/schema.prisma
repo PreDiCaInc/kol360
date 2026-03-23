@@ -358,7 +358,7 @@ model Campaign {
   name                     String
   description              String?
   status                   CampaignStatus          @default(DRAFT)
-  honorariumAmount         Decimal?                @db.Decimal(10, 2)
+  honorariumAmount         Decimal                 @default(0) @db.Decimal(10, 2)
   surveyOpenDate           DateTime?
   surveyCloseDate          DateTime?
   publishedAt              DateTime?
@@ -378,6 +378,7 @@ model Campaign {
   surveyWelcomeMessage       String?
   surveyWelcomeTitle         String?
   excludeInternalEmails    Boolean                 @default(false)
+  showTopicsDiscussed      Boolean                 @default(false)
   // Workflow step confirmation timestamps (when user explicitly reviewed/confirmed each step)
   scoreConfigConfirmedAt   DateTime?
   templatesConfirmedAt     DateTime?

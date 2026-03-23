@@ -68,7 +68,7 @@ export const insightsFilterSchema = z.object({
 
   // Pagination - use coerce for URL query params which are strings
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
+  limit: z.coerce.number().int().min(1).max(5000).default(25),
   sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
@@ -89,7 +89,7 @@ export const leaderRankingQuerySchema = z.object({
   states: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
   specialties: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(100),
+  limit: z.coerce.number().int().min(1).max(5000).default(100),
 });
 
 // Output type (after transform) - used by API service

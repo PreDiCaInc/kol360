@@ -12,6 +12,8 @@ import type {
   InsightsFilterInput,
   LeaderRankingQueryInput,
   NominationType,
+  DemographicsResponse,
+  KolNominationMetadataResponse,
 } from '@kol360/shared';
 
 // Disease area card for the dashboard landing page
@@ -87,10 +89,12 @@ export function useKolExplorer(
 export function useLeaderRankings(
   diseaseAreaId: string,
   nominationType: NominationType,
-  options: Partial<Omit<LeaderRankingQueryInput, 'nominationType'>> = {}
+  options: Partial<Omit<LeaderRankingQueryInput, 'nominationType'>> = {},
+  clientId?: string
 ) {
   const params = new URLSearchParams();
   params.append('nominationType', nominationType);
+  if (clientId) params.append('clientId', clientId);
   Object.entries(options).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       params.append(key, String(value));
@@ -98,7 +102,7 @@ export function useLeaderRankings(
   });
 
   return useQuery({
-    queryKey: ['leader-rankings', diseaseAreaId, nominationType, options],
+    queryKey: ['leader-rankings', diseaseAreaId, nominationType, options, clientId],
     queryFn: () =>
       apiClient.get<LeaderRankingsResponse>(
         `/api/v1/insights/${diseaseAreaId}/leader-rankings?${params.toString()}`
@@ -111,15 +115,19 @@ export function useLeaderRankings(
 /**
  * Get individual KOL profile with all scores, nomination counts, and nominator details
  */
-export function useKolProfile(diseaseAreaId: string, hcpId: string | null) {
+export function useKolProfile(diseaseAreaId: string, hcpId: string | null, clientId?: string) {
+  const params = new URLSearchParams();
+  if (clientId) params.append('clientId', clientId);
+  const qs = params.toString();
+
   return useQuery({
-    queryKey: ['kol-profile', diseaseAreaId, hcpId],
+    queryKey: ['kol-profile', diseaseAreaId, hcpId, clientId],
     queryFn: () =>
       apiClient.get<KolProfileWithNominators>(
-        `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}`
+        `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}${qs ? '?' + qs : ''}`
       ),
     enabled: !!diseaseAreaId && !!hcpId,
-    staleTime: 60000, // 1 minute
+    staleTime: 60000,
   });
 }
 
@@ -128,9 +136,11 @@ export function useKolProfile(diseaseAreaId: string, hcpId: string | null) {
  */
 export function useSociometricSummary(
   diseaseAreaId: string,
-  filters: Partial<InsightsFilterInput> = {}
+  filters: Partial<InsightsFilterInput> = {},
+  clientId?: string
 ) {
   const params = new URLSearchParams();
+  if (clientId) params.append('clientId', clientId);
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       params.append(key, String(value));
@@ -138,7 +148,7 @@ export function useSociometricSummary(
   });
 
   return useQuery({
-    queryKey: ['sociometric-summary', diseaseAreaId, filters],
+    queryKey: ['sociometric-summary', diseaseAreaId, filters, clientId],
     queryFn: () =>
       apiClient.get<SociometricSummaryResponse>(
         `/api/v1/insights/${diseaseAreaId}/sociometric-summary?${params.toString()}`
@@ -160,6 +170,44 @@ export function useRespondentAnalytics(diseaseAreaId: string) {
       ),
     enabled: !!diseaseAreaId,
     staleTime: 60000, // 1 minute
+  });
+}
+
+/**
+ * Get demographics data (aggregated from survey response answers)
+ */
+export function useDemographics(diseaseAreaId: string, clientId?: string) {
+  const params = new URLSearchParams();
+  if (clientId) params.append('clientId', clientId);
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: ['insights', 'demographics', diseaseAreaId, clientId],
+    queryFn: () =>
+      apiClient.get<DemographicsResponse>(
+        `/api/v1/insights/${diseaseAreaId}/demographics${qs ? '?' + qs : ''}`
+      ),
+    enabled: !!diseaseAreaId,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Get KOL nomination metadata (nominator survey answers for a specific KOL)
+ */
+export function useKolNominationMetadata(diseaseAreaId: string, hcpId: string | null, clientId?: string) {
+  const params = new URLSearchParams();
+  if (clientId) params.append('clientId', clientId);
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: ['insights', 'kol-nomination-metadata', diseaseAreaId, hcpId, clientId],
+    queryFn: () =>
+      apiClient.get<KolNominationMetadataResponse>(
+        `/api/v1/insights/${diseaseAreaId}/kol-nomination-metadata/${hcpId}${qs ? '?' + qs : ''}`
+      ),
+    enabled: !!diseaseAreaId && !!hcpId,
+    staleTime: 60_000,
   });
 }
 

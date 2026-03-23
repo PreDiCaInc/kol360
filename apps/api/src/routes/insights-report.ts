@@ -51,6 +51,17 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
     return { items };
   });
 
+  // Helper to resolve clientId for campaign-scoped data
+  // CLIENT_ADMIN: always uses their tenantId
+  // PLATFORM_ADMIN: uses clientId query param if provided, undefined for "all"
+  function resolveClientId(user: { role: string; tenantId?: string }, query: Record<string, string>): string | undefined {
+    if (user.role === 'PLATFORM_ADMIN') {
+      const qClientId = query.clientId;
+      return qClientId && qClientId !== 'all' ? qClientId : undefined;
+    }
+    return user.tenantId;
+  }
+
   // Helper function to verify disease area access
   async function verifyDiseaseAreaAccess(
     diseaseAreaId: string,
@@ -149,7 +160,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
 
       const query = leaderRankingQuerySchema.parse(request.query);
       const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
-      return insightsReportService.getLeaderRankings(diseaseAreaId, query, excludeInternal);
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return insightsReportService.getLeaderRankings(diseaseAreaId, query, excludeInternal, clientId);
     }
   );
 
@@ -165,7 +177,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
-      const profile = await insightsReportService.getKolProfile(diseaseAreaId, hcpId, excludeInternal);
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      const profile = await insightsReportService.getKolProfile(diseaseAreaId, hcpId, excludeInternal, clientId);
       if (!profile) {
         return reply.status(404).send({
           error: 'Not Found',
@@ -190,7 +203,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const filters = insightsFilterSchema.parse(request.query);
-      return insightsReportService.getSociometricSummary(diseaseAreaId, filters);
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return insightsReportService.getSociometricSummary(diseaseAreaId, filters, clientId);
     }
   );
 
@@ -206,7 +220,40 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
-      return insightsReportService.getRespondentAnalytics(diseaseAreaId, excludeInternal);
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return insightsReportService.getRespondentAnalytics(diseaseAreaId, excludeInternal, clientId);
+    }
+  );
+
+  // Get demographics data (aggregated from survey response answers)
+  fastify.get<{ Params: { diseaseAreaId: string } }>(
+    '/:diseaseAreaId/demographics',
+    async (request, reply) => {
+      const { diseaseAreaId } = request.params;
+      const user = request.user!;
+
+      if (!(await verifyDiseaseAreaAccess(diseaseAreaId, user, reply))) {
+        return;
+      }
+
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return insightsReportService.getDemographics(diseaseAreaId, clientId);
+    }
+  );
+
+  // Get KOL nomination metadata (nominator survey answers for a specific KOL)
+  fastify.get<{ Params: { diseaseAreaId: string; hcpId: string } }>(
+    '/:diseaseAreaId/kol-nomination-metadata/:hcpId',
+    async (request, reply) => {
+      const { diseaseAreaId, hcpId } = request.params;
+      const user = request.user!;
+
+      if (!(await verifyDiseaseAreaAccess(diseaseAreaId, user, reply))) {
+        return;
+      }
+
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return insightsReportService.getKolNominationMetadata(diseaseAreaId, hcpId, clientId);
     }
   );
 
