@@ -347,28 +347,28 @@ export default function AdminDashboard() {
             />
           )}
 
-          <Link href="/admin/dashboards" className="group">
-            <Card className="h-full gradient-primary text-white border-0 hover:shadow-xl hover:shadow-primary/20 transition-all duration-300">
+          <div className="cursor-not-allowed" title="Coming soon">
+            <Card className="h-full bg-muted/50 border border-muted text-muted-foreground opacity-60">
               <CardContent className="p-6">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20 transition-transform duration-300 group-hover:scale-110">
-                    <TrendingUp className="h-6 w-6 text-white" />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-muted">
+                    <TrendingUp className="h-6 w-6 text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-white">
+                      <h3 className="font-semibold">
                         View Analytics
                       </h3>
-                      <Sparkles className="h-4 w-4 text-white/70" />
+                      <Sparkles className="h-4 w-4 text-muted-foreground/50" />
                     </div>
-                    <p className="text-sm text-white/80 mt-1">
-                      Interactive dashboards and insights
+                    <p className="text-sm mt-1">
+                      Coming soon
                     </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          </Link>
+          </div>
         </div>
       </div>
 
