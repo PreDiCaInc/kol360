@@ -262,6 +262,9 @@ export class SurveyTakingService {
             },
           },
         },
+        respondentHcp: {
+          select: { email: true },
+        },
         answers: {
           include: {
             question: {
@@ -359,8 +362,10 @@ export class SurveyTakingService {
       });
     }
 
-    // Create payment record if honorarium is set
-    if (response.campaign.honorariumAmount) {
+    // Create payment record if honorarium is set, skip for internal emails when exclude flag is on
+    const isInternalEmail = response.respondentHcp?.email?.endsWith('@bio-exec.com');
+    const skipPayment = response.campaign.excludeInternalEmails && isInternalEmail;
+    if (response.campaign.honorariumAmount && !skipPayment) {
       await prisma.payment.create({
         data: {
           campaignId: response.campaignId,

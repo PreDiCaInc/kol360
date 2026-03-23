@@ -94,7 +94,7 @@ export class CampaignService {
         name: data.name,
         description: data.description,
         surveyTemplateId: data.surveyTemplateId,
-        honorariumAmount: data.honorariumAmount,
+        honorariumAmount: data.honorariumAmount ?? 0,
         surveyOpenDate: data.surveyOpenDate ? new Date(data.surveyOpenDate) : null,
         surveyCloseDate: data.surveyCloseDate ? new Date(data.surveyCloseDate) : null,
         createdBy,
@@ -154,6 +154,7 @@ export class CampaignService {
       where: { id },
       data: {
         ...data,
+        honorariumAmount: data.honorariumAmount ?? undefined,
         surveyOpenDate: data.surveyOpenDate ? new Date(data.surveyOpenDate) : undefined,
         surveyCloseDate: data.surveyCloseDate ? new Date(data.surveyCloseDate) : undefined,
       },

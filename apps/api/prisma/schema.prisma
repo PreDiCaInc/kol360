@@ -358,7 +358,7 @@ model Campaign {
   name                     String
   description              String?
   status                   CampaignStatus          @default(DRAFT)
-  honorariumAmount         Decimal?                @db.Decimal(10, 2)
+  honorariumAmount         Decimal                 @default(0) @db.Decimal(10, 2)
   surveyOpenDate           DateTime?
   surveyCloseDate          DateTime?
   publishedAt              DateTime?

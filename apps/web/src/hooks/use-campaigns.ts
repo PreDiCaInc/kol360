@@ -28,7 +28,7 @@ interface Campaign {
   name: string;
   description: string | null;
   status: CampaignStatus;
-  honorariumAmount: number | null;
+  honorariumAmount: number;
   surveyOpenDate: string | null;
   surveyCloseDate: string | null;
   publishedAt: string | null;
@@ -258,7 +258,7 @@ export interface SurveyPreviewQuestion {
 
 export interface SurveyPreviewData {
   campaignName: string;
-  honorariumAmount: number | null;
+  honorariumAmount: number;
   welcomeTitle: string | null;
   welcomeMessage: string | null;
   thankYouTitle: string | null;
