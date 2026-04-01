@@ -198,6 +198,9 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
 
       const progressId = `${activeKey}:${Date.now()}`;
 
+      // Create progress entry SYNCHRONOUSLY before fire-and-forget to prevent race condition
+      importProgressStore.start(progressId, 'email-invitations', 0);
+
       // Fire and forget — don't await
       distributionService.sendInvitations(campaignId, progressId)
         .then(async (result) => {
@@ -206,10 +209,15 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
             entityType: 'Campaign',
             entityId: campaignId,
             newValues: { sent: result.sent, failed: result.failed, skipped: result.skipped },
-          });
+          }).catch(() => {}); // Audit log failure should not affect send result
         })
         .catch((error) => {
           logger.error('Background send-invitations failed', { campaignId, progressId }, error instanceof Error ? error : undefined);
+          // Only mark failed if still processing (emailService may have already completed it)
+          const current = importProgressStore.get(progressId);
+          if (current?.status === 'processing') {
+            importProgressStore.complete(progressId, { created: 0, updated: 0, errors: 1 });
+          }
         });
 
       return { progressId, status: 'started' };
@@ -232,6 +240,9 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
 
       const progressId = `${activeKey}:${Date.now()}`;
 
+      // Create progress entry SYNCHRONOUSLY before fire-and-forget to prevent race condition
+      importProgressStore.start(progressId, 'email-invitations', 0);
+
       distributionService.sendInvitations(campaignId, progressId)
         .then(async (result) => {
           await createAuditLog(request.user!.sub, {
@@ -239,10 +250,14 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
             entityType: 'Campaign',
             entityId: campaignId,
             newValues: { sent: result.sent, failed: result.failed },
-          });
+          }).catch(() => {});
         })
         .catch((error) => {
           logger.error('Background send-invitations (legacy) failed', { campaignId, progressId }, error instanceof Error ? error : undefined);
+          const current = importProgressStore.get(progressId);
+          if (current?.status === 'processing') {
+            importProgressStore.complete(progressId, { created: 0, updated: 0, errors: 1 });
+          }
         });
 
       return { progressId, status: 'started' };
@@ -270,6 +285,9 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
       const progressId = `${activeKey}:${Date.now()}`;
       const { maxReminders = 3 } = request.body || {};
 
+      // Create progress entry SYNCHRONOUSLY before fire-and-forget to prevent race condition
+      importProgressStore.start(progressId, 'email-reminders', 0);
+
       // Fire and forget — don't await
       distributionService.sendReminders(campaignId, maxReminders, progressId)
         .then(async (result) => {
@@ -278,10 +296,14 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
             entityType: 'Campaign',
             entityId: campaignId,
             newValues: { sent: result.sent, failed: result.failed, skipped: result.skipped, maxReminders },
-          });
+          }).catch(() => {});
         })
         .catch((error) => {
           logger.error('Background send-reminders failed', { campaignId, progressId }, error instanceof Error ? error : undefined);
+          const current = importProgressStore.get(progressId);
+          if (current?.status === 'processing') {
+            importProgressStore.complete(progressId, { created: 0, updated: 0, errors: 1 });
+          }
         });
 
       return { progressId, status: 'started' };
@@ -325,6 +347,9 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
 
       const progressId = `${activeKey}:${Date.now()}`;
 
+      // Create progress entry SYNCHRONOUSLY before fire-and-forget to prevent race condition
+      importProgressStore.start(progressId, 'email-reminders', 0);
+
       distributionService.sendReminders(campaignId, 3, progressId)
         .then(async (result) => {
           await createAuditLog(request.user!.sub, {
@@ -332,10 +357,14 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
             entityType: 'Campaign',
             entityId: campaignId,
             newValues: { sent: result.sent },
-          });
+          }).catch(() => {});
         })
         .catch((error) => {
           logger.error('Background send-reminders (legacy) failed', { campaignId, progressId }, error instanceof Error ? error : undefined);
+          const current = importProgressStore.get(progressId);
+          if (current?.status === 'processing') {
+            importProgressStore.complete(progressId, { created: 0, updated: 0, errors: 1 });
+          }
         });
 
       return { progressId, status: 'started' };

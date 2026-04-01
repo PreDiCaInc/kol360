@@ -1116,14 +1116,14 @@ export default function CampaignDetailPage() {
                     {canEdit && (
                       <div className="flex gap-3 flex-wrap">
                         {distributionStats && distributionStats.notInvited > 0 && (
-                          <Button onClick={() => setShowInvitationConfirm(true)} variant="default">
+                          <Button onClick={() => setShowInvitationConfirm(true)} variant="default" disabled={!!invitationProgressId || sendInvitations.isPending}>
                             <Mail className="w-4 h-4 mr-2" />
-                            Send Invitations ({distributionStats.notInvited})
+                            {invitationProgressId ? 'Sending Invitations...' : `Send Invitations (${distributionStats.notInvited})`}
                           </Button>
                         )}
-                        <Button onClick={() => setShowReminderConfirm(true)} variant="outline" disabled={!distributionStats || distributionStats.invited === 0}>
+                        <Button onClick={() => setShowReminderConfirm(true)} variant="outline" disabled={!distributionStats || distributionStats.invited === 0 || !!reminderProgressId || sendReminders.isPending}>
                           <Bell className="w-4 h-4 mr-2" />
-                          Send Reminders
+                          {reminderProgressId ? 'Sending Reminders...' : 'Send Reminders'}
                         </Button>
                         <Button onClick={() => setStatusAction('close')} variant="outline">
                           <Pause className="w-4 h-4 mr-2" />
@@ -1266,8 +1266,15 @@ export default function CampaignDetailPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleSendReminders}>
-                Send Emails
+              <AlertDialogAction onClick={handleSendReminders} disabled={sendReminders.isPending}>
+                {sendReminders.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  'Send Emails'
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
