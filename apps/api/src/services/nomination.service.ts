@@ -114,28 +114,89 @@ export class NominationService {
 
     if (nameParts.length === 0) return [];
 
-    // Search HCPs by name parts and aliases
-    const suggestions = await prisma.hcp.findMany({
+    // Search HCPs using a tiered approach to ensure exact matches aren't missed
+    const rawNameTrimmed = nomination.rawNameEntered.trim();
+
+    // Tier 1: Exact full name match or alias match (most specific)
+    const exactMatches = await prisma.hcp.findMany({
       where: {
         OR: [
-          // Match first name or last name containing any part
-          ...nameParts.flatMap((part: string) => [
-            { firstName: { contains: part, mode: 'insensitive' as const } },
-            { lastName: { contains: part, mode: 'insensitive' as const } },
-          ]),
-          // Match aliases
+          // Exact first+last match (assumes "First Last" format)
+          ...(nameParts.length >= 2
+            ? [
+                {
+                  AND: [
+                    { firstName: { equals: nameParts[0], mode: 'insensitive' as const } },
+                    { lastName: { equals: nameParts.slice(1).join(' '), mode: 'insensitive' as const } },
+                  ],
+                },
+                // Also try "Last, First" or reversed
+                {
+                  AND: [
+                    { firstName: { equals: nameParts[nameParts.length - 1], mode: 'insensitive' as const } },
+                    { lastName: { equals: nameParts.slice(0, -1).join(' '), mode: 'insensitive' as const } },
+                  ],
+                },
+              ]
+            : []),
+          // Alias exact match
           {
             aliases: {
               some: {
-                aliasName: { contains: nomination.rawNameEntered, mode: 'insensitive' },
+                aliasName: { equals: rawNameTrimmed, mode: 'insensitive' },
               },
             },
           },
         ],
       },
       include: { aliases: true },
-      take: 15,
+      take: 10,
     });
+
+    // Tier 2: Last name exact match with partial first name (handles "Chris" for "Christopher")
+    const lastNameMatches = nameParts.length >= 2
+      ? await prisma.hcp.findMany({
+          where: {
+            AND: [
+              { lastName: { equals: nameParts[nameParts.length - 1], mode: 'insensitive' as const } },
+              { firstName: { startsWith: nameParts[0], mode: 'insensitive' as const } },
+            ],
+          },
+          include: { aliases: true },
+          take: 10,
+        })
+      : [];
+
+    // Tier 3: Broader partial matches (contains on name parts) + alias contains
+    const partialMatches = await prisma.hcp.findMany({
+      where: {
+        OR: [
+          ...nameParts.flatMap((part: string) => [
+            { firstName: { contains: part, mode: 'insensitive' as const } },
+            { lastName: { contains: part, mode: 'insensitive' as const } },
+          ]),
+          {
+            aliases: {
+              some: {
+                aliasName: { contains: rawNameTrimmed, mode: 'insensitive' },
+              },
+            },
+          },
+        ],
+      },
+      include: { aliases: true },
+      take: 50,
+    });
+
+    // Deduplicate across tiers (exact matches first, then last name, then partial)
+    const seenIds = new Set<string>();
+    const suggestions: HcpWithAliases[] = [];
+    for (const hcp of [...exactMatches, ...lastNameMatches, ...partialMatches]) {
+      if (!seenIds.has(hcp.id)) {
+        seenIds.add(hcp.id);
+        suggestions.push(hcp);
+      }
+    }
 
     // Score and sort by relevance - prioritize actual name matches over alias matches
     const scored = suggestions.map((hcp: HcpWithAliases) => {
