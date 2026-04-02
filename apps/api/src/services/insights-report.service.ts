@@ -62,36 +62,39 @@ export class InsightsReportService {
   /**
    * Get summary stats for a disease area
    */
-  async getSummary(diseaseAreaId: string): Promise<InsightsSummary> {
+  async getSummary(diseaseAreaId: string, clientId?: string): Promise<InsightsSummary> {
     try {
+      // Campaign filter — scoped to client if provided
+      const campaignFilter: Record<string, unknown> = { diseaseAreaId };
+      if (clientId) campaignFilter.clientId = clientId;
+
       const [totalKols, totalCampaigns, totalNominations, avgScore] = await Promise.all([
-        // Total KOLs with scores in this disease area
+        // Total KOLs with scores in this disease area (disease-area wide, not client-scoped)
         prisma.hcpDiseaseAreaScore.count({
           where: { diseaseAreaId, isCurrent: true },
         }),
-        // Total campaigns in this disease area
+        // Total campaigns in this disease area (client-scoped)
         prisma.campaign.count({
-          where: { diseaseAreaId },
+          where: campaignFilter,
         }),
-        // Total nominations in campaigns for this disease area
+        // Total nominations in campaigns for this disease area (all statuses, client-scoped)
         prisma.nomination.count({
           where: {
-            response: { campaign: { diseaseAreaId } },
-            matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
+            response: { campaign: campaignFilter },
           },
         }),
-        // Average composite score
+        // Average composite score (disease-area wide)
         prisma.hcpDiseaseAreaScore.aggregate({
           where: { diseaseAreaId, isCurrent: true },
           _avg: { compositeScore: true },
         }),
       ]);
 
-      // Get total respondents (unique completed survey responses)
+      // Get total respondents (unique completed survey responses, client-scoped)
       const totalRespondents = await prisma.surveyResponse.count({
         where: {
           status: 'COMPLETED',
-          campaign: { diseaseAreaId },
+          campaign: campaignFilter,
         },
       });
 

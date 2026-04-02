@@ -48,11 +48,15 @@ interface FilterOptions {
 /**
  * Get summary stats for a disease area
  */
-export function useInsightsSummary(diseaseAreaId: string) {
+export function useInsightsSummary(diseaseAreaId: string, clientId?: string) {
+  const params = new URLSearchParams();
+  if (clientId) params.append('clientId', clientId);
+  const qs = params.toString();
+
   return useQuery({
-    queryKey: ['insights-summary', diseaseAreaId],
+    queryKey: ['insights-summary', diseaseAreaId, clientId],
     queryFn: () =>
-      apiClient.get<InsightsSummary>(`/api/v1/insights/${diseaseAreaId}/summary`),
+      apiClient.get<InsightsSummary>(`/api/v1/insights/${diseaseAreaId}/summary${qs ? '?' + qs : ''}`),
     enabled: !!diseaseAreaId,
   });
 }

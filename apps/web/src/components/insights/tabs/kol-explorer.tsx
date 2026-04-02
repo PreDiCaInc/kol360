@@ -650,34 +650,7 @@ function ProfileView({
             </Card>
           </div>
 
-          {/* State Nomination Count Table */}
-          {stateTableData.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">State Nomination Counts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-md border max-h-[400px] overflow-y-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-background">
-                      <tr className="border-b">
-                        <SortableHeader label="State" field="name" currentSort={stateSortField} currentOrder={stateSortOrder} onSort={(f) => handleStateSort(f as 'name' | 'count')} />
-                        <SortableHeader label="Count" field="count" currentSort={stateSortField} currentOrder={stateSortOrder} onSort={(f) => handleStateSort(f as 'name' | 'count')} />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stateTableData.map((s) => (
-                        <tr key={s.name} className="border-b last:border-b-0 hover:bg-muted/30">
-                          <td className="px-3 py-2">{s.name}</td>
-                          <td className="px-3 py-2 font-mono">{s.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {/* State Nomination Count Table - now integrated into StateBarChart toggle */}
 
           {/* Nominators Table */}
           {profile.nominators && profile.nominators.length > 0 && (

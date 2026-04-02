@@ -57,7 +57,7 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
     : user?.tenantId;
 
   // Fetch summary stats
-  const { data: summary, isLoading: summaryLoading } = useInsightsSummary(diseaseAreaId);
+  const { data: summary, isLoading: summaryLoading } = useInsightsSummary(diseaseAreaId, effectiveClientId);
 
   // Cross-tab KOL navigation: switches to KOL Insights tab and opens profile view
   const handleKolSelect = useCallback((kolId: string) => {

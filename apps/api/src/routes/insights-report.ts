@@ -127,7 +127,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
         return;
       }
 
-      return insightsReportService.getSummary(diseaseAreaId);
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return insightsReportService.getSummary(diseaseAreaId, clientId);
     }
   );
 
