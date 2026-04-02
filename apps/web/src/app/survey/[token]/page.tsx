@@ -70,6 +70,25 @@ interface Question {
 }
 
 
+// Build steps from questions - group questions from same section into one step/page
+function buildSteps(questions: Question[]): { title: string; description: string | null; questions: Question[] }[] {
+  const steps: { title: string; description: string | null; questions: Question[] }[] = [];
+
+  for (const question of questions) {
+    const section = question.section || 'General';
+    const description = question.sectionDescription || null;
+
+    const lastStep = steps[steps.length - 1];
+    if (lastStep && lastStep.title === section) {
+      lastStep.questions.push(question);
+    } else {
+      steps.push({ title: section, description, questions: [question] });
+    }
+  }
+
+  return steps;
+}
+
 export default function SurveyPage() {
   const params = useParams();
   const token = params.token as string;
@@ -336,25 +355,7 @@ export default function SurveyPage() {
     }
   };
 
-  // Build steps from questions - group certain sections, show others one at a time
-  const buildSteps = (questions: Question[]): { title: string; description: string | null; questions: Question[] }[] => {
-    const steps: { title: string; description: string | null; questions: Question[] }[] = [];
-
-    for (const question of questions) {
-      const section = question.section || 'General';
-      const description = question.sectionDescription || null;
-
-      // Group all questions from the same section into one step/page
-      const lastStep = steps[steps.length - 1];
-      if (lastStep && lastStep.title === section) {
-        lastStep.questions.push(question);
-      } else {
-        steps.push({ title: section, description, questions: [question] });
-      }
-    }
-
-    return steps;
-  };
+  // buildSteps is defined outside the component (above) for use in both useEffect and render
 
   // Loading state (includes retry after rate limiting)
   if (isLoading || (isFetching && !survey)) {
