@@ -1,20 +1,133 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PieDistributionChart } from '@/components/insights/charts/pie-distribution-chart';
 import { BarDistributionChart } from '@/components/insights/charts/bar-distribution-chart';
 import { StateBarChart } from '@/components/insights/charts/state-bar-chart';
 import { StackedBarChart } from '@/components/insights/charts/stacked-bar-chart';
-import { useDemographics } from '@/hooks/use-insights-report';
+import { useDemographics, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Filter, X } from 'lucide-react';
 
 interface Props {
   diseaseAreaId: string;
   clientId?: string;
 }
 
+interface DemographicFilters {
+  respondentRole?: string;
+  coreFocus?: string;
+  stateOfPractice?: string;
+  practiceSetting?: string;
+  yearsMin?: number;
+  yearsMax?: number;
+  monthlyPatientsMin?: number;
+  monthlyPatientsMax?: number;
+  dedPatientsMin?: number;
+  dedPatientsMax?: number;
+}
+
+// US states for the state dropdown
+const US_STATES = [
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
+  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT',
+  'VA','WA','WV','WI','WY','DC',
+];
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    timeoutRef.current = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
-  const { data, isLoading, error } = useDemographics(diseaseAreaId, clientId);
+  const [filters, setFilters] = useState<DemographicFilters>({});
+  const debouncedFilters = useDebounce(filters, 500);
+
+  // Build the API filter object (only include defined values)
+  const apiFilters = useMemo(() => {
+    const result: Record<string, string | number | undefined> = {};
+    if (debouncedFilters.respondentRole) result.respondentRole = debouncedFilters.respondentRole;
+    if (debouncedFilters.coreFocus) result.coreFocus = debouncedFilters.coreFocus;
+    if (debouncedFilters.stateOfPractice) result.stateOfPractice = debouncedFilters.stateOfPractice;
+    if (debouncedFilters.practiceSetting) result.practiceSetting = debouncedFilters.practiceSetting;
+    if (debouncedFilters.yearsMin !== undefined) result.yearsMin = debouncedFilters.yearsMin;
+    if (debouncedFilters.yearsMax !== undefined) result.yearsMax = debouncedFilters.yearsMax;
+    if (debouncedFilters.monthlyPatientsMin !== undefined) result.monthlyPatientsMin = debouncedFilters.monthlyPatientsMin;
+    if (debouncedFilters.monthlyPatientsMax !== undefined) result.monthlyPatientsMax = debouncedFilters.monthlyPatientsMax;
+    if (debouncedFilters.dedPatientsMin !== undefined) result.dedPatientsMin = debouncedFilters.dedPatientsMin;
+    if (debouncedFilters.dedPatientsMax !== undefined) result.dedPatientsMax = debouncedFilters.dedPatientsMax;
+    return Object.keys(result).length > 0 ? result : undefined;
+  }, [debouncedFilters]);
+
+  const { data, isLoading, error } = useDemographics(diseaseAreaId, clientId, apiFilters);
+  const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
+
+  // Extract unique values for dropdowns from unfiltered data (first load)
+  // We use the filter options API for states; for role/coreFocus/practiceSetting,
+  // we derive from the demographics data itself (byRole, byCoreFocus, byPracticeSetting)
+  const roleOptions = useMemo(() => {
+    if (!data?.byRole) return [];
+    return data.byRole.map(d => d.name).filter(Boolean).sort();
+  }, [data?.byRole]);
+
+  const coreFocusOptions = useMemo(() => {
+    if (!data?.byCoreFocus) return [];
+    return data.byCoreFocus.map(d => d.name).filter(Boolean).sort();
+  }, [data?.byCoreFocus]);
+
+  const practiceSettingOptions = useMemo(() => {
+    if (!data?.byPracticeSetting) return [];
+    return data.byPracticeSetting.map(d => d.name).filter(Boolean).sort();
+  }, [data?.byPracticeSetting]);
+
+  const stateOptions = useMemo(() => {
+    if (filterOptions?.states && filterOptions.states.length > 0) {
+      return filterOptions.states;
+    }
+    return US_STATES;
+  }, [filterOptions?.states]);
+
+  const hasActiveFilters = Object.values(filters).some(v => v !== undefined && v !== '');
+
+  const handleClearAll = useCallback(() => {
+    setFilters({});
+  }, []);
+
+  const handleSelectChange = useCallback((key: keyof DemographicFilters, value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value === 'all' ? undefined : value,
+    }));
+  }, []);
+
+  const handleNumberChange = useCallback((key: keyof DemographicFilters, value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value === '' ? undefined : Number(value),
+    }));
+  }, []);
 
   // Transform data for chart components
   const roleData = useMemo(() => {
@@ -72,7 +185,7 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
     return data.topicsDiscussed.map((d) => ({ name: d.name, value: d.count }));
   }, [data?.topicsDiscussed]);
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
         Loading demographics data...
@@ -98,10 +211,186 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
 
   return (
     <div className="space-y-8">
+      {/* Filter Bar */}
+      <div className="bg-muted/50 rounded-lg p-4 print:hidden">
+        <div className="flex items-center gap-2 mb-3 text-sm font-medium text-muted-foreground">
+          <Filter className="h-4 w-4" />
+          <span>Demographic Filters</span>
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearAll}
+              className="ml-2 text-muted-foreground hover:text-foreground h-7 px-2"
+            >
+              <X className="h-3 w-3 mr-1" />
+              Clear All
+            </Button>
+          )}
+          {isLoading && (
+            <span className="ml-auto text-xs text-muted-foreground animate-pulse">Updating...</span>
+          )}
+        </div>
+
+        {/* Row 1: Dropdowns */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Respondent Role</Label>
+            <Select
+              value={filters.respondentRole || 'all'}
+              onValueChange={(v) => handleSelectChange('respondentRole', v)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All Roles" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Roles</SelectItem>
+                {roleOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Core Focus</Label>
+            <Select
+              value={filters.coreFocus || 'all'}
+              onValueChange={(v) => handleSelectChange('coreFocus', v)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All Focus Areas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Focus Areas</SelectItem>
+                {coreFocusOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">State of Practice</Label>
+            <Select
+              value={filters.stateOfPractice || 'all'}
+              onValueChange={(v) => handleSelectChange('stateOfPractice', v)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All States" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All States</SelectItem>
+                {stateOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Practice Setting</Label>
+            <Select
+              value={filters.practiceSetting || 'all'}
+              onValueChange={(v) => handleSelectChange('practiceSetting', v)}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="All Settings" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Settings</SelectItem>
+                {practiceSettingOptions.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Row 2: Range Inputs */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Years of Practice</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                placeholder="Min"
+                className="h-9"
+                min={0}
+                max={50}
+                value={filters.yearsMin ?? ''}
+                onChange={(e) => handleNumberChange('yearsMin', e.target.value)}
+              />
+              <span className="text-muted-foreground text-xs">to</span>
+              <Input
+                type="number"
+                placeholder="Max"
+                className="h-9"
+                min={0}
+                max={50}
+                value={filters.yearsMax ?? ''}
+                onChange={(e) => handleNumberChange('yearsMax', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Avg Monthly Patients</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                placeholder="Min"
+                className="h-9"
+                min={0}
+                max={4000}
+                value={filters.monthlyPatientsMin ?? ''}
+                onChange={(e) => handleNumberChange('monthlyPatientsMin', e.target.value)}
+              />
+              <span className="text-muted-foreground text-xs">to</span>
+              <Input
+                type="number"
+                placeholder="Max"
+                className="h-9"
+                min={0}
+                max={4000}
+                value={filters.monthlyPatientsMax ?? ''}
+                onChange={(e) => handleNumberChange('monthlyPatientsMax', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Avg Monthly DED Patients</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                placeholder="Min"
+                className="h-9"
+                min={0}
+                max={900}
+                value={filters.dedPatientsMin ?? ''}
+                onChange={(e) => handleNumberChange('dedPatientsMin', e.target.value)}
+              />
+              <span className="text-muted-foreground text-xs">to</span>
+              <Input
+                type="number"
+                placeholder="Max"
+                className="h-9"
+                min={0}
+                max={900}
+                value={filters.dedPatientsMax ?? ''}
+                onChange={(e) => handleNumberChange('dedPatientsMax', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div>
         <h2 className="text-xl font-bold">Respondent Demographics</h2>
         <p className="text-sm text-muted-foreground">
           Survey respondent demographics across {data.totalRespondents} respondents
+          {hasActiveFilters && ' (filtered)'}
         </p>
       </div>
 

@@ -180,13 +180,18 @@ export function useRespondentAnalytics(diseaseAreaId: string) {
 /**
  * Get demographics data (aggregated from survey response answers)
  */
-export function useDemographics(diseaseAreaId: string, clientId?: string) {
+export function useDemographics(diseaseAreaId: string, clientId?: string, filters?: Record<string, string | number | undefined>) {
   const params = new URLSearchParams();
   if (clientId) params.append('clientId', clientId);
+  if (filters) {
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.append(key, String(value));
+    });
+  }
   const qs = params.toString();
 
   return useQuery({
-    queryKey: ['insights', 'demographics', diseaseAreaId, clientId],
+    queryKey: ['insights', 'demographics', diseaseAreaId, clientId, filters],
     queryFn: () =>
       apiClient.get<DemographicsResponse>(
         `/api/v1/insights/${diseaseAreaId}/demographics${qs ? '?' + qs : ''}`
