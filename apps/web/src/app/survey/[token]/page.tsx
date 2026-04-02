@@ -88,7 +88,7 @@ export default function SurveyPage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [disqualified, setDisqualified] = useState(false);
 
-  // Initialize answers from saved response
+  // Initialize answers from saved response and resume at the correct step
   // Only skip welcome screen if user has actually started (IN_PROGRESS status or has answers)
   useEffect(() => {
     if (survey?.response) {
@@ -96,13 +96,34 @@ export default function SurveyPage() {
       if (hasAnswers) {
         setAnswers(survey.response.answers);
         setStarted(true);
+
+        // Resume at the step where the user left off
+        // Find the last answered question and determine its step
+        const steps = buildSteps(survey.questions);
+        const answeredQuestionIds = new Set(Object.keys(survey.response.answers));
+        let lastAnsweredStep = 0;
+
+        for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
+          const stepHasAnswer = steps[stepIdx].questions.some(q => answeredQuestionIds.has(q.id));
+          if (stepHasAnswer) {
+            lastAnsweredStep = stepIdx;
+          }
+        }
+
+        // If all questions in the last answered step are answered, advance to next step
+        const allAnsweredInLastStep = steps[lastAnsweredStep].questions.every(q => answeredQuestionIds.has(q.id));
+        const resumeStep = allAnsweredInLastStep && lastAnsweredStep < steps.length - 1
+          ? lastAnsweredStep + 1
+          : lastAnsweredStep;
+
+        setCurrentStep(resumeStep);
       } else if (survey.response.status === 'IN_PROGRESS') {
         // User clicked "Begin Survey" but hasn't answered anything yet
         setStarted(true);
       }
       // For PENDING/OPENED status with no answers, keep started=false to show welcome screen
     }
-  }, [survey]);
+  }, [survey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-save every 30 seconds
   useEffect(() => {
