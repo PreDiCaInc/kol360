@@ -62,13 +62,13 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
   // Cross-tab KOL navigation: switches to KOL Insights tab and opens profile view
   const handleKolSelect = useCallback((kolId: string) => {
     setSelectedKolId(kolId);
-    setActiveTab('kol-insights');
+    setActiveTab('total-weighted-score');
   }, []);
 
   // Reset selected KOL when switching away from KOL Insights tab
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab);
-    if (tab !== 'kol-insights') {
+    if (tab !== 'total-weighted-score') {
       setSelectedKolId(null);
     }
   }, []);
@@ -189,13 +189,12 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList className="grid w-full grid-cols-6 print:hidden h-12">
+        <TabsList className="grid w-full grid-cols-5 print:hidden h-12">
           <TabsTrigger value="introduction">Introduction</TabsTrigger>
           <TabsTrigger value="demographics">Demographics</TabsTrigger>
-          <TabsTrigger value="kol360-leaders">KOL360 Leaders</TabsTrigger>
+          <TabsTrigger value="dynamic-benchmarking">Dynamic Benchmarking</TabsTrigger>
           <TabsTrigger value="sociometric-leaders">Sociometric Leaders</TabsTrigger>
-          <TabsTrigger value="sociometric-tables">Sociometric Tables</TabsTrigger>
-          <TabsTrigger value="kol-insights">KOL Insights</TabsTrigger>
+          <TabsTrigger value="total-weighted-score">Total Weighted Score</TabsTrigger>
         </TabsList>
 
         <TabsContent value="introduction" className="mt-6">
@@ -206,19 +205,19 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
           <DemographicsTab diseaseAreaId={diseaseAreaId} clientId={effectiveClientId} />
         </TabsContent>
 
-        <TabsContent value="kol360-leaders" className="mt-6">
+        <TabsContent value="dynamic-benchmarking" className="mt-6">
           <LeaderRankingsTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
         </TabsContent>
 
         <TabsContent value="sociometric-leaders" className="mt-6">
           <SociometricSummaryTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
+          <div className="mt-8">
+            <h2 className="text-xl font-bold mb-4">Per-Category Leader Tables</h2>
+            <SociometricTablesTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
+          </div>
         </TabsContent>
 
-        <TabsContent value="sociometric-tables" className="mt-6">
-          <SociometricTablesTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
-        </TabsContent>
-
-        <TabsContent value="kol-insights" className="mt-6">
+        <TabsContent value="total-weighted-score" className="mt-6">
           <KolExplorerTab diseaseAreaId={diseaseAreaId} initialKolId={selectedKolId} clientId={effectiveClientId} />
         </TabsContent>
       </Tabs>
