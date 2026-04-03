@@ -41,6 +41,17 @@ function getSpecialtyDisplay(hcp: { specialty?: string | null; specialties?: { i
   return [];
 }
 
+// Helper to format specialty abbreviations to full names
+function formatSpecialty(specialty: string | null): string {
+  if (!specialty) return '-';
+  const s = specialty.trim().toUpperCase();
+  if (s === 'OD') return 'Optometrist';
+  if (s === 'MD' || s === 'DO') return 'Ophthalmologist';
+  if (s === 'OPTOMETRY') return 'Optometrist';
+  if (s === 'OPHTHALMOLOGY') return 'Ophthalmologist';
+  return specialty;
+}
+
 export default function HcpsPage() {
   const { isImpersonating } = useImpersonation();
   const canEdit = !isImpersonating;
@@ -124,7 +135,14 @@ export default function HcpsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">HCP Database</h1>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+            HCP Database
+            {pagination && (
+              <span className="text-muted-foreground font-normal text-lg ml-2">
+                ({pagination.total.toLocaleString()})
+              </span>
+            )}
+          </h1>
           <p className="text-muted-foreground mt-1">Healthcare professional records and management</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -348,7 +366,7 @@ export default function HcpsPage() {
                   <TableCell>
                     {hcp.specialty ? (
                       <Badge variant="outline" className="text-xs">
-                        {hcp.specialty}
+                        {formatSpecialty(hcp.specialty)}
                       </Badge>
                     ) : (
                       <span className="text-muted-foreground">—</span>

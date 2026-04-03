@@ -105,17 +105,24 @@ export class NominationService {
 
     if (!nomination) return [];
 
-    // Parse name parts
-    const nameParts = nomination.rawNameEntered
+    // Normalize name: strip titles, credentials, and suffixes before matching
+    const normalizedName = nomination.rawNameEntered
+      .replace(/\b(dr|prof|mr|mrs|ms)\.?\s*/gi, '') // Remove titles
+      .replace(/,?\s*\b(md|do|od|phd|mph|mba|facs|faao|bs|ms|rn|np|pa|jr|sr|ii|iii|iv)\b\.?/gi, '') // Remove credentials/suffixes
+      .replace(/[^a-zA-Z\s'-]/g, '') // Remove remaining non-name characters (keep hyphens and apostrophes)
+      .replace(/\s+/g, ' ') // Collapse whitespace
+      .trim();
+
+    // Parse name parts from normalized name
+    const nameParts = normalizedName
       .toLowerCase()
-      .replace(/[^a-z\s]/g, '') // Remove non-letter characters
       .split(/\s+/)
       .filter(Boolean);
 
     if (nameParts.length === 0) return [];
 
     // Search HCPs using a tiered approach to ensure exact matches aren't missed
-    const rawNameTrimmed = nomination.rawNameEntered.trim();
+    const rawNameTrimmed = normalizedName;
 
     // Tier 1: Exact full name match or alias match (most specific)
     const exactMatches = await prisma.hcp.findMany({
@@ -139,7 +146,7 @@ export class NominationService {
                 },
               ]
             : []),
-          // Alias exact match
+          // Alias exact match (try both normalized and original raw name)
           {
             aliases: {
               some: {
@@ -147,6 +154,13 @@ export class NominationService {
               },
             },
           },
+          ...(rawNameTrimmed !== nomination.rawNameEntered.trim() ? [{
+            aliases: {
+              some: {
+                aliasName: { equals: nomination.rawNameEntered.trim(), mode: 'insensitive' as const },
+              },
+            },
+          }] : []),
         ],
       },
       include: { aliases: true },
@@ -202,7 +216,7 @@ export class NominationService {
     const scored = suggestions.map((hcp: HcpWithAliases) => {
       const fullName = `${hcp.firstName} ${hcp.lastName}`.toLowerCase();
       const reverseName = `${hcp.lastName} ${hcp.firstName}`.toLowerCase();
-      const rawName = nomination.rawNameEntered.toLowerCase().trim();
+      const rawName = normalizedName.toLowerCase().trim();
 
       let score = 0;
       let matchType: 'exact' | 'primary' | 'alias' | 'partial' = 'partial';
