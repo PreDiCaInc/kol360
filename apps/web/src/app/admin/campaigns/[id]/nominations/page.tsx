@@ -64,6 +64,7 @@ import {
   HelpCircle,
   X,
   ChevronRight,
+  Search,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -109,7 +110,10 @@ export default function NominationsPage() {
   const campaignId = params.id as string;
 
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [nominationTypeFilter, setNominationTypeFilter] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [pageInputValue, setPageInputValue] = useState('');
   const [selectedNominationId, setSelectedNominationId] = useState<string | null>(null);
   const [showCreateHcpDialog, setShowCreateHcpDialog] = useState(false);
   const [nominationForNewHcp, setNominationForNewHcp] = useState<string | null>(null);
@@ -130,6 +134,35 @@ export default function NominationsPage() {
     limit: 50,
   });
   const { data: stats } = useNominationStats(campaignId);
+
+  // Client-side filtering for search and nomination type
+  const filteredItems = nominations?.items.filter((nomination) => {
+    // Text search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const rawName = nomination.rawNameEntered.toLowerCase();
+      const matchedName = nomination.matchedHcp
+        ? `${nomination.matchedHcp.firstName} ${nomination.matchedHcp.lastName}`.toLowerCase()
+        : '';
+      if (!rawName.includes(q) && !matchedName.includes(q)) return false;
+    }
+    // Nomination type filter
+    if (nominationTypeFilter) {
+      const nomType = nomination.question.question?.nominationType;
+      if (nomType !== nominationTypeFilter) return false;
+    }
+    return true;
+  }) || [];
+
+  // Pagination helper
+  const totalPages = nominations?.pagination.pages || 1;
+  const handlePageJump = () => {
+    const targetPage = parseInt(pageInputValue, 10);
+    if (!isNaN(targetPage) && targetPage >= 1 && targetPage <= totalPages) {
+      setPage(targetPage);
+      setPageInputValue('');
+    }
+  };
 
   const bulkAutoMatch = useBulkAutoMatch();
 
@@ -361,10 +394,13 @@ export default function NominationsPage() {
                 <CardTitle>Nominations</CardTitle>
                 <CardDescription>
                   {nominations?.pagination.total || 0} nominations found
+                  {(searchQuery.trim() || nominationTypeFilter) && filteredItems.length !== (nominations?.items.length || 0) && (
+                    <> ({filteredItems.length} shown after filters)</>
+                  )}
                 </CardDescription>
               </div>
               <div className="flex gap-2">
-                <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
+                <Select value={statusFilter || 'all'} onValueChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1); }}>
                   <SelectTrigger className="w-[160px]">
                     <SelectValue placeholder="All statuses" />
                   </SelectTrigger>
@@ -384,18 +420,91 @@ export default function NominationsPage() {
                 )}
               </div>
             </div>
+            {/* Filter bar */}
+            <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={nominationTypeFilter || 'all'} onValueChange={(v) => setNominationTypeFilter(v === 'all' ? '' : v)}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All nomination types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All nomination types</SelectItem>
+                  <SelectItem value="DISCUSSION_LEADERS">Discussion Leaders</SelectItem>
+                  <SelectItem value="REFERRAL_LEADERS">Referral Leaders</SelectItem>
+                  <SelectItem value="ADVICE_LEADERS">Advice Leaders</SelectItem>
+                  <SelectItem value="NATIONAL_LEADER">National Leaders</SelectItem>
+                  <SelectItem value="RISING_STAR">Rising Stars</SelectItem>
+                  <SelectItem value="SOCIAL_LEADER">Social Media Leaders</SelectItem>
+                  <SelectItem value="REGIONAL_LEADER">Regional Leaders</SelectItem>
+                  <SelectItem value="BIASED_LEADER">Biased Leaders</SelectItem>
+                  <SelectItem value="NATIONAL_KOL">National KOL</SelectItem>
+                </SelectContent>
+              </Select>
+              {(searchQuery || nominationTypeFilter) && (
+                <Button variant="ghost" size="sm" onClick={() => { setSearchQuery(''); setNominationTypeFilter(''); }}>
+                  Clear filters
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin" />
               </div>
-            ) : !nominations || nominations.items.length === 0 ? (
+            ) : !nominations || filteredItems.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">
                 No nominations found.
               </p>
             ) : (
               <>
+                {/* Top Pagination */}
+                {nominations.pagination.pages > 1 && (
+                  <div className="flex justify-between items-center mb-4">
+                    <p className="text-sm text-muted-foreground">
+                      Page {nominations.pagination.page} of {nominations.pagination.pages}
+                    </p>
+                    <div className="flex gap-2 items-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page === 1}
+                        onClick={() => setPage(page - 1)}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={page === nominations.pagination.pages}
+                        onClick={() => setPage(page + 1)}
+                      >
+                        Next
+                      </Button>
+                      <div className="flex items-center gap-1 ml-2">
+                        <Input
+                          className="w-16 h-8 text-sm"
+                          placeholder="#"
+                          value={pageInputValue}
+                          onChange={(e) => setPageInputValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handlePageJump(); }}
+                        />
+                        <Button variant="outline" size="sm" onClick={handlePageJump}>
+                          Go
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -408,7 +517,7 @@ export default function NominationsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {nominations.items.map((nomination) => (
+                    {filteredItems.map((nomination) => (
                       <TableRow key={nomination.id}>
                         <TableCell className="font-medium">
                           "{nomination.rawNameEntered}"
@@ -505,13 +614,13 @@ export default function NominationsPage() {
                   </TableBody>
                 </Table>
 
-                {/* Pagination */}
+                {/* Bottom Pagination */}
                 {nominations.pagination.pages > 1 && (
                   <div className="flex justify-between items-center mt-4">
                     <p className="text-sm text-muted-foreground">
                       Page {nominations.pagination.page} of {nominations.pagination.pages}
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                       <Button
                         variant="outline"
                         size="sm"
@@ -528,6 +637,18 @@ export default function NominationsPage() {
                       >
                         Next
                       </Button>
+                      <div className="flex items-center gap-1 ml-2">
+                        <Input
+                          className="w-16 h-8 text-sm"
+                          placeholder="#"
+                          value={pageInputValue}
+                          onChange={(e) => setPageInputValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handlePageJump(); }}
+                        />
+                        <Button variant="outline" size="sm" onClick={handlePageJump}>
+                          Go
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -566,6 +687,10 @@ export default function NominationsPage() {
             nominationId={editNominationId}
             nomination={nominations?.items.find((n) => n.id === editNominationId)}
             onClose={() => setEditNominationId(null)}
+            onSaveAndRematch={(nomId) => {
+              setEditNominationId(null);
+              setSelectedNominationId(nomId);
+            }}
           />
         )}
 
@@ -1108,6 +1233,7 @@ interface EditNominationDialogProps {
     rawNameEntered: string;
   };
   onClose: () => void;
+  onSaveAndRematch?: (nominationId: string) => void;
 }
 
 function EditNominationDialog({
@@ -1115,6 +1241,7 @@ function EditNominationDialog({
   nominationId,
   nomination,
   onClose,
+  onSaveAndRematch,
 }: EditNominationDialogProps) {
   const updateRawName = useUpdateNominationRawName();
   const [newName, setNewName] = useState(nomination?.rawNameEntered || '');
@@ -1129,6 +1256,10 @@ function EditNominationDialog({
         rawNameEntered: newName.trim(),
       });
       onClose();
+      // Auto-open the match dialog after save
+      if (onSaveAndRematch) {
+        onSaveAndRematch(nominationId);
+      }
     } catch (error) {
       console.error('Failed to update nomination:', error);
       alert(error instanceof Error ? error.message : 'Failed to update nomination');

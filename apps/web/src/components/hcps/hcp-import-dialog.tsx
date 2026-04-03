@@ -298,6 +298,8 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                 <li>Sub-specialty, City, State</li>
               </ul>
+              <p className="font-medium mt-3 mb-1">Auto-transformations:</p>
+              <p className="text-muted-foreground">Specialty values are standardized on import: OD → Optometry, MD/DO → Ophthalmology</p>
             </div>
 
             <div className="flex justify-end gap-2">

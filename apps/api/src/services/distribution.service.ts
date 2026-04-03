@@ -330,7 +330,14 @@ export class DistributionService {
           firstName: String(row['First Name'] || row['firstName'] || row['first_name'] || '').trim(),
           lastName: String(row['Last Name'] || row['lastName'] || row['last_name'] || '').trim(),
           email: (row['Email'] || row['email'] || null) as string | null,
-          specialty: (row['Specialty'] || row['specialty'] || null) as string | null,
+          specialty: (() => {
+            const raw = (row['Specialty'] || row['specialty'] || null) as string | null;
+            if (!raw) return null;
+            const s = raw.trim().toUpperCase();
+            if (s === 'OD') return 'Optometry';
+            if (s === 'MD' || s === 'DO') return 'Ophthalmology';
+            return raw.trim();
+          })(),
           subSpecialty: (row['Sub-specialty'] || row['subSpecialty'] || row['sub_specialty'] || null) as string | null,
           city: (row['City'] || row['city'] || null) as string | null,
           state: (row['State'] || row['state'] || null) as string | null,

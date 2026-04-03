@@ -245,6 +245,9 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
               <p className="mt-3 text-xs text-muted-foreground">
                 HCPs are matched by NPI. If an HCP already exists, missing fields will be updated.
               </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">Auto-transformations:</span> Specialty values are standardized on import: OD → Optometry, MD/DO → Ophthalmology
+              </p>
             </div>
 
             <div className="flex justify-end gap-2">
