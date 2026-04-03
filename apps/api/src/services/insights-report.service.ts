@@ -958,7 +958,18 @@ export class InsightsReportService {
   /**
    * Get demographics data from survey response answers
    */
-  async getDemographics(diseaseAreaId: string, clientId?: string) {
+  async getDemographics(diseaseAreaId: string, clientId?: string, filters?: {
+    respondentRole?: string;
+    coreFocus?: string;
+    stateOfPractice?: string;
+    practiceSetting?: string;
+    yearsMin?: number;
+    yearsMax?: number;
+    monthlyPatientsMin?: number;
+    monthlyPatientsMax?: number;
+    dedPatientsMin?: number;
+    dedPatientsMax?: number;
+  }) {
     try {
       // Get all campaigns for this disease area (scoped to client if provided)
       const campaigns = await prisma.campaign.findMany({
@@ -1009,8 +1020,147 @@ export class InsightsReportService {
         },
       });
 
-      // Get unique respondent IDs for total count
-      const respondentIds = new Set(answers.map((a) => a.response.respondentHcpId));
+      // --- Filter respondents by demographic criteria ---
+      // Build a set of all response IDs, then narrow by each filter
+      let filteredResponseIds: Set<string> | null = null;
+
+      if (filters) {
+        // Group answers by response ID for efficient filtering
+        const answersByResponseId = new Map<string, typeof answers>();
+        for (const a of answers) {
+          const existing = answersByResponseId.get(a.response.id);
+          if (existing) {
+            existing.push(a);
+          } else {
+            answersByResponseId.set(a.response.id, [a]);
+          }
+        }
+
+        filteredResponseIds = new Set(answersByResponseId.keys());
+
+        if (filters.respondentRole) {
+          const matching = new Set<string>();
+          for (const a of answers) {
+            const qt = a.question.questionTextSnapshot.toLowerCase();
+            if (qt.includes('primary medical specialty')) {
+              const value = this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, a.question.question.type);
+              if (value === filters.respondentRole) {
+                matching.add(a.response.id);
+              }
+            }
+          }
+          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
+        }
+
+        if (filters.coreFocus) {
+          const matching = new Set<string>();
+          for (const a of answers) {
+            const qt = a.question.questionTextSnapshot.toLowerCase();
+            if (qt.includes('core focus')) {
+              const value = a.answerText || this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, a.question.question.type);
+              if (value === filters.coreFocus) {
+                matching.add(a.response.id);
+              }
+            }
+          }
+          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
+        }
+
+        if (filters.stateOfPractice) {
+          // Filter by the respondent HCP's state
+          const matching = new Set<string>();
+          for (const a of answers) {
+            if (a.response.respondentHcp?.state === filters.stateOfPractice) {
+              matching.add(a.response.id);
+            }
+          }
+          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
+        }
+
+        if (filters.practiceSetting) {
+          const matching = new Set<string>();
+          for (const a of answers) {
+            const qt = a.question.questionTextSnapshot.toLowerCase();
+            if (qt.includes('practice setting')) {
+              const questionType = a.question.question.type;
+              if (questionType === 'MULTI_CHOICE' && a.answerJson) {
+                const selected = (a.answerJson as { selected?: string[] }).selected;
+                if (Array.isArray(selected) && selected.includes(filters.practiceSetting!)) {
+                  matching.add(a.response.id);
+                }
+              } else {
+                const value = this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, questionType);
+                if (value === filters.practiceSetting) {
+                  matching.add(a.response.id);
+                }
+              }
+            }
+          }
+          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
+        }
+
+        if (filters.yearsMin !== undefined || filters.yearsMax !== undefined) {
+          const matching = new Set<string>();
+          for (const a of answers) {
+            const qt = a.question.questionTextSnapshot.toLowerCase();
+            if (qt.includes('years') && qt.includes('practice')) {
+              const num = this.parseNumber(a.answerText);
+              if (num !== null) {
+                const passMin = filters.yearsMin === undefined || num >= filters.yearsMin;
+                const passMax = filters.yearsMax === undefined || num <= filters.yearsMax;
+                if (passMin && passMax) {
+                  matching.add(a.response.id);
+                }
+              }
+            }
+          }
+          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
+        }
+
+        if (filters.monthlyPatientsMin !== undefined || filters.monthlyPatientsMax !== undefined) {
+          const matching = new Set<string>();
+          for (const a of answers) {
+            const qt = a.question.questionTextSnapshot.toLowerCase();
+            if (qt.includes('how many patients') && !qt.includes('dry eye')) {
+              const num = this.parseNumber(a.answerText);
+              if (num !== null) {
+                const passMin = filters.monthlyPatientsMin === undefined || num >= filters.monthlyPatientsMin;
+                const passMax = filters.monthlyPatientsMax === undefined || num <= filters.monthlyPatientsMax;
+                if (passMin && passMax) {
+                  matching.add(a.response.id);
+                }
+              }
+            }
+          }
+          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
+        }
+
+        if (filters.dedPatientsMin !== undefined || filters.dedPatientsMax !== undefined) {
+          const matching = new Set<string>();
+          for (const a of answers) {
+            const qt = a.question.questionTextSnapshot.toLowerCase();
+            if (qt.includes('dry eye') && qt.includes('patient')) {
+              const num = this.parseNumber(a.answerText);
+              if (num !== null) {
+                const passMin = filters.dedPatientsMin === undefined || num >= filters.dedPatientsMin;
+                const passMax = filters.dedPatientsMax === undefined || num <= filters.dedPatientsMax;
+                if (passMin && passMax) {
+                  matching.add(a.response.id);
+                }
+              }
+            }
+          }
+          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
+        }
+      }
+
+      // If filters were applied, narrow answers to only matching responses
+      const effectiveAnswers = filteredResponseIds
+        ? answers.filter(a => filteredResponseIds!.has(a.response.id))
+        : answers;
+
+      // Get unique respondent IDs for total count (use effectiveAnswers for filtered results)
+      const respondentIds = new Set(effectiveAnswers.map((a) => a.response.respondentHcpId));
       const totalRespondents = respondentIds.size;
 
       // Get decile data from CampaignHcp
@@ -1055,7 +1205,7 @@ export class InsightsReportService {
       // Track states from respondent HCPs (only count each respondent once)
       const stateTracked = new Set<string>();
 
-      for (const answer of answers) {
+      for (const answer of effectiveAnswers) {
         const qt = answer.question.questionTextSnapshot.toLowerCase();
         const questionType = answer.question.question.type;
         const json = answer.answerJson as Record<string, unknown> | null;

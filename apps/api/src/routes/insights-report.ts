@@ -238,7 +238,21 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return insightsReportService.getDemographics(diseaseAreaId, clientId);
+      const q = request.query as Record<string, string>;
+      const demographicFilters = {
+        respondentRole: q.respondentRole || undefined,
+        coreFocus: q.coreFocus || undefined,
+        stateOfPractice: q.stateOfPractice || undefined,
+        practiceSetting: q.practiceSetting || undefined,
+        yearsMin: q.yearsMin ? Number(q.yearsMin) : undefined,
+        yearsMax: q.yearsMax ? Number(q.yearsMax) : undefined,
+        monthlyPatientsMin: q.monthlyPatientsMin ? Number(q.monthlyPatientsMin) : undefined,
+        monthlyPatientsMax: q.monthlyPatientsMax ? Number(q.monthlyPatientsMax) : undefined,
+        dedPatientsMin: q.dedPatientsMin ? Number(q.dedPatientsMin) : undefined,
+        dedPatientsMax: q.dedPatientsMax ? Number(q.dedPatientsMax) : undefined,
+      };
+      const hasFilters = Object.values(demographicFilters).some(v => v !== undefined);
+      return insightsReportService.getDemographics(diseaseAreaId, clientId, hasFilters ? demographicFilters : undefined);
     }
   );
 
