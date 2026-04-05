@@ -41,57 +41,16 @@ interface SearchParams {
 
 export class HcpService {
   /**
-   * Generate a unique Business Entity ID (BE-XXXXXX format)
-   * Uses a transaction to prevent race conditions that can cause duplicate IDs
+   * Generate a unique Business Entity ID (BE-XXXXXX format).
+   * Uses a Postgres sequence (beid_seq) for atomic, collision-free generation.
+   * The sequence is also used by external apps (e.g., HCP curation tool) via direct DB access.
    */
   async generateBeId(): Promise<string> {
-    // Use a transaction with serializable isolation to prevent race conditions
-    return prisma.$transaction(async (tx) => {
-      const lastHcp = await tx.hcp.findFirst({
-        where: { beId: { startsWith: 'BE-' } },
-        orderBy: { beId: 'desc' },
-        select: { beId: true },
-      });
-
-      let nextNum = 1;
-      if (lastHcp?.beId) {
-        const match = lastHcp.beId.match(/^BE-(\d+)$/);
-        if (match) {
-          nextNum = parseInt(match[1], 10) + 1;
-        }
-      }
-
-      const newBeId = 'BE-' + String(nextNum).padStart(6, '0');
-
-      // Verify the ID doesn't exist (extra safety check)
-      const existing = await tx.hcp.findFirst({
-        where: { beId: newBeId },
-        select: { id: true },
-      });
-
-      if (existing) {
-        // If collision detected, find the actual max and increment
-        const allBeIds = await tx.hcp.findMany({
-          where: { beId: { startsWith: 'BE-' } },
-          select: { beId: true },
-          orderBy: { beId: 'desc' },
-          take: 1,
-        });
-        if (allBeIds.length > 0 && allBeIds[0].beId) {
-          const actualMatch = allBeIds[0].beId.match(/^BE-(\d+)$/);
-          if (actualMatch) {
-            nextNum = parseInt(actualMatch[1], 10) + 1;
-            return 'BE-' + String(nextNum).padStart(6, '0');
-          }
-        }
-        // Fallback: use timestamp-based ID
-        return 'BE-' + Date.now().toString().slice(-6);
-      }
-
-      return newBeId;
-    }, {
-      isolationLevel: 'Serializable',
-    });
+    const result = await prisma.$queryRaw<Array<{ nextval: bigint }>>`
+      SELECT nextval('beid_seq') as nextval
+    `;
+    const num = Number(result[0].nextval);
+    return 'BE-' + String(num).padStart(6, '0');
   }
 
   async search(params: SearchParams) {
@@ -208,36 +167,14 @@ export class HcpService {
   }
 
   /**
-   * Atomically create an HCP with a generated beId
-   * This prevents race conditions by generating the beId and creating the HCP
-   * in a single serializable transaction
+   * Create an HCP with a beId from the beid_seq sequence.
+   * The sequence guarantees atomic, collision-free beId allocation across
+   * all code paths (internal HCP creation and external curation app via direct DB).
    */
   async createWithAtomicBeId(data: CreateHcpInput, createdBy?: string) {
-    return prisma.$transaction(async (tx) => {
-      // Find the highest existing beId
-      const lastHcp = await tx.hcp.findFirst({
-        where: { beId: { startsWith: 'BE-' } },
-        orderBy: { beId: 'desc' },
-        select: { beId: true },
-      });
-
-      let nextNum = 1;
-      if (lastHcp?.beId) {
-        const match = lastHcp.beId.match(/^BE-(\d+)$/);
-        if (match) {
-          nextNum = parseInt(match[1], 10) + 1;
-        }
-      }
-
-      const newBeId = 'BE-' + String(nextNum).padStart(6, '0');
-
-      // Create the HCP within the same transaction
-      // This ensures atomicity - no other transaction can grab the same beId
-      return tx.hcp.create({
-        data: { ...data, beId: newBeId, isSurveyTaker: true, createdBy },
-      });
-    }, {
-      isolationLevel: 'Serializable',
+    const newBeId = await this.generateBeId();
+    return prisma.hcp.create({
+      data: { ...data, beId: newBeId, isSurveyTaker: true, createdBy },
     });
   }
 
@@ -434,26 +371,20 @@ export class HcpService {
         }
       }
 
-      // Batch creates - need to generate beIds first
+      // Batch creates - pull beIds from the shared beid_seq sequence.
+      // Using a sequence avoids race conditions with concurrent HCP creation
+      // (e.g., single-HCP creates or other imports running at the same time).
       if (toCreate.length > 0) {
-        // Get starting beId
-        const lastHcp = await prisma.hcp.findFirst({
-          where: { beId: { startsWith: 'BE-' } },
-          orderBy: { beId: 'desc' },
-          select: { beId: true },
-        });
-        let nextNum = 1;
-        if (lastHcp?.beId) {
-          const match = lastHcp.beId.match(/^BE-(\d+)$/);
-          if (match) {
-            nextNum = parseInt(match[1], 10) + 1;
-          }
-        }
+        // Reserve N beIds atomically from the sequence in a single query
+        const reservedBeIds = await prisma.$queryRaw<Array<{ nextval: bigint }>>`
+          SELECT nextval('beid_seq') as nextval FROM generate_series(1, ${toCreate.length})
+        `;
+        const beIds = reservedBeIds.map(r => 'BE-' + String(Number(r.nextval)).padStart(6, '0'));
 
         for (let i = 0; i < toCreate.length; i += BATCH_SIZE) {
           const batch = toCreate.slice(i, i + BATCH_SIZE);
           const createData = batch.map((row, idx) => ({
-            beId: 'BE-' + String(nextNum + i + idx).padStart(6, '0'),
+            beId: beIds[i + idx],
             npi: row.npi,
             firstName: row.firstName,
             lastName: row.lastName,
@@ -466,8 +397,8 @@ export class HcpService {
             createdBy: userId,
           }));
 
-          await prisma.hcp.createMany({ data: createData, skipDuplicates: true });
-          result.created += batch.length;
+          const createResult = await prisma.hcp.createMany({ data: createData, skipDuplicates: true });
+          result.created += createResult.count;
 
           if (importId) {
             importProgressStore.update(importId, {

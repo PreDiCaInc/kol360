@@ -31,6 +31,8 @@ vi.mock('../../lib/prisma', () => {
     $transaction: vi.fn().mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
       return callback(mockPrisma);
     }),
+    // Mock $queryRaw for beid_seq sequence calls (returns a fake nextval)
+    $queryRaw: vi.fn().mockResolvedValue([{ nextval: BigInt(100) }]),
   };
 
   return { prisma: mockPrisma };
