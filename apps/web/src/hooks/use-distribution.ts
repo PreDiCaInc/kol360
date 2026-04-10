@@ -32,6 +32,7 @@ interface DistributionStats {
   inProgress: number;
   completed: number;
   optedOut: number;
+  atMaxReminders: number;
   completionRate: number;
 }
 
@@ -130,8 +131,11 @@ export function useSendInvitations() {
 
 export function useSendReminders() {
   return useMutation({
-    mutationFn: (campaignId: string) =>
-      apiClient.post<SendStartResult>(`/api/v1/campaigns/${campaignId}/distribution/send-reminders`),
+    mutationFn: ({ campaignId, maxReminders }: { campaignId: string; maxReminders?: number }) =>
+      apiClient.post<SendStartResult>(
+        `/api/v1/campaigns/${campaignId}/distribution/send-reminders`,
+        maxReminders !== undefined ? { maxReminders } : undefined
+      ),
   });
 }
 

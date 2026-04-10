@@ -129,7 +129,7 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
       if (showSendConfirm === 'invitations') {
         result = await sendInvitations.mutateAsync(campaignId);
       } else if (showSendConfirm === 'reminders') {
-        result = await sendReminders.mutateAsync(campaignId);
+        result = await sendReminders.mutateAsync({ campaignId });
       }
       if (result?.progressId) {
         setSendProgressId(result.progressId);

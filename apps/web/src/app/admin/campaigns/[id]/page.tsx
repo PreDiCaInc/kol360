@@ -58,6 +58,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   ArrowLeft,
   Play,
@@ -256,13 +257,18 @@ export default function CampaignDetailPage() {
     await resetScoreConfig.mutateAsync(campaignId);
   };
 
+  const [overrideReminderLimit, setOverrideReminderLimit] = useState(false);
+
   const handleSendReminders = async () => {
     try {
-      const result = await sendReminders.mutateAsync(campaignId);
+      // If override is enabled, pass a high maxReminders so HCPs at the limit receive another reminder
+      const maxReminders = overrideReminderLimit ? 100 : undefined;
+      const result = await sendReminders.mutateAsync({ campaignId, maxReminders });
       if (result?.progressId) {
         setReminderProgressId(result.progressId);
       }
       setShowReminderConfirm(false);
+      setOverrideReminderLimit(false);
     } catch (error) {
       console.error('Failed to send reminders:', error);
     }
@@ -1256,7 +1262,7 @@ export default function CampaignDetailPage() {
         </Dialog>
 
         {/* Send Reminders Confirmation */}
-        <AlertDialog open={showReminderConfirm} onOpenChange={setShowReminderConfirm}>
+        <AlertDialog open={showReminderConfirm} onOpenChange={(open) => { setShowReminderConfirm(open); if (!open) setOverrideReminderLimit(false); }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Send Reminders</AlertDialogTitle>
@@ -1264,6 +1270,30 @@ export default function CampaignDetailPage() {
                 This will send reminder emails to HCPs who have been invited but haven&apos;t completed the survey.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            {distributionStats && distributionStats.atMaxReminders > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-3 my-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-900">
+                      {distributionStats.atMaxReminders} HCP{distributionStats.atMaxReminders === 1 ? ' has' : 's have'} reached the reminder limit (3)
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      These HCPs will be skipped unless you override the limit below.
+                    </p>
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                      <Checkbox
+                        checked={overrideReminderLimit}
+                        onCheckedChange={(checked) => setOverrideReminderLimit(!!checked)}
+                      />
+                      <span className="text-sm text-amber-900">
+                        Override limit and send to these HCPs anyway
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={handleSendReminders} disabled={sendReminders.isPending}>
@@ -1272,6 +1302,8 @@ export default function CampaignDetailPage() {
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Sending...
                   </>
+                ) : overrideReminderLimit ? (
+                  'Send Emails (Override)'
                 ) : (
                   'Send Emails'
                 )}
