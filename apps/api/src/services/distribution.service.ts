@@ -166,6 +166,7 @@ export class DistributionService {
       invited,
       optedOut,
       responses,
+      atMaxReminders,
     ] = await Promise.all([
       prisma.campaignHcp.count({ where: { campaignId } }),
       prisma.campaignHcp.count({ where: { campaignId, emailSentAt: { not: null } } }),
@@ -182,6 +183,19 @@ export class DistributionService {
         by: ['status'],
         where: { campaignId },
         _count: true,
+      }),
+      // Count invited HCPs that have hit the default reminder limit (3) and have not completed
+      prisma.campaignHcp.count({
+        where: {
+          campaignId,
+          emailSentAt: { not: null },
+          reminderCount: { gte: 3 },
+          hcp: {
+            surveyResponses: {
+              none: { campaignId, status: 'COMPLETED' },
+            },
+          },
+        },
       }),
     ]);
 
@@ -207,6 +221,7 @@ export class DistributionService {
       completed,
       recentlySurveyed,
       optedOut,
+      atMaxReminders,
       completionRate: invited > 0 ? Math.round((completed / invited) * 100) : 0,
     };
   }
