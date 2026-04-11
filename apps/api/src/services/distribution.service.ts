@@ -317,6 +317,187 @@ export class DistributionService {
   }
 
   /**
+   * Get survey status list — enriched view of campaign HCPs with derived status
+   * (completed/in_progress/opened/unsubscribed/invited/not_invited) and status date.
+   * Supports search, status filter, sort, and pagination.
+   */
+  async getSurveyStatusList(
+    campaignId: string,
+    params: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: 'all' | 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited';
+      sortBy?: 'firstName' | 'lastName' | 'specialty' | 'state' | 'status' | 'date';
+      sortOrder?: 'asc' | 'desc';
+    }
+  ) {
+    const page = Math.max(1, params.page || 1);
+    const limit = Math.min(100, Math.max(1, params.limit || 50));
+    const search = params.search?.trim();
+    const statusFilter = params.status || 'all';
+    const sortBy = params.sortBy || 'lastName';
+    const sortOrder = params.sortOrder || 'asc';
+
+    // Build base where clause — only filter by DB-level criteria here (search, not status)
+    const where: Record<string, unknown> = { campaignId };
+
+    if (search) {
+      where.hcp = {
+        OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { npi: { contains: search } },
+        ],
+      };
+    }
+
+    // Fetch all matching rows (we compute status in JS and then paginate)
+    const allRows = await prisma.campaignHcp.findMany({
+      where,
+      select: {
+        id: true,
+        hcpId: true,
+        emailSentAt: true,
+        lastReminderAt: true,
+        createdAt: true,
+        hcp: {
+          select: {
+            id: true,
+            npi: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            specialty: true,
+            subSpecialty: true,
+            city: true,
+            state: true,
+          },
+        },
+      },
+    });
+
+    const hcpIds = allRows.map(r => r.hcpId);
+
+    // Batch query responses and opt-outs for these HCPs
+    const [responses, optOuts] = await Promise.all([
+      prisma.surveyResponse.findMany({
+        where: { campaignId, respondentHcpId: { in: hcpIds } },
+        select: {
+          respondentHcpId: true,
+          status: true,
+          startedAt: true,
+          completedAt: true,
+        },
+      }),
+      prisma.optOut.findMany({
+        where: {
+          hcpId: { in: hcpIds },
+          resubscribedAt: null,
+          OR: [
+            { scope: 'GLOBAL' },
+            { scope: 'CAMPAIGN', campaignId },
+          ],
+        },
+        select: {
+          hcpId: true,
+          optedOutAt: true,
+        },
+      }),
+    ]);
+
+    const responseMap = new Map(responses.map(r => [r.respondentHcpId, r]));
+    const optOutMap = new Map(
+      optOuts.filter(o => o.hcpId !== null).map(o => [o.hcpId!, o])
+    );
+
+    // Enrich each row with derived status + date
+    const enriched = allRows.map(row => {
+      const response = responseMap.get(row.hcpId);
+      const optOut = optOutMap.get(row.hcpId);
+
+      let status: 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited';
+      let statusDate: Date | null;
+
+      if (optOut) {
+        status = 'unsubscribed';
+        statusDate = optOut.optedOutAt;
+      } else if (response?.status === 'COMPLETED') {
+        status = 'completed';
+        statusDate = response.completedAt;
+      } else if (response?.status === 'IN_PROGRESS') {
+        status = 'in_progress';
+        statusDate = response.startedAt;
+      } else if (response?.status === 'OPENED') {
+        status = 'opened';
+        statusDate = response.startedAt;
+      } else if (row.emailSentAt) {
+        status = 'invited';
+        // Use the more recent of emailSentAt and lastReminderAt
+        statusDate = row.lastReminderAt && row.lastReminderAt > row.emailSentAt
+          ? row.lastReminderAt
+          : row.emailSentAt;
+      } else {
+        status = 'not_invited';
+        statusDate = row.createdAt;
+      }
+
+      return {
+        campaignHcpId: row.id,
+        hcpId: row.hcpId,
+        npi: row.hcp.npi,
+        firstName: row.hcp.firstName,
+        lastName: row.hcp.lastName,
+        email: row.hcp.email,
+        specialty: row.hcp.specialty,
+        subSpecialty: row.hcp.subSpecialty,
+        city: row.hcp.city,
+        state: row.hcp.state,
+        status,
+        statusDate: statusDate ? statusDate.toISOString() : null,
+      };
+    });
+
+    // Apply status filter
+    const filtered = statusFilter === 'all'
+      ? enriched
+      : enriched.filter(r => r.status === statusFilter);
+
+    // Sort
+    const sortMultiplier = sortOrder === 'asc' ? 1 : -1;
+    const getSortValue = (row: typeof filtered[0]): string | number => {
+      switch (sortBy) {
+        case 'firstName': return (row.firstName || '').toLowerCase();
+        case 'lastName': return (row.lastName || '').toLowerCase();
+        case 'specialty': return (row.specialty || '').toLowerCase();
+        case 'state': return (row.state || '').toLowerCase();
+        case 'status': return row.status;
+        case 'date': return row.statusDate ? new Date(row.statusDate).getTime() : 0;
+        default: return (row.lastName || '').toLowerCase();
+      }
+    };
+
+    filtered.sort((a, b) => {
+      const av = getSortValue(a);
+      const bv = getSortValue(b);
+      if (av < bv) return -1 * sortMultiplier;
+      if (av > bv) return 1 * sortMultiplier;
+      return 0;
+    });
+
+    // Paginate
+    const total = filtered.length;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    const items = filtered.slice((page - 1) * limit, page * limit);
+
+    return {
+      items,
+      pagination: { page, limit, total, pages },
+    };
+  }
+
+  /**
    * Import HCPs from Excel or CSV file and assign them to a campaign
    */
   async importHcpsFromFile(campaignId: string, buffer: Buffer, filename: string, userId: string) {
