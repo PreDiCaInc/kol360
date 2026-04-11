@@ -111,8 +111,7 @@ const WORKFLOW_STEPS = [
   { id: 'survey-scores', label: 'Survey Scores', icon: Calculator, description: 'Calculate scores', phase: 'closed', external: true },
   // { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'View results', phase: 'published', external: true },
   { id: 'payments', label: 'Payments', icon: DollarSign, description: 'Honorarium tracking', phase: 'published', external: true },
-  // Survey Status is a monitoring tool — always accessible after campaign is non-DRAFT
-  { id: 'survey-status', label: 'Survey Status', icon: UserCheck, description: 'Track survey taker progress', phase: 'active', external: true },
+  // Survey Status is accessible via direct URL only: /admin/campaigns/:id/survey-status
 ];
 
 // Helper type for step completion status
