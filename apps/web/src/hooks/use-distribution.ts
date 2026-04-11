@@ -94,6 +94,47 @@ export function useDistributionStats(campaignId: string) {
   });
 }
 
+export interface SurveyStatusItem {
+  campaignHcpId: string;
+  hcpId: string;
+  npi: string | null;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  specialty: string | null;
+  subSpecialty: string | null;
+  city: string | null;
+  state: string | null;
+  status: 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited';
+  statusDate: string | null;
+}
+
+interface SurveyStatusResponse {
+  items: SurveyStatusItem[];
+  pagination: { page: number; limit: number; total: number; pages: number };
+}
+
+export function useSurveyStatus(
+  campaignId: string,
+  params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    sortBy?: string;
+    sortOrder?: string;
+  }
+) {
+  return useQuery({
+    queryKey: ['campaigns', campaignId, 'survey-status', params],
+    queryFn: () => apiClient.get<SurveyStatusResponse>(
+      `/api/v1/campaigns/${campaignId}/survey-status`,
+      params as Record<string, string | number | undefined>
+    ),
+    enabled: !!campaignId,
+  });
+}
+
 export function useAssignHcps() {
   const queryClient = useQueryClient();
 

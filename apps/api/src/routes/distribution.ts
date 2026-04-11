@@ -110,6 +110,36 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // Survey status list — enriched view of campaign HCPs with derived status
+  fastify.get<{
+    Params: { campaignId: string };
+    Querystring: {
+      page?: string;
+      limit?: string;
+      search?: string;
+      status?: string;
+      sortBy?: string;
+      sortOrder?: string;
+    };
+  }>(
+    '/campaigns/:campaignId/survey-status',
+    async (request, reply) => {
+      const hasAccess = await verifyCampaignAccess(request.params.campaignId, request.user!, reply);
+      if (!hasAccess) return;
+
+      const { page, limit, search, status, sortBy, sortOrder } = request.query;
+
+      return distributionService.getSurveyStatusList(request.params.campaignId, {
+        page: page ? parseInt(page, 10) : undefined,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        search,
+        status: status as 'all' | 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited' | undefined,
+        sortBy: sortBy as 'firstName' | 'lastName' | 'specialty' | 'state' | 'status' | 'date' | undefined,
+        sortOrder: sortOrder as 'asc' | 'desc' | undefined,
+      });
+    }
+  );
+
   // List HCPs assigned to campaign (legacy endpoint)
   fastify.get<{ Params: { campaignId: string } }>(
     '/campaigns/:campaignId/hcps',
