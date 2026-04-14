@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useSurveyStatus } from '@/hooks/use-distribution';
+import { useSurveyStatus, SurveyStatusItem } from '@/hooks/use-distribution';
 import { useCampaign } from '@/hooks/use-campaigns';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { useExcelExport } from '@/lib/excel-export';
+import { apiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +40,9 @@ import {
   ChevronRight,
   ArrowUp,
   ArrowDown,
+  Download,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -131,6 +136,51 @@ export default function SurveyStatusPage() {
     } catch (e) {
       console.error('Failed to copy', e);
     }
+  };
+
+  const { status: exportStatus, exportExcel } = useExcelExport();
+
+  const handleExport = async () => {
+    // Fetch ALL records matching current filters (max 5000)
+    const query: Record<string, string | number | undefined> = {
+      page: 1,
+      limit: 5000,
+      search: debouncedSearch || undefined,
+      status: statusFilter.length > 0 ? statusFilter.join(',') : undefined,
+      sortBy,
+      sortOrder,
+    };
+    const result = await apiClient.get<{ items: SurveyStatusItem[] }>(
+      `/api/v1/campaigns/${campaignId}/survey-status`,
+      query
+    );
+
+    const origin = window.location.origin;
+    exportExcel({
+      filename: `survey-status-${campaign?.name?.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'campaign'}`,
+      headers: [
+        'NPI', 'First Name', 'Last Name', 'Email',
+        'Specialty', 'Sub-specialty', 'City', 'State',
+        'Status', 'Last Question', 'Total Questions',
+        'Last Updated Date', 'Survey Link',
+      ],
+      rows: result.items.map((item) => [
+        item.npi || '',
+        item.firstName,
+        item.lastName,
+        item.email || '',
+        formatSpecialty(item.specialty),
+        item.subSpecialty || '',
+        item.city || '',
+        item.state || '',
+        STATUS_LABELS[item.status],
+        item.lastQuestion > 0 ? item.lastQuestion : '',
+        item.totalQuestions,
+        item.statusDate ? formatDate(item.statusDate) : '',
+        item.surveyToken ? `${origin}/survey/${item.surveyToken}` : '',
+      ]),
+      sheetName: 'Survey Status',
+    });
   };
 
   const handleSort = (field: string) => {
@@ -236,6 +286,28 @@ export default function SurveyStatusPage() {
               {campaign?.name} — {total.toLocaleString()} HCP{total === 1 ? '' : 's'}
             </p>
           </div>
+          <Button
+            onClick={handleExport}
+            disabled={exportStatus !== 'idle' || !data || data.items.length === 0}
+            variant="outline"
+          >
+            {exportStatus === 'exporting' ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Exporting...
+              </>
+            ) : exportStatus === 'success' ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                Exported!
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Export to Excel
+              </>
+            )}
+          </Button>
         </div>
 
         <Card>
