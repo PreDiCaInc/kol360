@@ -87,12 +87,14 @@ export default function SurveyStatusPage() {
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // Multi-select status filter — empty set means "all"
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
   const [sortBy, setSortBy] = useState('lastName');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [pageInput, setPageInput] = useState('');
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -108,10 +110,28 @@ export default function SurveyStatusPage() {
     page,
     limit,
     search: debouncedSearch || undefined,
-    status: statusFilter,
+    status: statusFilter.length > 0 ? statusFilter.join(',') : undefined,
     sortBy,
     sortOrder,
   });
+
+  const toggleStatus = (s: string) => {
+    setStatusFilter((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
+    );
+    setPage(1);
+  };
+
+  const copySurveyLink = async (token: string) => {
+    const url = `${window.location.origin}/survey/${token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(null), 2000);
+    } catch (e) {
+      console.error('Failed to copy', e);
+    }
+  };
 
   const handleSort = (field: string) => {
     if (sortBy === field) {
@@ -227,43 +247,54 @@ export default function SurveyStatusPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Filters */}
-            <div className="flex flex-wrap gap-3 items-center">
-              <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search name, email, or NPI..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
-                />
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="relative flex-1 min-w-[200px] max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search name, email, or NPI..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                {(search || statusFilter.length > 0) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSearch('');
+                      setStatusFilter([]);
+                      setPage(1);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
               </div>
-              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="opened">Opened</SelectItem>
-                  <SelectItem value="unsubscribed">Unsubscribed</SelectItem>
-                  <SelectItem value="invited">Invited</SelectItem>
-                  <SelectItem value="not_invited">Not Invited</SelectItem>
-                </SelectContent>
-              </Select>
-              {(search || statusFilter !== 'all') && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearch('');
-                    setStatusFilter('all');
-                    setPage(1);
-                  }}
-                >
-                  Clear
-                </Button>
-              )}
+              {/* Multi-select status filter as toggle pills */}
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-muted-foreground">Filter by status:</span>
+                {(['completed', 'in_progress', 'opened', 'unsubscribed', 'invited', 'not_invited'] as const).map((s) => {
+                  const active = statusFilter.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => toggleStatus(s)}
+                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                        active
+                          ? STATUS_COLORS[s] + ' ring-2 ring-offset-1 ring-current'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80 border-border'
+                      }`}
+                    >
+                      {STATUS_LABELS[s]}
+                    </button>
+                  );
+                })}
+                {statusFilter.length > 0 && (
+                  <span className="text-xs text-muted-foreground">({statusFilter.length} selected)</span>
+                )}
+              </div>
             </div>
 
             {/* Top pagination */}
@@ -300,9 +331,13 @@ export default function SurveyStatusPage() {
                       <TableHead className="cursor-pointer" onClick={() => handleSort('status')}>
                         Status <SortIcon field="status" />
                       </TableHead>
-                      <TableHead className="cursor-pointer" onClick={() => handleSort('date')}>
-                        Date <SortIcon field="date" />
+                      <TableHead className="cursor-pointer" onClick={() => handleSort('lastQuestion')}>
+                        Last Question <SortIcon field="lastQuestion" />
                       </TableHead>
+                      <TableHead className="cursor-pointer" onClick={() => handleSort('date')}>
+                        Last Updated Date <SortIcon field="date" />
+                      </TableHead>
+                      <TableHead>Survey Link</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -325,7 +360,29 @@ export default function SurveyStatusPage() {
                             {STATUS_LABELS[item.status]}
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-xs">
+                          {item.lastQuestion > 0
+                            ? `${item.lastQuestion} / ${item.totalQuestions}`
+                            : '—'}
+                        </TableCell>
                         <TableCell className="text-xs">{formatDate(item.statusDate)}</TableCell>
+                        <TableCell className="text-xs">
+                          {item.surveyToken ? (
+                            <button
+                              onClick={() => copySurveyLink(item.surveyToken!)}
+                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
+                              title="Copy survey link"
+                            >
+                              {copiedToken === item.surveyToken ? (
+                                <>Copied!</>
+                              ) : (
+                                <>Copy link</>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

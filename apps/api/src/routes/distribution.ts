@@ -117,7 +117,7 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
       page?: string;
       limit?: string;
       search?: string;
-      status?: string;
+      status?: string;  // comma-separated list for multi-select (e.g. 'completed,in_progress')
       sortBy?: string;
       sortOrder?: string;
     };
@@ -129,14 +129,25 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { page, limit, search, status, sortBy, sortOrder } = request.query;
 
-      return distributionService.getSurveyStatusList(request.params.campaignId, {
+      const result = await distributionService.getSurveyStatusList(request.params.campaignId, {
         page: page ? parseInt(page, 10) : undefined,
         limit: limit ? parseInt(limit, 10) : undefined,
         search,
-        status: status as 'all' | 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited' | undefined,
-        sortBy: sortBy as 'firstName' | 'lastName' | 'specialty' | 'state' | 'status' | 'date' | undefined,
+        status, // comma-separated string; service splits into array
+        sortBy: sortBy as 'firstName' | 'lastName' | 'specialty' | 'state' | 'status' | 'date' | 'lastQuestion' | undefined,
         sortOrder: sortOrder as 'asc' | 'desc' | undefined,
       });
+
+      // Strip surveyToken for non-PLATFORM_ADMIN users (security: prevent client admins from impersonating HCPs)
+      if (request.user!.role !== 'PLATFORM_ADMIN') {
+        result.items = result.items.map((item) => {
+          const cleaned = { ...item };
+          delete (cleaned as Record<string, unknown>).surveyToken;
+          return cleaned;
+        });
+      }
+
+      return result;
     }
   );
 

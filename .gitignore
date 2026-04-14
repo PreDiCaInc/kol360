@@ -95,3 +95,8 @@ func-spec/ui-review/
 # Security scan results (sensitive - do not commit)
 sec-scan-results/
 func-spec/*.docx
+creds/
+
+# CSV files and csv folder
+*.csv
+csv/
