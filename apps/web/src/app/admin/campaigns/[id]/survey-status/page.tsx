@@ -3,18 +3,17 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useSurveyStatus } from '@/hooks/use-distribution';
+import { useSurveyStatus, SurveyStatusItem } from '@/hooks/use-distribution';
 import { useCampaign } from '@/hooks/use-campaigns';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { useExcelExport } from '@/lib/excel-export';
+import { apiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import {
   Table,
@@ -38,6 +37,9 @@ import {
   ChevronRight,
   ArrowUp,
   ArrowDown,
+  Download,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -131,6 +133,51 @@ export default function SurveyStatusPage() {
     } catch (e) {
       console.error('Failed to copy', e);
     }
+  };
+
+  const { status: exportStatus, exportExcel } = useExcelExport();
+
+  const handleExport = async () => {
+    // Fetch ALL records matching current filters (max 5000)
+    const query: Record<string, string | number | undefined> = {
+      page: 1,
+      limit: 5000,
+      search: debouncedSearch || undefined,
+      status: statusFilter.length > 0 ? statusFilter.join(',') : undefined,
+      sortBy,
+      sortOrder,
+    };
+    const result = await apiClient.get<{ items: SurveyStatusItem[] }>(
+      `/api/v1/campaigns/${campaignId}/survey-status`,
+      query
+    );
+
+    const origin = window.location.origin;
+    exportExcel({
+      filename: `survey-status-${campaign?.name?.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'campaign'}`,
+      headers: [
+        'NPI', 'First Name', 'Last Name', 'Email',
+        'Specialty', 'Sub-specialty', 'City', 'State',
+        'Status', 'Last Question', 'Total Questions',
+        'Last Updated Date', 'Survey Link',
+      ],
+      rows: result.items.map((item) => [
+        item.npi || '',
+        item.firstName,
+        item.lastName,
+        item.email || '',
+        formatSpecialty(item.specialty),
+        item.subSpecialty || '',
+        item.city || '',
+        item.state || '',
+        STATUS_LABELS[item.status],
+        item.lastQuestion > 0 ? item.lastQuestion : '',
+        item.totalQuestions,
+        item.statusDate ? formatDate(item.statusDate) : '',
+        item.surveyToken ? `${origin}/survey/${item.surveyToken}` : '',
+      ]),
+      sheetName: 'Survey Status',
+    });
   };
 
   const handleSort = (field: string) => {
@@ -236,52 +283,51 @@ export default function SurveyStatusPage() {
               {campaign?.name} — {total.toLocaleString()} HCP{total === 1 ? '' : 's'}
             </p>
           </div>
+          <Button
+            onClick={handleExport}
+            disabled={exportStatus !== 'idle' || !data || data.items.length === 0}
+            variant="outline"
+          >
+            {exportStatus === 'exporting' ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Exporting...
+              </>
+            ) : exportStatus === 'success' ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 mr-2" />
+                Exported!
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Export to Excel
+              </>
+            )}
+          </Button>
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Survey Taker Status</CardTitle>
-            <CardDescription>
-              Track survey taker progress across all invited HCPs
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Filters */}
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-3 items-center">
-                <div className="relative flex-1 min-w-[200px] max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search name, email, or NPI..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                {(search || statusFilter.length > 0) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSearch('');
-                      setStatusFilter([]);
-                      setPage(1);
-                    }}
-                  >
-                    Clear
-                  </Button>
-                )}
+          <CardContent className="space-y-3 pt-4">
+            {/* Filters — compact single row */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="relative flex-shrink-0 w-[240px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search name, email, NPI..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 h-9"
+                />
               </div>
-              {/* Multi-select status filter as toggle pills */}
-              <div className="flex flex-wrap gap-2 items-center">
-                <span className="text-xs text-muted-foreground">Filter by status:</span>
+              <div className="flex flex-wrap gap-1.5 items-center flex-1">
                 {(['completed', 'in_progress', 'opened', 'unsubscribed', 'invited', 'not_invited'] as const).map((s) => {
                   const active = statusFilter.includes(s);
                   return (
                     <button
                       key={s}
                       onClick={() => toggleStatus(s)}
-                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                         active
                           ? STATUS_COLORS[s] + ' ring-2 ring-offset-1 ring-current'
                           : 'bg-muted text-muted-foreground hover:bg-muted/80 border-border'
@@ -291,10 +337,21 @@ export default function SurveyStatusPage() {
                     </button>
                   );
                 })}
-                {statusFilter.length > 0 && (
-                  <span className="text-xs text-muted-foreground">({statusFilter.length} selected)</span>
-                )}
               </div>
+              {(search || statusFilter.length > 0) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearch('');
+                    setStatusFilter([]);
+                    setPage(1);
+                  }}
+                  className="h-8 text-xs"
+                >
+                  Clear
+                </Button>
+              )}
             </div>
 
             {/* Top pagination */}

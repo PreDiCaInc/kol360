@@ -333,7 +333,8 @@ export class DistributionService {
     }
   ) {
     const page = Math.max(1, params.page || 1);
-    const limit = Math.min(100, Math.max(1, params.limit || 50));
+    // Allow large limits for export-all (frontend passes 5000 to fetch all records)
+    const limit = Math.min(5000, Math.max(1, params.limit || 50));
     const search = params.search?.trim();
     // Normalize status filter to an array; 'all' or empty means no filter
     const statusInput = params.status;
