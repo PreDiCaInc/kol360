@@ -14,9 +14,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import {
   Table,
@@ -311,49 +308,26 @@ export default function SurveyStatusPage() {
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Survey Taker Status</CardTitle>
-            <CardDescription>
-              Track survey taker progress across all invited HCPs
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Filters */}
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-3 items-center">
-                <div className="relative flex-1 min-w-[200px] max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search name, email, or NPI..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                {(search || statusFilter.length > 0) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSearch('');
-                      setStatusFilter([]);
-                      setPage(1);
-                    }}
-                  >
-                    Clear
-                  </Button>
-                )}
+          <CardContent className="space-y-3 pt-4">
+            {/* Filters — compact single row */}
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="relative flex-shrink-0 w-[240px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search name, email, NPI..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 h-9"
+                />
               </div>
-              {/* Multi-select status filter as toggle pills */}
-              <div className="flex flex-wrap gap-2 items-center">
-                <span className="text-xs text-muted-foreground">Filter by status:</span>
+              <div className="flex flex-wrap gap-1.5 items-center flex-1">
                 {(['completed', 'in_progress', 'opened', 'unsubscribed', 'invited', 'not_invited'] as const).map((s) => {
                   const active = statusFilter.includes(s);
                   return (
                     <button
                       key={s}
                       onClick={() => toggleStatus(s)}
-                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                         active
                           ? STATUS_COLORS[s] + ' ring-2 ring-offset-1 ring-current'
                           : 'bg-muted text-muted-foreground hover:bg-muted/80 border-border'
@@ -363,10 +337,21 @@ export default function SurveyStatusPage() {
                     </button>
                   );
                 })}
-                {statusFilter.length > 0 && (
-                  <span className="text-xs text-muted-foreground">({statusFilter.length} selected)</span>
-                )}
               </div>
+              {(search || statusFilter.length > 0) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearch('');
+                    setStatusFilter([]);
+                    setPage(1);
+                  }}
+                  className="h-8 text-xs"
+                >
+                  Clear
+                </Button>
+              )}
             </div>
 
             {/* Top pagination */}
