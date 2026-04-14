@@ -107,11 +107,15 @@ export interface SurveyStatusItem {
   state: string | null;
   status: 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited';
   statusDate: string | null;
+  lastQuestion: number;       // 0 if none, 1-indexed question number
+  totalQuestions: number;     // total questions in the campaign
+  surveyToken?: string;       // only present for PLATFORM_ADMIN
 }
 
 interface SurveyStatusResponse {
   items: SurveyStatusItem[];
   pagination: { page: number; limit: number; total: number; pages: number };
+  totalQuestions: number;
 }
 
 export function useSurveyStatus(

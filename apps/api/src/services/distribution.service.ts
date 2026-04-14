@@ -327,15 +327,24 @@ export class DistributionService {
       page?: number;
       limit?: number;
       search?: string;
-      status?: 'all' | 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited';
-      sortBy?: 'firstName' | 'lastName' | 'specialty' | 'state' | 'status' | 'date';
+      status?: string | string[]; // single value or array of statuses (multi-select)
+      sortBy?: 'firstName' | 'lastName' | 'specialty' | 'state' | 'status' | 'date' | 'lastQuestion';
       sortOrder?: 'asc' | 'desc';
     }
   ) {
     const page = Math.max(1, params.page || 1);
     const limit = Math.min(100, Math.max(1, params.limit || 50));
     const search = params.search?.trim();
-    const statusFilter = params.status || 'all';
+    // Normalize status filter to an array; 'all' or empty means no filter
+    const statusInput = params.status;
+    const statusSet: Set<string> | null = (() => {
+      if (!statusInput) return null;
+      const arr = Array.isArray(statusInput)
+        ? statusInput
+        : statusInput.split(',').map(s => s.trim()).filter(Boolean);
+      if (arr.length === 0 || arr.includes('all')) return null;
+      return new Set(arr);
+    })();
     const sortBy = params.sortBy || 'lastName';
     const sortOrder = params.sortOrder || 'asc';
 
@@ -359,6 +368,7 @@ export class DistributionService {
       select: {
         id: true,
         hcpId: true,
+        surveyToken: true,
         emailSentAt: true,
         lastReminderAt: true,
         createdAt: true,
@@ -380,11 +390,15 @@ export class DistributionService {
 
     const hcpIds = allRows.map(r => r.hcpId);
 
-    // Batch query responses and opt-outs for these HCPs
+    // Total questions in this campaign (for progress denominator)
+    const totalQuestions = await prisma.surveyQuestion.count({ where: { campaignId } });
+
+    // Batch query responses, opt-outs, and last-answered-question per response
     const [responses, optOuts] = await Promise.all([
       prisma.surveyResponse.findMany({
         where: { campaignId, respondentHcpId: { in: hcpIds } },
         select: {
+          id: true,
           respondentHcpId: true,
           status: true,
           startedAt: true,
@@ -407,15 +421,33 @@ export class DistributionService {
       }),
     ]);
 
+    // Compute last answered question (max sortOrder) per response
+    const responseIds = responses.map(r => r.id);
+    const lastAnsweredMap = new Map<string, number>();
+    if (responseIds.length > 0) {
+      const rows = await prisma.$queryRaw<Array<{ responseId: string; maxOrder: number }>>`
+        SELECT a."responseId" as "responseId", MAX(sq."sortOrder") as "maxOrder"
+        FROM "SurveyResponseAnswer" a
+        JOIN "SurveyQuestion" sq ON a."questionId" = sq.id
+        WHERE a."responseId" = ANY(${responseIds}::text[])
+        GROUP BY a."responseId"
+      `;
+      for (const r of rows) {
+        // sortOrder is 0-indexed in schema; display as 1-indexed
+        lastAnsweredMap.set(r.responseId, Number(r.maxOrder) + 1);
+      }
+    }
+
     const responseMap = new Map(responses.map(r => [r.respondentHcpId, r]));
     const optOutMap = new Map(
       optOuts.filter(o => o.hcpId !== null).map(o => [o.hcpId!, o])
     );
 
-    // Enrich each row with derived status + date
+    // Enrich each row with derived status + date + progress
     const enriched = allRows.map(row => {
       const response = responseMap.get(row.hcpId);
       const optOut = optOutMap.get(row.hcpId);
+      const lastQuestion = response ? (lastAnsweredMap.get(response.id) ?? 0) : 0;
 
       let status: 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited';
       let statusDate: Date | null;
@@ -456,13 +488,16 @@ export class DistributionService {
         state: row.hcp.state,
         status,
         statusDate: statusDate ? statusDate.toISOString() : null,
+        lastQuestion,                    // 0 if no answers yet, otherwise 1-indexed question number
+        totalQuestions,                  // total questions in the campaign
+        surveyToken: row.surveyToken,    // route strips this for non-PLATFORM_ADMIN
       };
     });
 
-    // Apply status filter
-    const filtered = statusFilter === 'all'
+    // Apply status filter (multi-select): null = no filter
+    const filtered = statusSet === null
       ? enriched
-      : enriched.filter(r => r.status === statusFilter);
+      : enriched.filter(r => statusSet.has(r.status));
 
     // Sort
     const sortMultiplier = sortOrder === 'asc' ? 1 : -1;
@@ -474,6 +509,7 @@ export class DistributionService {
         case 'state': return (row.state || '').toLowerCase();
         case 'status': return row.status;
         case 'date': return row.statusDate ? new Date(row.statusDate).getTime() : 0;
+        case 'lastQuestion': return row.lastQuestion;
         default: return (row.lastName || '').toLowerCase();
       }
     };
@@ -494,6 +530,7 @@ export class DistributionService {
     return {
       items,
       pagination: { page, limit, total, pages },
+      totalQuestions,
     };
   }
 
