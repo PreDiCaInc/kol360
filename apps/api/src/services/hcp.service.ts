@@ -35,6 +35,7 @@ interface SearchParams {
   state?: string;
   diseaseAreaId?: string;
   hcpIds?: string[]; // Filter to specific HCP IDs (for tenant scoping)
+  optOutStatus?: 'any' | 'global' | 'campaign' | 'active' | 'none'; // 'any' = any active opt-out, 'global' = global only, 'campaign' = campaign-scope only, 'none' = no opt-out, 'active' alias for 'any'
   page: number;
   limit: number;
 }
@@ -54,7 +55,7 @@ export class HcpService {
   }
 
   async search(params: SearchParams) {
-    const { query, specialty, state, hcpIds, page, limit } = params;
+    const { query, specialty, state, hcpIds, optOutStatus, page, limit } = params;
 
     const where: Record<string, unknown> = {};
 
@@ -83,6 +84,17 @@ export class HcpService {
     }
     if (state) where.state = state;
 
+    // Opt-out filter — based on active OptOut records
+    if (optOutStatus && optOutStatus !== 'none') {
+      const scopeFilter =
+        optOutStatus === 'global' ? { scope: 'GLOBAL' as const } :
+        optOutStatus === 'campaign' ? { scope: 'CAMPAIGN' as const } :
+        {}; // 'any' or 'active'
+      where.optOuts = { some: { resubscribedAt: null, ...scopeFilter } };
+    } else if (optOutStatus === 'none') {
+      where.optOuts = { none: { resubscribedAt: null } };
+    }
+
     const [total, items] = await Promise.all([
       prisma.hcp.count({ where }),
       prisma.hcp.findMany({
@@ -110,6 +122,11 @@ export class HcpService {
               totalNominationCount: true,
               diseaseArea: { select: { id: true, name: true, code: true } },
             },
+          },
+          optOuts: {
+            where: { resubscribedAt: null },
+            select: { id: true, scope: true, campaignId: true, optedOutAt: true, reason: true },
+            orderBy: { optedOutAt: 'desc' },
           },
           _count: { select: { campaignHcps: true, nominationsReceived: true } },
         },

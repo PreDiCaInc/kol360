@@ -63,6 +63,7 @@ export default function HcpsPage() {
     query?: string;
     specialty?: string;
     state?: string;
+    optOutStatus?: 'any' | 'global' | 'campaign' | 'none';
     page: number;
   }>({ page: 1 });
 
@@ -272,6 +273,28 @@ export default function HcpsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select
+            value={filters.optOutStatus || 'all'}
+            onValueChange={(value) =>
+              setFilters((prev) => ({
+                ...prev,
+                optOutStatus: value === 'all' ? undefined : (value as 'any' | 'global' | 'campaign' | 'none'),
+                page: 1,
+              }))
+            }
+          >
+            <SelectTrigger className="w-44 bg-card">
+              <SelectValue placeholder="All Opt-Out Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Opt-Out Status</SelectItem>
+              <SelectItem value="any">Opted Out (Any)</SelectItem>
+              <SelectItem value="global">Opted Out (Global)</SelectItem>
+              <SelectItem value="campaign">Opted Out (Campaign)</SelectItem>
+              <SelectItem value="none">Active (Not Opted Out)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -362,7 +385,21 @@ export default function HcpsPage() {
                       <div className="text-sm text-muted-foreground">{hcp.email}</div>
                     )}
                   </TableCell>
-                  <TableCell><div className="flex gap-1">{hcp.isSurveyTaker && <Badge variant="default" className="text-xs">Survey Taker</Badge>}{hcp.isNominated && <Badge variant="secondary" className="text-xs">Nominated</Badge>}</div></TableCell>
+                  <TableCell>
+                    <div className="flex gap-1 flex-wrap">
+                      {hcp.isSurveyTaker && <Badge variant="default" className="text-xs">Survey Taker</Badge>}
+                      {hcp.isNominated && <Badge variant="secondary" className="text-xs">Nominated</Badge>}
+                      {hcp.optOuts && hcp.optOuts.length > 0 && (
+                        <Badge
+                          variant="destructive"
+                          className="text-xs"
+                          title={hcp.optOuts.map(o => `${o.scope}${o.reason ? ': ' + o.reason : ''}`).join(' | ')}
+                        >
+                          Opted Out{hcp.optOuts.some(o => o.scope === 'GLOBAL') ? ' (Global)' : ''}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     {hcp.specialty ? (
                       <Badge variant="outline" className="text-xs">

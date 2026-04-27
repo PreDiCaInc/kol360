@@ -416,7 +416,9 @@ export class DistributionService {
           ],
         },
         select: {
+          id: true,
           hcpId: true,
+          scope: true,
           optedOutAt: true,
         },
       }),
@@ -492,6 +494,9 @@ export class DistributionService {
         lastQuestion,                    // 0 if no answers yet, otherwise 1-indexed question number
         totalQuestions,                  // total questions in the campaign
         surveyToken: row.surveyToken,    // route strips this for non-PLATFORM_ADMIN
+        // Active opt-out info — for showing opt-out / resubscribe button per row
+        optOutId: optOut?.id ?? null,
+        optOutScope: optOut?.scope ?? null,
       };
     });
 

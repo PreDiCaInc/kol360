@@ -769,8 +769,9 @@ function QuestionRenderer({ question, index, value, onChange, error, showNumber 
             pattern="[0-9]*"
             value={(value as string | number) ?? ''}
             onChange={(e) => {
+              // Store as string to preserve leading zeros (e.g. zip codes "02139")
               const v = e.target.value.replace(/[^0-9]/g, '');
-              onChange(v ? Number(v) : '');
+              onChange(v);
             }}
             placeholder="Enter a number..."
             className="text-base"

@@ -3,11 +3,24 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { useSurveyStatus, SurveyStatusItem } from '@/hooks/use-distribution';
+import { useSurveyStatus, SurveyStatusItem, useOptOutHcp, useResubscribeHcp } from '@/hooks/use-distribution';
 import { useCampaign } from '@/hooks/use-campaigns';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { useExcelExport } from '@/lib/excel-export';
 import { apiClient } from '@/lib/api';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -97,6 +110,64 @@ export default function SurveyStatusPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [pageInput, setPageInput] = useState('');
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  // Opt-out / resubscribe dialog state
+  const [optOutTarget, setOptOutTarget] = useState<SurveyStatusItem | null>(null);
+  const [optOutScope, setOptOutScope] = useState<'CAMPAIGN' | 'GLOBAL'>('CAMPAIGN');
+  const [optOutReason, setOptOutReason] = useState('');
+  const [resubscribeTarget, setResubscribeTarget] = useState<SurveyStatusItem | null>(null);
+  const [resubscribeReason, setResubscribeReason] = useState('');
+
+  const { user } = useAuth();
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
+
+  const optOutMutation = useOptOutHcp();
+  const resubscribeMutation = useResubscribeHcp();
+
+  const openOptOut = (item: SurveyStatusItem) => {
+    setOptOutTarget(item);
+    setOptOutScope('CAMPAIGN');
+    setOptOutReason('');
+  };
+  const closeOptOut = () => {
+    setOptOutTarget(null);
+    setOptOutReason('');
+  };
+  const submitOptOut = async () => {
+    if (!optOutTarget || optOutReason.trim().length < 10) return;
+    try {
+      await optOutMutation.mutateAsync({
+        hcpId: optOutTarget.hcpId,
+        scope: optOutScope,
+        campaignId: optOutScope === 'CAMPAIGN' ? campaignId : undefined,
+        reason: optOutReason.trim(),
+      });
+      closeOptOut();
+    } catch (e) {
+      console.error('Opt-out failed', e);
+    }
+  };
+
+  const openResubscribe = (item: SurveyStatusItem) => {
+    setResubscribeTarget(item);
+    setResubscribeReason('');
+  };
+  const closeResubscribe = () => {
+    setResubscribeTarget(null);
+    setResubscribeReason('');
+  };
+  const submitResubscribe = async () => {
+    if (!resubscribeTarget?.optOutId) return;
+    try {
+      await resubscribeMutation.mutateAsync({
+        optOutId: resubscribeTarget.optOutId,
+        reason: resubscribeReason.trim() || undefined,
+      });
+      closeResubscribe();
+    } catch (e) {
+      console.error('Resubscribe failed', e);
+    }
+  };
 
   // Debounce search input
   useEffect(() => {
@@ -395,6 +466,7 @@ export default function SurveyStatusPage() {
                         Last Updated Date <SortIcon field="date" />
                       </TableHead>
                       <TableHead>Survey Link</TableHead>
+                      {isPlatformAdmin && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -440,6 +512,27 @@ export default function SurveyStatusPage() {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
+                        {isPlatformAdmin && (
+                          <TableCell className="text-xs">
+                            {item.optOutId ? (
+                              <button
+                                onClick={() => openResubscribe(item)}
+                                className="text-green-700 hover:underline"
+                                title={`Resubscribe (currently opted out: ${item.optOutScope})`}
+                              >
+                                Resubscribe
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => openOptOut(item)}
+                                className="text-red-600 hover:underline"
+                                title="Opt this HCP out"
+                              >
+                                Opt out
+                              </button>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -451,6 +544,122 @@ export default function SurveyStatusPage() {
             {data && data.items.length > 0 && <Pagination />}
           </CardContent>
         </Card>
+
+        {/* Opt Out dialog */}
+        <AlertDialog open={!!optOutTarget} onOpenChange={(open) => !open && closeOptOut()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Opt out HCP from emails</AlertDialogTitle>
+              <AlertDialogDescription>
+                {optOutTarget && (
+                  <>
+                    This will stop emails to <strong>{optOutTarget.firstName} {optOutTarget.lastName}</strong> ({optOutTarget.email}).
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-4 py-2">
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Scope</Label>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="opt-out-scope"
+                      value="CAMPAIGN"
+                      checked={optOutScope === 'CAMPAIGN'}
+                      onChange={() => setOptOutScope('CAMPAIGN')}
+                      className="mt-0.5"
+                    />
+                    <div className="text-sm">
+                      <div className="font-medium">This campaign only</div>
+                      <div className="text-xs text-muted-foreground">{campaign?.name}</div>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="opt-out-scope"
+                      value="GLOBAL"
+                      checked={optOutScope === 'GLOBAL'}
+                      onChange={() => setOptOutScope('GLOBAL')}
+                      className="mt-0.5"
+                    />
+                    <div className="text-sm">
+                      <div className="font-medium">All campaigns (global)</div>
+                      <div className="text-xs text-muted-foreground">HCP will not receive any future campaign emails</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="opt-out-reason" className="text-sm font-medium">
+                  Reason <span className="text-red-600">*</span>
+                </Label>
+                <Textarea
+                  id="opt-out-reason"
+                  value={optOutReason}
+                  onChange={(e) => setOptOutReason(e.target.value)}
+                  placeholder="e.g. 'Direct email reply from HCP requesting to stop emails' or 'Phone call asking to be removed'"
+                  className="mt-1"
+                  rows={3}
+                />
+                <div className="text-xs text-muted-foreground mt-1">
+                  {optOutReason.trim().length}/10 characters minimum
+                </div>
+              </div>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={closeOptOut}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={submitOptOut}
+                disabled={optOutReason.trim().length < 10 || optOutMutation.isPending}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {optOutMutation.isPending ? 'Opting out...' : 'Confirm Opt Out'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Resubscribe dialog */}
+        <AlertDialog open={!!resubscribeTarget} onOpenChange={(open) => !open && closeResubscribe()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Resubscribe HCP</AlertDialogTitle>
+              <AlertDialogDescription>
+                {resubscribeTarget && (
+                  <>
+                    This will reverse the opt-out for <strong>{resubscribeTarget.firstName} {resubscribeTarget.lastName}</strong> ({resubscribeTarget.email}).
+                    Current scope: <strong>{resubscribeTarget.optOutScope}</strong>.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-2">
+              <Label htmlFor="resubscribe-reason" className="text-sm font-medium">
+                Reason <span className="text-muted-foreground text-xs">(optional)</span>
+              </Label>
+              <Textarea
+                id="resubscribe-reason"
+                value={resubscribeReason}
+                onChange={(e) => setResubscribeReason(e.target.value)}
+                placeholder="e.g. 'HCP confirmed they want to receive emails again'"
+                className="mt-1"
+                rows={2}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={closeResubscribe}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={submitResubscribe}
+                disabled={resubscribeMutation.isPending}
+              >
+                {resubscribeMutation.isPending ? 'Resubscribing...' : 'Confirm Resubscribe'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </RequireAuth>
   );

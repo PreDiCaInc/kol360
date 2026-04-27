@@ -24,10 +24,11 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Search HCPs
   fastify.get('/', async (request, reply) => {
-    const { query, specialty, state, page, limit } = request.query as {
+    const { query, specialty, state, optOutStatus, page, limit } = request.query as {
       query?: string;
       specialty?: string;
       state?: string;
+      optOutStatus?: string;
       page?: string;
       limit?: string;
     };
@@ -51,6 +52,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       specialty,
       state,
       hcpIds,
+      optOutStatus: optOutStatus as 'any' | 'global' | 'campaign' | 'active' | 'none' | undefined,
       page: parseInt(page || '1', 10),
       limit: parseInt(limit || '50', 10),
     });
