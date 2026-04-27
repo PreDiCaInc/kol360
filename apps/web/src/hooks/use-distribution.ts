@@ -110,12 +110,83 @@ export interface SurveyStatusItem {
   lastQuestion: number;       // 0 if none, 1-indexed question number
   totalQuestions: number;     // total questions in the campaign
   surveyToken?: string;       // only present for PLATFORM_ADMIN
+  optOutId: string | null;    // active opt-out id if HCP is opted out
+  optOutScope: 'CAMPAIGN' | 'GLOBAL' | null; // scope of active opt-out
 }
 
 interface SurveyStatusResponse {
   items: SurveyStatusItem[];
   pagination: { page: number; limit: number; total: number; pages: number };
   totalQuestions: number;
+}
+
+export interface OptOutItem {
+  id: string;
+  hcpId: string | null;
+  npi: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+  scope: 'CAMPAIGN' | 'GLOBAL';
+  campaignId: string | null;
+  campaignName: string | null;
+  reason: string | null;
+  optedOutAt: string;
+  optedOutVia: string;
+  resubscribedAt: string | null;
+  resubscribedVia: string | null;
+}
+
+export function useOptOutHcp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ hcpId, scope, campaignId, reason }: {
+      hcpId: string;
+      scope: 'CAMPAIGN' | 'GLOBAL';
+      campaignId?: string;
+      reason: string;
+    }) =>
+      apiClient.post<{ optOut: OptOutItem; alreadyOptedOut: boolean }>(
+        `/api/v1/admin/opt-outs/hcp/${hcpId}`,
+        { scope, campaignId, reason }
+      ),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', vars.campaignId, 'survey-status'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'opt-outs'] });
+    },
+  });
+}
+
+export function useResubscribeHcp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ optOutId, reason }: { optOutId: string; reason?: string }) =>
+      apiClient.post<OptOutItem>(`/api/v1/admin/opt-outs/${optOutId}/resubscribe`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'opt-outs'] });
+    },
+  });
+}
+
+export function useOptOuts(params: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  scope?: string;
+  status?: string;
+  campaignId?: string;
+  sortBy?: string;
+  sortOrder?: string;
+}) {
+  return useQuery({
+    queryKey: ['admin', 'opt-outs', params],
+    queryFn: () =>
+      apiClient.get<{ items: OptOutItem[]; pagination: { page: number; limit: number; total: number; pages: number } }>(
+        `/api/v1/admin/opt-outs`,
+        params as Record<string, string | number | undefined>
+      ),
+  });
 }
 
 export function useSurveyStatus(

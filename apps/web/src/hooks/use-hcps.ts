@@ -60,6 +60,7 @@ interface Hcp {
   aliases: HcpAlias[];
   specialties?: HcpSpecialty[];  // New multi-specialty relation
   diseaseAreaScores?: HcpDiseaseAreaScore[];  // For scores page
+  optOuts?: OptOut[];
   _count?: {
     campaignHcps: number;
     nominationsReceived: number;
@@ -75,11 +76,12 @@ interface HcpDetailDiseaseAreaScore extends HcpDiseaseAreaScore {
 
 interface OptOut {
   id: string;
-  scope: string;
+  scope: 'CAMPAIGN' | 'GLOBAL';
+  campaignId: string | null;
   optedOutAt: string;
-  optedOutVia: string;
+  optedOutVia?: string;
   reason: string | null;
-  campaign: { id: string; name: string } | null;
+  campaign?: { id: string; name: string } | null;
 }
 
 interface HcpDetail extends Omit<Hcp, 'diseaseAreaScores'> {
@@ -113,6 +115,7 @@ interface HcpsQuery {
   query?: string;
   specialty?: string;
   state?: string;
+  optOutStatus?: 'any' | 'global' | 'campaign' | 'none';
   page?: number;
   limit?: number;
 }
