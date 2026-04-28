@@ -116,25 +116,37 @@ export default function SurveyPage() {
         setAnswers(survey.response.answers);
         setStarted(true);
 
-        // Resume at the step where the user left off
-        // Find the last answered question and determine its step
+        // Resume at the FIRST INCOMPLETE step — i.e. the lowest step index
+        // where any REQUIRED question is unanswered. This prevents the user
+        // from being dropped past an incomplete page (which previously caused
+        // submit failures with no clear indication of what was missing).
         const steps = buildSteps(survey.questions);
         const answeredQuestionIds = new Set(Object.keys(survey.response.answers));
-        let lastAnsweredStep = 0;
 
+        const savedAnswers = survey.response.answers;
+        const isAnswered = (qid: string) => {
+          const v = savedAnswers[qid];
+          if (!answeredQuestionIds.has(qid)) return false;
+          if (v === null || v === undefined || v === '') return false;
+          if (Array.isArray(v) && v.filter(Boolean).length === 0) return false;
+          return true;
+        };
+
+        let resumeStep = 0;
         for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
-          const stepHasAnswer = steps[stepIdx].questions.some(q => answeredQuestionIds.has(q.id));
-          if (stepHasAnswer) {
-            lastAnsweredStep = stepIdx;
+          const stepComplete = steps[stepIdx].questions.every(q => {
+            if (!q.isRequired) return true; // optional questions don't block
+            return isAnswered(q.id);
+          });
+          if (!stepComplete) {
+            resumeStep = stepIdx;
+            break;
           }
+          // All required answered on this step — tentatively advance to next
+          resumeStep = stepIdx + 1;
         }
-
-        // If all questions in the last answered step are answered, advance to next step
-        const allAnsweredInLastStep = steps[lastAnsweredStep].questions.every(q => answeredQuestionIds.has(q.id));
-        const resumeStep = allAnsweredInLastStep && lastAnsweredStep < steps.length - 1
-          ? lastAnsweredStep + 1
-          : lastAnsweredStep;
-
+        // Cap at last step (so the user can submit if everything is answered)
+        if (resumeStep >= steps.length) resumeStep = steps.length - 1;
         setCurrentStep(resumeStep);
       } else if (survey.response.status === 'IN_PROGRESS') {
         // User clicked "Begin Survey" but hasn't answered anything yet
@@ -319,6 +331,21 @@ export default function SurveyPage() {
 
   const handleSubmit = async () => {
     if (!validateAllAnswers()) {
+      // Navigate to the first step that has a missing/invalid required answer
+      // so the user can actually see and fix the error.
+      const steps = buildSteps(survey!.questions);
+      let firstErrorStep = -1;
+      for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
+        const stepHasError = steps[stepIdx].questions.some(q => validateQuestion(q) !== null);
+        if (stepHasError) {
+          firstErrorStep = stepIdx;
+          break;
+        }
+      }
+      if (firstErrorStep !== -1 && firstErrorStep !== currentStep) {
+        setCurrentStep(firstErrorStep);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
       return;
     }
 
@@ -637,9 +664,16 @@ export default function SurveyPage() {
             )}
 
             {Object.keys(validationErrors).length > 0 && (
-              <p className="text-red-500 text-sm mt-2 text-center">
-                Please answer all required questions before continuing.
-              </p>
+              <div className="bg-red-50 border border-red-200 rounded-md p-3 mt-3 text-sm">
+                <p className="text-red-800 font-medium">
+                  {Object.keys(validationErrors).length === 1
+                    ? '1 required question needs an answer.'
+                    : `${Object.keys(validationErrors).length} required questions need answers.`}
+                </p>
+                <p className="text-red-700 text-xs mt-1">
+                  We&apos;ve highlighted them in red. Please scroll up to review and complete them before continuing.
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>
