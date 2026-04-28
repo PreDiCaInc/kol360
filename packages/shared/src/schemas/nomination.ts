@@ -3,6 +3,12 @@ import { z } from 'zod';
 // Schema for listing nominations
 export const nominationListQuerySchema = z.object({
   status: z.enum(['UNMATCHED', 'MATCHED', 'REVIEW_NEEDED', 'NEW_HCP', 'EXCLUDED']).optional(),
+  search: z.string().max(255).optional(),
+  searchMode: z.enum(['contains', 'exact']).optional(),
+  nominationType: z.enum([
+    'DISCUSSION_LEADERS', 'REFERRAL_LEADERS', 'ADVICE_LEADERS', 'NATIONAL_LEADER',
+    'RISING_STAR', 'SOCIAL_LEADER', 'REGIONAL_LEADER', 'BIASED_LEADER',
+  ]).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(50),
 });
@@ -56,3 +62,11 @@ export const excludeNominationSchema = z.object({
 });
 
 export type ExcludeNominationInput = z.infer<typeof excludeNominationSchema>;
+
+// Schema for bulk-excluding nominations
+export const bulkExcludeNominationsSchema = z.object({
+  nominationIds: z.array(z.string().cuid()).min(1, 'At least one nomination is required').max(1000, 'Too many nominations'),
+  reason: z.string().max(500, 'Reason is too long').optional(),
+});
+
+export type BulkExcludeNominationsInput = z.infer<typeof bulkExcludeNominationsSchema>;

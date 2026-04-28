@@ -5,6 +5,9 @@ const hcpServiceInstance = new HcpService();
 
 interface ListParams {
   status?: string;
+  search?: string;
+  searchMode?: 'contains' | 'exact'; // 'contains' (default) or 'exact' (case-insensitive equality)
+  nominationType?: string;
   page: number;
   limit: number;
 }
@@ -53,7 +56,7 @@ interface HcpAlias {
 
 export class NominationService {
   async listForCampaign(campaignId: string, params: ListParams) {
-    const { status, page, limit } = params;
+    const { status, search, searchMode, nominationType, page, limit } = params;
 
     // Check if campaign excludes internal (bio-exec) emails
     const campaign = await prisma.campaign.findUnique({
@@ -71,6 +74,40 @@ export class NominationService {
       },
     };
     if (status) where.matchStatus = status;
+
+    // Server-side search across rawNameEntered and matchedHcp name.
+    // In 'exact' mode, support comma-separated terms — each is matched as a
+    // case-insensitive equality, ORed together. e.g. "na, n/a" matches both literal forms.
+    // In 'contains' mode, the full string is used (commas are part of the search).
+    if (search && search.trim()) {
+      const isExact = searchMode === 'exact';
+      const orClauses: Array<Record<string, unknown>> = [];
+      if (isExact) {
+        const terms = search.split(',').map(t => t.trim()).filter(Boolean);
+        for (const term of terms) {
+          const filter = { equals: term, mode: 'insensitive' as const };
+          orClauses.push({ rawNameEntered: filter });
+          orClauses.push({ matchedHcp: { firstName: filter } });
+          orClauses.push({ matchedHcp: { lastName: filter } });
+        }
+      } else {
+        const q = search.trim();
+        const filter = { contains: q, mode: 'insensitive' as const };
+        orClauses.push({ rawNameEntered: filter });
+        orClauses.push({ matchedHcp: { firstName: filter } });
+        orClauses.push({ matchedHcp: { lastName: filter } });
+      }
+      if (orClauses.length > 0) {
+        where.OR = orClauses;
+      }
+    }
+
+    // Server-side nomination type filter
+    if (nominationType) {
+      where.question = {
+        question: { nominationType },
+      };
+    }
 
     const [total, items] = await Promise.all([
       prisma.nomination.count({ where }),
@@ -478,6 +515,24 @@ export class NominationService {
         excludeReason: reason || null,
       },
     });
+  }
+
+  /**
+   * Exclude multiple nominations at once.
+   * Returns the count of nominations actually updated.
+   */
+  async bulkExclude(nominationIds: string[], matchedBy: string, reason?: string) {
+    if (nominationIds.length === 0) return { count: 0 };
+    const result = await prisma.nomination.updateMany({
+      where: { id: { in: nominationIds } },
+      data: {
+        matchStatus: 'EXCLUDED',
+        matchedBy,
+        matchedAt: new Date(),
+        excludeReason: reason || null,
+      },
+    });
+    return { count: result.count };
   }
 
   async updateRawName(nominationId: string, newRawName: string) {

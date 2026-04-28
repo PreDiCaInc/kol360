@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -11,6 +11,7 @@ import {
   useCreateHcpFromNomination,
   useExcludeNomination,
   useBulkAutoMatch,
+  useBulkExcludeNominations,
   useUpdateNominationRawName,
 } from '@/hooks/use-nominations';
 import { useCampaign, useCloseCampaign } from '@/hooks/use-campaigns';
@@ -112,8 +113,26 @@ export default function NominationsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [nominationTypeFilter, setNominationTypeFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [searchMode, setSearchMode] = useState<'contains' | 'exact'>('contains');
   const [page, setPage] = useState(1);
   const [pageInputValue, setPageInputValue] = useState('');
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkExcludeDialog, setShowBulkExcludeDialog] = useState(false);
+  const [bulkExcludeReason, setBulkExcludeReason] = useState('');
+  const [showSingleExcludeDialog, setShowSingleExcludeDialog] = useState(false);
+  const [singleExcludeNomination, setSingleExcludeNomination] = useState<{ id: string; rawName: string } | null>(null);
+  const [singleExcludeReason, setSingleExcludeReason] = useState('');
+
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
   const [selectedNominationId, setSelectedNominationId] = useState<string | null>(null);
   const [showCreateHcpDialog, setShowCreateHcpDialog] = useState(false);
   const [nominationForNewHcp, setNominationForNewHcp] = useState<string | null>(null);
@@ -130,29 +149,22 @@ export default function NominationsPage() {
   const closeCampaign = useCloseCampaign();
   const { data: nominations, isLoading } = useNominations(campaignId, {
     status: statusFilter || undefined,
+    search: debouncedSearchQuery.trim() || undefined,
+    searchMode,
+    nominationType: nominationTypeFilter || undefined,
     page,
     limit: 50,
   });
   const { data: stats } = useNominationStats(campaignId);
 
-  // Client-side filtering for search and nomination type
-  const filteredItems = nominations?.items.filter((nomination) => {
-    // Text search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      const rawName = nomination.rawNameEntered.toLowerCase();
-      const matchedName = nomination.matchedHcp
-        ? `${nomination.matchedHcp.firstName} ${nomination.matchedHcp.lastName}`.toLowerCase()
-        : '';
-      if (!rawName.includes(q) && !matchedName.includes(q)) return false;
-    }
-    // Nomination type filter
-    if (nominationTypeFilter) {
-      const nomType = nomination.question.question?.nominationType;
-      if (nomType !== nominationTypeFilter) return false;
-    }
-    return true;
-  }) || [];
+  // Server-side filtered items (search/type filters now applied on the API)
+  const filteredItems = nominations?.items || [];
+
+  // Reset page to 1 when filter changes
+  useEffect(() => {
+    setPage(1);
+    setSelectedIds(new Set()); // also clear selection
+  }, [statusFilter, nominationTypeFilter, searchMode, debouncedSearchQuery]);
 
   // Pagination helper
   const totalPages = nominations?.pagination.pages || 1;
@@ -165,6 +177,41 @@ export default function NominationsPage() {
   };
 
   const bulkAutoMatch = useBulkAutoMatch();
+  const bulkExclude = useBulkExcludeNominations();
+  const excludeNomination = useExcludeNomination();
+
+  const handleBulkExclude = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const result = await bulkExclude.mutateAsync({
+        campaignId,
+        nominationIds: Array.from(selectedIds),
+        reason: bulkExcludeReason.trim() || undefined,
+      });
+      setShowBulkExcludeDialog(false);
+      setBulkExcludeReason('');
+      setSelectedIds(new Set());
+      console.log(`Excluded ${result.count} nominations`);
+    } catch (e) {
+      console.error('Bulk exclude failed', e);
+    }
+  };
+
+  const handleSingleExcludeFromButton = async () => {
+    if (!singleExcludeNomination) return;
+    try {
+      await excludeNomination.mutateAsync({
+        campaignId,
+        nominationId: singleExcludeNomination.id,
+        reason: singleExcludeReason.trim() || undefined,
+      });
+      setShowSingleExcludeDialog(false);
+      setSingleExcludeNomination(null);
+      setSingleExcludeReason('');
+    } catch (e) {
+      console.error('Exclude failed', e);
+    }
+  };
 
   const handleBulkMatch = async () => {
     try {
@@ -421,16 +468,25 @@ export default function NominationsPage() {
               </div>
             </div>
             {/* Filter bar */}
-            <div className="flex flex-col sm:flex-row gap-3 mt-4">
-              <div className="relative flex-1 max-w-sm">
+            <div className="flex flex-col sm:flex-row gap-3 mt-4 items-start sm:items-center flex-wrap">
+              <div className="relative flex-1 max-w-sm min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search by name..."
+                  placeholder={searchMode === 'exact' ? 'Exact match (comma-separated): na, n/a, none' : 'Search by name...'}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
                 />
               </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={searchMode === 'exact'}
+                  onChange={(e) => setSearchMode(e.target.checked ? 'exact' : 'contains')}
+                  className="h-4 w-4 cursor-pointer"
+                />
+                <span>Exact match</span>
+              </label>
               <Select value={nominationTypeFilter || 'all'} onValueChange={(v) => setNominationTypeFilter(v === 'all' ? '' : v)}>
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="All nomination types" />
@@ -466,6 +522,35 @@ export default function NominationsPage() {
               </p>
             ) : (
               <>
+                {/* Bulk action bar — shows when ≥1 row selected */}
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center justify-between gap-3 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                    <div className="text-sm text-amber-900">
+                      <strong>{selectedIds.size}</strong> nomination{selectedIds.size === 1 ? '' : 's'} selected
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedIds(new Set())}
+                      >
+                        Clear selection
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setBulkExcludeReason('');
+                          setShowBulkExcludeDialog(true);
+                        }}
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Exclude {selectedIds.size}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Top Pagination */}
                 {nominations.pagination.pages > 1 && (
                   <div className="flex justify-between items-center mb-4">
@@ -508,17 +593,55 @@ export default function NominationsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[40px]">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all on page"
+                          checked={
+                            filteredItems.length > 0 &&
+                            filteredItems.every((n) => n.matchStatus !== 'EXCLUDED' && selectedIds.has(n.id))
+                          }
+                          onChange={(e) => {
+                            const next = new Set(selectedIds);
+                            if (e.target.checked) {
+                              filteredItems.forEach((n) => {
+                                if (n.matchStatus !== 'EXCLUDED') next.add(n.id);
+                              });
+                            } else {
+                              filteredItems.forEach((n) => next.delete(n.id));
+                            }
+                            setSelectedIds(next);
+                          }}
+                          className="h-4 w-4 cursor-pointer"
+                        />
+                      </TableHead>
                       <TableHead>Raw Name Entered</TableHead>
                       <TableHead>Nominated By</TableHead>
                       <TableHead>Nomination Type</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Matched To</TableHead>
-                      <TableHead className="w-[150px]">Actions</TableHead>
+                      <TableHead className="w-[180px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredItems.map((nomination) => (
                       <TableRow key={nomination.id}>
+                        <TableCell>
+                          {nomination.matchStatus !== 'EXCLUDED' && (
+                            <input
+                              type="checkbox"
+                              aria-label={`Select nomination ${nomination.rawNameEntered}`}
+                              checked={selectedIds.has(nomination.id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedIds);
+                                if (e.target.checked) next.add(nomination.id);
+                                else next.delete(nomination.id);
+                                setSelectedIds(next);
+                              }}
+                              className="h-4 w-4 cursor-pointer"
+                            />
+                          )}
+                        </TableCell>
                         <TableCell className="font-medium">
                           "{nomination.rawNameEntered}"
                         </TableCell>
@@ -606,6 +729,19 @@ export default function NominationsPage() {
                                   <UserPlus className="w-4 h-4" />
                                 </Button>
                               )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSingleExcludeNomination({ id: nomination.id, rawName: nomination.rawNameEntered });
+                                  setSingleExcludeReason('');
+                                  setShowSingleExcludeDialog(true);
+                                }}
+                                title="Exclude this nomination"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
                             </div>
                           )}
                         </TableCell>
@@ -770,6 +906,81 @@ export default function NominationsPage() {
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 ) : null}
                 Close Survey & Continue
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Single Exclude Dialog */}
+        <AlertDialog open={showSingleExcludeDialog} onOpenChange={setShowSingleExcludeDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Exclude nomination</AlertDialogTitle>
+              <AlertDialogDescription>
+                {singleExcludeNomination && (
+                  <>
+                    Exclude the nomination <strong>&quot;{singleExcludeNomination.rawName}&quot;</strong>?
+                    This marks it as excluded so it won&apos;t count in scoring.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-2">
+              <Label htmlFor="single-exclude-reason" className="text-sm font-medium">
+                Reason <span className="text-muted-foreground text-xs">(optional)</span>
+              </Label>
+              <Textarea
+                id="single-exclude-reason"
+                value={singleExcludeReason}
+                onChange={(e) => setSingleExcludeReason(e.target.value)}
+                placeholder="e.g. 'N/A entry' or 'Duplicate'"
+                className="mt-1"
+                rows={2}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleSingleExcludeFromButton}
+                disabled={excludeNomination.isPending}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {excludeNomination.isPending ? 'Excluding...' : 'Confirm Exclude'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Bulk Exclude Dialog */}
+        <AlertDialog open={showBulkExcludeDialog} onOpenChange={setShowBulkExcludeDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Exclude {selectedIds.size} nomination{selectedIds.size === 1 ? '' : 's'}</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will mark all selected nominations as EXCLUDED. They will not count in scoring.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-2">
+              <Label htmlFor="bulk-exclude-reason" className="text-sm font-medium">
+                Reason <span className="text-muted-foreground text-xs">(optional, applies to all)</span>
+              </Label>
+              <Textarea
+                id="bulk-exclude-reason"
+                value={bulkExcludeReason}
+                onChange={(e) => setBulkExcludeReason(e.target.value)}
+                placeholder="e.g. 'N/A junk entries' or 'Bulk cleanup of duplicates'"
+                className="mt-1"
+                rows={2}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBulkExclude}
+                disabled={bulkExclude.isPending || selectedIds.size === 0}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {bulkExclude.isPending ? 'Excluding...' : `Confirm Exclude (${selectedIds.size})`}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
