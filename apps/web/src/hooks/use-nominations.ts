@@ -49,6 +49,9 @@ interface NominationsListResponse {
 
 interface NominationsQuery {
   status?: string;
+  search?: string;
+  searchMode?: 'contains' | 'exact';
+  nominationType?: string;
   page?: number;
   limit?: number;
 }
@@ -84,15 +87,18 @@ interface BulkMatchResult {
 }
 
 export function useNominations(campaignId: string, query: NominationsQuery = {}) {
-  const { page = 1, limit = 50, status } = query;
+  const { page = 1, limit = 50, status, search, searchMode, nominationType } = query;
 
   return useQuery({
-    queryKey: ['campaigns', campaignId, 'nominations', { page, limit, status }],
+    queryKey: ['campaigns', campaignId, 'nominations', { page, limit, status, search, searchMode, nominationType }],
     queryFn: () =>
       apiClient.get<NominationsListResponse>(`/api/v1/campaigns/${campaignId}/nominations`, {
         page,
         limit,
         status,
+        search: search || undefined,
+        searchMode: searchMode || undefined,
+        nominationType: nominationType || undefined,
       }),
     enabled: !!campaignId,
   });
@@ -197,6 +203,29 @@ export function useExcludeNomination() {
       apiClient.post(`/api/v1/campaigns/${campaignId}/nominations/${nominationId}/exclude`, {
         reason,
       }),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });
+    },
+  });
+}
+
+export function useBulkExcludeNominations() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      nominationIds,
+      reason,
+    }: {
+      campaignId: string;
+      nominationIds: string[];
+      reason?: string;
+    }) =>
+      apiClient.post<{ count: number }>(
+        `/api/v1/campaigns/${campaignId}/nominations/bulk-exclude`,
+        { nominationIds, reason }
+      ),
     onSuccess: (_, { campaignId }) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });
     },

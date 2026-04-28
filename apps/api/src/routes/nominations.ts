@@ -8,6 +8,7 @@ import {
   createHcpFromNominationSchema,
   updateNominationRawNameSchema,
   excludeNominationSchema,
+  bulkExcludeNominationsSchema,
   idParamSchema,
 } from '@kol360/shared';
 
@@ -286,6 +287,45 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to exclude nomination';
+      return reply.status(400).send({ message });
+    }
+  });
+
+  // Bulk exclude multiple nominations (PLATFORM_ADMIN only)
+  fastify.post<{
+    Params: z.infer<typeof campaignIdParamSchema>;
+    Body: z.infer<typeof bulkExcludeNominationsSchema>;
+  }>('/:id/nominations/bulk-exclude', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
+
+    if (request.user.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform administrators can modify nominations',
+        statusCode: 403,
+      });
+    }
+
+    const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
+    try {
+      const { nominationIds, reason } = bulkExcludeNominationsSchema.parse(request.body);
+      const result = await nominationService.bulkExclude(nominationIds, request.user.sub, reason);
+      return result;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: error.errors[0]?.message || 'Invalid input',
+          statusCode: 400,
+        });
+      }
+      const message = error instanceof Error ? error.message : 'Failed to bulk exclude nominations';
       return reply.status(400).send({ message });
     }
   });
