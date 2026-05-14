@@ -303,15 +303,75 @@ export class ApiClient {
     return { status: response.status, data };
   }
 
+  // ==================== Opt-Outs ====================
+
+  async optOutHcp(hcpId: string, scope: 'CAMPAIGN' | 'GLOBAL', reason: string, campaignId?: string) {
+    return this.request<{ optOut: { id: string; email: string; scope: string; campaignId: string | null }; alreadyOptedOut: boolean }>(
+      'POST',
+      `/api/v1/admin/opt-outs/hcp/${hcpId}`,
+      { scope, campaignId, reason }
+    );
+  }
+
+  async resubscribeOptOut(optOutId: string, reason?: string) {
+    return this.request<{ id: string; email: string; resubscribedAt: string }>(
+      'POST',
+      `/api/v1/admin/opt-outs/${optOutId}/resubscribe`,
+      { reason }
+    );
+  }
+
+  async listOptOuts(params?: { search?: string; scope?: string; status?: string; campaignId?: string; page?: number; limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.scope) query.set('scope', params.scope);
+    if (params?.status) query.set('status', params.status);
+    if (params?.campaignId) query.set('campaignId', params.campaignId);
+    if (params?.page) query.set('page', params.page.toString());
+    if (params?.limit) query.set('limit', params.limit.toString());
+    const queryStr = query.toString() ? `?${query.toString()}` : '';
+    return this.request<{ items: Array<{ id: string; hcpId: string | null; email: string; scope: string; campaignId: string | null; resubscribedAt: string | null }>; pagination: Pagination }>(
+      'GET',
+      `/api/v1/admin/opt-outs${queryStr}`
+    );
+  }
+
+  async getSurveyStatus(campaignId: string, params?: { search?: string; status?: string; page?: number; limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.search) query.set('search', params.search);
+    if (params?.status) query.set('status', params.status);
+    if (params?.page) query.set('page', params.page.toString());
+    if (params?.limit) query.set('limit', params.limit.toString());
+    const queryStr = query.toString() ? `?${query.toString()}` : '';
+    return this.request<{
+      items: Array<{
+        campaignHcpId: string;
+        hcpId: string;
+        email: string | null;
+        firstName: string;
+        lastName: string;
+        status: string;
+        optOutId: string | null;
+        optOutScope: 'CAMPAIGN' | 'GLOBAL' | null;
+      }>;
+      pagination: Pagination;
+      totalQuestions: number;
+    }>(
+      'GET',
+      `/api/v1/campaigns/${campaignId}/survey-status${queryStr}`
+    );
+  }
+
   // ==================== HCPs ====================
 
-  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; page?: number; limit?: number }) {
+  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; optOutStatus?: 'any' | 'global' | 'campaign' | 'none'; page?: number; limit?: number }) {
     const queryParams = new URLSearchParams();
     // Support both 'query' and 'search' as aliases for the search parameter
     const searchTerm = params?.query || params?.search;
     if (searchTerm) queryParams.set('query', searchTerm);
     if (params?.specialty) queryParams.set('specialty', params.specialty);
     if (params?.state) queryParams.set('state', params.state);
+    if (params?.optOutStatus) queryParams.set('optOutStatus', params.optOutStatus);
     if (params?.page) queryParams.set('page', params.page.toString());
     if (params?.limit) queryParams.set('limit', params.limit.toString());
     const queryStr = queryParams.toString() ? `?${queryParams.toString()}` : '';
@@ -356,17 +416,38 @@ export class ApiClient {
   }
 
   async bulkMatchNominations(campaignId: string) {
-    return this.request<{ matched: number; failed: number }>(
+    return this.request<{ matched: number; upgraded: number; total: number; errors: string[] }>(
       'POST',
       `/api/v1/campaigns/${campaignId}/nominations/bulk-match`
     );
   }
 
-  async matchNomination(campaignId: string, nominationId: string, data: { hcpId: string; addAlias?: boolean }) {
-    return this.request<Nomination>(
+  async matchNomination(
+    campaignId: string,
+    nominationId: string,
+    data: {
+      hcpId: string;
+      addAlias?: boolean;
+      matchType?: 'exact' | 'primary' | 'alias' | 'partial';
+      matchConfidence?: number;
+    }
+  ) {
+    return this.request<Nomination & { matchStatus?: string; matchType?: string; matchConfidence?: number }>(
       'POST',
       `/api/v1/campaigns/${campaignId}/nominations/${nominationId}/match`,
       data
+    );
+  }
+
+  async getNominationSuggestions(campaignId: string, nominationId: string) {
+    return this.request<Array<{
+      hcp: { id: string; firstName: string; lastName: string; state: string | null; specialty: string | null };
+      score: number;
+      matchType: 'exact' | 'primary' | 'alias' | 'partial';
+      isNameMatch: boolean;
+    }>>(
+      'GET',
+      `/api/v1/campaigns/${campaignId}/nominations/${nominationId}/suggestions`
     );
   }
 

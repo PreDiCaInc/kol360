@@ -479,9 +479,13 @@ describe('Full Workflow E2E Tests', () => {
       const { status, data } = await client.bulkMatchNominations(testCampaign.id);
 
       expect(status).toBe(200);
+      // v1.15.14 shape: { matched, upgraded, total, errors }
       expect(typeof data.matched).toBe('number');
+      expect(typeof data.upgraded).toBe('number');
+      expect(typeof data.total).toBe('number');
+      expect(Array.isArray(data.errors)).toBe(true);
 
-      console.log(`✅ Bulk match: ${data.matched} matched`);
+      console.log(`✅ Bulk match: ${data.matched} matched, ${data.upgraded} upgraded (of ${data.total})`);
     });
   });
 

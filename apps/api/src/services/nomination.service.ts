@@ -3,6 +3,20 @@ import { HcpService } from './hcp.service';
 
 const hcpServiceInstance = new HcpService();
 
+// Normalize curly/smart apostrophes to straight so e.g. D'Aversa (curly)
+// matches D'Aversa (straight) — common when users paste from Word/Outlook.
+function normalizeApostrophes(s: string): string {
+  return s.replace(/[‘’]/g, "'");
+}
+
+// Return both apostrophe forms when the input contains an apostrophe,
+// for use in OR-style equality queries that need to span legacy data.
+function apostropheForms(s: string): string[] {
+  const straight = s.replace(/[‘’]/g, "'");
+  const curly = s.replace(/'/g, '’');
+  return straight === curly ? [s] : [straight, curly];
+}
+
 interface ListParams {
   status?: string;
   search?: string;
@@ -138,12 +152,25 @@ export class NominationService {
   async getSuggestions(nominationId: string): Promise<HcpSuggestion[]> {
     const nomination = await prisma.nomination.findUnique({
       where: { id: nominationId },
+      include: {
+        response: {
+          include: {
+            respondentHcp: { select: { state: true, specialty: true } },
+          },
+        },
+      },
     });
 
     if (!nomination) return [];
 
-    // Normalize name: strip titles, credentials, and suffixes before matching
-    const normalizedName = nomination.rawNameEntered
+    // Context from the nominator — used as a tiebreaker boost. The HCP doing
+    // the nominating is statistically more likely to know peers in their own
+    // state and specialty, so candidates that share these get a small bump.
+    const nominatorState = nomination.response?.respondentHcp?.state ?? null;
+    const nominatorSpecialty = nomination.response?.respondentHcp?.specialty ?? null;
+
+    // Normalize name: strip titles, credentials, suffixes, and smart apostrophes
+    const normalizedName = normalizeApostrophes(nomination.rawNameEntered)
       .replace(/\b(dr|prof|mr|mrs|ms)\.?\s*/gi, '') // Remove titles
       .replace(/,?\s*\b(md|do|od|phd|mph|mba|facs|faao|bs|ms|rn|np|pa|jr|sr|ii|iii|iv)\b\.?/gi, '') // Remove credentials/suffixes
       .replace(/[^a-zA-Z\s'-]/g, '') // Remove remaining non-name characters (keep hyphens and apostrophes)
@@ -183,21 +210,18 @@ export class NominationService {
                 },
               ]
             : []),
-          // Alias exact match (try both normalized and original raw name)
-          {
+          // Alias exact match (try normalized + original + both apostrophe forms,
+          // so D'Aversa (curly) and D'Aversa (straight) cross-match).
+          ...Array.from(new Set([
+            ...apostropheForms(rawNameTrimmed),
+            ...apostropheForms(nomination.rawNameEntered.trim()),
+          ])).map(form => ({
             aliases: {
               some: {
-                aliasName: { equals: rawNameTrimmed, mode: 'insensitive' },
+                aliasName: { equals: form, mode: 'insensitive' as const },
               },
             },
-          },
-          ...(rawNameTrimmed !== nomination.rawNameEntered.trim() ? [{
-            aliases: {
-              some: {
-                aliasName: { equals: nomination.rawNameEntered.trim(), mode: 'insensitive' as const },
-              },
-            },
-          }] : []),
+          })),
         ],
       },
       include: { aliases: true },
@@ -249,11 +273,13 @@ export class NominationService {
       }
     }
 
-    // Score and sort by relevance - prioritize actual name matches over alias matches
+    // Score and sort by relevance - prioritize actual name matches over alias matches.
+    // All comparisons normalize curly→straight apostrophes so smart-quote variations match.
     const scored = suggestions.map((hcp: HcpWithAliases) => {
-      const fullName = `${hcp.firstName} ${hcp.lastName}`.toLowerCase();
-      const reverseName = `${hcp.lastName} ${hcp.firstName}`.toLowerCase();
-      const rawName = normalizedName.toLowerCase().trim();
+      const fullName = normalizeApostrophes(`${hcp.firstName} ${hcp.lastName}`).toLowerCase();
+      const reverseName = normalizeApostrophes(`${hcp.lastName} ${hcp.firstName}`).toLowerCase();
+      const rawName = normalizeApostrophes(normalizedName).toLowerCase().trim();
+      const aliasesNormalized = hcp.aliases.map((a: HcpAlias) => normalizeApostrophes(a.aliasName).toLowerCase());
 
       let score = 0;
       let matchType: 'exact' | 'primary' | 'alias' | 'partial' = 'partial';
@@ -266,7 +292,7 @@ export class NominationService {
         isNameMatch = true;
       }
       // PRIORITY 2: Exact alias match - 100% (same as exact name match)
-      else if (hcp.aliases.some((a: HcpAlias) => a.aliasName.toLowerCase() === rawName)) {
+      else if (aliasesNormalized.some((a: string) => a === rawName)) {
         score = 100;
         matchType = 'alias';
         isNameMatch = false;
@@ -279,8 +305,8 @@ export class NominationService {
       }
       // PRIORITY 4: Last name exact match with first name partial - needs review
       else if (
-        hcp.lastName.toLowerCase() === rawName.split(' ').pop() &&
-        nameParts.some((part: string) => hcp.firstName.toLowerCase().includes(part))
+        normalizeApostrophes(hcp.lastName).toLowerCase() === rawName.split(' ').pop() &&
+        nameParts.some((part: string) => normalizeApostrophes(hcp.firstName).toLowerCase().includes(part))
       ) {
         score = 85;
         matchType = 'primary';
@@ -288,10 +314,7 @@ export class NominationService {
       }
       // PRIORITY 5: Partial alias match - needs review
       else if (
-        hcp.aliases.some((a: HcpAlias) =>
-          a.aliasName.toLowerCase().includes(rawName) ||
-          rawName.includes(a.aliasName.toLowerCase())
-        )
+        aliasesNormalized.some((a: string) => a.includes(rawName) || rawName.includes(a))
       ) {
         score = 70;
         matchType = 'alias';
@@ -301,8 +324,8 @@ export class NominationService {
       else {
         const matchCount = nameParts.filter(
           (part: string) =>
-            hcp.firstName.toLowerCase().includes(part) ||
-            hcp.lastName.toLowerCase().includes(part)
+            normalizeApostrophes(hcp.firstName).toLowerCase().includes(part) ||
+            normalizeApostrophes(hcp.lastName).toLowerCase().includes(part)
         ).length;
         score = Math.min(60, matchCount * 25);
         matchType = 'partial';
@@ -310,6 +333,11 @@ export class NominationService {
         // Low-confidence partial matches should offer to add alias
         isNameMatch = score >= 50;
       }
+
+      // Tiebreaker: small boost when the candidate shares state and/or specialty
+      // with the nominator. Helps surface the right person among same-name HCPs.
+      if (nominatorState && hcp.state && nominatorState === hcp.state) score += 5;
+      if (nominatorSpecialty && hcp.specialty && nominatorSpecialty === hcp.specialty) score += 5;
 
       return {
         hcp: {
@@ -338,7 +366,8 @@ export class NominationService {
     addAlias: boolean,
     matchedBy: string,
     matchType?: 'exact' | 'primary' | 'alias' | 'partial',
-    matchConfidence?: number
+    matchConfidence?: number,
+    isManual: boolean = false
   ) {
     const nomination = await prisma.nomination.findUnique({
       where: { id: nominationId },
@@ -353,7 +382,9 @@ export class NominationService {
 
     // Optionally add raw name as alias (case-insensitive check)
     if (addAlias) {
-      const normalizedAlias = nomination.rawNameEntered.trim();
+      // Normalize curly apostrophes so all new aliases are stored in a single form,
+      // and future equality lookups don't miss them.
+      const normalizedAlias = normalizeApostrophes(nomination.rawNameEntered.trim());
 
       // Check if alias already exists on ANY HCP (case-insensitive)
       const existingAliasOnTarget = await prisma.hcpAlias.findFirst({
@@ -407,12 +438,13 @@ export class NominationService {
       }
     }
 
-    // Determine match status based on confidence
-    // MATCHED = 100% exact match on primary name OR alias
-    // REVIEW_NEEDED = anything less than 100% needs human verification
+    // Determine match status:
+    // - Manual picks (human selected from suggestion dialog) → MATCHED regardless of confidence
+    // - Auto matches at 100% on primary/alias → MATCHED
+    // - Everything else → REVIEW_NEEDED
     const confidence = matchConfidence ?? 100;
     const isExactMatch = confidence === 100 && (matchType === 'exact' || matchType === 'primary' || matchType === 'alias');
-    const matchStatus = isExactMatch ? 'MATCHED' : 'REVIEW_NEEDED';
+    const matchStatus = (isManual || isExactMatch) ? 'MATCHED' : 'REVIEW_NEEDED';
 
     // Set isNominated on the matched HCP if not already
     await prisma.hcp.update({
@@ -656,46 +688,55 @@ export class NominationService {
     // 3. We want to re-match to the correct HCP B
     await this.clearStaleAliasMatches(campaignId);
 
-    // Get all unmatched nominations for this campaign
-    const unmatched = await prisma.nomination.findMany({
+    // Reprocess UNMATCHED *and* REVIEW_NEEDED. Newly-added HCPs after the
+    // initial auto-match pass are the most common reason a REVIEW_NEEDED row
+    // would now have a better candidate available.
+    // Leave MATCHED and EXCLUDED alone — those are confirmed decisions.
+    const candidates = await prisma.nomination.findMany({
       where: {
         response: { campaignId },
-        matchStatus: 'UNMATCHED',
+        matchStatus: { in: ['UNMATCHED', 'REVIEW_NEEDED'] },
       },
     });
 
     let matched = 0;
+    let upgraded = 0;
     const errors: string[] = [];
 
-    for (const nomination of unmatched) {
+    for (const nomination of candidates) {
       try {
-        // Get suggestions
         const suggestions = await this.getSuggestions(nomination.id);
-
         const bestMatch = suggestions[0];
-        if (bestMatch && bestMatch.score >= 50) {
-          const shouldAddAlias = !bestMatch.isNameMatch; // Don't add alias if name already matches
+        if (!bestMatch || bestMatch.score < 50) continue;
 
-          // Pass match type and confidence to determine status
-          // Exact matches (100%) -> MATCHED
-          // Alias matches (80%) -> MATCHED
-          // Partial matches -> REVIEW_NEEDED
-          await this.matchToHcp(
-            nomination.id,
-            bestMatch.hcp.id,
-            shouldAddAlias,
-            matchedBy,
-            bestMatch.matchType,
-            bestMatch.score
-          );
+        // For REVIEW_NEEDED rows, only act if the new best is genuinely an
+        // improvement — different HCP, or same HCP with a higher score.
+        // This avoids needlessly rewriting rows where nothing changed.
+        if (nomination.matchStatus === 'REVIEW_NEEDED') {
+          const sameHcp = nomination.matchedHcpId === bestMatch.hcp.id;
+          const currentScore = nomination.matchConfidence ?? 0;
+          const noImprovement = sameHcp && bestMatch.score <= currentScore;
+          if (noImprovement) continue;
+          upgraded++;
+        } else {
           matched++;
         }
+
+        const shouldAddAlias = !bestMatch.isNameMatch;
+        await this.matchToHcp(
+          nomination.id,
+          bestMatch.hcp.id,
+          shouldAddAlias,
+          matchedBy,
+          bestMatch.matchType,
+          bestMatch.score
+        );
       } catch (error) {
         errors.push(`Failed to auto-match "${nomination.rawNameEntered}"`);
       }
     }
 
-    return { matched, total: unmatched.length, errors };
+    return { matched, upgraded, total: candidates.length, errors };
   }
 }
 

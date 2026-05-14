@@ -4,10 +4,14 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useHcp, useAddHcpAlias, useRemoveHcpAlias, useUpdateHcp } from '@/hooks/use-hcps';
+import { useOptOutHcp, useResubscribeHcp } from '@/hooks/use-distribution';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -72,6 +76,8 @@ const SCORE_FIELDS = [
 export default function HcpDetailPage() {
   const { isImpersonating } = useImpersonation();
   const canEdit = !isImpersonating;
+  const { user } = useAuth();
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
   const params = useParams();
   const router = useRouter();
   const hcpId = params.id as string;
@@ -79,10 +85,20 @@ export default function HcpDetailPage() {
   const { data: hcp, isLoading } = useHcp(hcpId);
   const addAlias = useAddHcpAlias();
   const removeAlias = useRemoveHcpAlias();
+  const optOutMutation = useOptOutHcp();
+  const resubscribeMutation = useResubscribeHcp();
 
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [newAliasName, setNewAliasName] = useState('');
   const [aliasToDelete, setAliasToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  // Opt Out / Resubscribe state
+  const [showOptOutDialog, setShowOptOutDialog] = useState(false);
+  const [optOutScope, setOptOutScope] = useState<'CAMPAIGN' | 'GLOBAL'>('GLOBAL');
+  const [optOutCampaignId, setOptOutCampaignId] = useState<string>('');
+  const [optOutReason, setOptOutReason] = useState('');
+  const [resubscribeTarget, setResubscribeTarget] = useState<{ id: string; label: string } | null>(null);
+  const [resubscribeReason, setResubscribeReason] = useState('');
 
   const handleAddAlias = async () => {
     if (!newAliasName.trim()) return;
@@ -101,6 +117,57 @@ export default function HcpDetailPage() {
       setAliasToDelete(null);
     } catch (error) {
       console.error('Failed to remove alias:', error);
+    }
+  };
+
+  const openOptOut = () => {
+    setOptOutScope('GLOBAL');
+    setOptOutCampaignId('');
+    setOptOutReason('');
+    setShowOptOutDialog(true);
+  };
+
+  const closeOptOut = () => {
+    setShowOptOutDialog(false);
+    setOptOutReason('');
+  };
+
+  const submitOptOut = async () => {
+    if (optOutReason.trim().length < 10) return;
+    if (optOutScope === 'CAMPAIGN' && !optOutCampaignId) return;
+    try {
+      await optOutMutation.mutateAsync({
+        hcpId,
+        scope: optOutScope,
+        campaignId: optOutScope === 'CAMPAIGN' ? optOutCampaignId : undefined,
+        reason: optOutReason.trim(),
+      });
+      closeOptOut();
+    } catch (e) {
+      console.error('Opt out failed', e);
+    }
+  };
+
+  const openResubscribe = (id: string, label: string) => {
+    setResubscribeTarget({ id, label });
+    setResubscribeReason('');
+  };
+
+  const closeResubscribe = () => {
+    setResubscribeTarget(null);
+    setResubscribeReason('');
+  };
+
+  const submitResubscribe = async () => {
+    if (!resubscribeTarget) return;
+    try {
+      await resubscribeMutation.mutateAsync({
+        optOutId: resubscribeTarget.id,
+        reason: resubscribeReason.trim() || undefined,
+      });
+      closeResubscribe();
+    } catch (e) {
+      console.error('Resubscribe failed', e);
     }
   };
 
@@ -187,28 +254,66 @@ export default function HcpDetailPage() {
           {/* Profile Tab */}
           <TabsContent value="profile">
             {/* Opt-Out Status Alert */}
-            {hcp.optOuts && hcp.optOuts.length > 0 && (
+            {hcp.optOuts && hcp.optOuts.length > 0 ? (
               <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Ban className="h-4 w-4 text-red-600" />
-                  <h4 className="font-medium text-red-800">Opted Out of Communications</h4>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <Ban className="h-4 w-4 text-red-600" />
+                    <h4 className="font-medium text-red-800">Opted Out of Communications</h4>
+                  </div>
+                  {isPlatformAdmin && canEdit && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={openOptOut}
+                      className="border-red-300 text-red-700 hover:bg-red-100"
+                    >
+                      <Ban className="w-3.5 h-3.5 mr-1.5" />
+                      Add Opt Out
+                    </Button>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  {hcp.optOuts.map((optOut) => (
-                    <div key={optOut.id} className="text-sm">
-                      <span className="font-medium text-red-700">
-                        {optOut.scope === 'GLOBAL' ? 'All communications' : `Campaign: ${optOut.campaign?.name || 'Unknown'}`}
-                      </span>
-                      <span className="text-red-600/70 ml-2">
-                        — {new Date(optOut.optedOutAt).toLocaleDateString()} via {optOut.optedOutVia}
-                      </span>
-                      {optOut.reason && (
-                        <span className="block text-red-600/70">Reason: {optOut.reason}</span>
-                      )}
-                    </div>
-                  ))}
+                  {hcp.optOuts.map((optOut) => {
+                    const label = optOut.scope === 'GLOBAL'
+                      ? 'All communications'
+                      : `Campaign: ${optOut.campaign?.name || 'Unknown'}`;
+                    return (
+                      <div key={optOut.id} className="flex items-start justify-between gap-2 text-sm">
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium text-red-700">{label}</span>
+                          <span className="text-red-600/70 ml-2">
+                            — {new Date(optOut.optedOutAt).toLocaleDateString()}
+                            {optOut.optedOutVia && ` via ${optOut.optedOutVia}`}
+                          </span>
+                          {optOut.reason && (
+                            <span className="block text-red-600/70">Reason: {optOut.reason}</span>
+                          )}
+                        </div>
+                        {isPlatformAdmin && canEdit && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openResubscribe(optOut.id, label)}
+                            className="shrink-0"
+                          >
+                            Resubscribe
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
+            ) : (
+              isPlatformAdmin && canEdit && (
+                <div className="mb-6 flex justify-end">
+                  <Button variant="outline" onClick={openOptOut}>
+                    <Ban className="w-4 h-4 mr-2" />
+                    Opt Out HCP
+                  </Button>
+                </div>
+              )
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -620,6 +725,145 @@ export default function HcpDetailPage() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Opt Out dialog */}
+        <AlertDialog open={showOptOutDialog} onOpenChange={(open) => !open && closeOptOut()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Opt out HCP from emails</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will stop emails to <strong>{hcp.firstName} {hcp.lastName}</strong>
+                {hcp.email ? <> ({hcp.email})</> : null}.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-4 py-2">
+              <div>
+                <Label className="text-sm font-medium mb-2 block">Scope</Label>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="hcp-opt-out-scope"
+                      value="GLOBAL"
+                      checked={optOutScope === 'GLOBAL'}
+                      onChange={() => setOptOutScope('GLOBAL')}
+                      className="mt-0.5"
+                    />
+                    <div className="text-sm">
+                      <div className="font-medium">All campaigns (global)</div>
+                      <div className="text-xs text-muted-foreground">HCP will not receive any future campaign emails</div>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="hcp-opt-out-scope"
+                      value="CAMPAIGN"
+                      checked={optOutScope === 'CAMPAIGN'}
+                      onChange={() => setOptOutScope('CAMPAIGN')}
+                      className="mt-0.5"
+                      disabled={!hcp.campaignHcps || hcp.campaignHcps.length === 0}
+                    />
+                    <div className="text-sm">
+                      <div className="font-medium">Specific campaign only</div>
+                      <div className="text-xs text-muted-foreground">
+                        {hcp.campaignHcps && hcp.campaignHcps.length > 0
+                          ? 'HCP will not receive emails for the selected campaign'
+                          : 'No campaigns assigned'}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                {optOutScope === 'CAMPAIGN' && hcp.campaignHcps && hcp.campaignHcps.length > 0 && (
+                  <div className="mt-2 ml-6">
+                    <select
+                      value={optOutCampaignId}
+                      onChange={(e) => setOptOutCampaignId(e.target.value)}
+                      className="w-full text-sm border rounded-md px-2 py-1.5"
+                    >
+                      <option value="">Select a campaign...</option>
+                      {hcp.campaignHcps.map((ch) => (
+                        <option key={ch.campaign.id} value={ch.campaign.id}>
+                          {ch.campaign.name} ({ch.campaign.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="hcp-opt-out-reason" className="text-sm font-medium">
+                  Reason <span className="text-red-600">*</span>
+                </Label>
+                <Textarea
+                  id="hcp-opt-out-reason"
+                  value={optOutReason}
+                  onChange={(e) => setOptOutReason(e.target.value)}
+                  placeholder="e.g. 'Direct email reply from HCP requesting to stop emails' or 'Phone call asking to be removed'"
+                  className="mt-1"
+                  rows={3}
+                />
+                <div className="text-xs text-muted-foreground mt-1">
+                  {optOutReason.trim().length}/10 characters minimum
+                </div>
+              </div>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={closeOptOut}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={submitOptOut}
+                disabled={
+                  optOutReason.trim().length < 10 ||
+                  (optOutScope === 'CAMPAIGN' && !optOutCampaignId) ||
+                  optOutMutation.isPending
+                }
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {optOutMutation.isPending ? 'Opting out...' : 'Confirm Opt Out'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Resubscribe dialog */}
+        <AlertDialog open={!!resubscribeTarget} onOpenChange={(open) => !open && closeResubscribe()}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Resubscribe HCP</AlertDialogTitle>
+              <AlertDialogDescription>
+                {resubscribeTarget && (
+                  <>
+                    This will reverse the opt-out for <strong>{hcp.firstName} {hcp.lastName}</strong>
+                    {hcp.email ? <> ({hcp.email})</> : null}.
+                    Scope: <strong>{resubscribeTarget.label}</strong>.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="py-2">
+              <Label htmlFor="hcp-resubscribe-reason" className="text-sm font-medium">
+                Reason <span className="text-muted-foreground text-xs">(optional)</span>
+              </Label>
+              <Textarea
+                id="hcp-resubscribe-reason"
+                value={resubscribeReason}
+                onChange={(e) => setResubscribeReason(e.target.value)}
+                placeholder="e.g. 'HCP confirmed they want to receive emails again'"
+                className="mt-1"
+                rows={2}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={closeResubscribe}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={submitResubscribe}
+                disabled={resubscribeMutation.isPending}
+              >
+                {resubscribeMutation.isPending ? 'Resubscribing...' : 'Confirm Resubscribe'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

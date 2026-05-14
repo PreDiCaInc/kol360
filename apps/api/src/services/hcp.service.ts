@@ -84,15 +84,33 @@ export class HcpService {
     }
     if (state) where.state = state;
 
-    // Opt-out filter — based on active OptOut records
-    if (optOutStatus && optOutStatus !== 'none') {
+    // Opt-out filter — based on active OptOut records, keyed by EMAIL
+    // (not hcpId, since email-link unsubs have no hcpId, multiple HCPs can
+    // share an email, and HCP records can be re-imported losing the FK)
+    if (optOutStatus) {
       const scopeFilter =
         optOutStatus === 'global' ? { scope: 'GLOBAL' as const } :
         optOutStatus === 'campaign' ? { scope: 'CAMPAIGN' as const } :
-        {}; // 'any' or 'active'
-      where.optOuts = { some: { resubscribedAt: null, ...scopeFilter } };
-    } else if (optOutStatus === 'none') {
-      where.optOuts = { none: { resubscribedAt: null } };
+        {}; // 'any' or 'none' or 'active'
+      // Pre-fetch emails of HCPs that match the opt-out criteria
+      const optOutEmails = await prisma.optOut.findMany({
+        where: { resubscribedAt: null, ...scopeFilter },
+        select: { email: true },
+        distinct: ['email'],
+      });
+      const emailList = optOutEmails.map(o => o.email.trim().toLowerCase());
+      if (optOutStatus === 'none') {
+        // HCPs whose (lowercased) email is NOT in the active opt-out list
+        // (also include HCPs with no email since they can't be opted out by email)
+        if (emailList.length > 0) {
+          where.NOT = { email: { in: emailList, mode: 'insensitive' } };
+        }
+      } else {
+        // 'any' / 'global' / 'campaign' — only HCPs whose email is in the list
+        where.email = emailList.length > 0
+          ? { in: emailList, mode: 'insensitive' }
+          : { in: [] }; // no matching opt-outs → return zero rows
+      }
     }
 
     const [total, items] = await Promise.all([
@@ -123,11 +141,6 @@ export class HcpService {
               diseaseArea: { select: { id: true, name: true, code: true } },
             },
           },
-          optOuts: {
-            where: { resubscribedAt: null },
-            select: { id: true, scope: true, campaignId: true, optedOutAt: true, reason: true },
-            orderBy: { optedOutAt: 'desc' },
-          },
           _count: { select: { campaignHcps: true, nominationsReceived: true } },
         },
         skip: (page - 1) * limit,
@@ -136,14 +149,44 @@ export class HcpService {
       }),
     ]);
 
+    // Attach active opt-outs by email match (canonical key for opt-outs)
+    const itemEmails = Array.from(
+      new Set(
+        items
+          .map(h => h.email?.trim().toLowerCase())
+          .filter((e): e is string => !!e)
+      )
+    );
+    const activeOptOuts = itemEmails.length > 0
+      ? await prisma.optOut.findMany({
+          where: {
+            email: { in: itemEmails, mode: 'insensitive' },
+            resubscribedAt: null,
+          },
+          select: { id: true, email: true, scope: true, campaignId: true, optedOutAt: true, reason: true },
+          orderBy: { optedOutAt: 'desc' },
+        })
+      : [];
+    const optOutsByEmail = new Map<string, typeof activeOptOuts>();
+    for (const o of activeOptOuts) {
+      const k = o.email.trim().toLowerCase();
+      const arr = optOutsByEmail.get(k) || [];
+      arr.push(o);
+      optOutsByEmail.set(k, arr);
+    }
+    const itemsWithOptOuts = items.map(h => ({
+      ...h,
+      optOuts: h.email ? (optOutsByEmail.get(h.email.trim().toLowerCase()) || []) : [],
+    }));
+
     return {
-      items,
+      items: itemsWithOptOuts,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
 
   async getById(id: string) {
-    return prisma.hcp.findUnique({
+    const hcp = await prisma.hcp.findUnique({
       where: { id },
       include: {
         aliases: true,
@@ -165,13 +208,23 @@ export class HcpService {
           orderBy: { createdAt: 'desc' },
           take: 10,
         },
-        optOuts: {
-          where: { resubscribedAt: null }, // Only show active opt-outs
-          include: { campaign: { select: { id: true, name: true } } },
-          orderBy: { optedOutAt: 'desc' },
-        },
       },
     });
+    if (!hcp) return null;
+
+    // Fetch active opt-outs by email (canonical key — see opt-out.service.ts notes)
+    const activeOptOuts = hcp.email
+      ? await prisma.optOut.findMany({
+          where: {
+            email: { equals: hcp.email.trim(), mode: 'insensitive' },
+            resubscribedAt: null,
+          },
+          include: { campaign: { select: { id: true, name: true } } },
+          orderBy: { optedOutAt: 'desc' },
+        })
+      : [];
+
+    return { ...hcp, optOuts: activeOptOuts };
   }
 
   async getByNpi(npi: string) {
