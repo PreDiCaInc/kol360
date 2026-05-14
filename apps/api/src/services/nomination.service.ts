@@ -296,89 +296,95 @@ export class NominationService {
       }
     }
 
-    // Score and sort by relevance - prioritize actual name matches over alias matches.
-    // All comparisons normalize curly→straight apostrophes so smart-quote variations match.
+    // Score components (weighted composite, max 100):
+    //   - Name match: 0..90  (the substance of the score)
+    //   - Same state: +5
+    //   - Same specialty as nominator: +5
+    //
+    // 100 = perfect name + same state + same specialty.
+    //  90 = perfect name, no context signal (or no overlap).
+    // 80–89 = primary name (substring / last+partial) with optional context.
+    // <80 = needs review (partial, fuzzy, or weak signal).
+    //
+    // matchType is what drives the MATCHED-vs-REVIEW_NEEDED gate in matchToHcp,
+    // not the absolute score: "exact" and "alias" (perfect) at >=90 promote.
+    // All comparisons normalize curly→straight apostrophes.
     const scored = suggestions.map((hcp: HcpWithAliases) => {
       const fullName = normalizeApostrophes(`${hcp.firstName} ${hcp.lastName}`).toLowerCase();
       const reverseName = normalizeApostrophes(`${hcp.lastName} ${hcp.firstName}`).toLowerCase();
       const rawName = normalizeApostrophes(normalizedName).toLowerCase().trim();
       const aliasesNormalized = hcp.aliases.map((a: HcpAlias) => normalizeApostrophes(a.aliasName).toLowerCase());
 
-      let score = 0;
+      let nameScore = 0; // 0..90 — name component only
       let matchType: 'exact' | 'primary' | 'alias' | 'partial' = 'partial';
       let isNameMatch = false;
 
-      // PRIORITY 1: Exact full name match (highest priority) - 100%
+      // PRIORITY 1: Exact full name match (perfect)
       if (fullName === rawName || reverseName === rawName) {
-        score = 100;
+        nameScore = 90;
         matchType = 'exact';
         isNameMatch = true;
       }
-      // PRIORITY 2: Exact alias match - 100% (same as exact name match)
+      // PRIORITY 2: Exact alias match (perfect — alias is equivalent for matching)
       else if (aliasesNormalized.some((a: string) => a === rawName)) {
-        score = 100;
+        nameScore = 90;
         matchType = 'alias';
         isNameMatch = false;
       }
-      // PRIORITY 3: Full name contains raw name or vice versa (primary name match) - needs review
+      // PRIORITY 3: Full name contains raw name or vice versa
       else if (fullName.includes(rawName) || rawName.includes(fullName)) {
-        score = 90;
+        nameScore = 80;
         matchType = 'primary';
         isNameMatch = true;
       }
-      // PRIORITY 4: Last name exact match with first name partial - needs review
+      // PRIORITY 4: Last name exact + first name partial (e.g. "Chris" ≈ "Christopher")
       else if (
         normalizeApostrophes(hcp.lastName).toLowerCase() === rawName.split(' ').pop() &&
         nameParts.some((part: string) => normalizeApostrophes(hcp.firstName).toLowerCase().includes(part))
       ) {
-        score = 85;
+        nameScore = 75;
         matchType = 'primary';
         isNameMatch = true;
       }
-      // PRIORITY 5: Partial alias match - needs review
+      // PRIORITY 5: Partial alias (substring) — alias is hinting, not exact
       else if (
         aliasesNormalized.some((a: string) => a.includes(rawName) || rawName.includes(a))
       ) {
-        score = 70;
+        nameScore = 60;
         matchType = 'alias';
         isNameMatch = false;
       }
-      // PRIORITY 6: Multiple name parts match on actual name - needs review
+      // PRIORITY 6: Multiple name parts match — partial only
       else {
         const matchCount = nameParts.filter(
           (part: string) =>
             normalizeApostrophes(hcp.firstName).toLowerCase().includes(part) ||
             normalizeApostrophes(hcp.lastName).toLowerCase().includes(part)
         ).length;
-        score = Math.min(60, matchCount * 25);
+        nameScore = Math.min(45, matchCount * 20);
         matchType = 'partial';
-        // Only consider it a name match if score is high enough (50%+)
-        // Low-confidence partial matches should offer to add alias
-        isNameMatch = score >= 50;
+        isNameMatch = nameScore >= 40;
       }
 
-      // Trigram fuzzy boost: when last name is similar (typo case) and the
-      // base score landed below the primary-name tier, promote toward the
-      // primary band so the right HCP doesn't get stuck in partial soup.
+      // Trigram fuzzy override (typo case): when last name is similar enough,
+      // promote into the name band. >=0.85 sim is essentially a name match.
       const trigramSim = trigramSimByHcpId.get(hcp.id);
       if (trigramSim !== undefined && trigramSim >= 0.6) {
-        const trigramScore = Math.round(trigramSim * 100); // 60..100
-        if (trigramScore > score) {
-          score = trigramScore;
-          // High similarity is essentially a name match; lower is a hint
+        const trigramName = trigramSim >= 0.85 ? 80 : trigramSim >= 0.75 ? 70 : 55;
+        if (trigramName > nameScore) {
+          nameScore = trigramName;
           matchType = trigramSim >= 0.75 ? 'primary' : 'partial';
           isNameMatch = trigramSim >= 0.75;
         }
       }
 
-      // Tiebreaker: small boost when the candidate shares state and/or specialty
-      // with the nominator. Helps surface the right person among same-name HCPs.
-      if (nominatorState && hcp.state && nominatorState === hcp.state) score += 5;
-      if (nominatorSpecialty && hcp.specialty && nominatorSpecialty === hcp.specialty) score += 5;
+      // Context within budget: +5 state, +5 specialty, sourced from nominator
+      const stateBoost = (nominatorState && hcp.state && nominatorState === hcp.state) ? 5 : 0;
+      const specialtyBoost = (nominatorSpecialty && hcp.specialty && nominatorSpecialty === hcp.specialty) ? 5 : 0;
+      let score = nameScore + stateBoost + specialtyBoost;
 
-      // Cap at 100. The boost is a tiebreaker for ordering — it must not
-      // produce >100 confidence (nonsensical) or break the `confidence === 100`
-      // gate that promotes exact matches straight to MATCHED instead of REVIEW_NEEDED.
+      // Defensive cap. By construction nameScore<=90 and boosts<=10, so score<=100,
+      // but keep this in case any band is ever bumped without retuning.
       score = Math.min(100, score);
 
       return {
@@ -480,13 +486,16 @@ export class NominationService {
       }
     }
 
-    // Determine match status:
-    // - Manual picks (human selected from suggestion dialog) → MATCHED regardless of confidence
-    // - Auto matches at 100% on primary/alias → MATCHED
+    // Determine match status. Score budget (v1.15.16):
+    //   name=90 + state=5 + specialty=5 = 100. A perfect name match alone is 90,
+    //   so the gate uses matchType (the name component) rather than a strict 100.
+    // - Manual picks (human selected from suggestion dialog) → MATCHED regardless
+    // - Auto perfect-name matches (matchType in {exact, alias} at >=90) → MATCHED
     // - Everything else → REVIEW_NEEDED
     const confidence = matchConfidence ?? 100;
-    const isExactMatch = confidence === 100 && (matchType === 'exact' || matchType === 'primary' || matchType === 'alias');
-    const matchStatus = (isManual || isExactMatch) ? 'MATCHED' : 'REVIEW_NEEDED';
+    const isPerfectNameMatch =
+      confidence >= 90 && (matchType === 'exact' || matchType === 'alias');
+    const matchStatus = (isManual || isPerfectNameMatch) ? 'MATCHED' : 'REVIEW_NEEDED';
 
     // Set isNominated on the matched HCP if not already
     await prisma.hcp.update({
@@ -752,18 +761,16 @@ export class NominationService {
         if (!bestMatch || bestMatch.score < 50) continue;
 
         // For REVIEW_NEEDED rows, only act if the new best is genuinely an
-        // improvement — different HCP, higher score, OR the new best is an
-        // exact 100% match that would now promote to MATCHED status.
-        // The last clause heals rows stuck at >100% confidence from the brief
-        // v1.15.14 window where boosts could push score past 100.
+        // improvement — different HCP, higher score, or the new best would
+        // now promote to MATCHED status (perfect name match at >=90).
+        // The last clause heals rows stuck from the brief v1.15.14 window
+        // where boosts could push score past 100.
         if (nomination.matchStatus === 'REVIEW_NEEDED') {
           const sameHcp = nomination.matchedHcpId === bestMatch.hcp.id;
           const currentScore = nomination.matchConfidence ?? 0;
           const wouldBeMatched =
-            bestMatch.score === 100 &&
-            (bestMatch.matchType === 'exact' ||
-              bestMatch.matchType === 'primary' ||
-              bestMatch.matchType === 'alias');
+            bestMatch.score >= 90 &&
+            (bestMatch.matchType === 'exact' || bestMatch.matchType === 'alias');
           const noImprovement = sameHcp && bestMatch.score <= currentScore && !wouldBeMatched;
           if (noImprovement) continue;
           upgraded++;

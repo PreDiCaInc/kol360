@@ -160,9 +160,12 @@ describe('NominationService', () => {
 
       const result = await nominationService.getSuggestions('nom-1');
 
-      // Exact match should come first with higher score
+      // Exact match should come first. Score budget (v1.15.16): name=90, +5
+      // state, +5 specialty. Mock nominator has no state/specialty info, so
+      // perfect-name-only score is 90.
       expect(result[0].hcp.id).toBe('hcp-1');
-      expect(result[0].score).toBe(100);
+      expect(result[0].score).toBe(90);
+      expect(result[0].matchType).toBe('exact');
     });
   });
 
@@ -258,6 +261,29 @@ describe('NominationService', () => {
       expect(prisma.nomination.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ matchStatus: 'REVIEW_NEEDED' }),
+        })
+      );
+    });
+
+    it('should set MATCHED for exact name match at >=90 (no context boost)', async () => {
+      // v1.15.16: gate is matchType + confidence >= 90, not confidence === 100.
+      // An exact name match alone scores 90; +5 state, +5 specialty get to 100.
+      // Either way it's MATCHED.
+      (prisma.nomination.findUnique as Mock).mockResolvedValue({
+        id: 'nom-1',
+        rawNameEntered: 'John Doe',
+      });
+      (prisma.hcp.update as Mock).mockResolvedValue({ id: 'hcp-1' });
+      (prisma.nomination.update as Mock).mockResolvedValue({
+        id: 'nom-1',
+        matchStatus: 'MATCHED',
+      });
+
+      await nominationService.matchToHcp('nom-1', 'hcp-1', false, 'user-1', 'exact', 90);
+
+      expect(prisma.nomination.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ matchStatus: 'MATCHED' }),
         })
       );
     });
