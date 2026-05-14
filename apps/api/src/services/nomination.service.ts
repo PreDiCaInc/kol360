@@ -242,6 +242,29 @@ export class NominationService {
         })
       : [];
 
+    // Tier 2.5: Trigram fuzzy match on last name. Catches typos that exact
+    // and contains queries miss — e.g. "Donnenfield" → "Donnenfeld". Backed
+    // by pg_trgm extension + gin_trgm_ops index on Hcp.lastName.
+    const lastNamePart = nameParts[nameParts.length - 1];
+    const trigramRows = lastNamePart && nameParts.length >= 1
+      ? await prisma.$queryRaw<Array<{ id: string; similarity: number }>>`
+          SELECT id, similarity("lastName", ${lastNamePart})::float AS similarity
+          FROM "Hcp"
+          WHERE similarity("lastName", ${lastNamePart}) >= 0.6
+          ORDER BY similarity DESC
+          LIMIT 20
+        `
+      : [];
+    const trigramSimByHcpId = new Map<string, number>(
+      trigramRows.map(r => [r.id, Number(r.similarity)])
+    );
+    const trigramMatches = trigramRows.length > 0
+      ? await prisma.hcp.findMany({
+          where: { id: { in: trigramRows.map(r => r.id) } },
+          include: { aliases: true },
+        })
+      : [];
+
     // Tier 3: Broader partial matches (contains on name parts) + alias contains
     const partialMatches = await prisma.hcp.findMany({
       where: {
@@ -263,10 +286,10 @@ export class NominationService {
       take: 50,
     });
 
-    // Deduplicate across tiers (exact matches first, then last name, then partial)
+    // Deduplicate across tiers, ordered exact > last-name-exact > trigram > partial
     const seenIds = new Set<string>();
     const suggestions: HcpWithAliases[] = [];
-    for (const hcp of [...exactMatches, ...lastNameMatches, ...partialMatches]) {
+    for (const hcp of [...exactMatches, ...lastNameMatches, ...trigramMatches, ...partialMatches]) {
       if (!seenIds.has(hcp.id)) {
         seenIds.add(hcp.id);
         suggestions.push(hcp);
@@ -334,10 +357,29 @@ export class NominationService {
         isNameMatch = score >= 50;
       }
 
+      // Trigram fuzzy boost: when last name is similar (typo case) and the
+      // base score landed below the primary-name tier, promote toward the
+      // primary band so the right HCP doesn't get stuck in partial soup.
+      const trigramSim = trigramSimByHcpId.get(hcp.id);
+      if (trigramSim !== undefined && trigramSim >= 0.6) {
+        const trigramScore = Math.round(trigramSim * 100); // 60..100
+        if (trigramScore > score) {
+          score = trigramScore;
+          // High similarity is essentially a name match; lower is a hint
+          matchType = trigramSim >= 0.75 ? 'primary' : 'partial';
+          isNameMatch = trigramSim >= 0.75;
+        }
+      }
+
       // Tiebreaker: small boost when the candidate shares state and/or specialty
       // with the nominator. Helps surface the right person among same-name HCPs.
       if (nominatorState && hcp.state && nominatorState === hcp.state) score += 5;
       if (nominatorSpecialty && hcp.specialty && nominatorSpecialty === hcp.specialty) score += 5;
+
+      // Cap at 100. The boost is a tiebreaker for ordering — it must not
+      // produce >100 confidence (nonsensical) or break the `confidence === 100`
+      // gate that promotes exact matches straight to MATCHED instead of REVIEW_NEEDED.
+      score = Math.min(100, score);
 
       return {
         hcp: {
@@ -710,12 +752,19 @@ export class NominationService {
         if (!bestMatch || bestMatch.score < 50) continue;
 
         // For REVIEW_NEEDED rows, only act if the new best is genuinely an
-        // improvement — different HCP, or same HCP with a higher score.
-        // This avoids needlessly rewriting rows where nothing changed.
+        // improvement — different HCP, higher score, OR the new best is an
+        // exact 100% match that would now promote to MATCHED status.
+        // The last clause heals rows stuck at >100% confidence from the brief
+        // v1.15.14 window where boosts could push score past 100.
         if (nomination.matchStatus === 'REVIEW_NEEDED') {
           const sameHcp = nomination.matchedHcpId === bestMatch.hcp.id;
           const currentScore = nomination.matchConfidence ?? 0;
-          const noImprovement = sameHcp && bestMatch.score <= currentScore;
+          const wouldBeMatched =
+            bestMatch.score === 100 &&
+            (bestMatch.matchType === 'exact' ||
+              bestMatch.matchType === 'primary' ||
+              bestMatch.matchType === 'alias');
+          const noImprovement = sameHcp && bestMatch.score <= currentScore && !wouldBeMatched;
           if (noImprovement) continue;
           upgraded++;
         } else {

@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { createAuditLog } from '../lib/audit';
 import { OptOutScope, Prisma } from '@prisma/client';
 
 export interface CreateOptOutInput {
@@ -72,22 +73,21 @@ export class OptOutService {
       },
     });
 
-    // Audit log
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action: 'opt_out.created_by_admin',
-        entityType: 'OptOut',
-        entityId: optOut.id,
-        newValues: {
-          hcpId: hcp.id,
-          email: hcp.email,
-          hcpName: `${hcp.firstName} ${hcp.lastName}`,
-          scope,
-          campaignId,
-          reason: reason.trim(),
-        } as Prisma.InputJsonValue,
-      },
+    // Audit log — userId here is the Cognito sub; createAuditLog resolves
+    // it to the matching User.id before writing (avoids FK violation when
+    // they differ, e.g. seeded test users).
+    await createAuditLog(userId, {
+      action: 'opt_out.created_by_admin',
+      entityType: 'OptOut',
+      entityId: optOut.id,
+      newValues: {
+        hcpId: hcp.id,
+        email: hcp.email,
+        hcpName: `${hcp.firstName} ${hcp.lastName}`,
+        scope,
+        campaignId,
+        reason: reason.trim(),
+      } as Prisma.InputJsonValue,
     });
 
     return { optOut, alreadyOptedOut: false };
@@ -114,19 +114,16 @@ export class OptOutService {
       },
     });
 
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action: 'opt_out.resubscribed_by_admin',
-        entityType: 'OptOut',
-        entityId: optOutId,
-        oldValues: { resubscribedAt: null } as Prisma.InputJsonValue,
-        newValues: {
-          email: optOut.email,
-          scope: optOut.scope,
-          resubscribeReason: reason || null,
-        } as Prisma.InputJsonValue,
-      },
+    await createAuditLog(userId, {
+      action: 'opt_out.resubscribed_by_admin',
+      entityType: 'OptOut',
+      entityId: optOutId,
+      oldValues: { resubscribedAt: null } as Prisma.InputJsonValue,
+      newValues: {
+        email: optOut.email,
+        scope: optOut.scope,
+        resubscribeReason: reason || null,
+      } as Prisma.InputJsonValue,
     });
 
     return updated;
