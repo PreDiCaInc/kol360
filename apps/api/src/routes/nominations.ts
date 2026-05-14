@@ -190,7 +190,8 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
         addAlias,
         request.user.sub,
         matchType,
-        matchConfidence
+        matchConfidence,
+        true // isManual — human picked this from the dialog, mark as MATCHED
       );
 
       // Auto-calculate survey and composite scores after matching

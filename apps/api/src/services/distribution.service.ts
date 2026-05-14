@@ -390,6 +390,16 @@ export class DistributionService {
     });
 
     const hcpIds = allRows.map(r => r.hcpId);
+    // Email is the canonical key for opt-outs (see notes in opt-out.service.ts):
+    // email-link unsubscribes have no hcpId, multiple HCPs can share an email,
+    // and HCP records can be re-imported. Filter opt-outs by email, not hcpId.
+    const hcpEmails = Array.from(
+      new Set(
+        allRows
+          .map(r => r.hcp.email?.trim().toLowerCase())
+          .filter((e): e is string => !!e)
+      )
+    );
 
     // Total questions in this campaign (for progress denominator)
     const totalQuestions = await prisma.surveyQuestion.count({ where: { campaignId } });
@@ -406,22 +416,24 @@ export class DistributionService {
           completedAt: true,
         },
       }),
-      prisma.optOut.findMany({
-        where: {
-          hcpId: { in: hcpIds },
-          resubscribedAt: null,
-          OR: [
-            { scope: 'GLOBAL' },
-            { scope: 'CAMPAIGN', campaignId },
-          ],
-        },
-        select: {
-          id: true,
-          hcpId: true,
-          scope: true,
-          optedOutAt: true,
-        },
-      }),
+      hcpEmails.length > 0
+        ? prisma.optOut.findMany({
+            where: {
+              email: { in: hcpEmails, mode: 'insensitive' },
+              resubscribedAt: null,
+              OR: [
+                { scope: 'GLOBAL' },
+                { scope: 'CAMPAIGN', campaignId },
+              ],
+            },
+            select: {
+              id: true,
+              email: true,
+              scope: true,
+              optedOutAt: true,
+            },
+          })
+        : Promise.resolve([] as Array<{ id: string; email: string; scope: 'GLOBAL' | 'CAMPAIGN'; optedOutAt: Date }>),
     ]);
 
     // Compute last answered question (max sortOrder) per response
@@ -442,14 +454,17 @@ export class DistributionService {
     }
 
     const responseMap = new Map(responses.map(r => [r.respondentHcpId, r]));
+    // Map opt-outs by lowercased email — case-insensitive match against HCP email
     const optOutMap = new Map(
-      optOuts.filter(o => o.hcpId !== null).map(o => [o.hcpId!, o])
+      optOuts.map(o => [o.email.trim().toLowerCase(), o])
     );
 
     // Enrich each row with derived status + date + progress
     const enriched = allRows.map(row => {
       const response = responseMap.get(row.hcpId);
-      const optOut = optOutMap.get(row.hcpId);
+      const optOut = row.hcp.email
+        ? optOutMap.get(row.hcp.email.trim().toLowerCase())
+        : undefined;
       const lastQuestion = response ? (lastAnsweredMap.get(response.id) ?? 0) : 0;
 
       let status: 'completed' | 'in_progress' | 'opened' | 'unsubscribed' | 'invited' | 'not_invited';

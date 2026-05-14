@@ -235,7 +235,7 @@ describe('NominationService', () => {
       ).rejects.toThrow('Nomination not found');
     });
 
-    it('should set REVIEW_NEEDED for low confidence matches', async () => {
+    it('should set REVIEW_NEEDED for low confidence auto matches', async () => {
       (prisma.nomination.findUnique as Mock).mockResolvedValue({
         id: 'nom-1',
         rawNameEntered: 'John',
@@ -258,6 +258,34 @@ describe('NominationService', () => {
       expect(prisma.nomination.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ matchStatus: 'REVIEW_NEEDED' }),
+        })
+      );
+    });
+
+    it('should set MATCHED for manual picks even at low confidence', async () => {
+      (prisma.nomination.findUnique as Mock).mockResolvedValue({
+        id: 'nom-1',
+        rawNameEntered: 'John',
+      });
+      (prisma.hcp.update as Mock).mockResolvedValue({ id: 'hcp-1' });
+      (prisma.nomination.update as Mock).mockResolvedValue({
+        id: 'nom-1',
+        matchStatus: 'MATCHED',
+      });
+
+      await nominationService.matchToHcp(
+        'nom-1',
+        'hcp-1',
+        false,
+        'user-1',
+        'partial',
+        50,
+        true // isManual
+      );
+
+      expect(prisma.nomination.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ matchStatus: 'MATCHED' }),
         })
       );
     });
