@@ -39,6 +39,24 @@ describe('Opt-Out API (email-based)', () => {
     }
     client = new ApiClient();
 
+    // Resubscribe any pre-existing active opt-outs for HCP_1's email. The opt-out
+    // table is shared across runs, so prior failed runs can leave residue that
+    // causes alreadyOptedOut=true and confuses ordering assertions below.
+    const { data: existing } = await client.listOptOuts({
+      search: TEST_IDS.HCP_1.email,
+      status: 'active',
+      limit: 50,
+    });
+    for (const o of existing.items) {
+      if (o.email.toLowerCase() === TEST_IDS.HCP_1.email.toLowerCase()) {
+        try {
+          await client.resubscribeOptOut(o.id, 'E2E test setup cleanup');
+        } catch {
+          // ignore
+        }
+      }
+    }
+
     // Create a draft campaign + assign a test HCP to exercise survey-status surface
     const campaignName = `${TEST_IDS.CAMPAIGN_PREFIX}OPT_OUT_${Date.now()}`;
     const { status, data } = await client.createCampaign({
@@ -144,8 +162,9 @@ describe('Opt-Out API (email-based)', () => {
 
     it('filters HCPs list by optOutStatus=global (email-keyed)', async () => {
       const { status, data } = await client.listHcps({
+        query: TEST_IDS.HCP_1.email,
         optOutStatus: 'global',
-        limit: 100,
+        limit: 50,
       });
       expect(status).toBe(200);
       const found = data.items.find((h) => h.id === TEST_IDS.HCP_1.id);
@@ -154,8 +173,9 @@ describe('Opt-Out API (email-based)', () => {
 
     it('excludes opted-out HCP when filtering by optOutStatus=none', async () => {
       const { status, data } = await client.listHcps({
+        query: TEST_IDS.HCP_1.email,
         optOutStatus: 'none',
-        limit: 100,
+        limit: 50,
       });
       expect(status).toBe(200);
       const found = data.items.find((h) => h.id === TEST_IDS.HCP_1.id);
@@ -164,15 +184,27 @@ describe('Opt-Out API (email-based)', () => {
   });
 
   describe('Resubscribe', () => {
-    it('resubscribes the HCP and clears the active opt-out', async () => {
-      const optOutId = createdOptOutIds[0];
-      expect(optOutId).toBeDefined();
-      const { status, data } = await client.resubscribeOptOut(
-        optOutId,
-        'E2E test: HCP confirmed re-opt-in'
+    it('resubscribes every active opt-out for the HCP email', async () => {
+      // Find all currently-active opt-outs for HCP_1 email and resubscribe each.
+      // More robust than relying on a single ID from earlier in the test file.
+      const { data: active } = await client.listOptOuts({
+        search: TEST_IDS.HCP_1.email,
+        status: 'active',
+        limit: 50,
+      });
+      const mine = active.items.filter(
+        o => o.email.toLowerCase() === TEST_IDS.HCP_1.email.toLowerCase()
       );
-      expect(status).toBe(200);
-      expect(data.resubscribedAt).toBeTruthy();
+      expect(mine.length).toBeGreaterThan(0);
+
+      for (const o of mine) {
+        const { status, data } = await client.resubscribeOptOut(
+          o.id,
+          'E2E test: HCP confirmed re-opt-in'
+        );
+        expect(status).toBe(200);
+        expect(data.resubscribedAt).toBeTruthy();
+      }
     });
 
     it('survey-status no longer marks the HCP as opted out', async () => {
@@ -188,9 +220,12 @@ describe('Opt-Out API (email-based)', () => {
     });
 
     it('HCPs list optOutStatus=none now includes the HCP again', async () => {
+      // Pagination: the test HCP isn't guaranteed in the first 100 results
+      // when many HCPs exist. Search-narrow by email to be sure.
       const { status, data } = await client.listHcps({
+        query: TEST_IDS.HCP_1.email,
         optOutStatus: 'none',
-        limit: 100,
+        limit: 50,
       });
       expect(status).toBe(200);
       const found = data.items.find((h) => h.id === TEST_IDS.HCP_1.id);
