@@ -170,12 +170,29 @@ export class NominationService {
     const nominatorSpecialty = nomination.response?.respondentHcp?.specialty ?? null;
 
     // Normalize name: strip titles, credentials, suffixes, and smart apostrophes
-    const normalizedName = normalizeApostrophes(nomination.rawNameEntered)
-      .replace(/\b(dr|prof|mr|mrs|ms)\.?\s*/gi, '') // Remove titles
+    let normalizedName = normalizeApostrophes(nomination.rawNameEntered)
+      // Remove leading titles. MUST have closing \b + a required separator (\s+):
+      // without it, the "Dr" inside "Drake" matched and "Dr Carol Drake"
+      // silently became "Carol ake". The \b\.?\s+ ensures we only strip a
+      // standalone title token followed by a dot/space, not a name prefix.
+      .replace(/\b(dr|prof|mr|mrs|ms)\b\.?\s+/gi, '')
       .replace(/,?\s*\b(md|do|od|phd|mph|mba|facs|faao|bs|ms|rn|np|pa|jr|sr|ii|iii|iv)\b\.?/gi, '') // Remove credentials/suffixes
       .replace(/[^a-zA-Z\s'-]/g, '') // Remove remaining non-name characters (keep hyphens and apostrophes)
       .replace(/\s+/g, ' ') // Collapse whitespace
       .trim();
+
+    // Strip a trailing US state abbreviation annotation, e.g.
+    // "Eric Donnenfeld NY" → "Eric Donnenfeld". Only when ≥3 tokens so that
+    // ≥2 (first + last) remain — avoids mangling short names like "Jo Ma".
+    const trailingStateMatch = normalizedName.match(
+      /\s+(A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY])$/i
+    );
+    if (trailingStateMatch) {
+      const stripped = normalizedName.slice(0, trailingStateMatch.index).trim();
+      if (stripped.split(/\s+/).filter(Boolean).length >= 2) {
+        normalizedName = stripped;
+      }
+    }
 
     // Parse name parts from normalized name
     const nameParts = normalizedName
@@ -242,15 +259,18 @@ export class NominationService {
         })
       : [];
 
-    // Tier 2.5: Trigram fuzzy match on last name. Catches typos that exact
-    // and contains queries miss — e.g. "Donnenfield" → "Donnenfeld". Backed
-    // by pg_trgm extension + gin_trgm_ops index on Hcp.lastName.
-    const lastNamePart = nameParts[nameParts.length - 1];
-    const trigramRows = lastNamePart && nameParts.length >= 1
+    // Tier 2.5: Trigram fuzzy match on the FULL normalized name. Catches typos
+    // that exact/contains miss — e.g. "Flanery"→"Flanary", "Donnenfield"→
+    // "Donnenfeld". Matching the full "first last" string (not just the last
+    // token) is far more robust: the usually-correct first name anchors the
+    // comparison, so a single-char surname typo still scores ~0.65–0.75 while
+    // unrelated names rarely clear the 0.45 floor. Backed by pg_trgm.
+    const trigramRows = normalizedName.length > 0
       ? await prisma.$queryRaw<Array<{ id: string; similarity: number }>>`
-          SELECT id, similarity("lastName", ${lastNamePart})::float AS similarity
+          SELECT id,
+                 similarity(lower("firstName" || ' ' || "lastName"), ${normalizedName.toLowerCase()})::float AS similarity
           FROM "Hcp"
-          WHERE similarity("lastName", ${lastNamePart}) >= 0.6
+          WHERE similarity(lower("firstName" || ' ' || "lastName"), ${normalizedName.toLowerCase()}) >= 0.45
           ORDER BY similarity DESC
           LIMIT 20
         `
@@ -265,11 +285,17 @@ export class NominationService {
         })
       : [];
 
-    // Tier 3: Broader partial matches (contains on name parts) + alias contains
+    // Tier 3: Broader partial matches (contains on name parts) + alias contains.
+    // Skip very short tokens (≤2 chars: stray initials, leftover "ny", etc.) —
+    // a `contains "j"` floods the pool with junk and pushes the real partial
+    // match out of the take window. Fall back to all tokens only if every
+    // token is short (degenerate input) so the clause is never empty.
+    const tier3Tokens = nameParts.filter((p: string) => p.length > 2);
+    const containsTokens = tier3Tokens.length > 0 ? tier3Tokens : nameParts;
     const partialMatches = await prisma.hcp.findMany({
       where: {
         OR: [
-          ...nameParts.flatMap((part: string) => [
+          ...containsTokens.flatMap((part: string) => [
             { firstName: { contains: part, mode: 'insensitive' as const } },
             { lastName: { contains: part, mode: 'insensitive' as const } },
           ]),
@@ -283,7 +309,7 @@ export class NominationService {
         ],
       },
       include: { aliases: true },
-      take: 50,
+      take: 100,
     });
 
     // Deduplicate across tiers, ordered exact > last-name-exact > trigram > partial
@@ -366,15 +392,17 @@ export class NominationService {
         isNameMatch = nameScore >= 40;
       }
 
-      // Trigram fuzzy override (typo case): when last name is similar enough,
-      // promote into the name band. >=0.85 sim is essentially a name match.
+      // Trigram fuzzy override (typo case). Similarity is now on the full
+      // "first last" string, so bands are tuned for that scale: a single-char
+      // surname typo lands ~0.65–0.75. Trigram never sets matchType
+      // exact/alias, so these never auto-MATCH — they surface for review.
       const trigramSim = trigramSimByHcpId.get(hcp.id);
-      if (trigramSim !== undefined && trigramSim >= 0.6) {
-        const trigramName = trigramSim >= 0.85 ? 80 : trigramSim >= 0.75 ? 70 : 55;
+      if (trigramSim !== undefined && trigramSim >= 0.45) {
+        const trigramName = trigramSim >= 0.7 ? 80 : trigramSim >= 0.55 ? 70 : 55;
         if (trigramName > nameScore) {
           nameScore = trigramName;
-          matchType = trigramSim >= 0.75 ? 'primary' : 'partial';
-          isNameMatch = trigramSim >= 0.75;
+          matchType = trigramSim >= 0.55 ? 'primary' : 'partial';
+          isNameMatch = trigramSim >= 0.55;
         }
       }
 

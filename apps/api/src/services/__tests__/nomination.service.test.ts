@@ -167,6 +167,94 @@ describe('NominationService', () => {
       expect(result[0].score).toBe(90);
       expect(result[0].matchType).toBe('exact');
     });
+
+    it('strips a trailing US state so "Eric Donnenfeld NY" matches "Eric Donnenfeld" exactly (v1.15.17)', async () => {
+      (prisma.nomination.findUnique as Mock).mockResolvedValue({
+        id: 'nom-1',
+        rawNameEntered: 'Eric Donnenfeld NY',
+      });
+      (prisma.hcp.findMany as Mock).mockResolvedValue([
+        {
+          id: 'hcp-don',
+          npi: '1891790770',
+          firstName: 'Eric',
+          lastName: 'Donnenfeld',
+          email: null,
+          specialty: null,
+          city: null,
+          state: 'NY',
+          aliases: [],
+        },
+      ]);
+
+      const result = await nominationService.getSuggestions('nom-1');
+
+      // "NY" stripped → normalized "Eric Donnenfeld" → exact name match.
+      expect(result[0].hcp.id).toBe('hcp-don');
+      expect(result[0].matchType).toBe('exact');
+      expect(result[0].score).toBeGreaterThanOrEqual(90);
+    });
+
+    it('does not strip an in-name "Dr" — "Dr Carol Drake" → exact "Carol Drake", not "Carol ake" (v1.15.17)', async () => {
+      (prisma.nomination.findUnique as Mock).mockResolvedValue({
+        id: 'nom-1',
+        rawNameEntered: 'Dr Carol Drake',
+      });
+      (prisma.hcp.findMany as Mock).mockResolvedValue([
+        {
+          id: 'hcp-drake',
+          npi: '5550001111',
+          firstName: 'Carol',
+          lastName: 'Drake',
+          email: null,
+          specialty: null,
+          city: null,
+          state: null,
+          aliases: [],
+        },
+      ]);
+
+      const result = await nominationService.getSuggestions('nom-1');
+
+      // Title "Dr " stripped, surname "Drake" intact → exact match.
+      // Pre-fix the global regex ate the "Dr" in "Drake" → "Carol ake" → 0 hits.
+      expect(result[0].hcp.id).toBe('hcp-drake');
+      expect(result[0].matchType).toBe('exact');
+      expect(result[0].score).toBeGreaterThanOrEqual(90);
+    });
+
+    it('surfaces a single-char surname typo via full-name trigram ("William Flanery"→"William Flanary") (v1.15.17)', async () => {
+      (prisma.nomination.findUnique as Mock).mockResolvedValue({
+        id: 'nom-1',
+        rawNameEntered: 'William Flanery',
+      });
+      // Trigram tier query returns the real HCP with full-name similarity 0.68
+      (prisma.$queryRaw as Mock).mockResolvedValueOnce([
+        { id: 'hcp-flan', similarity: 0.68 },
+      ]);
+      (prisma.hcp.findMany as Mock).mockResolvedValue([
+        {
+          id: 'hcp-flan',
+          npi: '1234509876',
+          firstName: 'William',
+          lastName: 'Flanary',
+          email: null,
+          specialty: null,
+          city: null,
+          state: null,
+          aliases: [],
+        },
+      ]);
+
+      const result = await nominationService.getSuggestions('nom-1');
+
+      const flan = result.find((r) => r.hcp.id === 'hcp-flan');
+      expect(flan).toBeDefined();
+      // sim 0.68 → primary band (>=0.55), name score 70. Not exact/alias, so
+      // it surfaces for review rather than auto-MATCHED.
+      expect(flan?.matchType).toBe('primary');
+      expect(flan?.score).toBe(70);
+    });
   });
 
   describe('matchToHcp', () => {
