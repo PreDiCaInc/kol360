@@ -23,6 +23,7 @@ model Client {
   liteClientDiseaseAreas LiteClientDiseaseArea[]
   users                  User[]
   hcpExclusions          ClientHcpExclusion[]
+  kolAnalyses            KolAnalysis[]
 
   @@index([type])
   @@index([isActive])
@@ -63,6 +64,7 @@ model DiseaseArea {
   campaigns              Campaign[]
   hcpDiseaseAreaScores   HcpDiseaseAreaScore[]
   liteClientDiseaseAreas LiteClientDiseaseArea[]
+  kolAnalyses            KolAnalysis[]
 
   @@index([therapeuticArea])
   @@index([isActive])
@@ -173,6 +175,7 @@ model Hcp {
   clientExclusions    ClientHcpExclusion[]
   campaignExclusions  CampaignHcpExclusion[]
   optOuts             OptOut[]
+  analysisScores      HcpAnalysisScore[]
 
   @@index([beId])
   @@index([npi])
@@ -259,6 +262,85 @@ model HcpCampaignScore {
 
   @@unique([hcpId, campaignId])
   @@index([campaignId])
+  @@index([hcpId])
+}
+
+// A KOL Analysis is the scoring unit: a curated set of campaigns for a
+// (client, disease area). Scores are computed by pooling nominations across
+// the INCLUDED campaigns and normalizing once — fixing the invalid
+// per-campaign-then-average behavior of the old campaign-level scoring.
+model KolAnalysis {
+  id               String                @id @default(cuid())
+  clientId         String
+  diseaseAreaId    String
+  name             String
+  // { weightPublications, weightClinicalTrials, weightTradePubs,
+  //   weightOrgLeadership, weightOrgAwards, weightConference,
+  //   weightSocialMedia, weightMediaPodcasts, weightSurvey } summing to 100
+  weightsJson      Json
+  lastCalculatedAt DateTime?
+  calcStatus       String                @default("idle") // idle | running | done | error
+  calcError        String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  createdBy        String?
+  client           Client                @relation(fields: [clientId], references: [id])
+  diseaseArea      DiseaseArea           @relation(fields: [diseaseAreaId], references: [id])
+  campaigns        KolAnalysisCampaign[]
+  scores           HcpAnalysisScore[]
+
+  @@unique([clientId, diseaseAreaId])
+  @@index([diseaseAreaId])
+  @@index([clientId])
+}
+
+// Platform-curated include/exclude of campaigns feeding a KolAnalysis.
+model KolAnalysisCampaign {
+  id         String      @id @default(cuid())
+  analysisId String
+  campaignId String
+  included   Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  analysis   KolAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  campaign   Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([analysisId, campaignId])
+  @@index([campaignId])
+}
+
+// Per-HCP score for an analysis. Pooled nomination counts + per-type
+// normalized scores + consolidated survey + composite. Objective scores are
+// NOT stored here — they are read live from HcpDiseaseAreaScore at compute
+// and read time (decision: live pull, no snapshot).
+model HcpAnalysisScore {
+  id                     String      @id @default(cuid())
+  analysisId             String
+  hcpId                  String
+  scoreDiscussionLeaders Decimal?    @db.Decimal(5, 2)
+  countDiscussionLeaders Int         @default(0)
+  scoreReferralLeaders   Decimal?    @db.Decimal(5, 2)
+  countReferralLeaders   Int         @default(0)
+  scoreAdviceLeaders     Decimal?    @db.Decimal(5, 2)
+  countAdviceLeaders     Int         @default(0)
+  scoreNationalLeader    Decimal?    @db.Decimal(5, 2)
+  countNationalLeader    Int         @default(0)
+  scoreRisingStar        Decimal?    @db.Decimal(5, 2)
+  countRisingStar        Int         @default(0)
+  scoreSocialLeader      Decimal?    @db.Decimal(5, 2)
+  countSocialLeader      Int         @default(0)
+  scoreRegionalLeader    Decimal?    @db.Decimal(5, 2)
+  countRegionalLeader    Int         @default(0)
+  scoreBiasedLeader      Decimal?    @db.Decimal(5, 2)
+  countBiasedLeader      Int         @default(0)
+  scoreSurvey            Decimal?    @db.Decimal(5, 2)
+  nominationCount        Int         @default(0)
+  compositeScore         Decimal?    @db.Decimal(5, 2)
+  calculatedAt           DateTime    @default(now())
+  analysis               KolAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  hcp                    Hcp         @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+
+  @@unique([analysisId, hcpId])
+  @@index([analysisId])
   @@index([hcpId])
 }
 
@@ -393,6 +475,7 @@ model Campaign {
   payments                 Payment[]
   surveyQuestions          SurveyQuestion[]
   surveyResponses          SurveyResponse[]
+  kolAnalysisCampaigns     KolAnalysisCampaign[]
 
   @@index([clientId])
   @@index([diseaseAreaId])

@@ -18,6 +18,7 @@ export * from './question';
 export * from './section';
 export * from './survey-template';
 export * from './score-config';
+export * from './kol-analysis';
 export * from './campaign';
 export * from './distribution';
 export * from './survey-taking';

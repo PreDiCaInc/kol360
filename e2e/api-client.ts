@@ -303,6 +303,41 @@ export class ApiClient {
     return { status: response.status, data };
   }
 
+  // ==================== KOL Analyses ====================
+
+  async listKolAnalyses() {
+    return this.request<{ items: Array<{ id: string; name: string; calcStatus: string; clientId: string; diseaseAreaId: string; _count: { campaigns: number; scores: number } }> }>(
+      'GET',
+      `/api/v1/admin/kol-analyses`
+    );
+  }
+
+  async getKolAnalysis(id: string) {
+    return this.request<{
+      id: string;
+      name: string;
+      calcStatus: string;
+      lastCalculatedAt: string | null;
+      campaigns: Array<{ campaignId: string; included: boolean; campaign: { id: string; name: string; status: string } }>;
+      _count: { scores: number };
+    }>('GET', `/api/v1/admin/kol-analyses/${id}`);
+  }
+
+  async updateKolAnalysisCampaigns(id: string, campaigns: Array<{ campaignId: string; included: boolean }>) {
+    return this.request<{ ok: boolean }>(
+      'PUT',
+      `/api/v1/admin/kol-analyses/${id}/campaigns`,
+      { campaigns }
+    );
+  }
+
+  async recalculateKolAnalysis(id: string) {
+    return this.request<{ processed: number }>(
+      'POST',
+      `/api/v1/admin/kol-analyses/${id}/recalculate`
+    );
+  }
+
   // ==================== Opt-Outs ====================
 
   async optOutHcp(hcpId: string, scope: 'CAMPAIGN' | 'GLOBAL', reason: string, campaignId?: string) {
