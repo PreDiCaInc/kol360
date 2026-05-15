@@ -27,6 +27,13 @@ vi.mock('../../lib/prisma', () => {
       findFirst: vi.fn(),
       create: vi.fn(),
     },
+    // For createAuditLog (lib/audit) — resolves cognito sub → User.id
+    user: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'user-db-1' }),
+    },
+    auditLog: {
+      create: vi.fn().mockResolvedValue({ id: 'audit-1' }),
+    },
     // Mock $transaction to execute the callback with the mock prisma
     $transaction: vi.fn().mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
       return callback(mockPrisma);
@@ -282,6 +289,44 @@ describe('NominationService', () => {
 
       expect(result.matchedHcpId).toBe('hcp-1');
       expect(result.matchStatus).toBe('MATCHED');
+    });
+
+    it('writes an audit-trail row capturing before→after on match (v1.15.18)', async () => {
+      (prisma.nomination.findUnique as Mock).mockResolvedValue({
+        id: 'nom-1',
+        rawNameEntered: 'John Doe',
+        matchedHcpId: null,
+        matchStatus: 'UNMATCHED',
+        matchType: null,
+        matchConfidence: null,
+        response: { campaignId: 'camp-1' },
+      });
+      (prisma.hcp.update as Mock).mockResolvedValue({ id: 'hcp-1' });
+      (prisma.hcpAlias.findFirst as Mock).mockResolvedValue(null);
+      (prisma.nomination.update as Mock).mockResolvedValue({
+        id: 'nom-1',
+        matchedHcpId: 'hcp-1',
+        matchStatus: 'MATCHED',
+      });
+
+      await nominationService.matchToHcp('nom-1', 'hcp-1', false, 'cognito-sub-1', 'exact', 100, true);
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'nomination.matched',
+            entityType: 'Nomination',
+            entityId: 'nom-1',
+            userId: 'user-db-1', // resolved from cognito sub
+            oldValues: expect.objectContaining({ matchStatus: 'UNMATCHED', matchedHcpId: null }),
+            newValues: expect.objectContaining({
+              matchStatus: 'MATCHED',
+              matchedHcpId: 'hcp-1',
+              source: 'manual',
+            }),
+          }),
+        })
+      );
     });
 
     it('should add alias when requested', async () => {

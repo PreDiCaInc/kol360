@@ -1,7 +1,33 @@
 import { prisma } from '../lib/prisma';
+import { createAuditLog } from '../lib/audit';
 import { HcpService } from './hcp.service';
 
 const hcpServiceInstance = new HcpService();
+
+/**
+ * Best-effort audit write for nomination changes. Resolves the Cognito sub to
+ * a User.id via createAuditLog (system-user fallback). Never throws — an audit
+ * failure must not break matching/exclusion.
+ */
+async function auditNomination(
+  cognitoSub: string,
+  action: 'nomination.matched' | 'nomination.excluded',
+  entityId: string,
+  oldValues: Record<string, unknown> | undefined,
+  newValues: Record<string, unknown>
+): Promise<void> {
+  try {
+    await createAuditLog(cognitoSub, {
+      action,
+      entityType: 'Nomination',
+      entityId,
+      oldValues: oldValues as never,
+      newValues: newValues as never,
+    });
+  } catch {
+    // swallow — audit is non-blocking
+  }
+}
 
 // Normalize curly/smart apostrophes to straight so e.g. D'Aversa (curly)
 // matches D'Aversa (straight) — common when users paste from Word/Outlook.
@@ -531,6 +557,14 @@ export class NominationService {
       data: { isNominated: true },
     });
 
+    // Snapshot prior state for the audit trail (before/after)
+    const oldValues = {
+      matchedHcpId: nomination.matchedHcpId,
+      matchStatus: nomination.matchStatus,
+      matchType: nomination.matchType,
+      matchConfidence: nomination.matchConfidence,
+    };
+
     // Update nomination
     const updated = await prisma.nomination.update({
       where: { id: nominationId },
@@ -545,6 +579,16 @@ export class NominationService {
       include: {
         matchedHcp: { select: { id: true, npi: true, firstName: true, lastName: true } },
       },
+    });
+
+    await auditNomination(matchedBy, 'nomination.matched', nominationId, oldValues, {
+      matchedHcpId: hcpId,
+      matchStatus,
+      matchType: matchType || 'exact',
+      matchConfidence: confidence,
+      rawNameEntered: nomination.rawNameEntered,
+      source: isManual ? 'manual' : 'auto',
+      aliasAdded: addAlias,
     });
 
     return updated;
@@ -599,6 +643,11 @@ export class NominationService {
       });
     }
 
+    const oldValues = {
+      matchedHcpId: nomination.matchedHcpId,
+      matchStatus: nomination.matchStatus,
+    };
+
     // Update nomination
     const updated = await prisma.nomination.update({
       where: { id: nominationId },
@@ -613,11 +662,24 @@ export class NominationService {
       },
     });
 
+    await auditNomination(matchedBy, 'nomination.matched', nominationId, oldValues, {
+      matchedHcpId: hcp.id,
+      matchStatus: 'NEW_HCP',
+      rawNameEntered: nomination.rawNameEntered,
+      source: 'manual',
+      createdNewHcp: { id: hcp.id, beId: hcp.beId, npi: hcp.npi, name: `${hcp.firstName} ${hcp.lastName}` },
+    });
+
     return updated;
   }
 
   async exclude(nominationId: string, matchedBy: string, reason?: string) {
-    return prisma.nomination.update({
+    const prior = await prisma.nomination.findUnique({
+      where: { id: nominationId },
+      select: { matchStatus: true, matchedHcpId: true, rawNameEntered: true },
+    });
+
+    const updated = await prisma.nomination.update({
       where: { id: nominationId },
       data: {
         matchStatus: 'EXCLUDED',
@@ -626,6 +688,21 @@ export class NominationService {
         excludeReason: reason || null,
       },
     });
+
+    await auditNomination(
+      matchedBy,
+      'nomination.excluded',
+      nominationId,
+      prior ? { matchStatus: prior.matchStatus, matchedHcpId: prior.matchedHcpId } : undefined,
+      {
+        matchStatus: 'EXCLUDED',
+        excludeReason: reason || null,
+        rawNameEntered: prior?.rawNameEntered,
+        source: 'manual',
+      }
+    );
+
+    return updated;
   }
 
   /**
@@ -634,6 +711,13 @@ export class NominationService {
    */
   async bulkExclude(nominationIds: string[], matchedBy: string, reason?: string) {
     if (nominationIds.length === 0) return { count: 0 };
+
+    // Snapshot prior statuses for the audit summary (lightweight projection)
+    const prior = await prisma.nomination.findMany({
+      where: { id: { in: nominationIds } },
+      select: { id: true, matchStatus: true, matchedHcpId: true },
+    });
+
     const result = await prisma.nomination.updateMany({
       where: { id: { in: nominationIds } },
       data: {
@@ -643,6 +727,24 @@ export class NominationService {
         excludeReason: reason || null,
       },
     });
+
+    // One summary audit row for the bulk action (per-row breadcrumbs are on
+    // each Nomination via matchedBy/matchedAt/excludeReason). entityId is the
+    // first id; the full set + prior states live in the values payload.
+    await auditNomination(
+      matchedBy,
+      'nomination.excluded',
+      nominationIds[0],
+      { count: prior.length, items: prior },
+      {
+        bulk: true,
+        excludedCount: result.count,
+        excludeReason: reason || null,
+        nominationIds,
+        source: 'manual',
+      }
+    );
+
     return { count: result.count };
   }
 
@@ -702,7 +804,7 @@ export class NominationService {
    * 2. The same alias was later added to HCP B (or removed from A)
    * 3. We need to reset those nominations so they can be re-matched correctly
    */
-  async clearStaleAliasMatches(campaignId: string) {
+  async clearStaleAliasMatches(campaignId: string, actor: string = 'system') {
     // Get all matched/review-needed nominations that were matched via alias
     const aliasMatchedNominations = await prisma.nomination.findMany({
       where: {
@@ -752,6 +854,19 @@ export class NominationService {
             matchedAt: null,
           },
         });
+        await auditNomination(
+          actor,
+          'nomination.matched',
+          nomination.id,
+          { matchedHcpId: matchedHcp.id, matchStatus: nomination.matchStatus, matchType: 'alias' },
+          {
+            matchedHcpId: null,
+            matchStatus: 'UNMATCHED',
+            rawNameEntered: nomination.rawNameEntered,
+            source: 'auto',
+            reason: !aliasStillExists ? 'stale_alias_removed' : 'better_alias_match_elsewhere',
+          }
+        );
         cleared++;
       }
     }
@@ -765,7 +880,7 @@ export class NominationService {
     // 1. A nomination was matched to HCP A via an alias
     // 2. The same alias was later added to HCP B
     // 3. We want to re-match to the correct HCP B
-    await this.clearStaleAliasMatches(campaignId);
+    await this.clearStaleAliasMatches(campaignId, matchedBy);
 
     // Reprocess UNMATCHED *and* REVIEW_NEEDED. Newly-added HCPs after the
     // initial auto-match pass are the most common reason a REVIEW_NEEDED row
