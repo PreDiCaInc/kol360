@@ -92,7 +92,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(dashboardRoutes, { prefix: '/api/v1' });
   await fastify.register(insightsReportRoutes, { prefix: '/api/v1/insights' });
   await fastify.register(optOutRoutes, { prefix: '/api/v1/admin/opt-outs' });
-  await fastify.register(kolAnalysisRoutes, { prefix: '/api/v1/admin/kol-analyses' });
+  await fastify.register(kolAnalysisRoutes, { prefix: '/api/v1/admin/kol-analysis' });
   await fastify.register(liteClientRoutes);
 
   // Public routes (no auth required)

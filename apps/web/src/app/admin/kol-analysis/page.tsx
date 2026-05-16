@@ -7,7 +7,7 @@ import {
   useKolAnalyses,
   useCreateKolAnalysis,
   type AnalysisCalcStatus,
-} from '@/hooks/use-kol-analyses';
+} from '@/hooks/use-kol-analysis';
 import { useClients } from '@/hooks/use-clients';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { Badge } from '@/components/ui/badge';
@@ -75,7 +75,7 @@ export default function KolAnalysesPage() {
       setNewClientId('');
       setNewDaId('');
       setNewName('');
-      router.push(`/admin/kol-analyses/${res.id}`);
+      router.push(`/admin/kol-analysis/${res.id}`);
     } catch (e) {
       setCreateError(
         e instanceof Error ? e.message : 'Failed to create analysis (may already exist)'
@@ -128,7 +128,7 @@ export default function KolAnalysesPage() {
                   <TableRow key={a.id}>
                     <TableCell className="font-medium">
                       <Link
-                        href={`/admin/kol-analyses/${a.id}`}
+                        href={`/admin/kol-analysis/${a.id}`}
                         className="text-blue-600 hover:underline"
                       >
                         {a.name}
@@ -140,7 +140,7 @@ export default function KolAnalysesPage() {
                     <TableCell className="text-right">{a._count.scores}</TableCell>
                     <TableCell><StatusBadge status={a.calcStatus} /></TableCell>
                     <TableCell>
-                      <Link href={`/admin/kol-analyses/${a.id}`}>
+                      <Link href={`/admin/kol-analysis/${a.id}`}>
                         <ChevronRight className="w-4 h-4 text-muted-foreground" />
                       </Link>
                     </TableCell>

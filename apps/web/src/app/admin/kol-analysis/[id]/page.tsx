@@ -11,7 +11,7 @@ import {
   useAvailableCampaigns,
   type AnalysisWeights,
   type AnalysisCalcStatus,
-} from '@/hooks/use-kol-analyses';
+} from '@/hooks/use-kol-analysis';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -98,7 +98,7 @@ export default function KolAnalysisDetailPage() {
   return (
     <div className="p-6">
       <Button variant="ghost" size="sm" asChild className="mb-4">
-        <Link href="/admin/kol-analyses">
+        <Link href="/admin/kol-analysis">
           <ArrowLeft className="w-4 h-4 mr-2" /> Back to analyses
         </Link>
       </Button>
@@ -163,6 +163,8 @@ export default function KolAnalysisDetailPage() {
                 <TableRow>
                   <TableHead>Campaign</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Responses</TableHead>
+                  <TableHead className="text-right">Nominations</TableHead>
                   <TableHead className="text-right">Included</TableHead>
                 </TableRow>
               </TableHeader>
@@ -172,6 +174,12 @@ export default function KolAnalysisDetailPage() {
                     <TableCell className="font-medium">{c.campaign.name}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{c.campaign.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {c.responseCount}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {c.nominationCount}
                     </TableCell>
                     <TableCell className="text-right">
                       <Switch
@@ -281,7 +289,8 @@ export default function KolAnalysisDetailPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{c.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {c.clientName} · {c.status}
+                      {c.clientName} · {c.status} · {c.responseCount} responses ·{' '}
+                      {c.nominationCount} nominations
                     </div>
                   </div>
                   {c.crossClient && (

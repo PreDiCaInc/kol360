@@ -308,7 +308,7 @@ export class ApiClient {
   async listKolAnalyses() {
     return this.request<{ items: Array<{ id: string; name: string; calcStatus: string; clientId: string; diseaseAreaId: string; _count: { campaigns: number; scores: number } }> }>(
       'GET',
-      `/api/v1/admin/kol-analyses`
+      `/api/v1/admin/kol-analysis`
     );
   }
 
@@ -320,13 +320,13 @@ export class ApiClient {
       lastCalculatedAt: string | null;
       campaigns: Array<{ campaignId: string; included: boolean; campaign: { id: string; name: string; status: string } }>;
       _count: { scores: number };
-    }>('GET', `/api/v1/admin/kol-analyses/${id}`);
+    }>('GET', `/api/v1/admin/kol-analysis/${id}`);
   }
 
   async updateKolAnalysisCampaigns(id: string, campaigns: Array<{ campaignId: string; included: boolean }>) {
     return this.request<{ ok: boolean }>(
       'PUT',
-      `/api/v1/admin/kol-analyses/${id}/campaigns`,
+      `/api/v1/admin/kol-analysis/${id}/campaigns`,
       { campaigns }
     );
   }
@@ -334,14 +334,14 @@ export class ApiClient {
   async recalculateKolAnalysis(id: string) {
     return this.request<{ processed: number }>(
       'POST',
-      `/api/v1/admin/kol-analyses/${id}/recalculate`
+      `/api/v1/admin/kol-analysis/${id}/recalculate`
     );
   }
 
   async updateKolAnalysis(id: string, body: { name?: string; weights?: Record<string, number> }) {
     return this.request<{ id: string; name: string; calcStatus: string }>(
       'PUT',
-      `/api/v1/admin/kol-analyses/${id}`,
+      `/api/v1/admin/kol-analysis/${id}`,
       body
     );
   }
@@ -349,7 +349,7 @@ export class ApiClient {
   async createKolAnalysis(body: { clientId: string; diseaseAreaId: string; name: string }) {
     return this.request<{ id: string; clientId: string; diseaseAreaId: string }>(
       'POST',
-      `/api/v1/admin/kol-analyses`,
+      `/api/v1/admin/kol-analysis`,
       body
     );
   }
@@ -357,7 +357,7 @@ export class ApiClient {
   async getAvailableCampaigns(id: string) {
     return this.request<{ items: Array<{ id: string; name: string; clientId: string; clientName: string; crossClient: boolean }> }>(
       'GET',
-      `/api/v1/admin/kol-analyses/${id}/available-campaigns`
+      `/api/v1/admin/kol-analysis/${id}/available-campaigns`
     );
   }
 

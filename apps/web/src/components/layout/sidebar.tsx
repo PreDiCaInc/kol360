@@ -90,7 +90,7 @@ const platformAdminNavigation: NavItem[] = [
   },
   {
     title: 'KOL Analyses',
-    href: '/admin/kol-analyses',
+    href: '/admin/kol-analysis',
     icon: BarChart3,
     roles: ['PLATFORM_ADMIN'],
   },
