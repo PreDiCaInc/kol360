@@ -58,53 +58,105 @@ const INFLUENCER_THRESHOLDS = {
   // Regional Influencers: Everyone else (no thresholds needed)
 } as const;
 
+// Score row from HcpAnalysisScore, keyed by hcpId.
+type AnalysisScoreRow = Prisma.HcpAnalysisScoreGetPayload<object>;
+type ObjectiveRow = Prisma.HcpDiseaseAreaScoreGetPayload<object>;
+
 export class InsightsReportService {
   /**
-   * Get summary stats for a disease area
+   * Resolve the curated KolAnalysis for a (client, disease area).
+   * Returns null when not configured — clientId is REQUIRED (platform-admin
+   * "all clients" must select a client; a cross-client view is just a
+   * dedicated aggregate-client analysis). Callers render "not configured".
+   */
+  private async resolveAnalysis(
+    clientId: string | undefined,
+    diseaseAreaId: string
+  ): Promise<{ id: string } | null> {
+    if (!clientId) return null;
+    return prisma.kolAnalysis.findUnique({
+      where: { clientId_diseaseAreaId: { clientId, diseaseAreaId } },
+      select: { id: true },
+    });
+  }
+
+  /** Analysis (survey/composite/per-type) scores keyed by hcpId. */
+  private async loadAnalysisScores(
+    analysisId: string
+  ): Promise<Map<string, AnalysisScoreRow>> {
+    const rows = await prisma.hcpAnalysisScore.findMany({ where: { analysisId } });
+    return new Map(rows.map((r) => [r.hcpId, r]));
+  }
+
+  /** Included campaign IDs for an analysis (the curated, pooled set). */
+  private async loadIncludedCampaignIds(analysisId: string): Promise<string[]> {
+    const links = await prisma.kolAnalysisCampaign.findMany({
+      where: { analysisId, included: true },
+      select: { campaignId: true },
+    });
+    return links.map((l) => l.campaignId);
+  }
+
+  /**
+   * Live objective scores (Publications…MediaPodcasts) for HCPs in a DA.
+   * Objective data is NOT stored on the analysis — read live so re-uploads
+   * flow through (locked decision).
+   */
+  private async loadObjectiveScores(
+    hcpIds: string[],
+    diseaseAreaId: string
+  ): Promise<Map<string, ObjectiveRow>> {
+    if (hcpIds.length === 0) return new Map();
+    const rows = await prisma.hcpDiseaseAreaScore.findMany({
+      where: { hcpId: { in: hcpIds }, diseaseAreaId, isCurrent: true },
+    });
+    return new Map(rows.map((r) => [r.hcpId, r]));
+  }
+
+  /**
+   * Get summary stats for a disease area (analysis-backed).
    */
   async getSummary(diseaseAreaId: string, clientId?: string): Promise<InsightsSummary> {
     try {
-      // Campaign filter — scoped to client if provided
-      const campaignFilter: Record<string, unknown> = { diseaseAreaId };
-      if (clientId) campaignFilter.clientId = clientId;
+      const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+      if (!analysis) {
+        return {
+          totalKols: 0,
+          totalRespondents: 0,
+          totalNominations: 0,
+          totalCampaigns: 0,
+          averageCompositeScore: null,
+          notConfigured: true,
+        };
+      }
 
-      const [totalKols, totalCampaigns, totalNominations, avgScore] = await Promise.all([
-        // Total KOLs with scores in this disease area (disease-area wide, not client-scoped)
-        prisma.hcpDiseaseAreaScore.count({
-          where: { diseaseAreaId, isCurrent: true },
-        }),
-        // Total campaigns in this disease area (client-scoped)
-        prisma.campaign.count({
-          where: campaignFilter,
-        }),
-        // Total nominations in campaigns for this disease area (all statuses, client-scoped)
-        prisma.nomination.count({
-          where: {
-            response: { campaign: campaignFilter },
-          },
-        }),
-        // Average composite score (disease-area wide)
-        prisma.hcpDiseaseAreaScore.aggregate({
-          where: { diseaseAreaId, isCurrent: true },
+      // Campaign filter scoped to the selected client.
+      const campaignFilter: Record<string, unknown> = { diseaseAreaId, clientId };
+
+      const [scoreAgg, totalCampaigns, totalNominations] = await Promise.all([
+        // KOL count + avg composite from the analysis's scores.
+        prisma.hcpAnalysisScore.aggregate({
+          where: { analysisId: analysis.id },
+          _count: { _all: true },
           _avg: { compositeScore: true },
+        }),
+        prisma.campaign.count({ where: campaignFilter }),
+        prisma.nomination.count({
+          where: { response: { campaign: campaignFilter } },
         }),
       ]);
 
-      // Get total respondents (unique completed survey responses, client-scoped)
       const totalRespondents = await prisma.surveyResponse.count({
-        where: {
-          status: 'COMPLETED',
-          campaign: campaignFilter,
-        },
+        where: { status: 'COMPLETED', campaign: campaignFilter },
       });
 
       return {
-        totalKols,
+        totalKols: scoreAgg._count._all,
         totalRespondents,
         totalNominations,
         totalCampaigns,
-        averageCompositeScore: avgScore._avg.compositeScore
-          ? Number(avgScore._avg.compositeScore)
+        averageCompositeScore: scoreAgg._avg.compositeScore
+          ? Number(scoreAgg._avg.compositeScore)
           : null,
       };
     } catch (error) {
@@ -118,211 +170,165 @@ export class InsightsReportService {
    */
   async getKolExplorer(
     diseaseAreaId: string,
-    filters: InsightsFilter
+    filters: InsightsFilter,
+    clientId?: string
   ): Promise<KolExplorerResponse> {
     try {
-    const { page, limit, sortBy, sortOrder, search, specialty, state, specialties, states, influencerType, influencerTypes, ...scoreFilters } = filters;
+      const {
+        page, limit, sortBy, sortOrder, search, specialty, state,
+        specialties, states, influencerType, influencerTypes, ...scoreFilters
+      } = filters;
 
-    // Build where clause
-    const where: Prisma.HcpDiseaseAreaScoreWhereInput = {
-      diseaseAreaId,
-      isCurrent: true,
-    };
-
-    // Add score range filters
-    if (scoreFilters.scorePublicationsMin !== undefined) {
-      where.scorePublications = { ...where.scorePublications as object, gte: scoreFilters.scorePublicationsMin };
-    }
-    if (scoreFilters.scorePublicationsMax !== undefined) {
-      where.scorePublications = { ...where.scorePublications as object, lte: scoreFilters.scorePublicationsMax };
-    }
-    if (scoreFilters.scoreTradePubsMin !== undefined) {
-      where.scoreTradePubs = { ...where.scoreTradePubs as object, gte: scoreFilters.scoreTradePubsMin };
-    }
-    if (scoreFilters.scoreTradePubsMax !== undefined) {
-      where.scoreTradePubs = { ...where.scoreTradePubs as object, lte: scoreFilters.scoreTradePubsMax };
-    }
-    if (scoreFilters.scoreOrgLeadershipMin !== undefined) {
-      where.scoreOrgLeadership = { ...where.scoreOrgLeadership as object, gte: scoreFilters.scoreOrgLeadershipMin };
-    }
-    if (scoreFilters.scoreOrgLeadershipMax !== undefined) {
-      where.scoreOrgLeadership = { ...where.scoreOrgLeadership as object, lte: scoreFilters.scoreOrgLeadershipMax };
-    }
-    if (scoreFilters.scoreOrgAwardsMin !== undefined) {
-      where.scoreOrgAwards = { ...where.scoreOrgAwards as object, gte: scoreFilters.scoreOrgAwardsMin };
-    }
-    if (scoreFilters.scoreOrgAwardsMax !== undefined) {
-      where.scoreOrgAwards = { ...where.scoreOrgAwards as object, lte: scoreFilters.scoreOrgAwardsMax };
-    }
-    if (scoreFilters.scoreClinicalTrialsMin !== undefined) {
-      where.scoreClinicalTrials = { ...where.scoreClinicalTrials as object, gte: scoreFilters.scoreClinicalTrialsMin };
-    }
-    if (scoreFilters.scoreClinicalTrialsMax !== undefined) {
-      where.scoreClinicalTrials = { ...where.scoreClinicalTrials as object, lte: scoreFilters.scoreClinicalTrialsMax };
-    }
-    if (scoreFilters.scoreConferenceMin !== undefined) {
-      where.scoreConference = { ...where.scoreConference as object, gte: scoreFilters.scoreConferenceMin };
-    }
-    if (scoreFilters.scoreConferenceMax !== undefined) {
-      where.scoreConference = { ...where.scoreConference as object, lte: scoreFilters.scoreConferenceMax };
-    }
-    if (scoreFilters.scoreSocialMediaMin !== undefined) {
-      where.scoreSocialMedia = { ...where.scoreSocialMedia as object, gte: scoreFilters.scoreSocialMediaMin };
-    }
-    if (scoreFilters.scoreSocialMediaMax !== undefined) {
-      where.scoreSocialMedia = { ...where.scoreSocialMedia as object, lte: scoreFilters.scoreSocialMediaMax };
-    }
-    if (scoreFilters.scoreMediaPodcastsMin !== undefined) {
-      where.scoreMediaPodcasts = { ...where.scoreMediaPodcasts as object, gte: scoreFilters.scoreMediaPodcastsMin };
-    }
-    if (scoreFilters.scoreMediaPodcastsMax !== undefined) {
-      where.scoreMediaPodcasts = { ...where.scoreMediaPodcasts as object, lte: scoreFilters.scoreMediaPodcastsMax };
-    }
-    if (scoreFilters.scoreSurveyMin !== undefined) {
-      where.scoreSurvey = { ...where.scoreSurvey as object, gte: scoreFilters.scoreSurveyMin };
-    }
-    if (scoreFilters.scoreSurveyMax !== undefined) {
-      where.scoreSurvey = { ...where.scoreSurvey as object, lte: scoreFilters.scoreSurveyMax };
-    }
-    if (scoreFilters.compositeScoreMin !== undefined) {
-      where.compositeScore = { ...where.compositeScore as object, gte: scoreFilters.compositeScoreMin };
-    }
-    if (scoreFilters.compositeScoreMax !== undefined) {
-      where.compositeScore = { ...where.compositeScore as object, lte: scoreFilters.compositeScoreMax };
-    }
-
-    // Add HCP filters
-    const hcpWhere: Prisma.HcpWhereInput = {};
-    if (search) {
-      hcpWhere.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { npi: { contains: search } },
-      ];
-    }
-    // Support both single and multi-select for specialty
-    if (specialties && specialties.length > 0) {
-      hcpWhere.specialty = { in: specialties };
-    } else if (specialty) {
-      hcpWhere.specialty = specialty;
-    }
-    // Support both single and multi-select for state
-    if (states && states.length > 0) {
-      hcpWhere.state = { in: states };
-    } else if (state) {
-      hcpWhere.state = state;
-    }
-    if (Object.keys(hcpWhere).length > 0) {
-      where.hcp = hcpWhere;
-    }
-
-    // Filter by influencer type (computed field - filter after fetch)
-    const influencerTypeFilter = influencerTypes && influencerTypes.length > 0
-      ? influencerTypes
-      : influencerType
-        ? [influencerType]
-        : null;
-
-    // Determine sort field
-    // Valid score fields on HcpDiseaseAreaScore
-    const VALID_SCORE_FIELDS = [
-      'compositeScore',
-      'scorePublications',
-      'scoreTradePubs',
-      'scoreOrgLeadership',
-      'scoreOrgAwards',
-      'scoreClinicalTrials',
-      'scoreConference',
-      'scoreSocialMedia',
-      'scoreMediaPodcasts',
-      'scoreSurvey',
-    ];
-
-    let orderBy: Prisma.HcpDiseaseAreaScoreOrderByWithRelationInput;
-
-    if (sortBy === 'name') {
-      // Sort by HCP lastName then firstName
-      orderBy = {
-        hcp: {
-          lastName: sortOrder,
-        },
+      const emptyPage: KolExplorerResponse = {
+        items: [], total: 0, page, limit, totalPages: 0,
       };
-    } else if (sortBy === 'specialty') {
-      // Sort by HCP specialty
-      orderBy = {
-        hcp: {
-          specialty: sortOrder,
-        },
-      };
-    } else if (sortBy && VALID_SCORE_FIELDS.includes(sortBy)) {
-      // Sort by score field
-      orderBy = { [sortBy]: sortOrder };
-    } else {
-      // Default sort by composite score
-      orderBy = { compositeScore: sortOrder };
-    }
 
-    // Execute queries
-    const [total, scores] = await Promise.all([
-      prisma.hcpDiseaseAreaScore.count({ where }),
-      prisma.hcpDiseaseAreaScore.findMany({
-        where,
-        include: {
-          hcp: {
-            include: {
-              specialties: {
-                where: { isPrimary: true },
-                include: { specialty: true },
-                take: 1,
-              },
+      const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+      if (!analysis) return emptyPage;
+
+      // Analysis defines the HCP set + survey/composite; objective scores
+      // are joined live from HcpDiseaseAreaScore. With two tables we can't
+      // do mixed where/orderBy in one query — the analysis HCP set is
+      // bounded (hundreds), so merge + filter + sort + paginate in app.
+      const scoreMap = await this.loadAnalysisScores(analysis.id);
+      const hcpIds = [...scoreMap.keys()];
+      if (hcpIds.length === 0) return emptyPage;
+
+      const [objMap, hcps] = await Promise.all([
+        this.loadObjectiveScores(hcpIds, diseaseAreaId),
+        prisma.hcp.findMany({
+          where: { id: { in: hcpIds } },
+          include: {
+            specialties: {
+              where: { isPrimary: true },
+              include: { specialty: true },
+              take: 1,
             },
           },
-        },
-        orderBy,
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-    ]);
+        }),
+      ]);
 
-    // Transform to response format
-    const items: KolExplorerItem[] = scores.map((score) => {
-      const primarySpecialty = score.hcp.specialties[0]?.specialty?.name || score.hcp.specialty;
-      return {
-        id: score.hcp.id,
-        name: `${score.hcp.firstName} ${score.hcp.lastName}`,
-        firstName: score.hcp.firstName,
-        lastName: score.hcp.lastName,
-        specialty: primarySpecialty,
-        degree: primarySpecialty?.includes('Ophthalmologist') ? 'MD' : 'OD',
-        city: score.hcp.city,
-        state: score.hcp.state,
-        influencerType: this.determineInfluencerType(score),
-        scorePublications: score.scorePublications ? Number(score.scorePublications) : null,
-        scoreTradePubs: score.scoreTradePubs ? Number(score.scoreTradePubs) : null,
-        scoreOrgLeadership: score.scoreOrgLeadership ? Number(score.scoreOrgLeadership) : null,
-        scoreOrgAwards: score.scoreOrgAwards ? Number(score.scoreOrgAwards) : null,
-        scoreClinicalTrials: score.scoreClinicalTrials ? Number(score.scoreClinicalTrials) : null,
-        scoreConference: score.scoreConference ? Number(score.scoreConference) : null,
-        scoreSocialMedia: score.scoreSocialMedia ? Number(score.scoreSocialMedia) : null,
-        scoreMediaPodcasts: score.scoreMediaPodcasts ? Number(score.scoreMediaPodcasts) : null,
-        scoreSurvey: score.scoreSurvey ? Number(score.scoreSurvey) : null,
-        compositeScore: score.compositeScore ? Number(score.compositeScore) : null,
+      const num = (v: unknown): number | null => (v == null ? null : Number(v));
+      const inRange = (v: number | null, min?: number, max?: number) => {
+        if (min !== undefined && (v == null || v < min)) return false;
+        if (max !== undefined && (v == null || v > max)) return false;
+        return true;
       };
-    });
+      const searchLc = search?.toLowerCase();
+      const specSet = specialties && specialties.length > 0 ? new Set(specialties) : null;
+      const stateSet = states && states.length > 0 ? new Set(states) : null;
+      const influencerTypeFilter =
+        influencerTypes && influencerTypes.length > 0
+          ? influencerTypes
+          : influencerType
+            ? [influencerType]
+            : null;
 
-    // Apply influencer type filter (computed field, filtered post-fetch)
-    // Note: This filter is applied after pagination, so results may be less than limit
-    const filteredItems = influencerTypeFilter
-      ? items.filter((item) => item.influencerType && influencerTypeFilter.includes(item.influencerType))
-      : items;
+      type Row = KolExplorerItem & { _sortName: string; _sortSpecialty: string };
+      const rows: Row[] = [];
 
-    return {
-      items: filteredItems,
-      total: influencerTypeFilter ? filteredItems.length : total,
-      page,
-      limit,
-      totalPages: influencerTypeFilter ? 1 : Math.ceil(total / limit),
-    };
+      for (const hcp of hcps) {
+        const a = scoreMap.get(hcp.id);
+        if (!a) continue;
+        const o = objMap.get(hcp.id);
+
+        // HCP attribute filters
+        if (searchLc) {
+          const hit =
+            hcp.firstName.toLowerCase().includes(searchLc) ||
+            hcp.lastName.toLowerCase().includes(searchLc) ||
+            (hcp.npi ?? '').includes(search!);
+          if (!hit) continue;
+        }
+        if (specSet && !(hcp.specialty && specSet.has(hcp.specialty))) continue;
+        else if (!specSet && specialty && hcp.specialty !== specialty) continue;
+        if (stateSet && !(hcp.state && stateSet.has(hcp.state))) continue;
+        else if (!stateSet && state && hcp.state !== state) continue;
+
+        const scorePublications = num(o?.scorePublications);
+        const scoreTradePubs = num(o?.scoreTradePubs);
+        const scoreOrgLeadership = num(o?.scoreOrgLeadership);
+        const scoreOrgAwards = num(o?.scoreOrgAwards);
+        const scoreClinicalTrials = num(o?.scoreClinicalTrials);
+        const scoreConference = num(o?.scoreConference);
+        const scoreSocialMedia = num(o?.scoreSocialMedia);
+        const scoreMediaPodcasts = num(o?.scoreMediaPodcasts);
+        const scoreSurvey = num(a.scoreSurvey);
+        const compositeScore = num(a.compositeScore);
+
+        // Score-range filters (objective live, survey/composite from analysis)
+        if (!inRange(scorePublications, scoreFilters.scorePublicationsMin, scoreFilters.scorePublicationsMax)) continue;
+        if (!inRange(scoreTradePubs, scoreFilters.scoreTradePubsMin, scoreFilters.scoreTradePubsMax)) continue;
+        if (!inRange(scoreOrgLeadership, scoreFilters.scoreOrgLeadershipMin, scoreFilters.scoreOrgLeadershipMax)) continue;
+        if (!inRange(scoreOrgAwards, scoreFilters.scoreOrgAwardsMin, scoreFilters.scoreOrgAwardsMax)) continue;
+        if (!inRange(scoreClinicalTrials, scoreFilters.scoreClinicalTrialsMin, scoreFilters.scoreClinicalTrialsMax)) continue;
+        if (!inRange(scoreConference, scoreFilters.scoreConferenceMin, scoreFilters.scoreConferenceMax)) continue;
+        if (!inRange(scoreSocialMedia, scoreFilters.scoreSocialMediaMin, scoreFilters.scoreSocialMediaMax)) continue;
+        if (!inRange(scoreMediaPodcasts, scoreFilters.scoreMediaPodcastsMin, scoreFilters.scoreMediaPodcastsMax)) continue;
+        if (!inRange(scoreSurvey, scoreFilters.scoreSurveyMin, scoreFilters.scoreSurveyMax)) continue;
+        if (!inRange(compositeScore, scoreFilters.compositeScoreMin, scoreFilters.compositeScoreMax)) continue;
+
+        const primarySpecialty =
+          hcp.specialties[0]?.specialty?.name || hcp.specialty;
+        const influencerTypeVal = this.determineInfluencerType({
+          compositeScore: a.compositeScore,
+          scoreSurvey: a.scoreSurvey,
+        });
+        if (
+          influencerTypeFilter &&
+          !influencerTypeFilter.includes(influencerTypeVal)
+        ) {
+          continue;
+        }
+
+        rows.push({
+          id: hcp.id,
+          name: `${hcp.firstName} ${hcp.lastName}`,
+          firstName: hcp.firstName,
+          lastName: hcp.lastName,
+          specialty: primarySpecialty,
+          degree: primarySpecialty?.includes('Ophthalmologist') ? 'MD' : 'OD',
+          city: hcp.city,
+          state: hcp.state,
+          influencerType: influencerTypeVal,
+          scorePublications,
+          scoreTradePubs,
+          scoreOrgLeadership,
+          scoreOrgAwards,
+          scoreClinicalTrials,
+          scoreConference,
+          scoreSocialMedia,
+          scoreMediaPodcasts,
+          scoreSurvey,
+          compositeScore,
+          _sortName: `${hcp.lastName} ${hcp.firstName}`.toLowerCase(),
+          _sortSpecialty: (primarySpecialty ?? '').toLowerCase(),
+        });
+      }
+
+      const VALID_SCORE_FIELDS = new Set([
+        'compositeScore', 'scorePublications', 'scoreTradePubs',
+        'scoreOrgLeadership', 'scoreOrgAwards', 'scoreClinicalTrials',
+        'scoreConference', 'scoreSocialMedia', 'scoreMediaPodcasts',
+        'scoreSurvey',
+      ]);
+      const dir = sortOrder === 'asc' ? 1 : -1;
+      rows.sort((x, y) => {
+        if (sortBy === 'name') return x._sortName < y._sortName ? -dir : x._sortName > y._sortName ? dir : 0;
+        if (sortBy === 'specialty') return x._sortSpecialty < y._sortSpecialty ? -dir : x._sortSpecialty > y._sortSpecialty ? dir : 0;
+        const field = sortBy && VALID_SCORE_FIELDS.has(sortBy) ? sortBy : 'compositeScore';
+        const xv = (x[field as keyof KolExplorerItem] as number | null) ?? -Infinity;
+        const yv = (y[field as keyof KolExplorerItem] as number | null) ?? -Infinity;
+        return xv < yv ? -dir : xv > yv ? dir : 0;
+      });
+
+      const total = rows.length;
+      const start = (page - 1) * limit;
+      const items: KolExplorerItem[] = rows
+        .slice(start, start + limit)
+        .map(({ _sortName, _sortSpecialty, ...item }) => item);
+
+      return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
     } catch (error) {
       logger.error('Error fetching KOL explorer data', { diseaseAreaId, filters, error });
       throw error;
@@ -335,55 +341,39 @@ export class InsightsReportService {
   async getLeaderRankings(
     diseaseAreaId: string,
     query: LeaderRankingQuery,
-    excludeInternalEmails = false,
+    _excludeInternalEmails = false,
     clientId?: string
   ): Promise<LeaderRankingsResponse> {
     try {
     const { nominationType, page, limit, specialty, state, specialties, states } = query;
 
-    // Build campaign filter — scoped to client if provided
-    const campaignFilter: Record<string, unknown> = { diseaseAreaId };
-    if (clientId) campaignFilter.clientId = clientId;
+    const empty: LeaderRankingsResponse = {
+      nominationType, items: [], total: 0, page, limit, totalPages: 0,
+    };
 
-    // Get nomination counts grouped by matched HCP
-    const nominations = await prisma.nomination.groupBy({
-      by: ['matchedHcpId'],
-      where: {
-        matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
-        matchedHcpId: { not: null },
-        question: {
-          nominationType,
-          campaign: campaignFilter,
-        },
-        ...(excludeInternalEmails && {
-          response: {
-            respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
-          },
-        }),
-      },
-      _count: { id: true },
-      orderBy: { _count: { id: 'desc' } },
-    });
+    const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+    if (!analysis) return empty;
 
-    // Get HCP details for the ranked list
-    const hcpIds = nominations.map((n) => n.matchedHcpId!);
+    // Rank by the analysis's pooled per-type count (respects the curated
+    // campaign set + internal-email exclusion already applied at recalc).
+    const countField = NOMINATION_TYPE_FIELDS[nominationType].count as
+      keyof AnalysisScoreRow;
+    const scoreMap = await this.loadAnalysisScores(analysis.id);
 
-    // Build HCP where clause with array filter support
-    const hcpWhere: Record<string, unknown> = { id: { in: hcpIds } };
+    const ranked = [...scoreMap.values()]
+      .map((s) => ({ hcpId: s.hcpId, count: Number(s[countField] ?? 0), score: s }))
+      .filter((r) => r.count > 0)
+      .sort((a, b) => b.count - a.count);
 
-    // Support both single and multi-select for specialty
-    if (specialties && specialties.length > 0) {
-      hcpWhere.specialty = { in: specialties };
-    } else if (specialty) {
-      hcpWhere.specialty = specialty;
-    }
+    if (ranked.length === 0) return empty;
 
-    // Support both single and multi-select for state
-    if (states && states.length > 0) {
-      hcpWhere.state = { in: states };
-    } else if (state) {
-      hcpWhere.state = state;
-    }
+    const hcpWhere: Record<string, unknown> = {
+      id: { in: ranked.map((r) => r.hcpId) },
+    };
+    if (specialties && specialties.length > 0) hcpWhere.specialty = { in: specialties };
+    else if (specialty) hcpWhere.specialty = specialty;
+    if (states && states.length > 0) hcpWhere.state = { in: states };
+    else if (state) hcpWhere.state = state;
 
     const hcps = await prisma.hcp.findMany({
       where: hcpWhere,
@@ -393,27 +383,17 @@ export class InsightsReportService {
           include: { specialty: true },
           take: 1,
         },
-        diseaseAreaScores: {
-          where: { diseaseAreaId, isCurrent: true },
-          take: 1,
-        },
       },
     });
-
-    // Create a map for quick lookup
     const hcpMap = new Map(hcps.map((h) => [h.id, h]));
 
-    // Build ranked list with filtering
     const rankedItems: LeaderRankingItem[] = [];
     let rank = 0;
-    for (const nom of nominations) {
-      const hcp = hcpMap.get(nom.matchedHcpId!);
-      if (!hcp) continue; // Skip if HCP doesn't match filters
-
+    for (const r of ranked) {
+      const hcp = hcpMap.get(r.hcpId);
+      if (!hcp) continue; // filtered out by specialty/state
       rank++;
       const primarySpecialty = hcp.specialties[0]?.specialty?.name || hcp.specialty;
-      const score = hcp.diseaseAreaScores[0];
-
       rankedItems.push({
         rank,
         hcpId: hcp.id,
@@ -422,18 +402,18 @@ export class InsightsReportService {
         specialty: primarySpecialty,
         city: hcp.city,
         state: hcp.state,
-        count: nom._count.id,
-        influencerType: score ? this.determineInfluencerType(score) : null,
+        count: r.count,
+        influencerType: this.determineInfluencerType({
+          compositeScore: r.score.compositeScore,
+          scoreSurvey: r.score.scoreSurvey,
+        }),
       });
     }
 
-    // Apply pagination
     const total = rankedItems.length;
-    const paginatedItems = rankedItems.slice((page - 1) * limit, page * limit);
-
     return {
       nominationType,
-      items: paginatedItems,
+      items: rankedItems.slice((page - 1) * limit, page * limit),
       total,
       page,
       limit,
@@ -450,11 +430,11 @@ export class InsightsReportService {
    */
   async getKolProfile(diseaseAreaId: string, hcpId: string, excludeInternalEmails = false, clientId?: string): Promise<KolProfileWithNominators | null> {
     try {
-    // Build campaign filter — scoped to client if provided
-    const campaignFilter: Record<string, unknown> = { diseaseAreaId };
-    if (clientId) campaignFilter.clientId = clientId;
+    const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+    if (!analysis) return null;
 
-    // Get HCP with disease area score
+    // Get HCP + live objective scores (objective may be absent for a
+    // survey-only KOL — handled as null below).
     const hcp = await prisma.hcp.findUnique({
       where: { id: hcpId },
       include: {
@@ -469,19 +449,26 @@ export class InsightsReportService {
         },
       },
     });
-
     if (!hcp) return null;
 
-    const score = hcp.diseaseAreaScores[0];
-    if (!score) return null;
+    // Survey/composite/per-type come from the analysis. If the HCP isn't in
+    // the analysis, there's no profile to show.
+    const a = await prisma.hcpAnalysisScore.findUnique({
+      where: { analysisId_hcpId: { analysisId: analysis.id, hcpId } },
+    });
+    if (!a) return null;
 
-    // Get nominations for this KOL with nominator details
-    const nominations = await prisma.nomination.findMany({
+    const objective = hcp.diseaseAreaScores[0] ?? null;
+    const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
+
+    // Nominators list — scoped to the analysis's included campaigns so it
+    // matches the pooled scores.
+    const nominations = includedCampaignIds.length === 0 ? [] : await prisma.nomination.findMany({
       where: {
         matchedHcpId: hcpId,
         matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
         response: {
-          campaign: campaignFilter,
+          campaignId: { in: includedCampaignIds },
           ...(excludeInternalEmails && {
             respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
           }),
@@ -511,34 +498,17 @@ export class InsightsReportService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Get campaign scores for nomination breakdown by type (scoped to client if provided)
-    const campaignScores = await prisma.hcpCampaignScore.findMany({
-      where: {
-        hcpId,
-        campaign: { diseaseAreaId, ...(clientId && { clientId }) },
-      },
-    });
-
-    // Aggregate nomination counts from campaign scores
+    // Nomination breakdown by type — from the analysis's pooled per-type
+    // counts (single source of truth, post respondent-dedup).
     const nominationsByType = {
-      discussionLeaders: 0,
-      referralLeaders: 0,
-      adviceLeaders: 0,
-      nationalLeader: 0,
-      risingStar: 0,
-      socialLeader: 0,
-      biasedLeader: 0,
+      discussionLeaders: a.countDiscussionLeaders || 0,
+      referralLeaders: a.countReferralLeaders || 0,
+      adviceLeaders: a.countAdviceLeaders || 0,
+      nationalLeader: a.countNationalLeader || 0,
+      risingStar: a.countRisingStar || 0,
+      socialLeader: a.countSocialLeader || 0,
+      biasedLeader: a.countBiasedLeader || 0,
     };
-
-    for (const cs of campaignScores) {
-      nominationsByType.discussionLeaders += cs.countDiscussionLeaders || 0;
-      nominationsByType.referralLeaders += cs.countReferralLeaders || 0;
-      nominationsByType.adviceLeaders += cs.countAdviceLeaders || 0;
-      nominationsByType.nationalLeader += cs.countNationalLeader || 0;
-      nominationsByType.risingStar += cs.countRisingStar || 0;
-      nominationsByType.socialLeader += cs.countSocialLeader || 0;
-      nominationsByType.biasedLeader += cs.countBiasedLeader || 0;
-    }
 
     const primarySpecialty = hcp.specialties[0]?.specialty?.name || hcp.specialty;
 
@@ -594,24 +564,29 @@ export class InsightsReportService {
       specialty: primarySpecialty,
       city: hcp.city,
       state: hcp.state,
-      influencerType: this.determineInfluencerType(score),
+      influencerType: this.determineInfluencerType({
+        compositeScore: a.compositeScore,
+        scoreSurvey: a.scoreSurvey,
+      }),
       scores: {
-        scorePublications: score.scorePublications ? Number(score.scorePublications) : null,
-        scoreTradePubs: score.scoreTradePubs ? Number(score.scoreTradePubs) : null,
-        scoreOrgLeadership: score.scoreOrgLeadership ? Number(score.scoreOrgLeadership) : null,
-        scoreOrgAwards: score.scoreOrgAwards ? Number(score.scoreOrgAwards) : null,
-        scoreClinicalTrials: score.scoreClinicalTrials ? Number(score.scoreClinicalTrials) : null,
-        scoreConference: score.scoreConference ? Number(score.scoreConference) : null,
-        scoreSocialMedia: score.scoreSocialMedia ? Number(score.scoreSocialMedia) : null,
-        scoreMediaPodcasts: score.scoreMediaPodcasts ? Number(score.scoreMediaPodcasts) : null,
-        scoreSurvey: score.scoreSurvey ? Number(score.scoreSurvey) : null,
-        compositeScore: score.compositeScore ? Number(score.compositeScore) : null,
+        // Objective: live from HcpDiseaseAreaScore (null if not enriched).
+        scorePublications: objective?.scorePublications ? Number(objective.scorePublications) : null,
+        scoreTradePubs: objective?.scoreTradePubs ? Number(objective.scoreTradePubs) : null,
+        scoreOrgLeadership: objective?.scoreOrgLeadership ? Number(objective.scoreOrgLeadership) : null,
+        scoreOrgAwards: objective?.scoreOrgAwards ? Number(objective.scoreOrgAwards) : null,
+        scoreClinicalTrials: objective?.scoreClinicalTrials ? Number(objective.scoreClinicalTrials) : null,
+        scoreConference: objective?.scoreConference ? Number(objective.scoreConference) : null,
+        scoreSocialMedia: objective?.scoreSocialMedia ? Number(objective.scoreSocialMedia) : null,
+        scoreMediaPodcasts: objective?.scoreMediaPodcasts ? Number(objective.scoreMediaPodcasts) : null,
+        // Survey/composite: from the analysis.
+        scoreSurvey: a.scoreSurvey ? Number(a.scoreSurvey) : null,
+        compositeScore: a.compositeScore ? Number(a.compositeScore) : null,
       },
       nominations: {
         ...nominationsByType,
-        total: nominations.length,
+        total: a.nominationCount || 0,
       },
-      regionalCount: score.totalNominationCount || 0,
+      regionalCount: a.nominationCount || 0,
       nominators,
       nominatorDemographics,
     };
@@ -632,88 +607,66 @@ export class InsightsReportService {
     try {
     const { page, limit, search, specialty, state, sortBy, sortOrder } = filters;
 
-    // Build HCP filter
-    const hcpWhere: Prisma.HcpWhereInput = {
-      isNominated: true,
+    const empty: SociometricSummaryResponse = {
+      items: [], total: 0, page, limit, totalPages: 0,
     };
-    if (search) {
-      hcpWhere.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-    if (specialty) {
-      hcpWhere.specialty = specialty;
-    }
-    if (state) {
-      hcpWhere.state = state;
-    }
 
-    // Get HCPs with campaign scores
-    const [total, hcps] = await Promise.all([
-      prisma.hcp.count({ where: hcpWhere }),
-      prisma.hcp.findMany({
-        where: hcpWhere,
-        include: {
-          specialties: {
-            where: { isPrimary: true },
-            include: { specialty: true },
-            take: 1,
-          },
-          diseaseAreaScores: {
-            where: { diseaseAreaId, isCurrent: true },
-            take: 1,
-          },
-          campaignScores: {
-            where: { campaign: { diseaseAreaId, ...(clientId && { clientId }) } },
-          },
+    const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+    if (!analysis) return empty;
+
+    const scoreMap = await this.loadAnalysisScores(analysis.id);
+    const hcpIds = [...scoreMap.keys()];
+    if (hcpIds.length === 0) return empty;
+
+    const searchLc = search?.toLowerCase();
+    const hcps = await prisma.hcp.findMany({
+      where: {
+        id: { in: hcpIds },
+        ...(specialty ? { specialty } : {}),
+        ...(state ? { state } : {}),
+      },
+      include: {
+        specialties: {
+          where: { isPrimary: true },
+          include: { specialty: true },
+          take: 1,
         },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-    ]);
+      },
+    });
 
-    // Transform to response format
-    const items: SociometricSummaryItem[] = hcps.map((hcp, index) => {
-      const score = hcp.diseaseAreaScores[0];
-      const primarySpecialty = hcp.specialties[0]?.specialty?.name || hcp.specialty;
-
-      // Aggregate nomination counts from all campaign scores
-      let discussionLeaders = 0;
-      let referralLeaders = 0;
-      let adviceLeaders = 0;
-      let nationalLeaders = 0;
-      let risingStars = 0;
-      let socialLeaders = 0;
-      let biasedLeaders = 0;
-
-      for (const cs of hcp.campaignScores) {
-        discussionLeaders += cs.countDiscussionLeaders || 0;
-        referralLeaders += cs.countReferralLeaders || 0;
-        adviceLeaders += cs.countAdviceLeaders || 0;
-        nationalLeaders += cs.countNationalLeader || 0;
-        risingStars += cs.countRisingStar || 0;
-        socialLeaders += cs.countSocialLeader || 0;
-        biasedLeaders += cs.countBiasedLeader || 0;
+    // Build the full result set from the analysis's pooled per-type counts
+    // (post respondent-dedup), then sort+paginate the whole set so ranking
+    // is global (the old code sorted only the current page — a bug).
+    const all: SociometricSummaryItem[] = [];
+    for (const hcp of hcps) {
+      if (
+        searchLc &&
+        !hcp.firstName.toLowerCase().includes(searchLc) &&
+        !hcp.lastName.toLowerCase().includes(searchLc)
+      ) {
+        continue;
       }
-
-      const totalNominations =
-        discussionLeaders +
-        referralLeaders +
-        adviceLeaders +
-        nationalLeaders +
-        risingStars +
-        socialLeaders +
-        biasedLeaders;
-
-      return {
-        rank: (page - 1) * limit + index + 1,
+      const a = scoreMap.get(hcp.id);
+      if (!a) continue;
+      const primarySpecialty = hcp.specialties[0]?.specialty?.name || hcp.specialty;
+      const discussionLeaders = a.countDiscussionLeaders || 0;
+      const referralLeaders = a.countReferralLeaders || 0;
+      const adviceLeaders = a.countAdviceLeaders || 0;
+      const nationalLeaders = a.countNationalLeader || 0;
+      const risingStars = a.countRisingStar || 0;
+      const socialLeaders = a.countSocialLeader || 0;
+      const biasedLeaders = a.countBiasedLeader || 0;
+      all.push({
+        rank: 0, // assigned after global sort
         hcpId: hcp.id,
         name: `${hcp.firstName} ${hcp.lastName}`,
         specialty: primarySpecialty,
         city: hcp.city,
         state: hcp.state,
-        influencerType: score ? this.determineInfluencerType(score) : null,
+        influencerType: this.determineInfluencerType({
+          compositeScore: a.compositeScore,
+          scoreSurvey: a.scoreSurvey,
+        }),
         discussionLeaders,
         referralLeaders,
         adviceLeaders,
@@ -721,24 +674,27 @@ export class InsightsReportService {
         risingStars,
         socialLeaders,
         biasedLeaders,
-        regional: score?.totalNominationCount || 0,
-        total: totalNominations,
-      };
-    });
+        regional: a.nominationCount || 0,
+        total:
+          discussionLeaders + referralLeaders + adviceLeaders +
+          nationalLeaders + risingStars + socialLeaders + biasedLeaders,
+      });
+    }
 
-    // Server-side sorting based on sortBy parameter
     const validSortFields = ['total', 'discussionLeaders', 'referralLeaders', 'adviceLeaders', 'nationalLeaders', 'risingStars', 'socialLeaders', 'biasedLeaders', 'regional', 'name'];
     const field = validSortFields.includes(sortBy || '') ? sortBy : 'total';
     const order = sortOrder === 'asc' ? 1 : -1;
-
-    items.sort((a, b) => {
-      if (field === 'name') {
-        return order * a.name.localeCompare(b.name);
-      }
-      const aVal = (a as Record<string, unknown>)[field!] as number || 0;
-      const bVal = (b as Record<string, unknown>)[field!] as number || 0;
+    all.sort((a, b) => {
+      if (field === 'name') return order * a.name.localeCompare(b.name);
+      const aVal = ((a as Record<string, unknown>)[field!] as number) || 0;
+      const bVal = ((b as Record<string, unknown>)[field!] as number) || 0;
       return order * (bVal - aVal);
     });
+
+    const total = all.length;
+    const items = all
+      .slice((page - 1) * limit, page * limit)
+      .map((it, i) => ({ ...it, rank: (page - 1) * limit + i + 1 }));
 
     return {
       items,

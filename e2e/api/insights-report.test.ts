@@ -59,6 +59,32 @@ describe('Insights Report API', () => {
 
       expect([400, 404]).toContain(status);
     });
+
+    it('is analysis-backed: notConfigured without a client, real data with one', async () => {
+      // No client selected → not configured (per locked decision).
+      const noClient = await client.getInsightsSummary(DRY_EYE_DISEASE_AREA_ID);
+      expect(noClient.status).toBe(200);
+      expect(noClient.data.notConfigured).toBe(true);
+      expect(noClient.data.totalKols).toBe(0);
+
+      // Pick a backfilled analysis that produced scores; summary for its
+      // (client, DA) should be configured with matching KOL count.
+      const { data: analyses } = await client.listKolAnalyses();
+      const scored = analyses.items
+        .slice()
+        .sort((a, b) => b._count.scores - a._count.scores)[0];
+      if (!scored || scored._count.scores === 0) {
+        console.log('⊘ No scored analysis on this env — skipping configured check');
+        return;
+      }
+      const { status, data } = await client.getInsightsSummary(
+        scored.diseaseAreaId,
+        scored.clientId
+      );
+      expect(status).toBe(200);
+      expect(data.notConfigured).toBeFalsy();
+      expect(data.totalKols).toBe(scored._count.scores);
+    });
   });
 
   describe('Filter Options Endpoint', () => {
