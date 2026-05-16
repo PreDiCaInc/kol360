@@ -338,6 +338,14 @@ export class ApiClient {
     );
   }
 
+  async updateKolAnalysis(id: string, body: { name?: string; weights?: Record<string, number> }) {
+    return this.request<{ id: string; name: string; calcStatus: string }>(
+      'PUT',
+      `/api/v1/admin/kol-analyses/${id}`,
+      body
+    );
+  }
+
   // ==================== Opt-Outs ====================
 
   async optOutHcp(hcpId: string, scope: 'CAMPAIGN' | 'GLOBAL', reason: string, campaignId?: string) {

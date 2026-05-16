@@ -52,6 +52,39 @@ describe('KOL Analysis API (Phase 1)', () => {
     expect(detail._count.scores).toBe(data.processed);
   });
 
+  it('updates weights and marks the analysis stale (idle)', async () => {
+    const { data: list } = await client.listKolAnalyses();
+    const target = list.items[0];
+    if (!target) {
+      console.log('⊘ No analyses on this env — skipping');
+      return;
+    }
+    const { data: before } = await client.getKolAnalysis(target.id);
+    // Re-send the same weights (valid, sums to 100) — should 200 + go idle.
+    const w = (before as unknown as { weightsJson: Record<string, number> }).weightsJson;
+    const { status, data } = await client.updateKolAnalysis(target.id, { weights: w });
+    expect(status).toBe(200);
+    expect(data.calcStatus).toBe('idle');
+  });
+
+  it('rejects weights that do not sum to 100', async () => {
+    const { data: list } = await client.listKolAnalyses();
+    const target = list.items[0];
+    if (!target) {
+      console.log('⊘ No analyses — skipping');
+      return;
+    }
+    const { status } = await client.updateKolAnalysis(target.id, {
+      weights: {
+        weightPublications: 10, weightClinicalTrials: 10, weightTradePubs: 10,
+        weightOrgLeadership: 10, weightOrgAwards: 10, weightConference: 10,
+        weightSocialMedia: 10, weightMediaPodcasts: 10, weightSurvey: 10, // = 90
+      },
+    });
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(status).toBeLessThan(500);
+  });
+
   it('excluding a campaign then recalculating re-pools the scores', async () => {
     const { data: list } = await client.listKolAnalyses();
     // Need an analysis with >1 campaign and some scores to see a re-pool effect.

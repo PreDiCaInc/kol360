@@ -89,6 +89,12 @@ const platformAdminNavigation: NavItem[] = [
     disabled: true,
   },
   {
+    title: 'KOL Analyses',
+    href: '/admin/kol-analyses',
+    icon: BarChart3,
+    roles: ['PLATFORM_ADMIN'],
+  },
+  {
     title: 'Users',
     href: '/admin/users',
     icon: Users,
