@@ -346,6 +346,21 @@ export class ApiClient {
     );
   }
 
+  async createKolAnalysis(body: { clientId: string; diseaseAreaId: string; name: string }) {
+    return this.request<{ id: string; clientId: string; diseaseAreaId: string }>(
+      'POST',
+      `/api/v1/admin/kol-analyses`,
+      body
+    );
+  }
+
+  async getAvailableCampaigns(id: string) {
+    return this.request<{ items: Array<{ id: string; name: string; clientId: string; clientName: string; crossClient: boolean }> }>(
+      'GET',
+      `/api/v1/admin/kol-analyses/${id}/available-campaigns`
+    );
+  }
+
   // ==================== Opt-Outs ====================
 
   async optOutHcp(hcpId: string, scope: 'CAMPAIGN' | 'GLOBAL', reason: string, campaignId?: string) {

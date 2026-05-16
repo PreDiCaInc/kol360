@@ -8,6 +8,7 @@ import {
   useUpdateKolAnalysisCampaigns,
   useUpdateKolAnalysis,
   useRecalculateKolAnalysis,
+  useAvailableCampaigns,
   type AnalysisWeights,
   type AnalysisCalcStatus,
 } from '@/hooks/use-kol-analyses';
@@ -18,9 +19,12 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
+import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
-import { ArrowLeft, RefreshCw, Loader2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Loader2, Plus } from 'lucide-react';
 
 const WEIGHT_FIELDS: Array<{ key: keyof AnalysisWeights; label: string }> = [
   { key: 'weightPublications', label: 'Publications' },
@@ -54,6 +58,19 @@ export default function KolAnalysisDetailPage() {
 
   const [included, setIncluded] = useState<Record<string, boolean>>({});
   const [weights, setWeights] = useState<AnalysisWeights | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addSel, setAddSel] = useState<Record<string, boolean>>({});
+  const { data: available } = useAvailableCampaigns(showAdd ? id : '');
+
+  const handleAddCampaigns = async () => {
+    const toAdd = Object.entries(addSel)
+      .filter(([, v]) => v)
+      .map(([campaignId]) => ({ campaignId, included: true }));
+    if (toAdd.length === 0) return;
+    await updateCampaigns.mutateAsync({ id, campaigns: toAdd });
+    setShowAdd(false);
+    setAddSel({});
+  };
 
   useEffect(() => {
     if (analysis) {
@@ -128,7 +145,13 @@ export default function KolAnalysisDetailPage() {
         {/* Campaign curation */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Campaigns</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Campaigns</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
+                <Plus className="w-4 h-4 mr-1.5" />
+                Add campaigns
+              </Button>
+            </div>
             <CardDescription>
               Toggle which campaigns feed this analysis. Excluded campaigns are
               not pooled. Save, then Recalculate.
@@ -226,6 +249,68 @@ export default function KolAnalysisDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add campaigns to this analysis</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Campaigns in <strong>{analysis.diseaseArea.name}</strong> not yet linked.
+            Other clients&apos; campaigns are marked — including them shares that
+            data into this analysis.
+          </p>
+          <div className="max-h-80 overflow-auto border rounded-md divide-y mt-2">
+            {!available || available.length === 0 ? (
+              <div className="p-4 text-sm text-muted-foreground text-center">
+                No more campaigns available in this disease area.
+              </div>
+            ) : (
+              available.map((c) => (
+                <label
+                  key={c.id}
+                  className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!addSel[c.id]}
+                    onChange={(e) =>
+                      setAddSel((p) => ({ ...p, [c.id]: e.target.checked }))
+                    }
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{c.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {c.clientName} · {c.status}
+                    </div>
+                  </div>
+                  {c.crossClient && (
+                    <Badge
+                      variant="outline"
+                      className="bg-purple-50 text-purple-700 border-purple-300 shrink-0"
+                    >
+                      from {c.clientName}
+                    </Badge>
+                  )}
+                </label>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAdd(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddCampaigns}
+              disabled={
+                Object.values(addSel).every((v) => !v) || updateCampaigns.isPending
+              }
+            >
+              {updateCampaigns.isPending ? 'Adding…' : 'Add selected'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

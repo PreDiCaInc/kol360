@@ -27,4 +27,14 @@ export const updateAnalysisSchema = z.object({
 });
 export type UpdateAnalysisInput = z.infer<typeof updateAnalysisSchema>;
 
+// Create an analysis for a (client, disease area) — works even when the
+// client runs no campaigns of its own (e.g. lite clients). Campaigns are
+// added afterward via the curation picker (same disease area only).
+export const createAnalysisSchema = z.object({
+  clientId: z.string().cuid(),
+  diseaseAreaId: z.string().cuid(),
+  name: z.string().min(1),
+});
+export type CreateAnalysisInput = z.infer<typeof createAnalysisSchema>;
+
 export type AnalysisCalcStatus = 'idle' | 'running' | 'done' | 'error';

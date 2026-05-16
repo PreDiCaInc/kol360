@@ -93,8 +93,39 @@ export function useUpdateKolAnalysisCampaigns() {
     }) => apiClient.put(`/api/v1/admin/kol-analyses/${id}/campaigns`, { campaigns }),
     onSuccess: (_, { id }) => {
       qc.invalidateQueries({ queryKey: ['kol-analyses', id] });
+      qc.invalidateQueries({ queryKey: ['kol-analyses', id, 'available-campaigns'] });
       qc.invalidateQueries({ queryKey: ['kol-analyses'] });
     },
+  });
+}
+
+export interface AvailableCampaign {
+  id: string;
+  name: string;
+  status: string;
+  clientId: string;
+  clientName: string;
+  crossClient: boolean;
+}
+
+export function useCreateKolAnalysis() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { clientId: string; diseaseAreaId: string; name: string }) =>
+      apiClient.post<{ id: string }>('/api/v1/admin/kol-analyses', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['kol-analyses'] }),
+  });
+}
+
+export function useAvailableCampaigns(analysisId: string) {
+  return useQuery({
+    queryKey: ['kol-analyses', analysisId, 'available-campaigns'],
+    queryFn: () =>
+      apiClient.get<{ items: AvailableCampaign[] }>(
+        `/api/v1/admin/kol-analyses/${analysisId}/available-campaigns`
+      ),
+    select: (d) => d.items,
+    enabled: !!analysisId,
   });
 }
 
