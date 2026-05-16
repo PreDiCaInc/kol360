@@ -1,6 +1,6 @@
 {
   "name": "@kol360/shared",
-  "version": "1.15.20",
+  "version": "1.15.21",
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
