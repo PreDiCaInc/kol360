@@ -72,7 +72,19 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
       if (!analysis) {
         return reply.status(404).send({ message: 'Analysis not found' });
       }
-      const body = updateAnalysisSchema.parse(request.body);
+      let body: z.infer<typeof updateAnalysisSchema>;
+      try {
+        body = updateAnalysisSchema.parse(request.body);
+      } catch (e) {
+        if (e instanceof z.ZodError) {
+          return reply.status(400).send({
+            error: 'Bad Request',
+            message: e.errors[0]?.message || 'Invalid input',
+            statusCode: 400,
+          });
+        }
+        throw e;
+      }
       const updated = await prisma.kolAnalysis.update({
         where: { id: analysis.id },
         data: {
@@ -102,7 +114,19 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
       if (!analysis) {
         return reply.status(404).send({ message: 'Analysis not found' });
       }
-      const body = updateCampaignsSchema.parse(request.body);
+      let body: z.infer<typeof updateCampaignsSchema>;
+      try {
+        body = updateCampaignsSchema.parse(request.body);
+      } catch (e) {
+        if (e instanceof z.ZodError) {
+          return reply.status(400).send({
+            error: 'Bad Request',
+            message: e.errors[0]?.message || 'Invalid input',
+            statusCode: 400,
+          });
+        }
+        throw e;
+      }
       await prisma.$transaction(
         body.campaigns.map((c) =>
           prisma.kolAnalysisCampaign.upsert({
