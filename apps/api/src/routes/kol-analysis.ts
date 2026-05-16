@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { kolAnalysisService } from '../services/kol-analysis.service';
 import { createAuditLog } from '../lib/audit';
-import { analysisWeightsSchema } from '@kol360/shared';
+import { analysisWeightsSchema, createAnalysisSchema, DEFAULT_ANALYSIS_WEIGHTS } from '@kol360/shared';
 
 const updateCampaignsSchema = z.object({
   campaigns: z
@@ -15,6 +15,17 @@ const updateAnalysisSchema = z.object({
   name: z.string().min(1).optional(),
   weights: analysisWeightsSchema.optional(),
 });
+
+function badRequest(reply: { status: (n: number) => { send: (b: unknown) => unknown } }, e: unknown) {
+  if (e instanceof z.ZodError) {
+    return reply.status(400).send({
+      error: 'Bad Request',
+      message: e.errors[0]?.message || 'Invalid input',
+      statusCode: 400,
+    });
+  }
+  throw e;
+}
 
 export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
   // PLATFORM_ADMIN-only — curation is platform-owned (locked decision 1).
@@ -41,6 +52,58 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
     return { items };
   });
 
+  // POST /api/v1/admin/kol-analyses — create an analysis for a (client, DA).
+  // Works even when the client runs no campaigns (e.g. lite clients);
+  // campaigns are added afterward via the curation picker.
+  fastify.post<{ Body: z.infer<typeof createAnalysisSchema> }>(
+    '/',
+    async (request, reply) => {
+      let body: z.infer<typeof createAnalysisSchema>;
+      try {
+        body = createAnalysisSchema.parse(request.body);
+      } catch (e) {
+        return badRequest(reply, e);
+      }
+      const [client, diseaseArea, existing] = await Promise.all([
+        prisma.client.findUnique({ where: { id: body.clientId }, select: { id: true } }),
+        prisma.diseaseArea.findUnique({ where: { id: body.diseaseAreaId }, select: { id: true } }),
+        prisma.kolAnalysis.findUnique({
+          where: {
+            clientId_diseaseAreaId: {
+              clientId: body.clientId,
+              diseaseAreaId: body.diseaseAreaId,
+            },
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (!client) return reply.status(400).send({ message: 'Client not found' });
+      if (!diseaseArea) return reply.status(400).send({ message: 'Disease area not found' });
+      if (existing) {
+        return reply.status(409).send({
+          message: 'An analysis already exists for this client and disease area',
+          existingId: existing.id,
+        });
+      }
+      const created = await prisma.kolAnalysis.create({
+        data: {
+          clientId: body.clientId,
+          diseaseAreaId: body.diseaseAreaId,
+          name: body.name,
+          weightsJson: DEFAULT_ANALYSIS_WEIGHTS,
+          createdBy: request.user!.sub,
+        },
+      });
+      await createAuditLog(request.user!.sub, {
+        action: 'kol_analysis.created',
+        entityType: 'KolAnalysis',
+        entityId: created.id,
+        newValues: { clientId: body.clientId, diseaseAreaId: body.diseaseAreaId, name: body.name },
+      });
+      return reply.status(201).send(created);
+    }
+  );
+
   // GET /api/v1/admin/kol-analyses/:id — detail + campaigns + status
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const analysis = await prisma.kolAnalysis.findUnique({
@@ -59,6 +122,50 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
     }
     return analysis;
   });
+
+  // GET /api/v1/admin/kol-analyses/:id/available-campaigns — campaigns in the
+  // SAME disease area not yet linked to this analysis. Includes other clients'
+  // campaigns (crossClient=true) so a lite client's analysis can pull shared
+  // same-disease-area data.
+  fastify.get<{ Params: { id: string } }>(
+    '/:id/available-campaigns',
+    async (request, reply) => {
+      const analysis = await prisma.kolAnalysis.findUnique({
+        where: { id: request.params.id },
+        select: { id: true, clientId: true, diseaseAreaId: true },
+      });
+      if (!analysis) {
+        return reply.status(404).send({ message: 'Analysis not found' });
+      }
+      const linked = await prisma.kolAnalysisCampaign.findMany({
+        where: { analysisId: analysis.id },
+        select: { campaignId: true },
+      });
+      const linkedIds = new Set(linked.map((l) => l.campaignId));
+      const campaigns = await prisma.campaign.findMany({
+        where: { diseaseAreaId: analysis.diseaseAreaId },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          clientId: true,
+          client: { select: { id: true, name: true } },
+        },
+        orderBy: { name: 'asc' },
+      });
+      const items = campaigns
+        .filter((c) => !linkedIds.has(c.id))
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          status: c.status,
+          clientId: c.clientId,
+          clientName: c.client.name,
+          crossClient: c.clientId !== analysis.clientId,
+        }));
+      return { items };
+    }
+  );
 
   // PUT /api/v1/admin/kol-analyses/:id — update name and/or weights.
   // Changing weights does NOT auto-recalc; the user clicks Recalculate
@@ -126,6 +233,24 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
           });
         }
         throw e;
+      }
+      // Same-disease-area guard: every referenced campaign must be in the
+      // analysis's disease area. Pooling across disease areas is meaningless.
+      const referenced = await prisma.campaign.findMany({
+        where: { id: { in: body.campaigns.map((c) => c.campaignId) } },
+        select: { id: true, diseaseAreaId: true },
+      });
+      const refById = new Map(referenced.map((c) => [c.id, c.diseaseAreaId]));
+      for (const c of body.campaigns) {
+        const daId = refById.get(c.campaignId);
+        if (daId === undefined) {
+          return reply.status(400).send({ message: `Campaign not found: ${c.campaignId}` });
+        }
+        if (daId !== analysis.diseaseAreaId) {
+          return reply.status(400).send({
+            message: `Campaign ${c.campaignId} is not in this analysis's disease area`,
+          });
+        }
       }
       await prisma.$transaction(
         body.campaigns.map((c) =>

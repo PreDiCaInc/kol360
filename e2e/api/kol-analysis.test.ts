@@ -31,6 +31,60 @@ describe('KOL Analysis API (Phase 1)', () => {
     expect(Array.isArray(data.items)).toBe(true);
   });
 
+  it('create is idempotent-guarded: 201 new or 409 if (client,DA) exists', async () => {
+    const { data: list } = await client.listKolAnalyses();
+    const sample = list.items[0];
+    if (!sample) {
+      console.log('⊘ No analyses to derive a client/DA — skipping');
+      return;
+    }
+    // Re-create for an existing (client, DA) → must 409 (uniqueness enforced).
+    const { status } = await client.createKolAnalysis({
+      clientId: sample.clientId,
+      diseaseAreaId: sample.diseaseAreaId,
+      name: 'E2E dup attempt',
+    });
+    expect(status).toBe(409);
+  });
+
+  it('available-campaigns returns same-DA campaigns with crossClient flag', async () => {
+    const { data: list } = await client.listKolAnalyses();
+    const target = list.items[0];
+    if (!target) {
+      console.log('⊘ No analyses — skipping');
+      return;
+    }
+    const { status, data } = await client.getAvailableCampaigns(target.id);
+    expect(status).toBe(200);
+    expect(Array.isArray(data.items)).toBe(true);
+    for (const c of data.items) {
+      expect(typeof c.crossClient).toBe('boolean');
+      expect(typeof c.clientName).toBe('string');
+    }
+  });
+
+  it('rejects linking a campaign from a different disease area (same-DA guard)', async () => {
+    const { data: list } = await client.listKolAnalyses();
+    // Find two analyses in different disease areas.
+    const a = list.items[0];
+    const other = list.items.find((x) => x.diseaseAreaId !== a?.diseaseAreaId);
+    if (!a || !other) {
+      console.log('⊘ Need 2 analyses in different DAs — skipping');
+      return;
+    }
+    // A campaign linked to `other` is in a different DA than `a`.
+    const { data: otherDetail } = await client.getKolAnalysis(other.id);
+    const foreignCampaign = otherDetail.campaigns[0]?.campaignId;
+    if (!foreignCampaign) {
+      console.log('⊘ Other analysis has no campaigns — skipping');
+      return;
+    }
+    const { status } = await client.updateKolAnalysisCampaigns(a.id, [
+      { campaignId: foreignCampaign, included: true },
+    ]);
+    expect(status).toBe(400);
+  });
+
   it('recalculates an analysis with scored campaigns and lands done', async () => {
     const { data: list } = await client.listKolAnalyses();
     // Pick an analysis that actually produced scores in the backfill.

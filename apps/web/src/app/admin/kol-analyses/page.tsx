@@ -1,9 +1,34 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { useKolAnalyses, type AnalysisCalcStatus } from '@/hooks/use-kol-analyses';
+import { useRouter } from 'next/navigation';
+import {
+  useKolAnalyses,
+  useCreateKolAnalysis,
+  type AnalysisCalcStatus,
+} from '@/hooks/use-kol-analyses';
+import { useClients } from '@/hooks/use-clients';
+import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -12,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { BarChart3, ChevronRight } from 'lucide-react';
+import { BarChart3, ChevronRight, Plus } from 'lucide-react';
 
 function StatusBadge({ status }: { status: AnalysisCalcStatus }) {
   const map: Record<AnalysisCalcStatus, { label: string; cls: string }> = {
@@ -27,17 +52,54 @@ function StatusBadge({ status }: { status: AnalysisCalcStatus }) {
 
 export default function KolAnalysesPage() {
   const { data: analyses, isLoading } = useKolAnalyses();
+  const router = useRouter();
+  const createAnalysis = useCreateKolAnalysis();
+  const { data: clientsData } = useClients();
+  const { data: diseaseAreasData } = useDiseaseAreas();
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [newClientId, setNewClientId] = useState('');
+  const [newDaId, setNewDaId] = useState('');
+  const [newName, setNewName] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    setCreateError(null);
+    try {
+      const res = await createAnalysis.mutateAsync({
+        clientId: newClientId,
+        diseaseAreaId: newDaId,
+        name: newName.trim(),
+      });
+      setShowCreate(false);
+      setNewClientId('');
+      setNewDaId('');
+      setNewName('');
+      router.push(`/admin/kol-analyses/${res.id}`);
+    } catch (e) {
+      setCreateError(
+        e instanceof Error ? e.message : 'Failed to create analysis (may already exist)'
+      );
+    }
+  };
 
   return (
     <div className="p-6">
-      <div className="flex items-center gap-3 mb-2">
-        <BarChart3 className="w-6 h-6 text-muted-foreground" />
-        <h1 className="text-2xl font-bold">KOL Analyses</h1>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-3">
+          <BarChart3 className="w-6 h-6 text-muted-foreground" />
+          <h1 className="text-2xl font-bold">KOL Analyses</h1>
+        </div>
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          New Analysis
+        </Button>
       </div>
       <p className="text-muted-foreground mb-6">
         One scoring analysis per client &amp; disease area. Curate which campaigns
-        feed it, set weights, and recalculate. Scores pool nominations across the
-        included campaigns and normalize once.
+        feed it (including other clients&apos; campaigns in the same disease area),
+        set weights, and recalculate. Scores pool nominations across the included
+        campaigns and normalize once.
       </p>
 
       <Card>
@@ -89,6 +151,79 @@ export default function KolAnalysesPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New KOL Analysis</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="mb-1.5 block">Client</Label>
+              <Select value={newClientId} onValueChange={setNewClientId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select client…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientsData?.items.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                      {c.isLite ? ' (Lite)' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-1.5 block">Disease Area</Label>
+              <Select value={newDaId} onValueChange={setNewDaId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select disease area…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {diseaseAreasData?.items.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="an-name" className="mb-1.5 block">Name</Label>
+              <Input
+                id="an-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Dry Eye — Lite Client"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Create the analysis, then add campaigns (including other clients&apos;
+              campaigns in this disease area) from the detail page.
+            </p>
+            {createError && (
+              <p className="text-sm text-red-600">{createError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreate(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={
+                !newClientId ||
+                !newDaId ||
+                newName.trim().length === 0 ||
+                createAnalysis.isPending
+              }
+            >
+              {createAnalysis.isPending ? 'Creating…' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
