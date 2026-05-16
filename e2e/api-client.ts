@@ -855,8 +855,9 @@ export class ApiClient {
     return this.request<{ items: InsightsDiseaseArea[] }>('GET', '/api/v1/insights/disease-areas');
   }
 
-  async getInsightsSummary(diseaseAreaId: string) {
-    return this.request<InsightsSummary>('GET', `/api/v1/insights/${diseaseAreaId}/summary`);
+  async getInsightsSummary(diseaseAreaId: string, clientId?: string) {
+    const qs = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
+    return this.request<InsightsSummary>('GET', `/api/v1/insights/${diseaseAreaId}/summary${qs}`);
   }
 
   async getInsightsRespondentAnalytics(diseaseAreaId: string) {
@@ -1250,8 +1251,9 @@ export interface InsightsSummary {
   totalKols: number;
   totalRespondents: number;
   totalNominations: number;
-  responseRate: number;
-  avgCompositeScore: number;
+  totalCampaigns: number;
+  averageCompositeScore: number | null;
+  notConfigured?: boolean;
 }
 
 export interface RespondentAnalytics {

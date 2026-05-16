@@ -21,13 +21,50 @@ import { prisma } from '../../lib/prisma';
 
 const svc = new KolAnalysisService();
 
+let respSeq = 0;
 // Build N nomination records of one type for an HCP from a campaign.
+// Each nomination comes from a DISTINCT respondent (unique respondentHcpId +
+// responseId) — models N different people each nominating the HCP once, so
+// respondent-dedup does not collapse them.
 function noms(hcpId: string, campaignId: string, n: number, type = 'NATIONAL_LEADER') {
-  return Array.from({ length: n }, () => ({
+  return Array.from({ length: n }, () => {
+    const rid = `resp-${respSeq++}`;
+    return {
+      matchedHcpId: hcpId,
+      question: { nominationType: type },
+      response: {
+        id: `r-${rid}`,
+        campaignId,
+        completedAt: new Date('2026-01-01T00:00:00Z'),
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        respondentHcpId: rid,
+        respondentHcp: { email: 'r@x.com' },
+      },
+    };
+  });
+}
+
+// A single respondent's nomination of `hcpId` in `campaignId`, with explicit
+// recency — for testing cross-campaign respondent dedup.
+function nomFrom(
+  respondentHcpId: string,
+  hcpId: string,
+  campaignId: string,
+  completedAt: string,
+  type = 'NATIONAL_LEADER'
+) {
+  return {
     matchedHcpId: hcpId,
     question: { nominationType: type },
-    response: { campaignId, respondentHcp: { email: 'r@x.com' } },
-  }));
+    response: {
+      id: `r-${respondentHcpId}-${campaignId}`,
+      campaignId,
+      completedAt: new Date(completedAt),
+      createdAt: new Date(completedAt),
+      respondentHcpId,
+      respondentHcp: { email: 'r@x.com' },
+    },
+  };
 }
 
 describe('KolAnalysisService.recalculateAnalysis — pooled normalization', () => {
@@ -81,6 +118,44 @@ describe('KolAnalysisService.recalculateAnalysis — pooled normalization', () =
     expect(Number(top.scoreSurvey)).toBeCloseTo(100, 5);
     // weightSurvey=100, no objective → composite == survey
     expect(Number(eric.compositeScore)).toBeCloseTo(60, 5);
+  });
+
+  it('dedups a respondent across campaigns: only most-recent survey counts', async () => {
+    // Respondent "drA" took the survey in BOTH campaign A and B (included).
+    // In A (older) they nominated eric; in B (newer) they nominated bob.
+    // Only the newer (B) response should count → eric gets 0, bob gets 1.
+    // 9 other distinct respondents in B also nominate bob (sets the max).
+    (prisma.kolAnalysis.findUnique as Mock).mockResolvedValue({
+      id: 'an-1',
+      diseaseAreaId: 'da-1',
+      weightsJson: {
+        weightPublications: 0, weightClinicalTrials: 0, weightTradePubs: 0,
+        weightOrgLeadership: 0, weightOrgAwards: 0, weightConference: 0,
+        weightSocialMedia: 0, weightMediaPodcasts: 0, weightSurvey: 100,
+      },
+      campaigns: [
+        { campaignId: 'A', included: true },
+        { campaignId: 'B', included: true },
+      ],
+    });
+    (prisma.surveyQuestion.findMany as Mock).mockResolvedValue([
+      { nominationType: 'NATIONAL_LEADER' },
+    ]);
+    (prisma.nomination.findMany as Mock).mockResolvedValue([
+      nomFrom('drA', 'eric', 'A', '2026-01-01T00:00:00Z'), // older — dropped
+      nomFrom('drA', 'bob', 'B', '2026-02-01T00:00:00Z'),  // newer — kept
+      ...noms('bob', 'B', 9), // 9 other distinct respondents
+    ]);
+
+    await svc.recalculateAnalysis('an-1');
+
+    const rows = (prisma.hcpAnalysisScore.createMany as Mock).mock.calls[0][0].data;
+    const eric = rows.find((r: { hcpId: string }) => r.hcpId === 'eric');
+    const bob = rows.find((r: { hcpId: string }) => r.hcpId === 'bob');
+    // drA's older A-response was dropped → eric not scored at all.
+    expect(eric).toBeUndefined();
+    // bob: 1 (drA newer) + 9 others = 10 nominations.
+    expect(bob.nominationCount).toBe(10);
   });
 
   it('excluding a campaign re-pools and changes the max (keeps scores current)', async () => {

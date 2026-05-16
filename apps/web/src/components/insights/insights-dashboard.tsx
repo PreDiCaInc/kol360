@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import Link from 'next/link';
 import { ArrowLeft, Users, UserCheck, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,7 +36,10 @@ interface InsightsDashboardProps {
 export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }: InsightsDashboardProps) {
   const [activeTab, setActiveTab] = useState('introduction');
   const [selectedKolId, setSelectedKolId] = useState<string | null>(null);
-  const [selectedClientId, setSelectedClientId] = useState<string>('all');
+  // Insights is analysis-backed: one curated analysis per (client, disease
+  // area). PLATFORM_ADMIN must pick a client (no "all"); a cross-client view
+  // is a dedicated aggregate-client analysis.
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
 
   const { user } = useAuth();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
@@ -53,8 +57,11 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
   // PLATFORM_ADMIN: uses selected client (undefined if "all")
   // CLIENT_ADMIN: uses their own tenantId (always set)
   const effectiveClientId = isPlatformAdmin
-    ? (selectedClientId === 'all' ? undefined : selectedClientId)
+    ? (selectedClientId || undefined)
     : user?.tenantId;
+
+  // PLATFORM_ADMIN with no client chosen yet — prompt selection.
+  const needsClientSelection = isPlatformAdmin && !selectedClientId;
 
   // Fetch summary stats
   const { data: summary, isLoading: summaryLoading } = useInsightsSummary(diseaseAreaId, effectiveClientId);
@@ -105,10 +112,9 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
               <span className="text-sm text-muted-foreground">Client:</span>
               <Select value={selectedClientId} onValueChange={setSelectedClientId}>
                 <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Select client" />
+                  <SelectValue placeholder="Select a client…" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Clients</SelectItem>
                   {clients.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
@@ -138,6 +144,32 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
         </div>
       </div>
 
+      {needsClientSelection ? (
+        <Card className="border-dashed">
+          <CardContent className="py-16 text-center">
+            <h3 className="text-lg font-semibold">Select a client</h3>
+            <p className="text-muted-foreground mt-1">
+              Insights are scoped to a curated KOL analysis per client &amp;
+              disease area. Choose a client above to view its dashboard.
+            </p>
+          </CardContent>
+        </Card>
+      ) : !summaryLoading && summary?.notConfigured ? (
+        <Card className="border-dashed">
+          <CardContent className="py-16 text-center">
+            <h3 className="text-lg font-semibold">No analysis configured</h3>
+            <p className="text-muted-foreground mt-1">
+              There is no KOL analysis for this client &amp; disease area yet.
+              Create one and add campaigns in{' '}
+              <Link href="/admin/kol-analysis" className="text-blue-600 hover:underline">
+                KOL Analyses
+              </Link>
+              , then recalculate.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+      <>
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-l-4 border-l-blue-500 shadow-md hover:shadow-lg transition-shadow rounded-xl">
@@ -221,6 +253,8 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
           <KolExplorerTab diseaseAreaId={diseaseAreaId} initialKolId={selectedKolId} clientId={effectiveClientId} />
         </TabsContent>
       </Tabs>
+      </>
+      )}
     </div>
   );
 }

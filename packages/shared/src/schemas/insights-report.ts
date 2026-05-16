@@ -114,6 +114,10 @@ export const insightsSummarySchema = z.object({
   totalNominations: z.number(),
   totalCampaigns: z.number(),
   averageCompositeScore: z.number().nullable(),
+  // true when no KolAnalysis exists for the (client, disease area).
+  // The dashboard shell uses this to render the "not configured" empty
+  // state and skip the tabs. Drives the whole dashboard's gating.
+  notConfigured: z.boolean().optional(),
 });
 
 export type InsightsSummary = z.infer<typeof insightsSummarySchema>;

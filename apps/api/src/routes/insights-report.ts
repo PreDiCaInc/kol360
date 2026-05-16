@@ -144,7 +144,8 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const filters = insightsFilterSchema.parse(request.query);
-      return insightsReportService.getKolExplorer(diseaseAreaId, filters);
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return insightsReportService.getKolExplorer(diseaseAreaId, filters, clientId);
     }
   );
 

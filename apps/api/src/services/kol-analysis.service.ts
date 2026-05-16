@@ -109,18 +109,53 @@ export class KolAnalysisService {
           matchedHcpId: true,
           question: { select: { nominationType: true } },
           response: {
-            select: { campaignId: true, respondentHcp: { select: { email: true } } },
+            select: {
+              id: true,
+              campaignId: true,
+              completedAt: true,
+              createdAt: true,
+              respondentHcpId: true,
+              respondentHcp: { select: { email: true } },
+            },
           },
         },
       });
 
-      // Apply per-campaign internal-email exclusion.
+      // Respondent dedup: within an analysis a respondent (survey-taker) must
+      // count once. If the same HCP submitted the survey in >1 included
+      // campaign, keep only their MOST RECENT response (completedAt, fallback
+      // createdAt) and drop nominations from older responses — otherwise their
+      // nominations would be double-counted in the pooled score.
+      const recency = (r: { completedAt: Date | null; createdAt: Date }) =>
+        (r.completedAt ?? r.createdAt).getTime();
+      const bestResponseByRespondent = new Map<
+        string,
+        { responseId: string; key: number }
+      >();
+      for (const n of nominations) {
+        const respId = n.response.respondentHcpId;
+        const key = recency(n.response);
+        const cur = bestResponseByRespondent.get(respId);
+        // Newer wins; tie broken deterministically by responseId.
+        if (
+          !cur ||
+          key > cur.key ||
+          (key === cur.key && n.response.id > cur.responseId)
+        ) {
+          bestResponseByRespondent.set(respId, { responseId: n.response.id, key });
+        }
+      }
+
+      // Apply internal-email exclusion + respondent dedup.
       const pooled = nominations.filter((n) => {
         if (!n.matchedHcpId) return false;
         if (internalExcludedCampaigns.has(n.response.campaignId)) {
           const email = n.response.respondentHcp?.email ?? '';
           if (email.toLowerCase().endsWith('@bio-exec.com')) return false;
         }
+        // Only nominations from the respondent's most-recent response count.
+        const best = bestResponseByRespondent.get(n.response.respondentHcpId);
+        if (!best || best.responseId !== n.response.id) return false;
         return true;
       });
 
