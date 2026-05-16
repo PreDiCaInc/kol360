@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { SurveyTemplateService } from './survey-template.service';
 import { scoreCalculationService } from './score-calculation.service';
+import { kolAnalysisService } from './kol-analysis.service';
 import { CreateCampaignInput, UpdateCampaignInput, CampaignListQuery, EmailTemplatesInput, LandingPageTemplatesInput } from '@kol360/shared';
 import { CampaignStatus, Prisma } from '@prisma/client';
 
@@ -294,13 +295,34 @@ export class CampaignService {
     // Publish scores (update disease area aggregates)
     await scoreCalculationService.publishScores(id, publishedBy);
 
-    return prisma.campaign.update({
+    const published = await prisma.campaign.update({
       where: { id },
       data: {
         status: 'PUBLISHED',
         publishedAt: new Date(),
       },
     });
+
+    // Auto-recalculate any KOL analysis that includes this campaign so the
+    // curated dashboards stay current on publish (locked decision: explicit
+    // button + auto on publish). Best-effort — never block/await-fail publish.
+    try {
+      const links = await prisma.kolAnalysisCampaign.findMany({
+        where: { campaignId: id, included: true },
+        select: { analysisId: true },
+      });
+      for (const { analysisId } of links) {
+        try {
+          await kolAnalysisService.recalculateAnalysis(analysisId);
+        } catch (err) {
+          console.error(`[publish] analysis recalc failed for ${analysisId}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error('[publish] analysis auto-recalc lookup failed:', err);
+    }
+
+    return published;
   }
 
   async updateEmailTemplates(id: string, data: EmailTemplatesInput) {
