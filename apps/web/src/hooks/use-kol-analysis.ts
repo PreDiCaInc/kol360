@@ -41,23 +41,25 @@ export interface KolAnalysisDetail {
     campaignId: string;
     included: boolean;
     campaign: { id: string; name: string; status: string };
+    responseCount: number;
+    nominationCount: number;
   }>;
   _count: { scores: number };
 }
 
 export function useKolAnalyses() {
   return useQuery({
-    queryKey: ['kol-analyses'],
+    queryKey: ['kol-analysis'],
     queryFn: () =>
-      apiClient.get<{ items: KolAnalysisListItem[] }>('/api/v1/admin/kol-analyses'),
+      apiClient.get<{ items: KolAnalysisListItem[] }>('/api/v1/admin/kol-analysis'),
     select: (d) => d.items,
   });
 }
 
 export function useKolAnalysis(id: string) {
   return useQuery({
-    queryKey: ['kol-analyses', id],
-    queryFn: () => apiClient.get<KolAnalysisDetail>(`/api/v1/admin/kol-analyses/${id}`),
+    queryKey: ['kol-analysis', id],
+    queryFn: () => apiClient.get<KolAnalysisDetail>(`/api/v1/admin/kol-analysis/${id}`),
     enabled: !!id,
   });
 }
@@ -73,10 +75,10 @@ export function useUpdateKolAnalysis() {
       id: string;
       name?: string;
       weights?: AnalysisWeights;
-    }) => apiClient.put(`/api/v1/admin/kol-analyses/${id}`, { name, weights }),
+    }) => apiClient.put(`/api/v1/admin/kol-analysis/${id}`, { name, weights }),
     onSuccess: (_, { id }) => {
-      qc.invalidateQueries({ queryKey: ['kol-analyses', id] });
-      qc.invalidateQueries({ queryKey: ['kol-analyses'] });
+      qc.invalidateQueries({ queryKey: ['kol-analysis', id] });
+      qc.invalidateQueries({ queryKey: ['kol-analysis'] });
     },
   });
 }
@@ -90,11 +92,11 @@ export function useUpdateKolAnalysisCampaigns() {
     }: {
       id: string;
       campaigns: Array<{ campaignId: string; included: boolean }>;
-    }) => apiClient.put(`/api/v1/admin/kol-analyses/${id}/campaigns`, { campaigns }),
+    }) => apiClient.put(`/api/v1/admin/kol-analysis/${id}/campaigns`, { campaigns }),
     onSuccess: (_, { id }) => {
-      qc.invalidateQueries({ queryKey: ['kol-analyses', id] });
-      qc.invalidateQueries({ queryKey: ['kol-analyses', id, 'available-campaigns'] });
-      qc.invalidateQueries({ queryKey: ['kol-analyses'] });
+      qc.invalidateQueries({ queryKey: ['kol-analysis', id] });
+      qc.invalidateQueries({ queryKey: ['kol-analysis', id, 'available-campaigns'] });
+      qc.invalidateQueries({ queryKey: ['kol-analysis'] });
     },
   });
 }
@@ -106,23 +108,25 @@ export interface AvailableCampaign {
   clientId: string;
   clientName: string;
   crossClient: boolean;
+  responseCount: number;
+  nominationCount: number;
 }
 
 export function useCreateKolAnalysis() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { clientId: string; diseaseAreaId: string; name: string }) =>
-      apiClient.post<{ id: string }>('/api/v1/admin/kol-analyses', input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['kol-analyses'] }),
+      apiClient.post<{ id: string }>('/api/v1/admin/kol-analysis', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['kol-analysis'] }),
   });
 }
 
 export function useAvailableCampaigns(analysisId: string) {
   return useQuery({
-    queryKey: ['kol-analyses', analysisId, 'available-campaigns'],
+    queryKey: ['kol-analysis', analysisId, 'available-campaigns'],
     queryFn: () =>
       apiClient.get<{ items: AvailableCampaign[] }>(
-        `/api/v1/admin/kol-analyses/${analysisId}/available-campaigns`
+        `/api/v1/admin/kol-analysis/${analysisId}/available-campaigns`
       ),
     select: (d) => d.items,
     enabled: !!analysisId,
@@ -134,11 +138,11 @@ export function useRecalculateKolAnalysis() {
   return useMutation({
     mutationFn: (id: string) =>
       apiClient.post<{ processed: number }>(
-        `/api/v1/admin/kol-analyses/${id}/recalculate`
+        `/api/v1/admin/kol-analysis/${id}/recalculate`
       ),
     onSuccess: (_, id) => {
-      qc.invalidateQueries({ queryKey: ['kol-analyses', id] });
-      qc.invalidateQueries({ queryKey: ['kol-analyses'] });
+      qc.invalidateQueries({ queryKey: ['kol-analysis', id] });
+      qc.invalidateQueries({ queryKey: ['kol-analysis'] });
     },
   });
 }

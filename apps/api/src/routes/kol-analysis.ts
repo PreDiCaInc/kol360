@@ -16,6 +16,40 @@ const updateAnalysisSchema = z.object({
   weights: analysisWeightsSchema.optional(),
 });
 
+// Survey-response + nomination counts per campaign (Nomination has no direct
+// campaignId — it joins via SurveyResponse). Used to size campaigns in the
+// curation UI.
+async function campaignCounts(
+  campaignIds: string[]
+): Promise<Map<string, { responseCount: number; nominationCount: number }>> {
+  const map = new Map<string, { responseCount: number; nominationCount: number }>();
+  for (const id of campaignIds) map.set(id, { responseCount: 0, nominationCount: 0 });
+  if (campaignIds.length === 0) return map;
+
+  const responses = await prisma.surveyResponse.findMany({
+    where: { campaignId: { in: campaignIds } },
+    select: { id: true, campaignId: true },
+  });
+  for (const r of responses) {
+    const e = map.get(r.campaignId);
+    if (e) e.responseCount++;
+  }
+  if (responses.length > 0) {
+    const respToCampaign = new Map(responses.map((r) => [r.id, r.campaignId]));
+    const nomGroups = await prisma.nomination.groupBy({
+      by: ['responseId'],
+      where: { responseId: { in: responses.map((r) => r.id) } },
+      _count: { _all: true },
+    });
+    for (const g of nomGroups) {
+      const cid = respToCampaign.get(g.responseId);
+      const e = cid ? map.get(cid) : undefined;
+      if (e) e.nominationCount += g._count._all;
+    }
+  }
+  return map;
+}
+
 function badRequest(reply: { status: (n: number) => { send: (b: unknown) => unknown } }, e: unknown) {
   if (e instanceof z.ZodError) {
     return reply.status(400).send({
@@ -39,7 +73,7 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /api/v1/admin/kol-analyses — list
+  // GET /api/v1/admin/kol-analysis — list
   fastify.get('/', async () => {
     const items = await prisma.kolAnalysis.findMany({
       orderBy: { name: 'asc' },
@@ -52,7 +86,7 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
     return { items };
   });
 
-  // POST /api/v1/admin/kol-analyses — create an analysis for a (client, DA).
+  // POST /api/v1/admin/kol-analysis — create an analysis for a (client, DA).
   // Works even when the client runs no campaigns (e.g. lite clients);
   // campaigns are added afterward via the curation picker.
   fastify.post<{ Body: z.infer<typeof createAnalysisSchema> }>(
@@ -104,7 +138,7 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // GET /api/v1/admin/kol-analyses/:id — detail + campaigns + status
+  // GET /api/v1/admin/kol-analysis/:id — detail + campaigns + status
   fastify.get<{ Params: { id: string } }>('/:id', async (request, reply) => {
     const analysis = await prisma.kolAnalysis.findUnique({
       where: { id: request.params.id },
@@ -120,10 +154,18 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
     if (!analysis) {
       return reply.status(404).send({ message: 'Analysis not found' });
     }
-    return analysis;
+    const counts = await campaignCounts(analysis.campaigns.map((c) => c.campaignId));
+    return {
+      ...analysis,
+      campaigns: analysis.campaigns.map((c) => ({
+        ...c,
+        responseCount: counts.get(c.campaignId)?.responseCount ?? 0,
+        nominationCount: counts.get(c.campaignId)?.nominationCount ?? 0,
+      })),
+    };
   });
 
-  // GET /api/v1/admin/kol-analyses/:id/available-campaigns — campaigns in the
+  // GET /api/v1/admin/kol-analysis/:id/available-campaigns — campaigns in the
   // SAME disease area not yet linked to this analysis. Includes other clients'
   // campaigns (crossClient=true) so a lite client's analysis can pull shared
   // same-disease-area data.
@@ -153,21 +195,23 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
         },
         orderBy: { name: 'asc' },
       });
-      const items = campaigns
-        .filter((c) => !linkedIds.has(c.id))
-        .map((c) => ({
-          id: c.id,
-          name: c.name,
-          status: c.status,
-          clientId: c.clientId,
-          clientName: c.client.name,
-          crossClient: c.clientId !== analysis.clientId,
-        }));
+      const unlinked = campaigns.filter((c) => !linkedIds.has(c.id));
+      const counts = await campaignCounts(unlinked.map((c) => c.id));
+      const items = unlinked.map((c) => ({
+        id: c.id,
+        name: c.name,
+        status: c.status,
+        clientId: c.clientId,
+        clientName: c.client.name,
+        crossClient: c.clientId !== analysis.clientId,
+        responseCount: counts.get(c.id)?.responseCount ?? 0,
+        nominationCount: counts.get(c.id)?.nominationCount ?? 0,
+      }));
       return { items };
     }
   );
 
-  // PUT /api/v1/admin/kol-analyses/:id — update name and/or weights.
+  // PUT /api/v1/admin/kol-analysis/:id — update name and/or weights.
   // Changing weights does NOT auto-recalc; the user clicks Recalculate
   // (locked decision: explicit button). calcStatus reflects staleness.
   fastify.put<{ Params: { id: string }; Body: z.infer<typeof updateAnalysisSchema> }>(
@@ -211,7 +255,7 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // PUT /api/v1/admin/kol-analyses/:id/campaigns — replace include/exclude set
+  // PUT /api/v1/admin/kol-analysis/:id/campaigns — replace include/exclude set
   fastify.put<{ Params: { id: string }; Body: z.infer<typeof updateCampaignsSchema> }>(
     '/:id/campaigns',
     async (request, reply) => {
@@ -285,7 +329,7 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // POST /api/v1/admin/kol-analyses/:id/recalculate — trigger the engine
+  // POST /api/v1/admin/kol-analysis/:id/recalculate — trigger the engine
   fastify.post<{ Params: { id: string } }>(
     '/:id/recalculate',
     async (request, reply) => {
