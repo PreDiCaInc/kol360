@@ -47,6 +47,60 @@ describe('KOL Analysis API (Phase 1)', () => {
     expect(status).toBe(409);
   });
 
+  it('dedup-report returns a well-formed list (kept + dropped per respondent)', async () => {
+    const { data: list } = await client.listKolAnalyses();
+    const scored = list.items
+      .slice()
+      .sort((a, b) => b._count.scores - a._count.scores)[0];
+    if (!scored || scored._count.scores === 0) {
+      console.log('⊘ No scored analysis — skipping');
+      return;
+    }
+    const { status, data } = await client.getKolAnalysisDedupReport(scored.id);
+    expect(status).toBe(200);
+    expect(Array.isArray(data.items)).toBe(true);
+    for (const d of data.items) {
+      expect(typeof d.respondentName).toBe('string');
+      expect(d.kept).toBeTruthy();
+      expect(Array.isArray(d.dropped)).toBe(true);
+      expect(d.dropped.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('explain reproduces the stored composite (in sync) for a scored HCP', async () => {
+    const { data: list } = await client.listKolAnalyses();
+    const scored = list.items
+      .slice()
+      .sort((a, b) => b._count.scores - a._count.scores)[0];
+    if (!scored || scored._count.scores === 0) {
+      console.log('⊘ No scored analysis — skipping');
+      return;
+    }
+    // Pull one scored HCP via the dashboard explorer for this analysis.
+    const { data: explorer } = await client.getInsightsKolExplorer(
+      scored.diseaseAreaId,
+      { limit: 1, clientId: scored.clientId }
+    );
+    const hcpId = explorer?.items?.[0]?.id;
+    if (!hcpId) {
+      console.log('⊘ No HCP from explorer — skipping');
+      return;
+    }
+    const { status, data } = await client.explainKolAnalysisHcp(scored.id, hcpId);
+    expect(status).toBe(200);
+    if (!data.found) return; // HCP not in analysis pool — acceptable
+    expect(data.survey).toBeTruthy();
+    expect(data.composite).toBeTruthy();
+    // Per-type score must equal count/pooledMax*100 when present.
+    for (const p of data.survey!.perType) {
+      if (p.score != null && p.pooledMax > 0) {
+        expect(p.score).toBeCloseTo((p.count / p.pooledMax) * 100, 4);
+      }
+    }
+    // Recomputed composite must match the stored value (analysis is fresh).
+    expect(data.inSyncWithStored).toBe(true);
+  });
+
   it('available-campaigns returns same-DA campaigns with crossClient flag', async () => {
     const { data: list } = await client.listKolAnalyses();
     const target = list.items[0];

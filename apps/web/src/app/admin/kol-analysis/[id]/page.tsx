@@ -9,9 +9,12 @@ import {
   useUpdateKolAnalysis,
   useRecalculateKolAnalysis,
   useAvailableCampaigns,
+  useDedupReport,
+  useExplainHcp,
   type AnalysisWeights,
   type AnalysisCalcStatus,
 } from '@/hooks/use-kol-analysis';
+import { useHcps } from '@/hooks/use-hcps';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,6 +64,14 @@ export default function KolAnalysisDetailPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [addSel, setAddSel] = useState<Record<string, boolean>>({});
   const { data: available } = useAvailableCampaigns(showAdd ? id : '');
+
+  // Score troubleshooting: search an HCP, explain their calc.
+  const [explainQuery, setExplainQuery] = useState('');
+  const [explainHcpId, setExplainHcpId] = useState<string | null>(null);
+  const explainQ = explainQuery.trim();
+  const { data: hcpSearch } = useHcps({ query: explainQ, limit: 8 });
+  const { data: explain, isLoading: explainLoading } = useExplainHcp(id, explainHcpId);
+  const { data: dedupItems } = useDedupReport(id);
 
   const handleAddCampaigns = async () => {
     const toAdd = Object.entries(addSel)
@@ -257,6 +268,273 @@ export default function KolAnalysisDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Deduped respondents — survey-takers who appeared in >1 included
+          campaign; only their most-recent response counts. */}
+      {dedupItems && dedupItems.length > 0 && (
+        <Card className="mt-6 border-amber-200">
+          <CardHeader>
+            <CardTitle className="text-amber-800">
+              Deduped respondents ({dedupItems.length})
+            </CardTitle>
+            <CardDescription>
+              These survey-takers responded in more than one included campaign.
+              Only their most-recent response is counted; older responses
+              (and their nominations) are dropped to avoid double-counting.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Respondent</TableHead>
+                  <TableHead>Kept (most recent)</TableHead>
+                  <TableHead>Dropped</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dedupItems.map((d) => (
+                  <TableRow key={d.respondentHcpId}>
+                    <TableCell className="font-medium">
+                      {d.respondentName}
+                      {d.respondentNpi && (
+                        <span className="text-muted-foreground text-xs ml-1">
+                          (NPI {d.respondentNpi})
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {d.kept.campaignName}
+                      <span className="text-muted-foreground">
+                        {' '}· {new Date(d.kept.respondedAt).toLocaleDateString()}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {d.dropped.map((x) => (
+                        <div key={x.campaignId} className="text-muted-foreground">
+                          {x.campaignName} ·{' '}
+                          {new Date(x.respondedAt).toLocaleDateString()} ·{' '}
+                          {x.nominationsDropped} nom dropped
+                        </div>
+                      ))}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Score troubleshooting — explain how a given HCP's score was derived. */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Score troubleshooting</CardTitle>
+          <CardDescription>
+            Search an HCP to see exactly how their score was calculated:
+            per-type counts vs the pooled max, the survey mean, and the
+            weighted composite — cross-checked against the stored value.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 mb-4">
+            <Input
+              placeholder="Search HCP by name or NPI…"
+              value={explainQuery}
+              onChange={(e) => {
+                setExplainQuery(e.target.value);
+                setExplainHcpId(null);
+              }}
+              className="max-w-sm"
+            />
+          </div>
+
+          {!explainHcpId && explainQ.length >= 2 && hcpSearch?.items && (
+            <div className="border rounded-md divide-y mb-4 max-w-sm">
+              {hcpSearch.items.length === 0 ? (
+                <div className="p-3 text-sm text-muted-foreground">No matches</div>
+              ) : (
+                hcpSearch.items.map((h) => (
+                  <button
+                    key={h.id}
+                    className="block w-full text-left px-3 py-2 text-sm hover:bg-muted/50"
+                    onClick={() => setExplainHcpId(h.id)}
+                  >
+                    {h.firstName} {h.lastName}
+                    {h.npi && (
+                      <span className="text-muted-foreground text-xs ml-1">
+                        (NPI {h.npi})
+                      </span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+
+          {explainHcpId && explainLoading && (
+            <p className="text-sm text-muted-foreground">Computing…</p>
+          )}
+
+          {explainHcpId && explain && !explainLoading && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">
+                  {explain.hcp?.name ?? 'HCP'}
+                  {explain.hcp?.npi && (
+                    <span className="text-muted-foreground text-sm ml-2">
+                      NPI {explain.hcp.npi}
+                    </span>
+                  )}
+                </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setExplainHcpId(null);
+                    setExplainQuery('');
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
+
+              {!explain.found ? (
+                <p className="text-sm text-amber-700">
+                  {explain.reason || 'No score for this HCP in this analysis.'}
+                </p>
+              ) : (
+                <>
+                  {explain.inSyncWithStored === false && (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      Recomputed composite differs from the stored value —
+                      the analysis likely needs a Recalculate.
+                    </div>
+                  )}
+
+                  <div>
+                    <h4 className="font-medium mb-2 text-sm">
+                      Survey score — per nomination type
+                    </h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead className="text-right">Count</TableHead>
+                          <TableHead className="text-right">Pooled max</TableHead>
+                          <TableHead>Formula</TableHead>
+                          <TableHead className="text-right">Score</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {explain.survey!.perType.map((p) => (
+                          <TableRow key={p.nominationType}>
+                            <TableCell>{p.nominationType}</TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {p.count}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {p.pooledMax}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {p.formula}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {p.score == null ? '—' : p.score.toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Survey = mean of present type scores ={' '}
+                      <strong>
+                        {explain.survey!.scoreSurvey == null
+                          ? '—'
+                          : explain.survey!.scoreSurvey.toFixed(2)}
+                      </strong>{' '}
+                      · total nominations {explain.survey!.nominationCount}
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-medium mb-2 text-sm">
+                      Composite — weighted objective + survey
+                    </h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Component</TableHead>
+                          <TableHead className="text-right">Value</TableHead>
+                          <TableHead className="text-right">Weight %</TableHead>
+                          <TableHead className="text-right">Contribution</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {explain.composite!.objective.map((o) => (
+                          <TableRow key={o.field}>
+                            <TableCell>
+                              {o.field.replace('score', '')}
+                              {!o.hasData && (
+                                <span className="text-muted-foreground text-xs ml-1">
+                                  (no data → 0)
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {o.value.toFixed(2)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {o.weight}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {o.contribution.toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow>
+                          <TableCell>Survey</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {explain.survey!.scoreSurvey == null
+                              ? '—'
+                              : explain.survey!.scoreSurvey.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {explain.composite!.surveyWeight}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {explain.composite!.surveyContribution.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                    <div className="flex justify-between text-sm mt-2 pt-2 border-t">
+                      <span className="font-medium">Composite (recomputed)</span>
+                      <span className="font-semibold tabular-nums">
+                        {explain.composite!.computed.toFixed(2)}
+                      </span>
+                    </div>
+                    {explain.stored && (
+                      <div className="flex justify-between text-sm text-muted-foreground mt-1">
+                        <span>
+                          Stored (last recalc{' '}
+                          {new Date(explain.stored.calculatedAt).toLocaleDateString()})
+                        </span>
+                        <span className="tabular-nums">
+                          {explain.stored.compositeScore == null
+                            ? '—'
+                            : explain.stored.compositeScore.toFixed(2)}
+                          {explain.inSyncWithStored ? ' ✓' : ' ⚠'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog open={showAdd} onOpenChange={setShowAdd}>
         <DialogContent className="max-w-lg">

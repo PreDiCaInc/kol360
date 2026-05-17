@@ -354,4 +354,36 @@ export const kolAnalysisRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
   );
+
+  // GET /api/v1/admin/kol-analysis/:id/dedup-report — respondents deduped
+  // across campaigns (kept vs dropped). Read-only; recomputed from the same
+  // pooling logic so it always reflects what recalc would do.
+  fastify.get<{ Params: { id: string } }>(
+    '/:id/dedup-report',
+    async (request, reply) => {
+      try {
+        return await kolAnalysisService.getDedupReport(request.params.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed';
+        return reply.status(message === 'Analysis not found' ? 404 : 400).send({ message });
+      }
+    }
+  );
+
+  // GET /api/v1/admin/kol-analysis/:id/explain/:hcpId — full per-HCP calc
+  // breakdown for admin troubleshooting.
+  fastify.get<{ Params: { id: string; hcpId: string } }>(
+    '/:id/explain/:hcpId',
+    async (request, reply) => {
+      try {
+        return await kolAnalysisService.explainHcp(
+          request.params.id,
+          request.params.hcpId
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed';
+        return reply.status(message === 'Analysis not found' ? 404 : 400).send({ message });
+      }
+    }
+  );
 };
