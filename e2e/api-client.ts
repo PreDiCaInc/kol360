@@ -354,6 +354,24 @@ export class ApiClient {
     );
   }
 
+  async getKolAnalysisDedupReport(id: string) {
+    return this.request<{ items: Array<{ respondentHcpId: string; respondentName: string; kept: { campaignName: string }; dropped: Array<{ campaignName: string; nominationsDropped: number }> }> }>(
+      'GET',
+      `/api/v1/admin/kol-analysis/${id}/dedup-report`
+    );
+  }
+
+  async explainKolAnalysisHcp(id: string, hcpId: string) {
+    return this.request<{
+      found: boolean;
+      reason?: string;
+      survey?: { perType: Array<{ nominationType: string; count: number; pooledMax: number; score: number | null }>; scoreSurvey: number | null; nominationCount: number };
+      composite?: { objective: Array<{ field: string; value: number; weight: number; contribution: number }>; surveyWeight: number; surveyContribution: number; computed: number };
+      stored?: { compositeScore: number | null } | null;
+      inSyncWithStored?: boolean;
+    }>('GET', `/api/v1/admin/kol-analysis/${id}/explain/${hcpId}`);
+  }
+
   async getAvailableCampaigns(id: string) {
     return this.request<{ items: Array<{ id: string; name: string; clientId: string; clientName: string; crossClient: boolean }> }>(
       'GET',
@@ -890,6 +908,7 @@ export class ApiClient {
     specialty?: string;
     state?: string;
     influencerType?: string;
+    clientId?: string;
     page?: number;
     limit?: number;
   }) {
@@ -898,6 +917,7 @@ export class ApiClient {
     if (params?.specialty) query.set('specialty', params.specialty);
     if (params?.state) query.set('state', params.state);
     if (params?.influencerType) query.set('influencerType', params.influencerType);
+    if (params?.clientId) query.set('clientId', params.clientId);
     if (params?.page) query.set('page', params.page.toString());
     if (params?.limit) query.set('limit', params.limit.toString());
     const queryStr = query.toString() ? `?${query.toString()}` : '';

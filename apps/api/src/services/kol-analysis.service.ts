@@ -35,17 +35,266 @@ function parseWeights(weightsJson: Prisma.JsonValue): AnalysisWeights {
   return DEFAULT_ANALYSIS_WEIGHTS;
 }
 
+// One respondent (survey-taker) deduped across campaigns within an analysis.
+export interface DedupEntry {
+  respondentHcpId: string;
+  keptResponseId: string;
+  keptCampaignId: string;
+  keptRecencyAt: string;
+  dropped: Array<{
+    responseId: string;
+    campaignId: string;
+    recencyAt: string;
+    nominationsDropped: number;
+  }>;
+}
+
+// Output of the single shared pooling computation, consumed by the
+// recalc (writes) and the read-only dedup-report / explain endpoints.
+interface PooledResult {
+  typesInPool: NominationType[];
+  weights: AnalysisWeights;
+  scoreRows: Array<Record<string, unknown>>;
+  maxPerType: Map<string, number>; // nomination type (or '__legacy__') → pooled max count
+  objectiveByHcp: Map<string, Record<string, unknown>>;
+  dedup: DedupEntry[];
+}
+
 export class KolAnalysisService {
   /**
-   * Recompute scores for an analysis.
+   * Shared pooling computation — the single source of truth for analysis
+   * scores. Pools MATCHED/NEW_HCP nominations across the included campaigns,
+   * dedups respondents to their most-recent survey, normalizes each
+   * nomination type ONCE against the pooled max, then composites with live
+   * objective scores. Pure read (no writes) so the recalc and the
+   * explain/dedup-report endpoints can never drift apart.
+   */
+  private async computePooled(input: {
+    diseaseAreaId: string;
+    weightsJson: Prisma.JsonValue;
+    includedCampaignIds: string[];
+  }): Promise<PooledResult> {
+    const { diseaseAreaId, weightsJson, includedCampaignIds } = input;
+    const weights = parseWeights(weightsJson);
+
+    // Campaigns that exclude internal (@bio-exec.com) respondents.
+    const internalExcludedCampaigns = new Set(
+      (
+        await prisma.campaign.findMany({
+          where: { id: { in: includedCampaignIds }, excludeInternalEmails: true },
+          select: { id: true },
+        })
+      ).map((c) => c.id)
+    );
+
+    // Nomination types present across the included campaigns.
+    const surveyQuestions = await prisma.surveyQuestion.findMany({
+      where: { campaignId: { in: includedCampaignIds }, nominationType: { not: null } },
+      select: { nominationType: true },
+    });
+    const typesInPool = [
+      ...new Set(
+        surveyQuestions
+          .map((q) => q.nominationType)
+          .filter((t): t is NominationType => t !== null)
+      ),
+    ];
+
+    // Pull MATCHED/NEW_HCP nominations across the pooled campaign set.
+    const nominations = await prisma.nomination.findMany({
+      where: {
+        matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
+        matchedHcpId: { not: null },
+        response: { campaignId: { in: includedCampaignIds } },
+      },
+      select: {
+        matchedHcpId: true,
+        question: { select: { nominationType: true } },
+        response: {
+          select: {
+            id: true,
+            campaignId: true,
+            completedAt: true,
+            createdAt: true,
+            respondentHcpId: true,
+            respondentHcp: { select: { email: true } },
+          },
+        },
+      },
+    });
+
+    // Respondent dedup: within an analysis a respondent (survey-taker) must
+    // count once. If the same HCP submitted the survey in >1 included
+    // campaign, keep only their MOST RECENT response (completedAt, fallback
+    // createdAt) and drop nominations from older responses — otherwise their
+    // nominations would be double-counted in the pooled score.
+    const recency = (r: { completedAt: Date | null; createdAt: Date }) =>
+      (r.completedAt ?? r.createdAt).getTime();
+    const bestResponseByRespondent = new Map<string, { responseId: string; key: number }>();
+    // Per respondent → per response: campaign, recency, eligible nomination count.
+    const respResponses = new Map<
+      string,
+      Map<string, { campaignId: string; key: number; count: number }>
+    >();
+    for (const n of nominations) {
+      const respId = n.response.respondentHcpId;
+      const key = recency(n.response);
+      const cur = bestResponseByRespondent.get(respId);
+      if (
+        !cur ||
+        key > cur.key ||
+        (key === cur.key && n.response.id > cur.responseId)
+      ) {
+        bestResponseByRespondent.set(respId, { responseId: n.response.id, key });
+      }
+      if (!respResponses.has(respId)) respResponses.set(respId, new Map());
+      const byResp = respResponses.get(respId)!;
+      if (!byResp.has(n.response.id)) {
+        byResp.set(n.response.id, {
+          campaignId: n.response.campaignId,
+          key,
+          count: 0,
+        });
+      }
+      byResp.get(n.response.id)!.count++;
+    }
+
+    // Build the dedup report: respondents with >1 response in the included
+    // set. Kept = most-recent; dropped = the rest (with their nom counts).
+    const dedup: DedupEntry[] = [];
+    for (const [respId, byResp] of respResponses) {
+      if (byResp.size < 2) continue;
+      const best = bestResponseByRespondent.get(respId)!;
+      const dropped: DedupEntry['dropped'] = [];
+      for (const [responseId, info] of byResp) {
+        if (responseId === best.responseId) continue;
+        dropped.push({
+          responseId,
+          campaignId: info.campaignId,
+          recencyAt: new Date(info.key).toISOString(),
+          nominationsDropped: info.count,
+        });
+      }
+      if (dropped.length === 0) continue;
+      const keptInfo = byResp.get(best.responseId)!;
+      dedup.push({
+        respondentHcpId: respId,
+        keptResponseId: best.responseId,
+        keptCampaignId: keptInfo.campaignId,
+        keptRecencyAt: new Date(best.key).toISOString(),
+        dropped,
+      });
+    }
+
+    // Apply internal-email exclusion + respondent dedup.
+    const pooled = nominations.filter((n) => {
+      if (!n.matchedHcpId) return false;
+      if (internalExcludedCampaigns.has(n.response.campaignId)) {
+        const email = n.response.respondentHcp?.email ?? '';
+        if (email.toLowerCase().endsWith('@bio-exec.com')) return false;
+      }
+      const best = bestResponseByRespondent.get(n.response.respondentHcpId);
+      if (!best || best.responseId !== n.response.id) return false;
+      return true;
+    });
+
+    // ---- Pooled aggregation ----
+    let scoreRows: Array<Record<string, unknown>>;
+    const maxPerType = new Map<string, number>();
+    const hcpIds = new Set<string>();
+
+    if (typesInPool.length > 0) {
+      const hcpTypeCount = new Map<string, Map<NominationType, number>>();
+      for (const n of pooled) {
+        const t = n.question.nominationType;
+        if (!t || !n.matchedHcpId) continue;
+        if (!hcpTypeCount.has(n.matchedHcpId)) hcpTypeCount.set(n.matchedHcpId, new Map());
+        const tc = hcpTypeCount.get(n.matchedHcpId)!;
+        const next = (tc.get(t) || 0) + 1;
+        tc.set(t, next);
+        if (next > (maxPerType.get(t) || 0)) maxPerType.set(t, next);
+      }
+
+      scoreRows = [];
+      for (const [hcpId, typeCounts] of hcpTypeCount) {
+        hcpIds.add(hcpId);
+        const row: Record<string, unknown> = { hcpId };
+        const typeScores: number[] = [];
+        let total = 0;
+        for (const t of typesInPool) {
+          const count = typeCounts.get(t) || 0;
+          const maxCount = maxPerType.get(t) || 1;
+          const f = NOMINATION_TYPE_FIELDS[t];
+          row[f.count] = count;
+          total += count;
+          if (count > 0) {
+            const s = (count / maxCount) * 100;
+            row[f.score] = s;
+            typeScores.push(s);
+          } else {
+            row[f.score] = null;
+          }
+        }
+        row.nominationCount = total;
+        row.scoreSurvey =
+          typeScores.length > 0
+            ? typeScores.reduce((a, b) => a + b, 0) / typeScores.length
+            : null;
+        scoreRows.push(row);
+      }
+    } else {
+      // Legacy fallback: no nomination types — pool total nominations per HCP,
+      // normalize once against the pooled max.
+      const hcpCount = new Map<string, number>();
+      for (const n of pooled) {
+        if (!n.matchedHcpId) continue;
+        hcpCount.set(n.matchedHcpId, (hcpCount.get(n.matchedHcpId) || 0) + 1);
+      }
+      const maxCount = Math.max(1, ...hcpCount.values());
+      maxPerType.set('__legacy__', maxCount);
+      scoreRows = [];
+      for (const [hcpId, count] of hcpCount) {
+        hcpIds.add(hcpId);
+        scoreRows.push({
+          hcpId,
+          nominationCount: count,
+          scoreSurvey: (count / maxCount) * 100,
+        });
+      }
+    }
+
+    // ---- Composite: live-pull objective scores from HcpDiseaseAreaScore ----
+    const daScores = await prisma.hcpDiseaseAreaScore.findMany({
+      where: {
+        hcpId: { in: [...hcpIds] },
+        diseaseAreaId,
+        isCurrent: true,
+      },
+    });
+    const daByHcp = new Map(daScores.map((d) => [d.hcpId, d as Record<string, unknown>]));
+
+    for (const row of scoreRows) {
+      const hcpId = row.hcpId as string;
+      const da = daByHcp.get(hcpId);
+      const surveyScore = row.scoreSurvey == null ? 0 : Number(row.scoreSurvey);
+      let composite = surveyScore * (toNum(weights.weightSurvey) / 100);
+      for (const { field, weight } of OBJECTIVE_WEIGHT_MAP) {
+        const objVal = da ? toNum(da[field]) : 0; // null/missing → 0
+        composite += objVal * (toNum(weights[weight]) / 100);
+      }
+      row.compositeScore = composite;
+    }
+
+    return { typesInPool, weights, scoreRows, maxPerType, objectiveByHcp: daByHcp, dedup };
+  }
+
+  /**
+   * Recompute and persist scores for an analysis.
    *
-   * The fix vs old campaign scoring: nominations are POOLED across all
-   * INCLUDED campaigns, then each nomination type is normalized ONCE against
-   * the pooled max. (Old behavior normalized per-campaign then averaged the
-   * percentages, which is statistically invalid — see Eric 5/100 + 55/90.)
-   *
-   * Objective scores are read LIVE from the current HcpDiseaseAreaScore;
-   * they are not stored on HcpAnalysisScore.
+   * Pools nominations across INCLUDED campaigns, dedups respondents to their
+   * most-recent survey, normalizes each type ONCE against the pooled max
+   * (fixes the old per-campaign-then-average bug — Eric 5/100 + 55/90).
+   * Objective scores are read LIVE from HcpDiseaseAreaScore.
    */
   async recalculateAnalysis(analysisId: string): Promise<{ processed: number }> {
     const analysis = await prisma.kolAnalysis.findUnique({
@@ -75,181 +324,12 @@ export class KolAnalysisService {
         return { processed: 0 };
       }
 
-      // Campaigns that exclude internal (@bio-exec.com) respondents.
-      const internalExcludedCampaigns = new Set(
-        (
-          await prisma.campaign.findMany({
-            where: { id: { in: includedCampaignIds }, excludeInternalEmails: true },
-            select: { id: true },
-          })
-        ).map((c) => c.id)
-      );
-
-      // Nomination types present across the included campaigns.
-      const surveyQuestions = await prisma.surveyQuestion.findMany({
-        where: { campaignId: { in: includedCampaignIds }, nominationType: { not: null } },
-        select: { nominationType: true },
-      });
-      const typesInPool = [
-        ...new Set(
-          surveyQuestions
-            .map((q) => q.nominationType)
-            .filter((t): t is NominationType => t !== null)
-        ),
-      ];
-
-      // Pull MATCHED/NEW_HCP nominations across the pooled campaign set.
-      const nominations = await prisma.nomination.findMany({
-        where: {
-          matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
-          matchedHcpId: { not: null },
-          response: { campaignId: { in: includedCampaignIds } },
-        },
-        select: {
-          matchedHcpId: true,
-          question: { select: { nominationType: true } },
-          response: {
-            select: {
-              id: true,
-              campaignId: true,
-              completedAt: true,
-              createdAt: true,
-              respondentHcpId: true,
-              respondentHcp: { select: { email: true } },
-            },
-          },
-        },
+      const { scoreRows } = await this.computePooled({
+        diseaseAreaId: analysis.diseaseAreaId,
+        weightsJson: analysis.weightsJson,
+        includedCampaignIds,
       });
 
-      // Respondent dedup: within an analysis a respondent (survey-taker) must
-      // count once. If the same HCP submitted the survey in >1 included
-      // campaign, keep only their MOST RECENT response (completedAt, fallback
-      // createdAt) and drop nominations from older responses — otherwise their
-      // nominations would be double-counted in the pooled score.
-      const recency = (r: { completedAt: Date | null; createdAt: Date }) =>
-        (r.completedAt ?? r.createdAt).getTime();
-      const bestResponseByRespondent = new Map<
-        string,
-        { responseId: string; key: number }
-      >();
-      for (const n of nominations) {
-        const respId = n.response.respondentHcpId;
-        const key = recency(n.response);
-        const cur = bestResponseByRespondent.get(respId);
-        // Newer wins; tie broken deterministically by responseId.
-        if (
-          !cur ||
-          key > cur.key ||
-          (key === cur.key && n.response.id > cur.responseId)
-        ) {
-          bestResponseByRespondent.set(respId, { responseId: n.response.id, key });
-        }
-      }
-
-      // Apply internal-email exclusion + respondent dedup.
-      const pooled = nominations.filter((n) => {
-        if (!n.matchedHcpId) return false;
-        if (internalExcludedCampaigns.has(n.response.campaignId)) {
-          const email = n.response.respondentHcp?.email ?? '';
-          if (email.toLowerCase().endsWith('@bio-exec.com')) return false;
-        }
-        // Only nominations from the respondent's most-recent response count.
-        const best = bestResponseByRespondent.get(n.response.respondentHcpId);
-        if (!best || best.responseId !== n.response.id) return false;
-        return true;
-      });
-
-      const weights = parseWeights(analysis.weightsJson);
-
-      // ---- Pooled aggregation ----
-      let scoreRows: Array<Record<string, unknown>>;
-      const hcpIds = new Set<string>();
-
-      if (typesInPool.length > 0) {
-        // Per-type pooled counts + single normalization against pooled max.
-        const hcpTypeCount = new Map<string, Map<NominationType, number>>();
-        const maxPerType = new Map<NominationType, number>();
-
-        for (const n of pooled) {
-          const t = n.question.nominationType;
-          if (!t || !n.matchedHcpId) continue;
-          if (!hcpTypeCount.has(n.matchedHcpId)) hcpTypeCount.set(n.matchedHcpId, new Map());
-          const tc = hcpTypeCount.get(n.matchedHcpId)!;
-          const next = (tc.get(t) || 0) + 1;
-          tc.set(t, next);
-          if (next > (maxPerType.get(t) || 0)) maxPerType.set(t, next);
-        }
-
-        scoreRows = [];
-        for (const [hcpId, typeCounts] of hcpTypeCount) {
-          hcpIds.add(hcpId);
-          const row: Record<string, unknown> = { hcpId };
-          const typeScores: number[] = [];
-          let total = 0;
-          for (const t of typesInPool) {
-            const count = typeCounts.get(t) || 0;
-            const maxCount = maxPerType.get(t) || 1;
-            const f = NOMINATION_TYPE_FIELDS[t];
-            row[f.count] = count;
-            total += count;
-            if (count > 0) {
-              const s = (count / maxCount) * 100;
-              row[f.score] = s;
-              typeScores.push(s);
-            } else {
-              row[f.score] = null;
-            }
-          }
-          row.nominationCount = total;
-          row.scoreSurvey =
-            typeScores.length > 0
-              ? typeScores.reduce((a, b) => a + b, 0) / typeScores.length
-              : null;
-          scoreRows.push(row);
-        }
-      } else {
-        // Legacy fallback: no nomination types — pool total nominations per HCP,
-        // normalize once against the pooled max.
-        const hcpCount = new Map<string, number>();
-        for (const n of pooled) {
-          if (!n.matchedHcpId) continue;
-          hcpCount.set(n.matchedHcpId, (hcpCount.get(n.matchedHcpId) || 0) + 1);
-        }
-        const maxCount = Math.max(1, ...hcpCount.values());
-        scoreRows = [];
-        for (const [hcpId, count] of hcpCount) {
-          hcpIds.add(hcpId);
-          scoreRows.push({
-            hcpId,
-            nominationCount: count,
-            scoreSurvey: (count / maxCount) * 100,
-          });
-        }
-      }
-
-      // ---- Composite: live-pull objective scores from HcpDiseaseAreaScore ----
-      const daScores = await prisma.hcpDiseaseAreaScore.findMany({
-        where: {
-          hcpId: { in: [...hcpIds] },
-          diseaseAreaId: analysis.diseaseAreaId,
-          isCurrent: true,
-        },
-      });
-      const daByHcp = new Map(daScores.map((d) => [d.hcpId, d]));
-
-      for (const row of scoreRows) {
-        const hcpId = row.hcpId as string;
-        const da = daByHcp.get(hcpId) as Record<string, unknown> | undefined;
-        const surveyScore = row.scoreSurvey == null ? 0 : Number(row.scoreSurvey);
-        let composite = surveyScore * (toNum(weights.weightSurvey) / 100);
-        for (const { field, weight } of OBJECTIVE_WEIGHT_MAP) {
-          const objVal = da ? toNum(da[field]) : 0; // null/missing → 0
-          composite += objVal * (toNum(weights[weight]) / 100);
-        }
-        row.compositeScore = composite;
-      }
-
-      // ---- Persist: replace this analysis's score rows ----
       await prisma.$transaction([
         prisma.hcpAnalysisScore.deleteMany({ where: { analysisId } }),
         ...(scoreRows.length > 0
@@ -296,6 +376,191 @@ export class KolAnalysisService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Read-only: which respondents were deduped across campaigns (kept vs
+   * dropped). Recomputes from the same pooling logic — no writes — so it
+   * always reflects what recalc would do. Enriched with HCP + campaign names.
+   */
+  async getDedupReport(analysisId: string) {
+    const analysis = await prisma.kolAnalysis.findUnique({
+      where: { id: analysisId },
+      include: { campaigns: true },
+    });
+    if (!analysis) throw new Error('Analysis not found');
+
+    const includedCampaignIds = analysis.campaigns
+      .filter((c) => c.included)
+      .map((c) => c.campaignId);
+    if (includedCampaignIds.length === 0) return { items: [] };
+
+    const { dedup } = await this.computePooled({
+      diseaseAreaId: analysis.diseaseAreaId,
+      weightsJson: analysis.weightsJson,
+      includedCampaignIds,
+    });
+    if (dedup.length === 0) return { items: [] };
+
+    const hcpIds = dedup.map((d) => d.respondentHcpId);
+    const campaignIds = [
+      ...new Set(
+        dedup.flatMap((d) => [d.keptCampaignId, ...d.dropped.map((x) => x.campaignId)])
+      ),
+    ];
+    const [hcps, campaigns] = await Promise.all([
+      prisma.hcp.findMany({
+        where: { id: { in: hcpIds } },
+        select: { id: true, firstName: true, lastName: true, npi: true },
+      }),
+      prisma.campaign.findMany({
+        where: { id: { in: campaignIds } },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const hcpById = new Map(hcps.map((h) => [h.id, h]));
+    const campById = new Map(campaigns.map((c) => [c.id, c.name]));
+
+    return {
+      items: dedup.map((d) => {
+        const h = hcpById.get(d.respondentHcpId);
+        return {
+          respondentHcpId: d.respondentHcpId,
+          respondentName: h ? `${h.firstName} ${h.lastName}` : 'Unknown',
+          respondentNpi: h?.npi ?? null,
+          kept: {
+            campaignId: d.keptCampaignId,
+            campaignName: campById.get(d.keptCampaignId) ?? 'Unknown',
+            respondedAt: d.keptRecencyAt,
+          },
+          dropped: d.dropped.map((x) => ({
+            campaignId: x.campaignId,
+            campaignName: campById.get(x.campaignId) ?? 'Unknown',
+            respondedAt: x.recencyAt,
+            nominationsDropped: x.nominationsDropped,
+          })),
+        };
+      }),
+    };
+  }
+
+  /**
+   * Read-only: full calc breakdown for one HCP in an analysis — per-type
+   * count vs pooled max → normalized score, survey mean, objective values +
+   * weights → composite arithmetic, cross-checked against the stored row.
+   * The admin troubleshooting view.
+   */
+  async explainHcp(analysisId: string, hcpId: string) {
+    const analysis = await prisma.kolAnalysis.findUnique({
+      where: { id: analysisId },
+      include: { campaigns: true },
+    });
+    if (!analysis) throw new Error('Analysis not found');
+
+    const includedCampaignIds = analysis.campaigns
+      .filter((c) => c.included)
+      .map((c) => c.campaignId);
+    if (includedCampaignIds.length === 0) {
+      return { found: false as const, reason: 'No included campaigns' };
+    }
+
+    const { typesInPool, weights, scoreRows, maxPerType, objectiveByHcp } =
+      await this.computePooled({
+        diseaseAreaId: analysis.diseaseAreaId,
+        weightsJson: analysis.weightsJson,
+        includedCampaignIds,
+      });
+
+    const row = scoreRows.find((r) => r.hcpId === hcpId);
+    const hcp = await prisma.hcp.findUnique({
+      where: { id: hcpId },
+      select: { id: true, firstName: true, lastName: true, npi: true },
+    });
+    if (!row) {
+      return {
+        found: false as const,
+        reason: 'HCP has no nominations in the included campaigns',
+        hcp: hcp
+          ? { id: hcp.id, name: `${hcp.firstName} ${hcp.lastName}`, npi: hcp.npi }
+          : null,
+      };
+    }
+
+    // Per-type breakdown: count, pooled max (the denominator), normalized score.
+    const perType = typesInPool.map((t) => {
+      const f = NOMINATION_TYPE_FIELDS[t];
+      const count = (row[f.count] as number) ?? 0;
+      const pooledMax = maxPerType.get(t) ?? 0;
+      const score = (row[f.score] as number | null) ?? null;
+      return {
+        nominationType: t,
+        count,
+        pooledMax,
+        formula: pooledMax > 0 ? `${count} / ${pooledMax} × 100` : 'n/a',
+        score,
+      };
+    });
+
+    const presentScores = perType
+      .map((p) => p.score)
+      .filter((s): s is number => s != null);
+    const surveyScore = (row.scoreSurvey as number | null) ?? null;
+
+    const da = objectiveByHcp.get(hcpId);
+    const objective = OBJECTIVE_WEIGHT_MAP.map(({ field, weight }) => {
+      const value = da ? toNum(da[field]) : 0;
+      const w = toNum(weights[weight]);
+      return {
+        field,
+        value,
+        weight: w,
+        contribution: (value * w) / 100,
+        hasData: !!da && da[field] != null,
+      };
+    });
+    const surveyContribution =
+      (surveyScore ?? 0) * (toNum(weights.weightSurvey) / 100);
+    const compositeComputed =
+      objective.reduce((s, o) => s + o.contribution, 0) + surveyContribution;
+
+    const stored = await prisma.hcpAnalysisScore.findUnique({
+      where: { analysisId_hcpId: { analysisId, hcpId } },
+    });
+
+    return {
+      found: true as const,
+      hcp: hcp
+        ? { id: hcp.id, name: `${hcp.firstName} ${hcp.lastName}`, npi: hcp.npi }
+        : { id: hcpId, name: 'Unknown', npi: null },
+      survey: {
+        perType,
+        meanOfPresentTypeScores:
+          presentScores.length > 0
+            ? presentScores.reduce((a, b) => a + b, 0) / presentScores.length
+            : null,
+        scoreSurvey: surveyScore,
+        nominationCount: (row.nominationCount as number) ?? 0,
+      },
+      composite: {
+        objective,
+        surveyWeight: toNum(weights.weightSurvey),
+        surveyContribution,
+        computed: compositeComputed,
+      },
+      // Cross-check: recomputed vs the value persisted at last recalc.
+      stored: stored
+        ? {
+            scoreSurvey: stored.scoreSurvey != null ? Number(stored.scoreSurvey) : null,
+            compositeScore:
+              stored.compositeScore != null ? Number(stored.compositeScore) : null,
+            calculatedAt: stored.calculatedAt,
+          }
+        : null,
+      inSyncWithStored:
+        !!stored &&
+        stored.compositeScore != null &&
+        Math.abs(Number(stored.compositeScore) - compositeComputed) < 0.01,
+    };
   }
 }
 

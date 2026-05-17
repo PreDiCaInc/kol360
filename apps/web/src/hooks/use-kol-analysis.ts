@@ -133,6 +133,78 @@ export function useAvailableCampaigns(analysisId: string) {
   });
 }
 
+export interface DedupReportItem {
+  respondentHcpId: string;
+  respondentName: string;
+  respondentNpi: string | null;
+  kept: { campaignId: string; campaignName: string; respondedAt: string };
+  dropped: Array<{
+    campaignId: string;
+    campaignName: string;
+    respondedAt: string;
+    nominationsDropped: number;
+  }>;
+}
+
+export interface ExplainResult {
+  found: boolean;
+  reason?: string;
+  hcp: { id: string; name: string; npi: string | null } | null;
+  survey?: {
+    perType: Array<{
+      nominationType: string;
+      count: number;
+      pooledMax: number;
+      formula: string;
+      score: number | null;
+    }>;
+    meanOfPresentTypeScores: number | null;
+    scoreSurvey: number | null;
+    nominationCount: number;
+  };
+  composite?: {
+    objective: Array<{
+      field: string;
+      value: number;
+      weight: number;
+      contribution: number;
+      hasData: boolean;
+    }>;
+    surveyWeight: number;
+    surveyContribution: number;
+    computed: number;
+  };
+  stored?: {
+    scoreSurvey: number | null;
+    compositeScore: number | null;
+    calculatedAt: string;
+  } | null;
+  inSyncWithStored?: boolean;
+}
+
+export function useDedupReport(analysisId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['kol-analysis', analysisId, 'dedup-report'],
+    queryFn: () =>
+      apiClient.get<{ items: DedupReportItem[] }>(
+        `/api/v1/admin/kol-analysis/${analysisId}/dedup-report`
+      ),
+    select: (d) => d.items,
+    enabled: !!analysisId && enabled,
+  });
+}
+
+export function useExplainHcp(analysisId: string, hcpId: string | null) {
+  return useQuery({
+    queryKey: ['kol-analysis', analysisId, 'explain', hcpId],
+    queryFn: () =>
+      apiClient.get<ExplainResult>(
+        `/api/v1/admin/kol-analysis/${analysisId}/explain/${hcpId}`
+      ),
+    enabled: !!analysisId && !!hcpId,
+  });
+}
+
 export function useRecalculateKolAnalysis() {
   const qc = useQueryClient();
   return useMutation({
