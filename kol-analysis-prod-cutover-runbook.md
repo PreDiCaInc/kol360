@@ -87,8 +87,26 @@ non-disruptive and can run during normal operation.
    DB_DIRECT_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
      npx prisma migrate status
    ```
-   Expected new ones at minimum: `20260514_add_pg_trgm_for_fuzzy_match`,
-   `20260515_add_kol_analysis_scoring`. Review each pending migration's SQL.
+   Expected genuinely-new: `20260515_add_kol_analysis_scoring`,
+   `20260518_add_optout_hcpid_index_fk`. Review each pending migration's SQL.
+
+   **⚠ Ledger reconciliation (confirmed needed by prod pre-flight).**
+   `_prisma_migrations` is behind reality: several migrations
+   (`20260310`, `20260320`, `20260323`, `20260403`, `20260514`) were applied
+   to the prod DB via raw psql in past drops but are **not in the ledger**.
+   A plain `migrate deploy` would try to re-run all of them and hard-fail on
+   the first (e.g. `20260310` ADD COLUMN on an existing column) before ever
+   reaching the new ones. **Before Step B**, mark the already-applied ones as
+   applied (ledger-only, no DDL):
+   ```
+   for m in 20260310_<name> 20260320_<name> 20260323_<name> \
+            20260403_add_beid_sequence 20260514_add_pg_trgm_for_fuzzy_match; do
+     DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+       npx prisma migrate resolve --applied "$m"
+   done
+   ```
+   (Use exact directory names from `prisma/migrations/`.) After this,
+   `migrate deploy` will run **only** the genuinely-new migrations.
 5. **Drift check** (prod has a history of manual-SQL drift — Feb 2025 incident):
    ```
    DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
@@ -96,12 +114,20 @@ non-disruptive and can run during normal operation.
      --from-url "$DATABASE_URL" \
      --to-schema-datamodel prisma/schema.prisma --exit-code
    ```
-   - exit 0 → in sync, proceed.
-   - non-zero → **STOP.** Reconcile drift before continuing; pending-migration
-     SQL may fail or be wrong against a drifted schema.
+   **Known-benign deltas (do NOT block on these — interpret the gate as
+   "clean modulo the documented items"):**
+   - **trgm GIN indexes** (`Hcp_lastName_trgm_idx`, `Hcp_firstName_trgm_idx`,
+     `HcpAlias_aliasName_trgm_idx`): Prisma cannot express `gin_trgm_ops`, so
+     `migrate diff` will **always** report these as "to remove." This is a
+     permanent false-positive, never real drift. Ignore.
+   - Pre-`20260515`/`20260518`: the **OptOut hcpId index + FK** delta is
+     expected and is resolved by `20260518_add_optout_hcpid_index_fk` in
+     Step B. (It was the historical schema-without-migration gap; now fixed.)
+   - Any **other** delta → **STOP.** Reconcile before continuing.
 
-**Go/No-Go gate:** services RUNNING, tunnel works, pending migrations reviewed,
-drift check resolved, rollback version recorded.
+**Go/No-Go gate:** services RUNNING, tunnel works, ledger reconciled, pending
+migrations reviewed, drift = only the documented benign deltas, rollback
+version recorded.
 
 ---
 
@@ -132,11 +158,16 @@ DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
 DB_DIRECT_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
   npx prisma migrate deploy
 ```
-- Applies **all** pending migrations in order and records them in
-  `_prisma_migrations` (correct, vs the raw-psql path used on test).
-- `20260515_add_kol_analysis_scoring` is plain `CREATE TABLE` — it will error
-  if the tables somehow already exist; if so, STOP and investigate (do not
-  hand-edit).
+- Runs **only the genuinely-new** migrations now (ledger reconciled in §2.4):
+  `20260515_add_kol_analysis_scoring`, `20260518_add_optout_hcpid_index_fk`.
+- Both are **idempotent** (`CREATE … IF NOT EXISTS`, FK in guarded `DO`
+  blocks) — re-running does not hard-fail. Safe whether applied here via
+  `migrate deploy` or via raw psql.
+- `20260518` also **nulls any dangling `OptOut.hcpId`** (HCP since
+  deleted/re-imported) before adding the FK — a deliberate, safe data
+  normalization (opt-out lookups are email-canonical post-v1.15.14; hcpId is
+  provenance only). Expect a non-zero `UPDATE` count on prod; that is normal,
+  not an error.
 
 Verify the three tables exist:
 ```
@@ -150,7 +181,18 @@ DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
   npx prisma migrate diff --from-url "$DATABASE_URL" \
   --to-schema-datamodel prisma/schema.prisma --exit-code
 ```
-Must be **exit 0**. Non-zero → STOP, reconcile before backfill/deploy.
+Interpret as **"clean modulo the documented benign deltas"** (same rule as
+§2.5):
+- The **trgm GIN indexes** false-positive will still appear — Prisma can't
+  express `gin_trgm_ops`. Permanent, ignore.
+- The **OptOut hcpId index/FK delta must now be GONE** — `20260518` resolved
+  it. If it still shows → the migration didn't apply; STOP.
+- The **KOL Analysis tables delta must now be GONE** — `20260515` created
+  them. If it still shows → STOP.
+- **Any other delta → STOP**, reconcile before backfill/deploy.
+
+Net expected state: drift output contains **only** the three trgm index
+lines. Anything else is a real problem.
 
 ---
 
@@ -293,9 +335,12 @@ The new tables are additive and unused by old code, so rollback is **code-only**
 ## Quick checklist
 
 - [ ] Pre-flight: prod version recorded, services RUNNING, tunnel ok
-- [ ] `prisma migrate status` reviewed; drift check exit 0
+- [ ] Ledger reconciled (`migrate resolve --applied` the 5 psql-applied ones)
+- [ ] `prisma migrate status` reviewed; drift = only documented benign deltas
+      (trgm indexes always; OptOut hcpId until `20260518` applies)
 - [ ] RDS snapshot `available`
-- [ ] `prisma migrate deploy` on prod; 3 tables present; post-migrate drift 0
+- [ ] `prisma migrate deploy` on prod; 3 KOL tables + OptOut hcpId idx/FK
+      present; post-migrate drift = only the 3 trgm index lines
 - [ ] Backfill dry-run reviewed
 - [ ] Backfill `--execute`; counts recorded
 - [ ] Prod data spot-check consistent

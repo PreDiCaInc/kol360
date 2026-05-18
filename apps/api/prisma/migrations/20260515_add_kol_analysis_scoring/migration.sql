@@ -1,9 +1,14 @@
 -- KOL Analysis scoring: curated (client, disease area, campaign set) becomes
 -- the scoring unit. Survey scores are pooled across included campaigns and
 -- normalized once, replacing invalid per-campaign-then-average behavior.
+--
+-- Idempotent by convention: this file may be applied via raw psql (not only
+-- `prisma migrate deploy`) and re-running must NOT hard-fail. CREATE uses
+-- IF NOT EXISTS; foreign keys are added inside DO blocks that swallow
+-- duplicate_object (Postgres has no ADD CONSTRAINT IF NOT EXISTS).
 
 -- CreateTable
-CREATE TABLE "KolAnalysis" (
+CREATE TABLE IF NOT EXISTS "KolAnalysis" (
     "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "diseaseAreaId" TEXT NOT NULL,
@@ -20,7 +25,7 @@ CREATE TABLE "KolAnalysis" (
 );
 
 -- CreateTable
-CREATE TABLE "KolAnalysisCampaign" (
+CREATE TABLE IF NOT EXISTS "KolAnalysisCampaign" (
     "id" TEXT NOT NULL,
     "analysisId" TEXT NOT NULL,
     "campaignId" TEXT NOT NULL,
@@ -31,7 +36,7 @@ CREATE TABLE "KolAnalysisCampaign" (
 );
 
 -- CreateTable
-CREATE TABLE "HcpAnalysisScore" (
+CREATE TABLE IF NOT EXISTS "HcpAnalysisScore" (
     "id" TEXT NOT NULL,
     "analysisId" TEXT NOT NULL,
     "hcpId" TEXT NOT NULL,
@@ -60,27 +65,40 @@ CREATE TABLE "HcpAnalysisScore" (
 );
 
 -- CreateIndex
-CREATE INDEX "KolAnalysis_diseaseAreaId_idx" ON "KolAnalysis"("diseaseAreaId");
-CREATE INDEX "KolAnalysis_clientId_idx" ON "KolAnalysis"("clientId");
-CREATE UNIQUE INDEX "KolAnalysis_clientId_diseaseAreaId_key" ON "KolAnalysis"("clientId", "diseaseAreaId");
+CREATE INDEX IF NOT EXISTS "KolAnalysis_diseaseAreaId_idx" ON "KolAnalysis"("diseaseAreaId");
+CREATE INDEX IF NOT EXISTS "KolAnalysis_clientId_idx" ON "KolAnalysis"("clientId");
+CREATE UNIQUE INDEX IF NOT EXISTS "KolAnalysis_clientId_diseaseAreaId_key" ON "KolAnalysis"("clientId", "diseaseAreaId");
 
 -- CreateIndex
-CREATE INDEX "KolAnalysisCampaign_campaignId_idx" ON "KolAnalysisCampaign"("campaignId");
-CREATE UNIQUE INDEX "KolAnalysisCampaign_analysisId_campaignId_key" ON "KolAnalysisCampaign"("analysisId", "campaignId");
+CREATE INDEX IF NOT EXISTS "KolAnalysisCampaign_campaignId_idx" ON "KolAnalysisCampaign"("campaignId");
+CREATE UNIQUE INDEX IF NOT EXISTS "KolAnalysisCampaign_analysisId_campaignId_key" ON "KolAnalysisCampaign"("analysisId", "campaignId");
 
 -- CreateIndex
-CREATE INDEX "HcpAnalysisScore_analysisId_idx" ON "HcpAnalysisScore"("analysisId");
-CREATE INDEX "HcpAnalysisScore_hcpId_idx" ON "HcpAnalysisScore"("hcpId");
-CREATE UNIQUE INDEX "HcpAnalysisScore_analysisId_hcpId_key" ON "HcpAnalysisScore"("analysisId", "hcpId");
+CREATE INDEX IF NOT EXISTS "HcpAnalysisScore_analysisId_idx" ON "HcpAnalysisScore"("analysisId");
+CREATE INDEX IF NOT EXISTS "HcpAnalysisScore_hcpId_idx" ON "HcpAnalysisScore"("hcpId");
+CREATE UNIQUE INDEX IF NOT EXISTS "HcpAnalysisScore_analysisId_hcpId_key" ON "HcpAnalysisScore"("analysisId", "hcpId");
 
--- AddForeignKey
-ALTER TABLE "KolAnalysis" ADD CONSTRAINT "KolAnalysis_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "KolAnalysis" ADD CONSTRAINT "KolAnalysis_diseaseAreaId_fkey" FOREIGN KEY ("diseaseAreaId") REFERENCES "DiseaseArea"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- AddForeignKey (Postgres has no ADD CONSTRAINT IF NOT EXISTS — guard each)
+DO $$ BEGIN
+  ALTER TABLE "KolAnalysis" ADD CONSTRAINT "KolAnalysis_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
--- AddForeignKey
-ALTER TABLE "KolAnalysisCampaign" ADD CONSTRAINT "KolAnalysisCampaign_analysisId_fkey" FOREIGN KEY ("analysisId") REFERENCES "KolAnalysis"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "KolAnalysisCampaign" ADD CONSTRAINT "KolAnalysisCampaign_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "KolAnalysis" ADD CONSTRAINT "KolAnalysis_diseaseAreaId_fkey" FOREIGN KEY ("diseaseAreaId") REFERENCES "DiseaseArea"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
--- AddForeignKey
-ALTER TABLE "HcpAnalysisScore" ADD CONSTRAINT "HcpAnalysisScore_analysisId_fkey" FOREIGN KEY ("analysisId") REFERENCES "KolAnalysis"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "HcpAnalysisScore" ADD CONSTRAINT "HcpAnalysisScore_hcpId_fkey" FOREIGN KEY ("hcpId") REFERENCES "Hcp"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "KolAnalysisCampaign" ADD CONSTRAINT "KolAnalysisCampaign_analysisId_fkey" FOREIGN KEY ("analysisId") REFERENCES "KolAnalysis"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "KolAnalysisCampaign" ADD CONSTRAINT "KolAnalysisCampaign_campaignId_fkey" FOREIGN KEY ("campaignId") REFERENCES "Campaign"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "HcpAnalysisScore" ADD CONSTRAINT "HcpAnalysisScore_analysisId_fkey" FOREIGN KEY ("analysisId") REFERENCES "KolAnalysis"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "HcpAnalysisScore" ADD CONSTRAINT "HcpAnalysisScore_hcpId_fkey" FOREIGN KEY ("hcpId") REFERENCES "Hcp"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
