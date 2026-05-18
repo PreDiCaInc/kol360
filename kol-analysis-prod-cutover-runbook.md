@@ -88,7 +88,9 @@ non-disruptive and can run during normal operation.
      npx prisma migrate status
    ```
    Expected genuinely-new: `20260515_add_kol_analysis_scoring`,
-   `20260518_add_optout_hcpid_index_fk`. Review each pending migration's SQL.
+   `20260518_add_optout_hcpid_index_fk`,
+   `20260518_add_regional_leader_nomination_type`. Review each pending
+   migration's SQL.
 
    **⚠ Ledger reconciliation (confirmed needed by prod pre-flight).**
    `_prisma_migrations` is behind reality: several migrations
@@ -120,10 +122,18 @@ non-disruptive and can run during normal operation.
      `HcpAlias_aliasName_trgm_idx`): Prisma cannot express `gin_trgm_ops`, so
      `migrate diff` will **always** report these as "to remove." This is a
      permanent false-positive, never real drift. Ignore.
-   - Pre-`20260515`/`20260518`: the **OptOut hcpId index + FK** delta is
-     expected and is resolved by `20260518_add_optout_hcpid_index_fk` in
-     Step B. (It was the historical schema-without-migration gap; now fixed.)
+   - Pre-`20260518`: the **OptOut hcpId index + FK** delta and the
+     **NominationType `REGIONAL_LEADER`** missing-enum-value delta are
+     expected; resolved by `20260518_add_optout_hcpid_index_fk` and
+     `20260518_add_regional_leader_nomination_type` in Step B. (Both were
+     recent schema-without-migration gaps; now fixed.)
    - Any **other** delta → **STOP.** Reconcile before continuing.
+   - NOTE: a static migrations-folder audit shows many *older* objects (init
+     is a `db push` snapshot) that no migration file creates — but those
+     exist on prod (built via historical `db push`) and so do **not** appear
+     in this `--from-url PROD` diff. The prod diff is authoritative for the
+     cutover; the folder-vs-schema debt is tracked separately and is NOT a
+     cutover blocker.
 
 **Go/No-Go gate:** services RUNNING, tunnel works, ledger reconciled, pending
 migrations reviewed, drift = only the documented benign deltas, rollback
@@ -159,10 +169,14 @@ DB_DIRECT_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
   npx prisma migrate deploy
 ```
 - Runs **only the genuinely-new** migrations now (ledger reconciled in §2.4):
-  `20260515_add_kol_analysis_scoring`, `20260518_add_optout_hcpid_index_fk`.
-- Both are **idempotent** (`CREATE … IF NOT EXISTS`, FK in guarded `DO`
-  blocks) — re-running does not hard-fail. Safe whether applied here via
-  `migrate deploy` or via raw psql.
+  `20260515_add_kol_analysis_scoring`, `20260518_add_optout_hcpid_index_fk`,
+  `20260518_add_regional_leader_nomination_type`.
+- All are **idempotent** (`CREATE … IF NOT EXISTS`, `ADD VALUE IF NOT
+  EXISTS`, FK in guarded `DO` blocks) — re-running does not hard-fail. Safe
+  whether applied here via `migrate deploy` or via raw psql.
+- `20260518_add_regional_leader_nomination_type` adds the
+  `REGIONAL_LEADER` value to the `NominationType` enum (mirrors the proven
+  `20260306` pattern). Lone `ADD VALUE` — transaction-safe.
 - `20260518` also **nulls any dangling `OptOut.hcpId`** (HCP since
   deleted/re-imported) before adding the FK — a deliberate, safe data
   normalization (opt-out lookups are email-canonical post-v1.15.14; hcpId is
@@ -185,8 +199,12 @@ Interpret as **"clean modulo the documented benign deltas"** (same rule as
 §2.5):
 - The **trgm GIN indexes** false-positive will still appear — Prisma can't
   express `gin_trgm_ops`. Permanent, ignore.
-- The **OptOut hcpId index/FK delta must now be GONE** — `20260518` resolved
-  it. If it still shows → the migration didn't apply; STOP.
+- The **OptOut hcpId index/FK delta must now be GONE** —
+  `20260518_add_optout_hcpid_index_fk` resolved it. If it still shows →
+  the migration didn't apply; STOP.
+- The **NominationType `REGIONAL_LEADER` delta must now be GONE** —
+  `20260518_add_regional_leader_nomination_type` resolved it. If it still
+  shows → STOP.
 - The **KOL Analysis tables delta must now be GONE** — `20260515` created
   them. If it still shows → STOP.
 - **Any other delta → STOP**, reconcile before backfill/deploy.

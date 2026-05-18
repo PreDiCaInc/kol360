@@ -1,6 +1,6 @@
 {
   "name": "@kol360/api",
-  "version": "1.15.27",
+  "version": "1.15.28",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
