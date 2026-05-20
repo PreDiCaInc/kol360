@@ -187,7 +187,7 @@ export function useCreateHcpFromNomination() {
         firstName: string;
         lastName: string;
         email?: string | null;
-        specialty?: 'Optometrist' | 'Ophthalmologist' | null;
+        specialty?: 'Optometry' | 'Ophthalmology' | null;
         diseaseAreaIds?: string[];
         city?: string | null;
         state?: string | null;

@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
-import { CreateHcpInput, UpdateHcpInput } from '@kol360/shared';
+import { CreateHcpInput, UpdateHcpInput, normalizeHcpSpecialty } from '@kol360/shared';
 
 /**
  * Normalize specialty values to canonical credentials (MD, DO, OD).
@@ -510,7 +510,15 @@ export class HcpService {
             firstName: row.firstName,
             lastName: row.lastName,
             email: row.email,
-            specialty: row.specialty,
+            // Bulk-import bypassed createHcpSchema pre-v1.15.31 — wrote raw
+            // CSV strings ('Optometry', 'Ophthalmology', 'OD', 'MD'…) directly,
+            // which slipped past the Zod 2-value enum. v1.15.31 routes
+            // bulk-import specialty values through the same normalizer the
+            // Zod helper uses, so the column ends up canonical regardless of
+            // CSV variant. The Hcp_specialty_not_role_form CHECK constraint
+            // (same migration) is the safety net if a future write path
+            // bypasses this normalization too.
+            specialty: normalizeHcpSpecialty(row.specialty),
             subSpecialty: row.subSpecialty,
             city: row.city,
             state: row.state,

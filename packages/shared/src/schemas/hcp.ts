@@ -5,21 +5,31 @@ export const npiSchema = z.string().regex(/^\d{10}$/, 'NPI must be 10 digits');
 // Specialty is binary: a practitioner is one of these two. Sub-specialty
 // (focus area) is multi-select and unified with DiseaseArea (see
 // `diseaseAreaIds` below) — sourced live from the DiseaseArea table.
-export const HCP_SPECIALTIES = ['Optometrist', 'Ophthalmologist'] as const;
+//
+// Canonical form is FIELD-form (Optometry / Ophthalmology), matching the
+// DiseaseArea naming convention (Dry Eye, Glaucoma, Cornea, Retina, Medical
+// Oncology — all field-form, not -ist forms) and the data-team's source-of-
+// truth notation. v1.15.30 had this as role-form; v1.15.31 flipped it back
+// per data-team alignment. See 20260520_canonicalize_specialty_to_field_form.
+export const HCP_SPECIALTIES = ['Optometry', 'Ophthalmology'] as const;
 export const hcpSpecialtySchema = z.enum(HCP_SPECIALTIES);
 export type HcpSpecialty = z.infer<typeof hcpSpecialtySchema>;
 
 /**
- * Map a freeform specialty string (CSV import, legacy data) to the canonical
- * 2-value enum. Returns null if the value doesn't map (out-of-domain HCPs
- * like Oncology are left for legacy/review rather than force-cast). Matches
- * the same rules used by the 20260519 normalization migration.
+ * Map a freeform specialty string (CSV import, legacy data, NPI credentials)
+ * to the canonical 2-value enum. Returns null if the value doesn't map
+ * (out-of-domain HCPs like Oncology are left for legacy/review rather than
+ * force-cast).
+ *
+ * Accepts BOTH the new field-form and the old role-form so legacy CSVs from
+ * before the v1.15.31 flip keep importing cleanly — output is always
+ * canonical field-form.
  */
 export function normalizeHcpSpecialty(raw: string | null | undefined): HcpSpecialty | null {
   if (!raw) return null;
   const k = raw.trim().toLowerCase();
-  if (['optometrist', 'optometry', 'od', 'o.d.'].includes(k)) return 'Optometrist';
-  if (['ophthalmologist', 'ophthalmology', 'md', 'do', 'm.d.', 'd.o.'].includes(k)) return 'Ophthalmologist';
+  if (['optometry', 'optometrist', 'od', 'o.d.'].includes(k)) return 'Optometry';
+  if (['ophthalmology', 'ophthalmologist', 'md', 'do', 'm.d.', 'd.o.'].includes(k)) return 'Ophthalmology';
   return null;
 }
 

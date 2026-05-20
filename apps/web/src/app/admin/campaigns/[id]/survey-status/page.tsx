@@ -73,13 +73,13 @@ const STATUS_LABELS: Record<string, string> = {
   not_invited: 'Not Invited',
 };
 
+// Field-form canonical since v1.15.31 (matches DiseaseArea naming + data-team
+// source-of-truth). Accepts legacy abbrevs + role-form on input.
 function formatSpecialty(specialty: string | null): string {
   if (!specialty) return '—';
   const s = specialty.trim().toUpperCase();
-  if (s === 'OD') return 'Optometrist';
-  if (s === 'MD' || s === 'DO') return 'Ophthalmologist';
-  if (s === 'OPTOMETRY') return 'Optometrist';
-  if (s === 'OPHTHALMOLOGY') return 'Ophthalmologist';
+  if (s === 'OD' || s === 'OPTOMETRY' || s === 'OPTOMETRIST') return 'Optometry';
+  if (s === 'MD' || s === 'DO' || s === 'OPHTHALMOLOGY' || s === 'OPHTHALMOLOGIST') return 'Ophthalmology';
   return specialty;
 }
 

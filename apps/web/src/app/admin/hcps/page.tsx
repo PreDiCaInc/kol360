@@ -43,14 +43,16 @@ function getSpecialtyDisplay(hcp: { specialty?: string | null; specialties?: { i
   return [];
 }
 
-// Helper to format specialty abbreviations to full names
+// Helper to format specialty abbreviations to full (field-form) names.
+// v1.15.31 flipped canonical from role-form (Optometrist/Ophthalmologist)
+// to field-form (Optometry/Ophthalmology) — matches DiseaseArea naming +
+// data-team source-of-truth. Inputs may still be old-style abbrevs from
+// legacy data; the mapping table handles both shapes on the input side.
 function formatSpecialty(specialty: string | null): string {
   if (!specialty) return '-';
   const s = specialty.trim().toUpperCase();
-  if (s === 'OD') return 'Optometrist';
-  if (s === 'MD' || s === 'DO') return 'Ophthalmologist';
-  if (s === 'OPTOMETRY') return 'Optometrist';
-  if (s === 'OPHTHALMOLOGY') return 'Ophthalmologist';
+  if (s === 'OD' || s === 'OPTOMETRY' || s === 'OPTOMETRIST') return 'Optometry';
+  if (s === 'MD' || s === 'DO' || s === 'OPHTHALMOLOGY' || s === 'OPHTHALMOLOGIST') return 'Ophthalmology';
   return specialty;
 }
 

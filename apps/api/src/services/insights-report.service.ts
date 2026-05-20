@@ -287,7 +287,11 @@ export class InsightsReportService {
           firstName: hcp.firstName,
           lastName: hcp.lastName,
           specialty: primarySpecialty,
-          degree: primarySpecialty?.includes('Ophthalmologist') ? 'MD' : 'OD',
+          // v1.15.31: post canonical-flip the field-form 'Ophthalmology' is what
+          // the API returns; the .includes() matches both 'Ophthalmolog' (current)
+          // and the legacy 'Ophthalmologist' shape so any residual data still
+          // buckets correctly.
+          degree: primarySpecialty?.includes('Ophthalmolog') ? 'MD' : 'OD',
           city: hcp.city,
           state: hcp.state,
           influencerType: influencerTypeVal,
@@ -398,7 +402,8 @@ export class InsightsReportService {
         rank,
         hcpId: hcp.id,
         name: `${hcp.firstName} ${hcp.lastName}`,
-        degree: primarySpecialty?.includes('Ophthalmologist') ? 'MD' : 'OD',
+        // v1.15.31: see same comment above — match both shapes for safety.
+        degree: primarySpecialty?.includes('Ophthalmolog') ? 'MD' : 'OD',
         specialty: primarySpecialty,
         city: hcp.city,
         state: hcp.state,
