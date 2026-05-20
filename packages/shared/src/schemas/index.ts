@@ -17,7 +17,9 @@ export * from './hcp';
 export * from './question';
 export * from './section';
 export * from './survey-template';
-export * from './score-config';
+// score-config schemas removed in Phase 3 PR A — campaign-level scoring teardown.
+// DEFAULT_SCORE_WEIGHTS + the 9-component weight schema now live in kol-analysis.ts
+// as analysisWeightsSchema / DEFAULT_ANALYSIS_WEIGHTS.
 export * from './kol-analysis';
 export * from './campaign';
 export * from './distribution';

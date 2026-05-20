@@ -8,7 +8,7 @@ import {
 } from '@kol360/shared';
 import { requireClientAdmin } from '../middleware/rbac';
 import { CampaignService } from '../services/campaign.service';
-import { scoreCalculationService } from '../services/score-calculation.service';
+// score-calculation.service removed in Phase 3 PR A.
 import { createAuditLog } from '../lib/audit';
 
 const campaignService = new CampaignService();

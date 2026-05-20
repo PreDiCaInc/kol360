@@ -377,26 +377,14 @@ export function useRemoveHcpSpecialty() {
   });
 }
 
-// Recalculate composite scores for a disease area
-interface RecalculateCompositesResult {
-  processed: number;
-  updated: number;
-}
-
-export function useRecalculateDiseaseAreaComposites() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (diseaseAreaId: string) =>
-      apiClient.post<RecalculateCompositesResult>(
-        `/api/v1/hcps/recalculate-composites?diseaseAreaId=${diseaseAreaId}`,
-        {}
-      ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hcps'] });
-    },
-  });
-}
+// useRecalculateDiseaseAreaComposites removed in Phase 3 PR A.
+//
+// The /api/v1/hcps/recalculate-composites endpoint used hardcoded weights
+// (10/15/10/10/10/10/5/5/25) ignoring every client config — the exact bug
+// KOL Analysis was built to fix (motivation #2 in the original plan). The
+// endpoint + service method + this hook are all gone. For per-(client, DA)
+// composite recompute with per-analysis weights, use the Recalculate button
+// on /admin/kol-analysis/<id>.
 
 // Helper to get auth token
 let tokenFn: (() => Promise<string | null>) | null = null;
