@@ -440,13 +440,18 @@ export class ApiClient {
 
   // ==================== HCPs ====================
 
-  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; optOutStatus?: 'any' | 'global' | 'campaign' | 'none'; page?: number; limit?: number }) {
+  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; diseaseAreaIds?: string[]; optOutStatus?: 'any' | 'global' | 'campaign' | 'none'; page?: number; limit?: number }) {
     const queryParams = new URLSearchParams();
     // Support both 'query' and 'search' as aliases for the search parameter
     const searchTerm = params?.query || params?.search;
     if (searchTerm) queryParams.set('query', searchTerm);
     if (params?.specialty) queryParams.set('specialty', params.specialty);
     if (params?.state) queryParams.set('state', params.state);
+    // Sub-specialty multi-select filter (joins HcpDiseaseArea). Backend accepts
+    // a comma-delimited string or repeated params; comma is simpler.
+    if (params?.diseaseAreaIds && params.diseaseAreaIds.length > 0) {
+      queryParams.set('diseaseAreaIds', params.diseaseAreaIds.join(','));
+    }
     if (params?.optOutStatus) queryParams.set('optOutStatus', params.optOutStatus);
     if (params?.page) queryParams.set('page', params.page.toString());
     if (params?.limit) queryParams.set('limit', params.limit.toString());
@@ -540,6 +545,42 @@ export class ApiClient {
       'POST',
       `/api/v1/campaigns/${campaignId}/nominations/${nominationId}/create-hcp`,
       data
+    );
+  }
+
+  /**
+   * Batch top-suggestion lookup for the visible page of nominations.
+   * Returns a `{ [nominationId]: topSuggestion | null }` map.
+   */
+  async getNominationTopSuggestions(campaignId: string, nominationIds: string[]) {
+    return this.request<Record<string, {
+      hcpId: string;
+      firstName: string;
+      lastName: string;
+      npi: string | null;
+      score: number;
+      matchType: 'exact' | 'primary' | 'alias' | 'partial';
+      isNameMatch: boolean;
+    } | null>>(
+      'POST',
+      `/api/v1/campaigns/${campaignId}/nominations/top-suggestions`,
+      { nominationIds }
+    );
+  }
+
+  /**
+   * Bulk-accept the top suggestion for each given nomination. Client owns the
+   * <90% confirmation gate; server applies whatever is sent.
+   */
+  async bulkAcceptNominations(campaignId: string, nominationIds: string[]) {
+    return this.request<{
+      accepted: number;
+      skipped: number;
+      errors: { nominationId: string; error: string }[];
+    }>(
+      'POST',
+      `/api/v1/campaigns/${campaignId}/nominations/bulk-accept`,
+      { nominationIds }
     );
   }
 
@@ -1041,9 +1082,16 @@ export interface Hcp {
   firstName: string;
   lastName: string;
   email?: string;
-  specialty?: string;
+  // Post-(a) unify: specialty is constrained to 'Optometrist' | 'Ophthalmologist'
+  // on writes; reads may include legacy values that didn't normalize cleanly.
+  specialty?: string | null;
   city?: string;
   state?: string;
+  diseaseAreas?: Array<{
+    id: string;
+    isPrimary: boolean;
+    diseaseArea: { id: string; name: string; code: string | null };
+  }>;
 }
 
 export interface CreateHcpInput {
@@ -1051,7 +1099,8 @@ export interface CreateHcpInput {
   firstName: string;
   lastName: string;
   email?: string;
-  specialty?: string;
+  specialty?: 'Optometrist' | 'Ophthalmologist' | null;
+  diseaseAreaIds?: string[];
   city?: string;
   state?: string;
 }

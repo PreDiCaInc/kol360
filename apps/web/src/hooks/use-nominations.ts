@@ -86,6 +86,22 @@ interface BulkMatchResult {
   errors: string[];
 }
 
+export interface TopSuggestion {
+  hcpId: string;
+  firstName: string;
+  lastName: string;
+  npi: string | null;
+  score: number;
+  matchType: 'exact' | 'primary' | 'alias' | 'partial';
+  isNameMatch: boolean;
+}
+
+export interface BulkAcceptResult {
+  accepted: number;
+  skipped: number;
+  errors: { nominationId: string; error: string }[];
+}
+
 export function useNominations(campaignId: string, query: NominationsQuery = {}) {
   const { page = 1, limit = 50, status, search, searchMode, nominationType } = query;
 
@@ -171,7 +187,8 @@ export function useCreateHcpFromNomination() {
         firstName: string;
         lastName: string;
         email?: string | null;
-        specialty?: string | null;
+        specialty?: 'Optometrist' | 'Ophthalmologist' | null;
+        diseaseAreaIds?: string[];
         city?: string | null;
         state?: string | null;
       };
@@ -225,6 +242,51 @@ export function useBulkExcludeNominations() {
       apiClient.post<{ count: number }>(
         `/api/v1/campaigns/${campaignId}/nominations/bulk-exclude`,
         { nominationIds, reason }
+      ),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });
+    },
+  });
+}
+
+/**
+ * Batch-fetch the top suggestion for a set of nomination ids on the visible
+ * page. Returns a `{ [nominationId]: TopSuggestion | null }` map. Keyed on the
+ * sorted id list so re-renders with the same page don't refetch.
+ */
+export function useNominationTopSuggestions(
+  campaignId: string,
+  nominationIds: string[]
+) {
+  const sortedKey = [...nominationIds].sort().join(',');
+  return useQuery({
+    queryKey: ['campaigns', campaignId, 'nominations', 'top-suggestions', sortedKey],
+    queryFn: () =>
+      apiClient.post<Record<string, TopSuggestion | null>>(
+        `/api/v1/campaigns/${campaignId}/nominations/top-suggestions`,
+        { nominationIds }
+      ),
+    enabled: !!campaignId && nominationIds.length > 0,
+    // Top suggestions only change when HCPs or aliases change; cache for 30s
+    // so paging back-and-forth doesn't re-hit the heavy suggestion compute.
+    staleTime: 30_000,
+  });
+}
+
+export function useBulkAcceptNominations() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      nominationIds,
+    }: {
+      campaignId: string;
+      nominationIds: string[];
+    }) =>
+      apiClient.post<BulkAcceptResult>(
+        `/api/v1/campaigns/${campaignId}/nominations/bulk-accept`,
+        { nominationIds }
       ),
     onSuccess: (_, { campaignId }) => {
       queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });

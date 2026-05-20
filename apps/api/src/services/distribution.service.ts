@@ -4,6 +4,7 @@ import { HcpService } from './hcp.service';
 const hcpServiceInstance = new HcpService();
 import { emailService } from './email.service';
 import { createAuditLog } from '../lib/audit';
+import { normalizeHcpSpecialty } from '@kol360/shared';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
 
@@ -671,6 +672,10 @@ export class DistributionService {
           hcp = await hcpServiceInstance.createWithAtomicBeId({
             ...hcpData,
             email: hcpData.email as string, // Validated above - email is required
+            // Coerce freeform CSV specialty → canonical 2-value enum;
+            // unmappable values (e.g. cross-domain) become null on the
+            // typed column and stay in the legacy subSpecialty if present.
+            specialty: normalizeHcpSpecialty(hcpData.specialty),
           }, userId);
           result.hcpsCreated++;
         }

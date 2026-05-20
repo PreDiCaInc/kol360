@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useHcps, useHcpFilters } from '@/hooks/use-hcps';
+import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { useImpersonation } from '@/lib/impersonation-context';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +65,7 @@ export default function HcpsPage() {
     query?: string;
     specialty?: string;
     state?: string;
+    diseaseAreaIds?: string[];
     optOutStatus?: 'any' | 'global' | 'campaign' | 'none';
     page: number;
   }>({ page: 1 });
@@ -72,6 +75,11 @@ export default function HcpsPage() {
     query: filters.query,
   });
   const { data: filterOptions } = useHcpFilters();
+  const { data: diseaseAreasData } = useDiseaseAreas();
+  const diseaseAreas = diseaseAreasData?.items ?? [];
+  const daIdToName = new Map(diseaseAreas.map((d) => [d.id, d.name]));
+  const daNameToId = new Map(diseaseAreas.map((d) => [d.name, d.id]));
+  const daOptions = diseaseAreas.map((d) => d.name);
 
   const hcps = data?.items || [];
   const pagination = data?.pagination;
@@ -250,6 +258,26 @@ export default function HcpsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          <div className="w-56">
+            <MultiSelect
+              options={daOptions}
+              selected={(filters.diseaseAreaIds ?? [])
+                .map((id) => daIdToName.get(id))
+                .filter((n): n is string => !!n)}
+              onChange={(names) => {
+                const ids = names
+                  .map((n) => daNameToId.get(n))
+                  .filter((id): id is string => !!id);
+                setFilters((prev) => ({
+                  ...prev,
+                  diseaseAreaIds: ids.length > 0 ? ids : undefined,
+                  page: 1,
+                }));
+              }}
+              placeholder="All Sub-specialties"
+            />
+          </div>
 
           <Select
             value={filters.state || 'all'}

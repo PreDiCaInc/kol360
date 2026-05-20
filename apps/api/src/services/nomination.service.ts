@@ -74,6 +74,8 @@ interface CreateHcpInput {
   lastName: string;
   email?: string | null;
   specialty?: string | null;
+  // Multi-select sub-specialty (HcpDiseaseArea join) — applied after Hcp create.
+  diseaseAreaIds?: string[];
   city?: string | null;
   state?: string | null;
 }
@@ -617,17 +619,23 @@ export class NominationService {
       }
     }
 
-    // Create new HCP with beId and isNominated flag
+    // Create new HCP with beId and isNominated flag. diseaseAreaIds is the
+    // multi-select sub-specialty (HcpDiseaseArea join) — strip from the Hcp
+    // create payload and reconcile via setHcpDiseaseAreas after creation.
     const beId = await hcpServiceInstance.generateBeId();
+    const { diseaseAreaIds, ...hcpCreateData } = hcpData;
     const hcp = await prisma.hcp.create({
       data: {
-        ...hcpData,
+        ...hcpCreateData,
         npi: hcpData.npi || null,
         beId,
         isNominated: true,
         createdBy: matchedBy,
       },
     });
+    if (diseaseAreaIds && diseaseAreaIds.length > 0) {
+      await hcpServiceInstance.setHcpDiseaseAreas(hcp.id, diseaseAreaIds);
+    }
 
     // Add raw name as alias only if it differs from the HCP's actual name (case-insensitive)
     const hcpFullName = `${hcpData.firstName} ${hcpData.lastName}`.toLowerCase().trim();
@@ -872,6 +880,139 @@ export class NominationService {
     }
 
     return { cleared };
+  }
+
+  /**
+   * Batch top-suggestion lookup for a set of nomination IDs in one campaign.
+   * Used by the nominations list page to render an inline "Accept" link per row
+   * without firing one suggestions-query per row. Each entry is the top-scoring
+   * candidate (or null if nothing crosses score>=50). Caller still owns the
+   * decision to surface vs hide based on confidence.
+   *
+   * Note: `getSuggestions` is itself a multi-tier HCP search, so this is O(N)
+   * per call. The list page only invokes it for the visible page (default 50),
+   * which keeps the cost bounded — do not call this from background jobs.
+   */
+  async getTopSuggestions(
+    campaignId: string,
+    nominationIds: string[]
+  ): Promise<Record<string, { hcpId: string; firstName: string; lastName: string; npi: string | null; score: number; matchType: 'exact' | 'primary' | 'alias' | 'partial'; isNameMatch: boolean } | null>> {
+    if (!nominationIds.length) return {};
+
+    // Tenant safety: confirm every id belongs to this campaign before computing.
+    const owned = await prisma.nomination.findMany({
+      where: {
+        id: { in: nominationIds },
+        response: { campaignId },
+      },
+      select: { id: true },
+    });
+    const ownedSet = new Set(owned.map((n) => n.id));
+
+    const result: Record<string, { hcpId: string; firstName: string; lastName: string; npi: string | null; score: number; matchType: 'exact' | 'primary' | 'alias' | 'partial'; isNameMatch: boolean } | null> = {};
+    for (const id of nominationIds) {
+      if (!ownedSet.has(id)) {
+        result[id] = null;
+        continue;
+      }
+      try {
+        const suggestions = await this.getSuggestions(id);
+        const top = suggestions[0];
+        if (!top || top.score < 50) {
+          result[id] = null;
+        } else {
+          result[id] = {
+            hcpId: top.hcp.id,
+            firstName: top.hcp.firstName,
+            lastName: top.hcp.lastName,
+            npi: top.hcp.npi,
+            score: top.score,
+            matchType: top.matchType,
+            isNameMatch: top.isNameMatch,
+          };
+        }
+      } catch {
+        result[id] = null;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Bulk-accept the top suggestion for each of the given nomination ids.
+   *
+   * Behavior is identical to clicking "Match" with the top suggestion selected,
+   * for each row in turn. Skips rows where no suggestion crosses score>=50,
+   * and skips rows already in MATCHED/EXCLUDED. Returns per-row outcomes so
+   * the caller can show a summary; failures don't roll back successful rows
+   * (this matches `bulkAutoMatch`'s best-effort semantics).
+   *
+   * The client-side <90% confirmation gate is purely UX — the server accepts
+   * whatever the user already confirmed. Don't add a server-side floor here
+   * or it will silently drop confirmed low-confidence picks.
+   */
+  async bulkAccept(
+    campaignId: string,
+    nominationIds: string[],
+    matchedBy: string
+  ): Promise<{
+    accepted: number;
+    skipped: number;
+    errors: Array<{ nominationId: string; error: string }>;
+  }> {
+    if (!nominationIds.length) {
+      return { accepted: 0, skipped: 0, errors: [] };
+    }
+
+    // Tenant scoping + filter out terminal-state rows up front.
+    const candidates = await prisma.nomination.findMany({
+      where: {
+        id: { in: nominationIds },
+        response: { campaignId },
+        matchStatus: { in: ['UNMATCHED', 'REVIEW_NEEDED'] },
+      },
+      select: { id: true, rawNameEntered: true },
+    });
+
+    let accepted = 0;
+    let skipped = 0;
+    const errors: Array<{ nominationId: string; error: string }> = [];
+
+    // Track ids that were filtered out at the candidate query stage (excluded
+    // or already matched). They count as skipped, not errored.
+    const candidateIds = new Set(candidates.map((c) => c.id));
+    for (const id of nominationIds) {
+      if (!candidateIds.has(id)) skipped++;
+    }
+
+    for (const nomination of candidates) {
+      try {
+        const suggestions = await this.getSuggestions(nomination.id);
+        const top = suggestions[0];
+        if (!top || top.score < 50) {
+          skipped++;
+          continue;
+        }
+        const shouldAddAlias = !top.isNameMatch;
+        await this.matchToHcp(
+          nomination.id,
+          top.hcp.id,
+          shouldAddAlias,
+          matchedBy,
+          top.matchType,
+          top.score,
+          true // isManual=true — steward explicitly confirmed the batch
+        );
+        accepted++;
+      } catch (error) {
+        errors.push({
+          nominationId: nomination.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return { accepted, skipped, errors };
   }
 
   async bulkAutoMatch(campaignId: string, matchedBy: string) {
