@@ -9,6 +9,8 @@ import {
   updateNominationRawNameSchema,
   excludeNominationSchema,
   bulkExcludeNominationsSchema,
+  bulkAcceptNominationsSchema,
+  nominationTopSuggestionsSchema,
   idParamSchema,
 } from '@kol360/shared';
 
@@ -288,6 +290,84 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to exclude nomination';
+      return reply.status(400).send({ message });
+    }
+  });
+
+  // Batch top-suggestion lookup — page-level helper for the inline accept link.
+  // POST (not GET) because the request body can hold up to 200 ids; URL-arg
+  // limits would force ugly chunking on the client. Read-only — no mutation.
+  fastify.post<{
+    Params: z.infer<typeof campaignIdParamSchema>;
+    Body: z.infer<typeof nominationTopSuggestionsSchema>;
+  }>('/:id/nominations/top-suggestions', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
+    const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
+    try {
+      const { nominationIds } = nominationTopSuggestionsSchema.parse(request.body);
+      const result = await nominationService.getTopSuggestions(campaignId, nominationIds);
+      return result;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: error.errors[0]?.message || 'Invalid input',
+          statusCode: 400,
+        });
+      }
+      const message = error instanceof Error ? error.message : 'Failed to load top suggestions';
+      return reply.status(400).send({ message });
+    }
+  });
+
+  // Bulk-accept the top suggestion for each given nomination (PLATFORM_ADMIN only).
+  // The client is responsible for the <90% confirmation gate before calling this.
+  fastify.post<{
+    Params: z.infer<typeof campaignIdParamSchema>;
+    Body: z.infer<typeof bulkAcceptNominationsSchema>;
+  }>('/:id/nominations/bulk-accept', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
+    if (request.user.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform administrators can modify nominations',
+        statusCode: 403,
+      });
+    }
+
+    const { id: campaignId } = campaignIdParamSchema.parse(request.params);
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
+    try {
+      const { nominationIds } = bulkAcceptNominationsSchema.parse(request.body);
+      const result = await nominationService.bulkAccept(campaignId, nominationIds, request.user.sub);
+
+      // Recompute scores after a successful bulk-accept (mirrors bulk-match).
+      try {
+        await scoreCalculationService.calculateSurveyScores(campaignId);
+        await scoreCalculationService.calculateCompositeScores(campaignId);
+      } catch (scoreError) {
+        fastify.log.warn({ campaignId, error: scoreError }, 'Auto score calculation failed after bulk accept');
+      }
+
+      return result;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: error.errors[0]?.message || 'Invalid input',
+          statusCode: 400,
+        });
+      }
+      const message = error instanceof Error ? error.message : 'Failed to bulk accept';
       return reply.status(400).send({ message });
     }
   });

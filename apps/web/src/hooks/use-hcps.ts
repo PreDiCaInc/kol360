@@ -59,6 +59,8 @@ interface Hcp {
   updatedAt: string;
   aliases: HcpAlias[];
   specialties?: HcpSpecialty[];  // New multi-specialty relation
+  // Multi-select sub-specialty (unified with DiseaseArea — see 20260519 migration).
+  diseaseAreas?: { id: string; isPrimary: boolean; diseaseArea: { id: string; name: string; code: string } }[];
   diseaseAreaScores?: HcpDiseaseAreaScore[];  // For scores page
   optOuts?: OptOut[];
   _count?: {
@@ -115,6 +117,7 @@ interface HcpsQuery {
   query?: string;
   specialty?: string;
   state?: string;
+  diseaseAreaIds?: string[];
   optOutStatus?: 'any' | 'global' | 'campaign' | 'none';
   page?: number;
   limit?: number;
@@ -140,11 +143,23 @@ interface FiltersResponse {
 }
 
 export function useHcps(query: HcpsQuery = {}) {
-  const { page = 1, limit = 50, ...filters } = query;
+  const { page = 1, limit = 50, diseaseAreaIds, ...filters } = query;
+
+  // Serialize multi-value diseaseAreaIds as a comma-delimited string so the
+  // apiClient (which expects scalar query values) can forward it cleanly.
+  const daParam = diseaseAreaIds && diseaseAreaIds.length > 0
+    ? diseaseAreaIds.join(',')
+    : undefined;
 
   return useQuery({
-    queryKey: ['hcps', { page, limit, ...filters }],
-    queryFn: () => apiClient.get<HcpsListResponse>('/api/v1/hcps', { page, limit, ...filters }),
+    queryKey: ['hcps', { page, limit, diseaseAreaIds, ...filters }],
+    queryFn: () =>
+      apiClient.get<HcpsListResponse>('/api/v1/hcps', {
+        page,
+        limit,
+        ...filters,
+        diseaseAreaIds: daParam,
+      }),
   });
 }
 

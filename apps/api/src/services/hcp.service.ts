@@ -34,6 +34,7 @@ interface SearchParams {
   specialty?: string;
   state?: string;
   diseaseAreaId?: string;
+  diseaseAreaIds?: string[]; // Multi-select sub-specialty filter (via HcpDiseaseArea)
   hcpIds?: string[]; // Filter to specific HCP IDs (for tenant scoping)
   optOutStatus?: 'any' | 'global' | 'campaign' | 'active' | 'none'; // 'any' = any active opt-out, 'global' = global only, 'campaign' = campaign-scope only, 'none' = no opt-out, 'active' alias for 'any'
   page: number;
@@ -55,13 +56,18 @@ export class HcpService {
   }
 
   async search(params: SearchParams) {
-    const { query, specialty, state, hcpIds, optOutStatus, page, limit } = params;
+    const { query, specialty, state, diseaseAreaIds, hcpIds, optOutStatus, page, limit } = params;
 
     const where: Record<string, unknown> = {};
 
     // Tenant scoping: filter to specific HCP IDs if provided
     if (hcpIds !== undefined) {
       where.id = { in: hcpIds };
+    }
+
+    // Sub-specialty filter (multi-select via HcpDiseaseArea join)
+    if (diseaseAreaIds && diseaseAreaIds.length > 0) {
+      where.diseaseAreas = { some: { diseaseAreaId: { in: diseaseAreaIds } } };
     }
 
     if (query) {
@@ -121,6 +127,10 @@ export class HcpService {
           aliases: true,
           specialties: {
             include: { specialty: true },
+            orderBy: { isPrimary: 'desc' },
+          },
+          diseaseAreas: {
+            include: { diseaseArea: { select: { id: true, name: true, code: true } } },
             orderBy: { isPrimary: 'desc' },
           },
           diseaseAreaScores: {
@@ -194,6 +204,10 @@ export class HcpService {
           include: { specialty: true },
           orderBy: { isPrimary: 'desc' },
         },
+        diseaseAreas: {
+          include: { diseaseArea: { select: { id: true, name: true, code: true } } },
+          orderBy: { isPrimary: 'desc' },
+        },
         diseaseAreaScores: {
           where: { isCurrent: true },
           include: { diseaseArea: true },
@@ -243,13 +257,50 @@ export class HcpService {
    */
   async createWithAtomicBeId(data: CreateHcpInput, createdBy?: string) {
     const newBeId = await this.generateBeId();
-    return prisma.hcp.create({
-      data: { ...data, beId: newBeId, isSurveyTaker: true, createdBy },
+    // diseaseAreaIds is the new multi-select sub-specialty; persist via the
+    // HcpDiseaseArea join. Strip from the HCP create data — it's not a
+    // column on Hcp itself.
+    const { diseaseAreaIds, ...hcpData } = data;
+    const created = await prisma.hcp.create({
+      data: { ...hcpData, beId: newBeId, isSurveyTaker: true, createdBy },
     });
+    if (diseaseAreaIds && diseaseAreaIds.length > 0) {
+      await this.setHcpDiseaseAreas(created.id, diseaseAreaIds);
+    }
+    return created;
   }
 
   async update(id: string, data: UpdateHcpInput) {
-    return prisma.hcp.update({ where: { id }, data });
+    // diseaseAreaIds (multi-select sub-specialty) is a join replacement —
+    // strip from Hcp update payload and reconcile via setHcpDiseaseAreas
+    // when provided (undefined = leave unchanged; [] = clear).
+    const { diseaseAreaIds, ...hcpData } = data;
+    const updated = await prisma.hcp.update({ where: { id }, data: hcpData });
+    if (diseaseAreaIds !== undefined) {
+      await this.setHcpDiseaseAreas(id, diseaseAreaIds);
+    }
+    return updated;
+  }
+
+  /**
+   * Replace the HCP's sub-specialty (DiseaseArea) set. Idempotent.
+   * Mirrors setHcpSpecialties shape.
+   */
+  async setHcpDiseaseAreas(hcpId: string, diseaseAreaIds: string[], primaryDiseaseAreaId?: string) {
+    await prisma.hcpDiseaseArea.deleteMany({ where: { hcpId } });
+    if (diseaseAreaIds.length > 0) {
+      await prisma.hcpDiseaseArea.createMany({
+        data: diseaseAreaIds.map((diseaseAreaId) => ({
+          hcpId,
+          diseaseAreaId,
+          isPrimary: diseaseAreaId === primaryDiseaseAreaId,
+        })),
+      });
+    }
+    return prisma.hcpDiseaseArea.findMany({
+      where: { hcpId },
+      include: { diseaseArea: true },
+    });
   }
 
   async importFromFile(buffer: Buffer, userId: string, filename: string = 'file.xlsx', importId?: string) {

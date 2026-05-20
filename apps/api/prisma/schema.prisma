@@ -65,6 +65,7 @@ model DiseaseArea {
   hcpDiseaseAreaScores   HcpDiseaseAreaScore[]
   liteClientDiseaseAreas LiteClientDiseaseArea[]
   kolAnalyses            KolAnalysis[]
+  hcpAreas               HcpDiseaseArea[]
 
   @@index([therapeuticArea])
   @@index([isActive])
@@ -82,6 +83,23 @@ model Specialty {
 
   @@index([category])
   @@index([isActive])
+}
+
+// An HCP's sub-specialty / area of focus. Modeled as a join to DiseaseArea
+// (single source of truth — same list that scopes campaigns/analyses), not
+// a separate parallel list. Multi-select (HCPs can focus on >1 area).
+model HcpDiseaseArea {
+  id            String      @id @default(cuid())
+  hcpId         String
+  diseaseAreaId String
+  isPrimary     Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  hcp           Hcp         @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+  diseaseArea   DiseaseArea @relation(fields: [diseaseAreaId], references: [id], onDelete: Cascade)
+
+  @@unique([hcpId, diseaseAreaId])
+  @@index([hcpId])
+  @@index([diseaseAreaId])
 }
 
 model HcpSpecialty {
@@ -176,6 +194,7 @@ model Hcp {
   campaignExclusions  CampaignHcpExclusion[]
   optOuts             OptOut[]
   analysisScores      HcpAnalysisScore[]
+  diseaseAreas        HcpDiseaseArea[]
 
   @@index([beId])
   @@index([npi])

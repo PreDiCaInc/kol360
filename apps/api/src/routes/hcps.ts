@@ -24,10 +24,11 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Search HCPs
   fastify.get('/', async (request, reply) => {
-    const { query, specialty, state, optOutStatus, page, limit } = request.query as {
+    const { query, specialty, state, diseaseAreaIds, optOutStatus, page, limit } = request.query as {
       query?: string;
       specialty?: string;
       state?: string;
+      diseaseAreaIds?: string | string[];
       optOutStatus?: string;
       page?: string;
       limit?: string;
@@ -47,10 +48,20 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       hcpIds = await getClientHcpIds(fastify.prisma, request.user!.tenantId);
     }
 
+    // diseaseAreaIds may arrive as a single string, comma-delimited, or as repeated
+    // ?diseaseAreaIds=... query params (Fastify gives us string | string[]). Normalize.
+    const normalizedDaIds: string[] | undefined = (() => {
+      if (diseaseAreaIds === undefined) return undefined;
+      const arr = Array.isArray(diseaseAreaIds) ? diseaseAreaIds : [diseaseAreaIds];
+      const flat = arr.flatMap((s) => s.split(',')).map((s) => s.trim()).filter(Boolean);
+      return flat.length > 0 ? flat : undefined;
+    })();
+
     return hcpService.search({
       query,
       specialty,
       state,
+      diseaseAreaIds: normalizedDaIds,
       hcpIds,
       optOutStatus: optOutStatus as 'any' | 'global' | 'campaign' | 'active' | 'none' | undefined,
       page: parseInt(page || '1', 10),

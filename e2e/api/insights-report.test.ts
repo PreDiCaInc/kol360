@@ -11,17 +11,47 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { ApiClient } from '../api-client';
 import { config } from '../config';
 
-// Use the Dry Eye disease area which has test data
-const DRY_EYE_DISEASE_AREA_ID = 'cmj6ice860000wspd6wotdndy';
+// Dynamically discovered at startup — never hardcode prod/test row IDs in
+// e2e (they differ per env and per re-seed). Prefer a DA with data on this
+// environment so the suite exercises real code paths; fall back to the first
+// available DA so 404-style tests still have something to point at.
+let DRY_EYE_DISEASE_AREA_ID: string;
 
 describe('Insights Report API', () => {
   let client: ApiClient;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     if (!config.authToken) {
       throw new Error('E2E_AUTH_TOKEN is required. Run with auth: pnpm test:api:aws:auth');
     }
     client = new ApiClient();
+
+    const { status, data } = await client.getInsightsDiseaseAreas();
+    if (status !== 200 || !data.items.length) {
+      throw new Error(
+        `Insights disease-areas endpoint returned no items (status ${status}). ` +
+          `Cannot run insights tests without at least one disease area.`
+      );
+    }
+    // Prefer a DA with kols, then with campaigns, then whatever's first.
+    // Tie-break to "Dry Eye" by name so historical behavior is preserved
+    // when that data exists.
+    const sorted = data.items.slice().sort((a, b) => {
+      const aHasKols = (a.kolCount ?? 0) > 0 ? 1 : 0;
+      const bHasKols = (b.kolCount ?? 0) > 0 ? 1 : 0;
+      if (aHasKols !== bHasKols) return bHasKols - aHasKols;
+      const aHasCamp = (a.campaignCount ?? 0) > 0 ? 1 : 0;
+      const bHasCamp = (b.campaignCount ?? 0) > 0 ? 1 : 0;
+      if (aHasCamp !== bHasCamp) return bHasCamp - aHasCamp;
+      const aIsDryEye = /dry\s*eye/i.test(a.name) ? 1 : 0;
+      const bIsDryEye = /dry\s*eye/i.test(b.name) ? 1 : 0;
+      return bIsDryEye - aIsDryEye;
+    });
+    DRY_EYE_DISEASE_AREA_ID = sorted[0].id;
+    console.log(
+      `✅ Insights tests pinned to DA "${sorted[0].name}" (id=${sorted[0].id}, ` +
+        `kols=${sorted[0].kolCount ?? 0}, campaigns=${sorted[0].campaignCount ?? 0})`
+    );
   });
 
   describe('Disease Areas Endpoint', () => {

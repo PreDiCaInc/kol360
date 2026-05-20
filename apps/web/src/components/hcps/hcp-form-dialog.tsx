@@ -3,8 +3,9 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { createHcpSchema, CreateHcpInput } from '@kol360/shared';
+import { createHcpSchema, CreateHcpInput, HCP_SPECIALTIES } from '@kol360/shared';
 import { useCreateHcp, useUpdateHcp, useHcp } from '@/hooks/use-hcps';
+import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import {
   Dialog,
   DialogContent,
@@ -28,15 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
-// Allowed specialties for the application
-const ALLOWED_SPECIALTIES = [
-  'Ophthalmology',
-  'Cornea',
-  'Glaucoma',
-  'Retina',
-  'Dry Eye',
-];
+import { MultiSelect } from '@/components/ui/multi-select';
 
 interface Props {
   open: boolean;
@@ -50,6 +43,13 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
   const updateHcp = useUpdateHcp();
   const isEdit = !!hcpId;
 
+  // Sub-specialty source of truth = DiseaseArea (per (a) unify decision).
+  const { data: diseaseAreasData } = useDiseaseAreas();
+  const diseaseAreas = diseaseAreasData?.items ?? [];
+  const idToName = new Map(diseaseAreas.map((d) => [d.id, d.name]));
+  const nameToId = new Map(diseaseAreas.map((d) => [d.name, d.id]));
+  const daOptions = diseaseAreas.map((d) => d.name);
+
   const form = useForm<CreateHcpInput>({
     resolver: zodResolver(createHcpSchema),
     defaultValues: {
@@ -58,6 +58,7 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
       lastName: '',
       email: '',
       specialty: null,
+      diseaseAreaIds: [],
       subSpecialty: null,
       city: null,
       state: null,
@@ -66,12 +67,21 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
 
   useEffect(() => {
     if (hcp) {
+      // Cast loaded `specialty` to the enum if it matches; legacy/out-of-domain
+      // values (e.g. 'Oncology') come back as null on the form (kept on the
+      // legacy DB column, just not displayed in the controlled dropdown).
+      const loadedSpecialty =
+        hcp.specialty && (HCP_SPECIALTIES as readonly string[]).includes(hcp.specialty)
+          ? (hcp.specialty as (typeof HCP_SPECIALTIES)[number])
+          : null;
+      const loadedDaIds = (hcp.diseaseAreas ?? []).map((d) => d.diseaseArea.id);
       form.reset({
-        npi: hcp.npi || "",
+        npi: hcp.npi || '',
         firstName: hcp.firstName,
         lastName: hcp.lastName,
         email: hcp.email || '',
-        specialty: hcp.specialty,
+        specialty: loadedSpecialty,
+        diseaseAreaIds: loadedDaIds,
         subSpecialty: hcp.subSpecialty,
         city: hcp.city,
         state: hcp.state,
@@ -83,6 +93,7 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
         lastName: '',
         email: '',
         specialty: null,
+        diseaseAreaIds: [],
         subSpecialty: null,
         city: null,
         state: null,
@@ -199,7 +210,7 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {ALLOWED_SPECIALTIES.map((specialty) => (
+                      {HCP_SPECIALTIES.map((specialty) => (
                         <SelectItem key={specialty} value={specialty}>
                           {specialty}
                         </SelectItem>
@@ -209,6 +220,35 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
                   <FormMessage />
                 </FormItem>
               )}
+            />
+
+            <FormField
+              control={form.control}
+              name="diseaseAreaIds"
+              render={({ field }) => {
+                const selectedNames = (field.value ?? [])
+                  .map((id) => idToName.get(id))
+                  .filter((n): n is string => !!n);
+                return (
+                  <FormItem>
+                    <FormLabel>Sub-specialty (optional, multi-select)</FormLabel>
+                    <FormControl>
+                      <MultiSelect
+                        options={daOptions}
+                        selected={selectedNames}
+                        onChange={(names) => {
+                          const ids = names
+                            .map((n) => nameToId.get(n))
+                            .filter((id): id is string => !!id);
+                          field.onChange(ids);
+                        }}
+                        placeholder="Select sub-specialty…"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
 
             <div className="grid grid-cols-3 gap-4">

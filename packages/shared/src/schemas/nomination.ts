@@ -70,3 +70,25 @@ export const bulkExcludeNominationsSchema = z.object({
 });
 
 export type BulkExcludeNominationsInput = z.infer<typeof bulkExcludeNominationsSchema>;
+
+// Schema for batch top-suggestion lookup — used by the list page to render
+// inline "Accept" links without one suggestions-fetch per row.
+export const nominationTopSuggestionsSchema = z.object({
+  nominationIds: z
+    .array(z.string().cuid())
+    .min(1, 'At least one nomination is required')
+    .max(200, 'Too many nominations — keep batches to ≤200 (one page)'),
+});
+
+export type NominationTopSuggestionsInput = z.infer<typeof nominationTopSuggestionsSchema>;
+
+// Schema for bulk-accepting top suggestions. The client-side <90% confirmation
+// gate is purely UX; the server applies whatever was confirmed.
+export const bulkAcceptNominationsSchema = z.object({
+  nominationIds: z
+    .array(z.string().cuid())
+    .min(1, 'At least one nomination is required')
+    .max(500, 'Too many nominations — keep batches to ≤500'),
+});
+
+export type BulkAcceptNominationsInput = z.infer<typeof bulkAcceptNominationsSchema>;

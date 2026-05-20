@@ -7,15 +7,21 @@ import {
   useNominations,
   useNominationStats,
   useNominationSuggestions,
+  useNominationTopSuggestions,
   useMatchNomination,
+  useBulkAcceptNominations,
   useCreateHcpFromNomination,
   useExcludeNomination,
   useBulkAutoMatch,
   useBulkExcludeNominations,
   useUpdateNominationRawName,
+  type TopSuggestion,
 } from '@/hooks/use-nominations';
 import { useCampaign, useCloseCampaign } from '@/hooks/use-campaigns';
+import { useDiseaseAreas } from '@/hooks/use-disease-areas';
+import { HCP_SPECIALTIES } from '@kol360/shared';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -160,6 +166,26 @@ export default function NominationsPage() {
   // Server-side filtered items (search/type filters now applied on the API)
   const filteredItems = nominations?.items || [];
 
+  // Inline-accept support: batch-fetch the top suggestion for every
+  // UNMATCHED/REVIEW_NEEDED row on the visible page so the row can render
+  // "Accept: First Last (92%)" without a per-row API call.
+  const inlineCandidateIds = filteredItems
+    .filter((n) => n.matchStatus === 'UNMATCHED' || n.matchStatus === 'REVIEW_NEEDED')
+    .map((n) => n.id);
+  const { data: topSuggestionsMap } = useNominationTopSuggestions(campaignId, inlineCandidateIds);
+
+  // Bulk-accept flow state
+  const bulkAccept = useBulkAcceptNominations();
+  const matchNomination = useMatchNomination();
+  // When non-null, the low-confidence confirmation modal is open and these
+  // are the ids waiting to be accepted (high-conf + low-conf together).
+  const [bulkAcceptPending, setBulkAcceptPending] = useState<{
+    highConfIds: string[];
+    lowConfRows: Array<{ id: string; rawName: string; suggestion: TopSuggestion }>;
+    noSuggestionRawNames: string[];
+  } | null>(null);
+  const LOW_CONF_THRESHOLD = 90;
+
   // Reset page to 1 when filter changes
   useEffect(() => {
     setPage(1);
@@ -219,6 +245,102 @@ export default function NominationsPage() {
       setAutoMatchResult(result);
     } catch (error) {
       console.error('Bulk match failed:', error);
+    }
+  };
+
+  // Inline single-row accept: takes the precomputed top suggestion and applies
+  // it via the standard match endpoint (so audit + alias rules are identical
+  // to clicking through the dialog).
+  const handleInlineAccept = async (
+    nominationId: string,
+    suggestion: TopSuggestion
+  ) => {
+    try {
+      await matchNomination.mutateAsync({
+        campaignId,
+        nominationId,
+        hcpId: suggestion.hcpId,
+        addAlias: !suggestion.isNameMatch,
+        matchType: suggestion.matchType,
+        matchConfidence: suggestion.score,
+      });
+    } catch (error) {
+      console.error('Inline accept failed:', error);
+    }
+  };
+
+  // Bulk-accept entry point: partitions selected ids by available top suggestion
+  // and confidence. If any selected row has a sub-threshold top suggestion, we
+  // show a grouped confirm modal before submitting. High-confidence rows always
+  // bundle into the same final submission.
+  const handleBulkAccept = async () => {
+    if (selectedIds.size === 0 || !topSuggestionsMap) return;
+    const highConfIds: string[] = [];
+    const lowConfRows: Array<{ id: string; rawName: string; suggestion: TopSuggestion }> = [];
+    const noSuggestionRawNames: string[] = [];
+    // Array.from avoids the downlevelIteration tsconfig flag that Next requires
+    // for `for (const x of Set)` loops.
+    for (const id of Array.from(selectedIds)) {
+      const top = topSuggestionsMap[id];
+      const row = filteredItems.find((n) => n.id === id);
+      const rawName = row?.rawNameEntered ?? id;
+      if (!top) {
+        noSuggestionRawNames.push(rawName);
+        continue;
+      }
+      if (top.score >= LOW_CONF_THRESHOLD) {
+        highConfIds.push(id);
+      } else {
+        lowConfRows.push({ id, rawName, suggestion: top });
+      }
+    }
+
+    // No confirmation needed — submit immediately.
+    if (lowConfRows.length === 0) {
+      if (highConfIds.length === 0) return;
+      try {
+        await bulkAccept.mutateAsync({ campaignId, nominationIds: highConfIds });
+        setSelectedIds(new Set());
+      } catch (error) {
+        console.error('Bulk accept failed:', error);
+      }
+      return;
+    }
+
+    // Open the grouped confirmation modal.
+    setBulkAcceptPending({ highConfIds, lowConfRows, noSuggestionRawNames });
+  };
+
+  const handleBulkAcceptConfirmed = async () => {
+    if (!bulkAcceptPending) return;
+    const all = [
+      ...bulkAcceptPending.highConfIds,
+      ...bulkAcceptPending.lowConfRows.map((r) => r.id),
+    ];
+    try {
+      await bulkAccept.mutateAsync({ campaignId, nominationIds: all });
+      setBulkAcceptPending(null);
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error('Bulk accept (confirmed) failed:', error);
+    }
+  };
+
+  const handleBulkAcceptHighConfOnly = async () => {
+    if (!bulkAcceptPending) return;
+    if (bulkAcceptPending.highConfIds.length === 0) {
+      setBulkAcceptPending(null);
+      return;
+    }
+    try {
+      await bulkAccept.mutateAsync({
+        campaignId,
+        nominationIds: bulkAcceptPending.highConfIds,
+      });
+      setBulkAcceptPending(null);
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error('Bulk accept (high-conf only) failed:', error);
     }
   };
 
@@ -537,6 +659,18 @@ export default function NominationsPage() {
                         Clear selection
                       </Button>
                       <Button
+                        size="sm"
+                        onClick={handleBulkAccept}
+                        disabled={bulkAccept.isPending || !topSuggestionsMap}
+                      >
+                        {bulkAccept.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 mr-1" />
+                        )}
+                        Accept Top Match ({selectedIds.size})
+                      </Button>
+                      <Button
                         variant="destructive"
                         size="sm"
                         onClick={() => {
@@ -699,7 +833,28 @@ export default function NominationsPage() {
                         </TableCell>
                         <TableCell>
                           {(nomination.matchStatus === 'UNMATCHED' || nomination.matchStatus === 'REVIEW_NEEDED') && (
-                            <div className="flex gap-1">
+                            <div className="flex gap-1 items-center flex-wrap">
+                              {(() => {
+                                // Inline accept link — shown only when the batch
+                                // top-suggestions lookup found a candidate.
+                                const top = topSuggestionsMap?.[nomination.id];
+                                if (!top) return null;
+                                const isLowConf = top.score < LOW_CONF_THRESHOLD;
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInlineAccept(nomination.id, top)}
+                                    disabled={matchNomination.isPending}
+                                    title={`Accept: ${top.firstName} ${top.lastName}${top.npi ? ` (NPI ${top.npi})` : ''} — ${top.score}% confidence`}
+                                    className={`text-xs underline-offset-2 hover:underline disabled:opacity-50 mr-1 ${
+                                      isLowConf ? 'text-amber-700' : 'text-primary'
+                                    }`}
+                                  >
+                                    Accept: {top.firstName} {top.lastName}{' '}
+                                    <span className="text-muted-foreground">({top.score}%)</span>
+                                  </button>
+                                );
+                              })()}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -800,6 +955,13 @@ export default function NominationsPage() {
             nominationId={selectedNominationId}
             nomination={nominations?.items.find((n) => n.id === selectedNominationId)}
             onClose={() => setSelectedNominationId(null)}
+            onCreateNewHcp={(nominationId) => {
+              // Close the review dialog and hand off to the create-HCP dialog
+              // for the same nomination in a single flow.
+              setSelectedNominationId(null);
+              setNominationForNewHcp(nominationId);
+              setShowCreateHcpDialog(true);
+            }}
           />
         )}
 
@@ -951,6 +1113,99 @@ export default function NominationsPage() {
           </AlertDialogContent>
         </AlertDialog>
 
+        {/* Bulk-accept low-confidence confirmation modal.
+            Opens when handleBulkAccept finds any selected row with a
+            top-suggestion score < LOW_CONF_THRESHOLD. Lets the steward
+            confirm all (incl. low-conf) or only the high-conf subset. */}
+        {bulkAcceptPending && (
+          <Dialog open onOpenChange={(o) => { if (!o) setBulkAcceptPending(null); }}>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Confirm low-confidence matches</DialogTitle>
+                <DialogDescription>
+                  {bulkAcceptPending.lowConfRows.length} of {bulkAcceptPending.lowConfRows.length + bulkAcceptPending.highConfIds.length}{' '}
+                  selected match{bulkAcceptPending.lowConfRows.length + bulkAcceptPending.highConfIds.length === 1 ? '' : 'es'} are below {LOW_CONF_THRESHOLD}% confidence.
+                  Review each before accepting.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex-1 overflow-auto py-2 space-y-2">
+                {bulkAcceptPending.lowConfRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className="border rounded-md p-3 bg-amber-50 border-amber-200"
+                  >
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm">
+                          <span className="font-medium">&ldquo;{row.rawName}&rdquo;</span>
+                          <ChevronRight className="inline w-3 h-3 mx-1 text-muted-foreground" />
+                          <span className="font-medium">
+                            {row.suggestion.firstName} {row.suggestion.lastName}
+                          </span>
+                          {row.suggestion.npi && (
+                            <span className="text-xs text-muted-foreground ml-1">
+                              (NPI {row.suggestion.npi})
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-100 text-amber-800 border-amber-300 shrink-0"
+                      >
+                        {row.suggestion.score}%
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+                {bulkAcceptPending.highConfIds.length > 0 && (
+                  <p className="text-xs text-muted-foreground pt-2">
+                    Plus {bulkAcceptPending.highConfIds.length} high-confidence match{bulkAcceptPending.highConfIds.length === 1 ? '' : 'es'} (≥{LOW_CONF_THRESHOLD}%) that will be accepted automatically.
+                  </p>
+                )}
+                {bulkAcceptPending.noSuggestionRawNames.length > 0 && (
+                  <div className="border rounded-md p-3 bg-gray-50 border-gray-200">
+                    <p className="text-xs text-muted-foreground">
+                      <strong>{bulkAcceptPending.noSuggestionRawNames.length}</strong> selected row{bulkAcceptPending.noSuggestionRawNames.length === 1 ? '' : 's'} have no suggestion and will be skipped:
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 italic line-clamp-2">
+                      {bulkAcceptPending.noSuggestionRawNames.slice(0, 8).join(', ')}
+                      {bulkAcceptPending.noSuggestionRawNames.length > 8 && '…'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setBulkAcceptPending(null)}>
+                  Cancel
+                </Button>
+                {bulkAcceptPending.highConfIds.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={handleBulkAcceptHighConfOnly}
+                    disabled={bulkAccept.isPending}
+                  >
+                    Skip low-conf, accept {bulkAcceptPending.highConfIds.length}
+                  </Button>
+                )}
+                <Button
+                  onClick={handleBulkAcceptConfirmed}
+                  disabled={bulkAccept.isPending}
+                >
+                  {bulkAccept.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                  )}
+                  Accept all {bulkAcceptPending.highConfIds.length + bulkAcceptPending.lowConfRows.length}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
         {/* Bulk Exclude Dialog */}
         <AlertDialog open={showBulkExcludeDialog} onOpenChange={setShowBulkExcludeDialog}>
           <AlertDialogContent>
@@ -1002,6 +1257,11 @@ interface MatchNominationDialogProps {
     nominatorHcp: { firstName: string; lastName: string };
   };
   onClose: () => void;
+  /**
+   * Hand-off to the Create-New-HCP flow for the same nomination. The parent
+   * closes this dialog and opens CreateHcpDialog with the rawName pre-filled.
+   */
+  onCreateNewHcp?: (nominationId: string) => void;
 }
 
 function MatchNominationDialog({
@@ -1009,6 +1269,7 @@ function MatchNominationDialog({
   nominationId,
   nomination,
   onClose,
+  onCreateNewHcp,
 }: MatchNominationDialogProps) {
   const { data: suggestions, isLoading } = useNominationSuggestions(campaignId, nominationId);
   const matchNomination = useMatchNomination();
@@ -1247,7 +1508,7 @@ function MatchNominationDialog({
           )}
         </div>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-2 flex-wrap">
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
@@ -1258,6 +1519,16 @@ function MatchNominationDialog({
             <Ban className="w-4 h-4 mr-2" />
             Exclude
           </Button>
+          {onCreateNewHcp && (
+            <Button
+              variant="outline"
+              onClick={() => onCreateNewHcp(nominationId)}
+              title="Create a brand-new HCP for this nomination (the raw name will be pre-filled)"
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              Create New HCP
+            </Button>
+          )}
           <Button
             onClick={handleMatch}
             disabled={!selectedHcpId || matchNomination.isPending}
@@ -1297,12 +1568,30 @@ function CreateHcpDialog({
   const initialFirstName = nameParts[0] || '';
   const initialLastName = nameParts.slice(1).join(' ') || '';
 
-  const [formData, setFormData] = useState({
+  // Same controls as the canonical HCP form dialog: 2-value specialty
+  // dropdown + multi-select sub-specialty sourced from DiseaseArea.
+  const { data: diseaseAreasData } = useDiseaseAreas();
+  const diseaseAreas = diseaseAreasData?.items ?? [];
+  const idToName = new Map(diseaseAreas.map((d) => [d.id, d.name]));
+  const nameToId = new Map(diseaseAreas.map((d) => [d.name, d.id]));
+  const daOptions = diseaseAreas.map((d) => d.name);
+
+  const [formData, setFormData] = useState<{
+    npi: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    specialty: '' | 'Optometrist' | 'Ophthalmologist';
+    diseaseAreaIds: string[];
+    city: string;
+    state: string;
+  }>({
     npi: '',
     firstName: initialFirstName,
     lastName: initialLastName,
     email: '',
     specialty: '',
+    diseaseAreaIds: [],
     city: '',
     state: '',
   });
@@ -1322,6 +1611,7 @@ function CreateHcpDialog({
           lastName: formData.lastName,
           email: formData.email || null,
           specialty: formData.specialty || null,
+          diseaseAreaIds: formData.diseaseAreaIds,
           city: formData.city || null,
           state: formData.state || null,
         },
@@ -1383,10 +1673,41 @@ function CreateHcpDialog({
           </div>
           <div>
             <Label htmlFor="specialty">Specialty</Label>
-            <Input
-              id="specialty"
+            <Select
               value={formData.specialty}
-              onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
+              onValueChange={(v) =>
+                setFormData({
+                  ...formData,
+                  specialty: v as '' | 'Optometrist' | 'Ophthalmologist',
+                })
+              }
+            >
+              <SelectTrigger id="specialty">
+                <SelectValue placeholder="Select specialty" />
+              </SelectTrigger>
+              <SelectContent>
+                {HCP_SPECIALTIES.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Sub-specialty (optional, multi-select)</Label>
+            <MultiSelect
+              options={daOptions}
+              selected={formData.diseaseAreaIds
+                .map((id) => idToName.get(id))
+                .filter((n): n is string => !!n)}
+              onChange={(names) =>
+                setFormData({
+                  ...formData,
+                  diseaseAreaIds: names
+                    .map((n) => nameToId.get(n))
+                    .filter((id): id is string => !!id),
+                })
+              }
+              placeholder="Select sub-specialty…"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">

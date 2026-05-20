@@ -74,4 +74,112 @@ describe('Nomination Matching (v1.15.14)', () => {
       expect(matched.matchStatus).toBe('MATCHED');
     });
   });
+
+  describe('Batch top-suggestions (v1.15.29)', () => {
+    it('returns a topSuggestion (or null) for each requested id', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(c =>
+        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
+      );
+      if (!testCampaign) {
+        console.log('⊘ No active test campaign with nominations — skipping');
+        return;
+      }
+      const { data: nominations } = await client.listNominations(testCampaign.id, {
+        limit: 10,
+      });
+      const ids = nominations.items.map((n) => n.id);
+      if (ids.length === 0) {
+        console.log('⊘ No nominations on test campaign — skipping');
+        return;
+      }
+      const { status, data } = await client.getNominationTopSuggestions(testCampaign.id, ids);
+      expect(status).toBe(200);
+      // Every requested id must appear in the map (value may be null).
+      for (const id of ids) {
+        expect(Object.prototype.hasOwnProperty.call(data, id)).toBe(true);
+        const top = data[id];
+        if (top !== null) {
+          expect(top.hcpId).toBeTruthy();
+          expect(typeof top.score).toBe('number');
+          expect(top.score).toBeGreaterThanOrEqual(50);
+        }
+      }
+      console.log(`✅ top-suggestions: ${ids.length} requested, ${ids.filter(id => data[id]).length} with candidates`);
+    });
+
+    it('rejects empty id array with 400', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(c =>
+        c.name.startsWith('E2E_TEST_CAMPAIGN_')
+      );
+      if (!testCampaign) return;
+      const { status } = await client.getNominationTopSuggestions(testCampaign.id, []);
+      expect(status).toBe(400);
+    });
+
+    it('does not leak suggestions for nominations from another campaign', async () => {
+      // Tenant-safety check: ids that don't belong to the campaignId in the URL
+      // come back as null in the response, not as a real suggestion.
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaigns = campaigns.items.filter(c =>
+        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
+      );
+      if (testCampaigns.length < 2) {
+        console.log('⊘ Need 2 test campaigns to cross-check — skipping');
+        return;
+      }
+      const [a, b] = testCampaigns;
+      const { data: aNoms } = await client.listNominations(a.id, { limit: 1 });
+      const { data: bNoms } = await client.listNominations(b.id, { limit: 1 });
+      if (!aNoms.items.length || !bNoms.items.length) return;
+      // Ask campaign A for campaign B's nomination — should be null.
+      const { status, data } = await client.getNominationTopSuggestions(a.id, [bNoms.items[0].id]);
+      expect(status).toBe(200);
+      expect(data[bNoms.items[0].id]).toBeNull();
+    });
+  });
+
+  describe('Bulk-accept top suggestions (v1.15.29)', () => {
+    it('accepts top suggestions and returns per-row counts', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(c =>
+        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
+      );
+      if (!testCampaign) {
+        console.log('⊘ No active test campaign — skipping');
+        return;
+      }
+      const { data: nominations } = await client.listNominations(testCampaign.id, {
+        status: 'UNMATCHED',
+        limit: 3,
+      });
+      const candidateIds = nominations.items.map((n) => n.id);
+      if (candidateIds.length === 0) {
+        console.log('⊘ No UNMATCHED nominations to bulk-accept — skipping');
+        return;
+      }
+      const { status, data } = await client.bulkAcceptNominations(testCampaign.id, candidateIds);
+      expect(status).toBe(200);
+      expect(typeof data.accepted).toBe('number');
+      expect(typeof data.skipped).toBe('number');
+      expect(Array.isArray(data.errors)).toBe(true);
+      // accepted + skipped must total the input batch size (errors are a
+      // subset of attempts that crashed mid-row; they don't increment skipped).
+      expect(data.accepted + data.skipped + data.errors.length).toBe(candidateIds.length);
+      console.log(
+        `✅ bulk-accept: ${data.accepted} accepted, ${data.skipped} skipped, ${data.errors.length} errors`
+      );
+    });
+
+    it('rejects empty id array with 400', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(c =>
+        c.name.startsWith('E2E_TEST_CAMPAIGN_')
+      );
+      if (!testCampaign) return;
+      const { status } = await client.bulkAcceptNominations(testCampaign.id, []);
+      expect(status).toBe(400);
+    });
+  });
 });
