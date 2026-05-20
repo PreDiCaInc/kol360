@@ -1082,8 +1082,9 @@ export interface Hcp {
   firstName: string;
   lastName: string;
   email?: string;
-  // Post-(a) unify: specialty is constrained to 'Optometrist' | 'Ophthalmologist'
-  // on writes; reads may include legacy values that didn't normalize cleanly.
+  // Post-(a) unify: specialty is constrained to canonical field-form
+  // (Optometry | Ophthalmology) on writes; reads may include legacy values
+  // (Oncology, etc.) that didn't normalize cleanly.
   specialty?: string | null;
   city?: string;
   state?: string;
@@ -1099,7 +1100,7 @@ export interface CreateHcpInput {
   firstName: string;
   lastName: string;
   email?: string;
-  specialty?: 'Optometrist' | 'Ophthalmologist' | null;
+  specialty?: 'Optometry' | 'Ophthalmology' | null;
   diseaseAreaIds?: string[];
   city?: string;
   state?: string;

@@ -1581,7 +1581,8 @@ function CreateHcpDialog({
     firstName: string;
     lastName: string;
     email: string;
-    specialty: '' | 'Optometrist' | 'Ophthalmologist';
+    // v1.15.31: canonical specialty values are field-form (Optometry / Ophthalmology).
+    specialty: '' | 'Optometry' | 'Ophthalmology';
     diseaseAreaIds: string[];
     city: string;
     state: string;
@@ -1678,7 +1679,7 @@ function CreateHcpDialog({
               onValueChange={(v) =>
                 setFormData({
                   ...formData,
-                  specialty: v as '' | 'Optometrist' | 'Ophthalmologist',
+                  specialty: v as '' | 'Optometry' | 'Ophthalmology',
                 })
               }
             >

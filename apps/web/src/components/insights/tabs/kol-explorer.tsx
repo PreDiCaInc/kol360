@@ -437,13 +437,15 @@ function ProfileView({
   // Nominator specialty pie data (aggregate into Ophthalmologist/Optometrist/Other)
   const specialtyPieData = useMemo(() => {
     if (!profile?.nominatorDemographics?.bySpecialty) return [];
+    // v1.15.31: display labels flipped to field-form (Optometry/Ophthalmology).
+    // The .includes() matchers handle both shapes of legacy data.
     const groups: Record<string, number> = {};
     for (const s of profile.nominatorDemographics.bySpecialty) {
       const lower = s.name.toLowerCase();
       if (lower.includes('ophthalmolog')) {
-        groups['Ophthalmologist'] = (groups['Ophthalmologist'] || 0) + s.count;
+        groups['Ophthalmology'] = (groups['Ophthalmology'] || 0) + s.count;
       } else if (lower.includes('optometrist') || lower.includes('optometry')) {
-        groups['Optometrist'] = (groups['Optometrist'] || 0) + s.count;
+        groups['Optometry'] = (groups['Optometry'] || 0) + s.count;
       } else {
         groups['Other'] = (groups['Other'] || 0) + s.count;
       }

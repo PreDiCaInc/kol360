@@ -61,7 +61,7 @@ describe('HCP × DiseaseArea (sub-specialty)', () => {
         lastName: `hcpda_${suffix}`,
         // createHcpSchema requires a valid email — synthetic but well-formed.
         email: `hcpda_${suffix}@e2etest.example.com`,
-        specialty: 'Optometrist',
+        specialty: 'Optometry',
         diseaseAreaIds: [daId],
       });
 

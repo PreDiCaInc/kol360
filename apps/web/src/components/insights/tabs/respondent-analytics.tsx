@@ -44,26 +44,29 @@ const COLORS = [
 const filterUnknown = <T extends { name: string }>(items: T[]): T[] =>
   items.filter((d) => d.name !== 'Unknown');
 
-// Group specialties into Respondent Role categories (Ophthalmologist vs Optometrist)
+// Group specialties into Respondent Role categories (Ophthalmology vs Optometry).
+// v1.15.31: display labels flipped to field-form to match the canonical naming.
+// The .includes() matchers handle BOTH the new field-form and any legacy
+// role-form data still on records, so historical responses bucket correctly.
 const groupByRespondentRole = (bySpecialty: { name: string; count: number; percentage: number }[]): { name: string; count: number; percentage: number }[] => {
   const roles: Record<string, number> = {
-    'Ophthalmologist': 0,
-    'Optometrist': 0,
+    'Ophthalmology': 0,
+    'Optometry': 0,
     'Other': 0,
   };
 
   for (const spec of bySpecialty) {
     const name = spec.name.toLowerCase();
     if (name.includes('ophthalmolog')) {
-      roles['Ophthalmologist'] += spec.count;
+      roles['Ophthalmology'] += spec.count;
     } else if (name.includes('optometr')) {
-      roles['Optometrist'] += spec.count;
+      roles['Optometry'] += spec.count;
     } else if (spec.name !== 'Unknown') {
       roles['Other'] += spec.count;
     }
   }
 
-  const total = roles['Ophthalmologist'] + roles['Optometrist'] + roles['Other'];
+  const total = roles['Ophthalmology'] + roles['Optometry'] + roles['Other'];
 
   return Object.entries(roles)
     .filter(([_, count]) => count > 0)
