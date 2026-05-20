@@ -50,18 +50,21 @@ describe('HCP Schemas', () => {
     });
 
     it('should accept optional fields', () => {
+      // specialty is now a closed enum (Optometrist | Ophthalmologist) per the
+      // v1.15.29 (a)-unify decision; legacy free-text values (e.g. Cardiology)
+      // are rejected at the boundary. Sub-specialty migrated to diseaseAreaIds.
       const hcpWithOptionals = {
         ...validHcp,
-        specialty: 'Cardiology',
-        subSpecialty: 'Interventional Cardiology',
+        specialty: 'Ophthalmologist' as const,
+        subSpecialty: 'Cornea',
         city: 'New York',
         state: 'NY',
       };
 
       const result = createHcpSchema.parse(hcpWithOptionals);
       expect(result.email).toBe('john.doe@example.com');
-      expect(result.specialty).toBe('Cardiology');
-      expect(result.subSpecialty).toBe('Interventional Cardiology');
+      expect(result.specialty).toBe('Ophthalmologist');
+      expect(result.subSpecialty).toBe('Cornea');
       expect(result.city).toBe('New York');
       expect(result.state).toBe('NY');
     });
@@ -145,17 +148,23 @@ describe('HCP Schemas', () => {
     });
 
     it('should accept full update (except NPI)', () => {
+      // specialty constrained to the 2-value enum since v1.15.29.
       const fullUpdate = {
         firstName: 'Jane',
         lastName: 'Smith',
         email: 'jane.smith@example.com',
-        specialty: 'Neurology',
+        specialty: 'Optometrist' as const,
         city: 'Boston',
         state: 'MA',
       };
 
       const result = updateHcpSchema.parse(fullUpdate);
       expect(result).toEqual(fullUpdate);
+    });
+
+    it('rejects legacy free-text specialty values (v1.15.29 enum tightening)', () => {
+      expect(() => updateHcpSchema.parse({ specialty: 'Cardiology' })).toThrow();
+      expect(() => updateHcpSchema.parse({ specialty: 'Neurology' })).toThrow();
     });
 
     it('should still validate fields when provided', () => {
