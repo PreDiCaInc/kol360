@@ -150,7 +150,8 @@ export class ExportService {
       where: { id: campaignId },
       include: {
         diseaseArea: true,
-        compositeScoreConfig: true,
+        // compositeScoreConfig include removed in Phase 3 PR A — weights no
+        // longer live on the campaign; KOL Analysis dashboard surfaces them.
       },
     });
     const excludeInternal = campaign?.excludeInternalEmails ?? false;
@@ -159,7 +160,10 @@ export class ExportService {
       throw new Error('Campaign not found');
     }
 
-    // Get campaign scores with HCP info (exclude internal emails if configured)
+    // Get campaign scores with HCP info (exclude internal emails if configured).
+    // Phase 3 PR A: HcpCampaignScore.compositeScore/scoreSurvey columns are
+    // vestigial (dropped entirely in PR B). Ordering switched to lastName
+    // since composite ordering is no longer meaningful at the campaign level.
     const scores = await prisma.hcpCampaignScore.findMany({
       where: {
         campaignId,
@@ -180,7 +184,7 @@ export class ExportService {
           },
         },
       },
-      orderBy: { compositeScore: 'desc' },
+      orderBy: [{ hcp: { lastName: 'asc' } }, { hcp: { firstName: 'asc' } }],
     });
 
     // Get disease area scores for objective metrics
@@ -202,9 +206,12 @@ export class ExportService {
 
     const worksheet = workbook.addWorksheet('HCP Scores');
 
-    // Headers
+    // Headers — Phase 3 PR A: dropped 'Survey Score' + 'Composite Score' columns.
+    // Those values now live on the KOL Analysis dashboard (HcpAnalysisScore),
+    // computed per-(client, DA) with per-analysis weights and pooled
+    // normalization. This export is per-campaign objective metrics + nomination
+    // counts only.
     const headers = [
-      'Rank',
       'NPI',
       'First Name',
       'Last Name',
@@ -220,9 +227,7 @@ export class ExportService {
       'Conference Score',
       'Social Media Score',
       'Media/Podcasts Score',
-      'Survey Score',
       'Nomination Count',
-      'Composite Score',
     ];
 
     worksheet.addRow(headers);
@@ -237,7 +242,7 @@ export class ExportService {
     };
 
     // Add data rows
-    scores.forEach((score, index) => {
+    scores.forEach((score) => {
       const daScore = daScoreMap.get(score.hcpId);
 
       const toNum = (val: unknown): string => {
@@ -246,7 +251,6 @@ export class ExportService {
       };
 
       const row = [
-        index + 1,
         score.hcp.npi,
         score.hcp.firstName,
         score.hcp.lastName,
@@ -262,9 +266,7 @@ export class ExportService {
         toNum(daScore?.scoreConference),
         toNum(daScore?.scoreSocialMedia),
         toNum(daScore?.scoreMediaPodcasts),
-        toNum(score.scoreSurvey),
         score.nominationCount,
-        toNum(score.compositeScore),
       ];
 
       worksheet.addRow(row);

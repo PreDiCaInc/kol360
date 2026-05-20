@@ -15,11 +15,11 @@ import {
   useConfirmWorkflowStep,
 } from '@/hooks/use-campaigns';
 import { useSurveyTemplates } from '@/hooks/use-survey-templates';
-import { useScoreConfig, useUpdateScoreConfig, useResetScoreConfig } from '@/hooks/use-score-config';
+// use-score-config + use-campaign-scores + ScoreConfigForm removed in Phase 3 PR A —
+// weights/recalc now live on /admin/kol-analysis. Campaign no longer carries its own
+// weight config or per-campaign computed scores.
 import { useSendReminders, useSendInvitations, useDistributionStats, useEmailProgress } from '@/hooks/use-distribution';
-import { useCampaignScores } from '@/hooks/use-campaign-scores';
 import { RequireAuth } from '@/components/auth/require-auth';
-import { ScoreConfigForm } from '@/components/campaigns/score-config-form';
 import { CampaignHcpsTab } from '@/components/campaigns/campaign-hcps-tab';
 import { CampaignTemplatesTab } from '@/components/campaigns/campaign-templates-tab';
 import { Button } from '@/components/ui/button';
@@ -66,14 +66,12 @@ import {
   RotateCcw,
   Users,
   FileText,
-  BarChart3,
   Bell,
   CheckCircle2,
   AlertCircle,
   Mail,
   LayoutDashboard,
   UserCheck,
-  Calculator,
   Pencil,
   X,
   Check,
@@ -91,7 +89,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { CampaignStatus, ScoreConfigInput } from '@kol360/shared';
+import { CampaignStatus } from '@kol360/shared';
+// ScoreConfigInput removed from shared in Phase 3 PR A — campaign no longer
+// has its own weight config (now on KolAnalysis.weightsJson).
 
 const statusColors: Record<CampaignStatus, string> = {
   DRAFT: 'bg-gray-100 text-gray-800',
@@ -101,14 +101,16 @@ const statusColors: Record<CampaignStatus, string> = {
 };
 
 // Workflow steps configuration - steps 1-4 are setup (DRAFT), 5+ are post-activation
+// Phase 3 PR A (v1.16.0): 'scores' (Score Config) + 'survey-scores' (Survey Scores
+// calculate) steps removed. Weights and recalc moved to /admin/kol-analysis per
+// (client, DA); campaign setup no longer carries the legacy CompositeScoreConfig
+// confirm-and-continue step.
 const WORKFLOW_STEPS = [
   { id: 'overview', label: 'Overview', icon: FileText, description: 'Campaign details', phase: 'setup' },
   { id: 'hcps', label: 'HCPs', icon: Users, description: 'Assign participants', phase: 'setup' },
-  { id: 'scores', label: 'Score Config', icon: BarChart3, description: 'Configure weights', phase: 'setup' },
   { id: 'templates', label: 'Templates', icon: Mail, description: 'Email templates', phase: 'setup' },
   { id: 'initiate', label: 'Initiate Survey', icon: Send, description: 'Launch campaign', phase: 'setup' },
   { id: 'nominations', label: 'Nominations', icon: UserCheck, description: 'Match nominations', phase: 'active', external: true },
-  { id: 'survey-scores', label: 'Survey Scores', icon: Calculator, description: 'Calculate scores', phase: 'closed', external: true },
   // { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'View results', phase: 'published', external: true },
   { id: 'payments', label: 'Payments', icon: DollarSign, description: 'Honorarium tracking', phase: 'published', external: true },
   // Survey Status is a monitoring tool — accessible across all non-DRAFT statuses
@@ -130,10 +132,9 @@ export default function CampaignDetailPage() {
   const campaignId = params.id as string;
 
   const { data: campaign, isLoading } = useCampaign(campaignId);
-  const { data: scoreConfig } = useScoreConfig(campaignId);
+  // useScoreConfig + useUpdateScoreConfig + useResetScoreConfig removed in
+  // Phase 3 PR A — campaign no longer has its own weight config.
   const updateCampaign = useUpdateCampaign();
-  const updateScoreConfig = useUpdateScoreConfig();
-  const resetScoreConfig = useResetScoreConfig();
   const activateCampaign = useActivateCampaign();
   const closeCampaign = useCloseCampaign();
   const reopenCampaign = useReopenCampaign();
@@ -141,7 +142,10 @@ export default function CampaignDetailPage() {
   const sendReminders = useSendReminders();
   const sendInvitations = useSendInvitations();
   const { data: distributionStats } = useDistributionStats(campaignId);
-  const { data: campaignScores } = useCampaignScores(campaignId);
+  // useCampaignScores removed in Phase 3 PR A. The "scores published" tile
+  // in the CLOSED-state summary now falls back to status === 'PUBLISHED' as
+  // the signal — campaignScores rows were a proxy for "publishScores() ran",
+  // and that publish path is gone now.
   const { data: auditLogData } = useCampaignAuditLog(campaignId);
   const confirmWorkflowStep = useConfirmWorkflowStep();
   const { data: surveyTemplates } = useSurveyTemplates();
@@ -251,13 +255,8 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const handleSaveScoreConfig = async (data: ScoreConfigInput) => {
-    await updateScoreConfig.mutateAsync({ campaignId, data });
-  };
-
-  const handleResetScoreConfig = async () => {
-    await resetScoreConfig.mutateAsync(campaignId);
-  };
+  // handleSaveScoreConfig / handleResetScoreConfig removed in Phase 3 PR A —
+  // campaign weight config moved to KolAnalysis.weightsJson per (client, DA).
 
   const [overrideReminderLimit, setOverrideReminderLimit] = useState(false);
 
@@ -288,13 +287,12 @@ export default function CampaignDetailPage() {
     }
   };
 
-  const handleConfirmStep = async (step: 'scores' | 'templates') => {
+  // handleConfirmStep narrowed in Phase 3 PR A — 'scores' step removed, only
+  // 'templates' remains as a per-campaign confirm-and-continue gate.
+  const handleConfirmStep = async (step: 'templates') => {
     try {
       await confirmWorkflowStep.mutateAsync({ campaignId, step });
-      // Navigate to next step after confirmation
-      if (step === 'scores') {
-        setActiveStep('templates');
-      } else if (step === 'templates') {
+      if (step === 'templates') {
         setActiveStep('initiate');
       }
     } catch (error) {
@@ -302,20 +300,18 @@ export default function CampaignDetailPage() {
     }
   };
 
-  // Calculate step completion status for DRAFT campaigns
+  // Calculate step completion status for DRAFT campaigns.
+  // Phase 3 PR A: dropped the 'scores' step (and its scoreConfigConfirmedAt
+  // gate) — campaign no longer carries its own weight config.
   const getSetupStepStatuses = (): StepStatus[] => {
     if (!campaign) return [];
 
     const hasHcps = campaign._count.campaignHcps > 0;
-    // Check if user explicitly confirmed the score config step
-    const hasConfirmedScoreConfig = !!campaign.scoreConfigConfirmedAt;
-    // Check if user explicitly confirmed the templates step
     const hasConfirmedTemplates = !!campaign.templatesConfirmedAt;
 
     return [
       { id: 'overview', completed: true, label: 'Overview' }, // Always complete
       { id: 'hcps', completed: hasHcps, label: 'Assign HCPs' },
-      { id: 'scores', completed: hasConfirmedScoreConfig, label: 'Score Config' },
       { id: 'templates', completed: hasConfirmedTemplates, label: 'Email Templates' },
       { id: 'initiate', completed: false, label: 'Initiate Survey' }, // Complete when activated
     ];
@@ -327,14 +323,15 @@ export default function CampaignDetailPage() {
     return statuses.find(s => !s.completed) || null;
   };
 
-  // Check if all setup steps are complete (ready to activate)
+  // Check if all setup steps are complete (ready to activate).
+  // Phase 3 PR A: scoreConfigConfirmedAt gate dropped — only HCPs + survey
+  // questions + templates confirm remain.
   const isReadyToActivate = (): boolean => {
     if (!campaign || campaign.status !== 'DRAFT') return false;
     const hasHcps = campaign._count.campaignHcps > 0;
     const hasSurveyQuestions = ((campaign._count as Record<string, number>).surveyQuestions ?? 0) > 0;
-    const hasConfirmedScoreConfig = !!campaign.scoreConfigConfirmedAt;
     const hasConfirmedTemplates = !!campaign.templatesConfirmedAt;
-    return hasHcps && hasSurveyQuestions && hasConfirmedScoreConfig && hasConfirmedTemplates;
+    return hasHcps && hasSurveyQuestions && hasConfirmedTemplates;
   };
 
   // Get current workflow progress for visual display
@@ -347,13 +344,9 @@ export default function CampaignDetailPage() {
         const completedCount = statuses.filter(s => s.completed).length;
         return completedCount;
       }
-      case 'ACTIVE': return 5; // Survey initiated
-      case 'CLOSED': {
-        // If scores have been calculated, show survey-scores as complete (step 7)
-        const hasScores = campaignScores && campaignScores.items && campaignScores.items.length > 0;
-        return hasScores ? 7 : 6;
-      }
-      case 'PUBLISHED': return 8; // Dashboard is step 8, payments is step 9 (available after publish)
+      case 'ACTIVE': return 4; // Survey initiated (was 5 pre-PR-A; 'scores' step removed)
+      case 'CLOSED': return 5; // Nominations done (was 6; 'survey-scores' removed)
+      case 'PUBLISHED': return 6; // Payments available (was 8; numbering shifted)
       default: return 0;
     }
   };
@@ -362,15 +355,15 @@ export default function CampaignDetailPage() {
     const step = WORKFLOW_STEPS.find(s => s.id === stepId);
     if (step?.external) {
       // Navigate to external page
+      // Phase 3 PR A: 'survey-scores' external link removed (page replaced with
+      // a redirect to /admin/kol-analysis). If a bookmark or stale state ever
+      // routes here for that id, the redirect handles it.
       switch (stepId) {
         case 'survey-status':
           router.push(`/admin/campaigns/${campaignId}/survey-status`);
           break;
         case 'nominations':
           router.push(`/admin/campaigns/${campaignId}/nominations`);
-          break;
-        case 'survey-scores':
-          router.push(`/admin/campaigns/${campaignId}/scores`);
           break;
         case 'payments':
           router.push(`/admin/campaigns/${campaignId}/payments`);
@@ -533,14 +526,10 @@ export default function CampaignDetailPage() {
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             )}
-            {campaign.status === 'CLOSED' && canEdit && (
-              <Button onClick={() => handleStepClick('survey-scores')}>
-                <Calculator className="w-4 h-4 mr-2" />
-                Calculate Scores
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            )}
-            {/* Dashboard button disabled until campaign-level config is ready */}
+            {/* "Calculate Scores" button removed in Phase 3 PR A — scores are
+                computed by the KOL Analysis pipeline now (auto on /publish,
+                or via the explicit Recalculate button on the analysis page).
+                Dashboard button disabled until campaign-level config is ready. */}
           </div>
         </div>
 
@@ -649,15 +638,20 @@ export default function CampaignDetailPage() {
                     <CardTitle className="text-lg">Score Status</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {campaignScores && campaignScores.items && campaignScores.items.length > 0 ? (
+                    {/* Phase 3 PR A: campaign-level scores are gone. Score
+                        status now reflects whether the campaign has been
+                        PUBLISHED (which triggers the KOL Analysis auto-recalc
+                        for any analysis that includes this campaign). For
+                        per-HCP scores, the steward goes to /admin/kol-analysis. */}
+                    {campaign.status === 'PUBLISHED' ? (
                       <div>
-                        <div className="text-3xl font-bold text-green-600">{campaignScores.items.length}</div>
-                        <p className="text-sm text-muted-foreground">HCPs scored</p>
+                        <div className="text-3xl font-bold text-green-600">✓</div>
+                        <p className="text-sm text-muted-foreground">Published — analysis recalculated</p>
                       </div>
                     ) : (
                       <div>
                         <div className="text-3xl font-bold text-muted-foreground">--</div>
-                        <p className="text-sm text-muted-foreground">Not calculated</p>
+                        <p className="text-sm text-muted-foreground">Publish to update analysis</p>
                       </div>
                     )}
                   </CardContent>
@@ -901,50 +895,11 @@ export default function CampaignDetailPage() {
             />
           )}
 
-          {activeStep === 'scores' && scoreConfig && (
-            <div className="space-y-6">
-              <ScoreConfigForm
-                config={scoreConfig}
-                onSave={handleSaveScoreConfig}
-                onReset={handleResetScoreConfig}
-                isLoading={updateScoreConfig.isPending || resetScoreConfig.isPending}
-              />
-              {campaign.status === 'DRAFT' && (
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        {campaign.scoreConfigConfirmedAt ? (
-                          <div className="flex items-center gap-2 text-green-600">
-                            <CheckCircle2 className="w-5 h-5" />
-                            <span className="font-medium">Score configuration confirmed</span>
-                            <span className="text-sm text-muted-foreground">
-                              ({new Date(campaign.scoreConfigConfirmedAt).toLocaleDateString()})
-                            </span>
-                          </div>
-                        ) : (
-                          <p className="text-muted-foreground">
-                            Review the score weights above and confirm to continue to the next step.
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        onClick={() => handleConfirmStep('scores')}
-                        disabled={confirmWorkflowStep.isPending}
-                      >
-                        {confirmWorkflowStep.isPending ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4 mr-2" />
-                        )}
-                        {campaign.scoreConfigConfirmedAt ? 'Continue to Templates' : 'Confirm & Continue'}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
+          {/* activeStep === 'scores' render block removed in Phase 3 PR A.
+              Campaign-level Score Config tab is gone; weights live on
+              KolAnalysis per (client, DA) at /admin/kol-analysis. The 'scores'
+              workflow step itself is also dropped from WORKFLOW_STEPS, so
+              clicking the (no-longer-rendered) step is impossible. */}
 
           {activeStep === 'templates' && (
             <div className="space-y-6">
@@ -1024,19 +979,9 @@ export default function CampaignDetailPage() {
                             </Button>
                           )}
                         </li>
-                        <li className={`flex items-center gap-2 ${campaign.scoreConfigConfirmedAt ? 'text-green-700' : 'text-blue-800'}`}>
-                          {campaign.scoreConfigConfirmedAt ? (
-                            <CheckCircle2 className="w-4 h-4" />
-                          ) : (
-                            <Circle className="w-4 h-4" />
-                          )}
-                          Score configuration confirmed
-                          {!campaign.scoreConfigConfirmedAt && (
-                            <Button variant="link" size="sm" className="h-auto p-0" onClick={() => setActiveStep('scores')}>
-                              Go to Score Config
-                            </Button>
-                          )}
-                        </li>
+                        {/* Score-config gate removed in Phase 3 PR A. The
+                            scoreConfigConfirmedAt DB column is still populated
+                            on legacy rows but no longer used to gate Activate. */}
                         <li className={`flex items-center gap-2 ${campaign.templatesConfirmedAt ? 'text-green-700' : 'text-blue-800'}`}>
                           {campaign.templatesConfirmedAt ? (
                             <CheckCircle2 className="w-4 h-4" />

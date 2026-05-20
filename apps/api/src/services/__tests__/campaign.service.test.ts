@@ -21,9 +21,9 @@ vi.mock('../../lib/prisma', () => ({
     surveyQuestion: {
       count: vi.fn(),
     },
-    compositeScoreConfig: {
-      create: vi.fn(),
-    },
+    // compositeScoreConfig mock removed in Phase 3 PR A — campaign.service no
+    // longer creates rows here. The model still exists (dropped in PR B), so
+    // legacy data continues to read fine.
   },
 }));
 
@@ -34,14 +34,8 @@ vi.mock('../survey-template.service', () => ({
   },
 }));
 
-// Mock score calculation service
-vi.mock('../score-calculation.service', () => ({
-  scoreCalculationService: {
-    calculateSurveyScores: vi.fn(),
-    calculateCompositeScores: vi.fn(),
-    publishScores: vi.fn(),
-  },
-}));
+// score-calculation.service mock removed in Phase 3 PR A — the entire service
+// was deleted (campaign-level scoring teardown).
 
 import { prisma } from '../../lib/prisma';
 
@@ -164,10 +158,13 @@ describe('CampaignService', () => {
   });
 
   describe('create', () => {
-    it('should create a campaign with default score config', async () => {
+    // Phase 3 PR A: campaigns no longer get a CompositeScoreConfig row at
+    // creation — weights live on KolAnalysis. The pre-v1.16.0 'creates a
+    // campaign with default score config' test is gone; just verify the
+    // campaign row is created.
+    it('should create a campaign', async () => {
       const mockCampaign = { id: 'new-camp', name: 'New Campaign' };
       (prisma.campaign.create as Mock).mockResolvedValue(mockCampaign);
-      (prisma.compositeScoreConfig.create as Mock).mockResolvedValue({});
 
       const result = await campaignService.create(
         {
@@ -179,14 +176,10 @@ describe('CampaignService', () => {
       );
 
       expect(result).toEqual(mockCampaign);
-      expect(prisma.compositeScoreConfig.create).toHaveBeenCalledWith({
-        data: { campaignId: 'new-camp' },
-      });
     });
 
     it('should set status to DRAFT on creation', async () => {
       (prisma.campaign.create as Mock).mockResolvedValue({ id: 'camp-1' });
-      (prisma.compositeScoreConfig.create as Mock).mockResolvedValue({});
 
       await campaignService.create(
         { clientId: 'client-1', name: 'Test', diseaseAreaId: 'disease-area-1' },

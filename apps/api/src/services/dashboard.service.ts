@@ -422,6 +422,10 @@ export class DashboardService {
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
       include: {
+        // TODO (Phase 3 PR B): repoint to KolAnalysis.weightsJson before
+        // CompositeScoreConfig is dropped. PR A leaves the table in place so
+        // this read still works; the weights here are equivalent to (or older
+        // snapshots of) what KolAnalysis now owns.
         compositeScoreConfig: true,
       },
     });

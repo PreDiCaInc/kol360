@@ -415,45 +415,11 @@ describe('Full Workflow E2E Tests', () => {
   });
 
   // ==================== Phase 6: Score Calculation ====================
-
-  describe('Phase 6: Score Calculation', () => {
-    it('should get score status', async () => {
-      const { status, data } = await client.getScoreStatus(testCampaign.id);
-
-      expect(status).toBe(200);
-      // API returns: totalNominations, matchedNominations, unmatchedNominations,
-      // hcpScoresCalculated, compositeScoresCalculated, readyToPublish
-      expect(typeof data.totalNominations).toBe('number');
-      expect(typeof data.readyToPublish).toBe('boolean');
-    });
-
-    it('should calculate survey scores', async () => {
-      const { status, data } = await client.calculateSurveyScores(testCampaign.id);
-
-      expect(status).toBe(200);
-      expect(typeof data.processed).toBe('number');
-
-      console.log(`✅ Survey scores: processed=${data.processed}, created=${data.created}, updated=${data.updated}`);
-    });
-
-    it('should calculate composite scores', async () => {
-      const { status, data } = await client.calculateCompositeScores(testCampaign.id);
-
-      expect(status).toBe(200);
-      expect(typeof data.processed).toBe('number');
-
-      console.log(`✅ Composite scores: processed=${data.processed}, updated=${data.updated}`);
-    });
-
-    it('should list calculated scores', async () => {
-      const { status, data } = await client.getScores(testCampaign.id);
-
-      expect(status).toBe(200);
-      expect(Array.isArray(data.items)).toBe(true);
-
-      console.log(`✅ Campaign has ${data.total} scores`);
-    });
-  });
+  // Removed in Phase 3 PR A (v1.16.0). All four campaign-level score endpoints
+  // (status / calculate-survey / calculate-composite / list-scores) deleted —
+  // KOL Analysis pipeline owns scoring now. The workflow goes Phase 5 (survey
+  // submitted) → Phase 7 (nominations) → Phase 8 (close) → Phase 9 (publish,
+  // which triggers KOL Analysis auto-recalc).
 
   // ==================== Phase 7: Nominations ====================
 
@@ -530,13 +496,9 @@ describe('Full Workflow E2E Tests', () => {
       console.log(`✅ Campaign published at ${data.publishedAt}`);
     });
 
-    it('should have scores after publication', async () => {
-      const { status, data } = await client.getScores(testCampaign.id);
-
-      expect(status).toBe(200);
-      // Scores should exist (may be 0 if no survey responses)
-      expect(Array.isArray(data.items)).toBe(true);
-    });
+    // 'should have scores after publication' removed in Phase 3 PR A —
+    // /scores list endpoint is gone. KOL Analysis recalc fires on publish;
+    // verification of analysis-side scores lives in kol-analysis.test.ts.
   });
 
   // ==================== Phase 10: Payment Processing ====================

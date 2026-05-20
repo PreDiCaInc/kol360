@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useHcps, useHcpFilters, useDiseaseAreas, useRecalculateDiseaseAreaComposites } from '@/hooks/use-hcps';
+// useRecalculateDiseaseAreaComposites removed in Phase 3 PR A — it backed a
+// hardcoded-weights composite recalc that the KOL Analysis pipeline replaced.
+import { useHcps, useHcpFilters, useDiseaseAreas } from '@/hooks/use-hcps';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, BarChart3, ArrowLeft, Upload, ClipboardList, Calculator, Loader2 } from 'lucide-react';
+// Calculator + Loader2 removed (only used by the deleted Recalculate Composites button).
+import { Search, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, BarChart3, ArrowLeft, Upload, ClipboardList } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
 
@@ -120,20 +123,12 @@ export default function HcpScoresPage() {
   });
   const { data: filterOptions } = useHcpFilters();
   const { data: diseaseAreas = [] } = useDiseaseAreas();
-  const recalculateComposites = useRecalculateDiseaseAreaComposites();
 
   // Set default disease area when loaded
   const activeDiseaseAreaId = selectedDiseaseAreaId || diseaseAreas[0]?.id;
 
-  const handleRecalculateComposites = async () => {
-    if (!activeDiseaseAreaId) return;
-    try {
-      await recalculateComposites.mutateAsync(activeDiseaseAreaId);
-      refetch();
-    } catch (error) {
-      console.error('Recalculate composites failed:', error);
-    }
-  };
+  // handleRecalculateComposites removed in Phase 3 PR A — see Recalculate
+  // button on /admin/kol-analysis/<id> for the modern, per-analysis recompute.
 
   const hcps = data?.items || [];
   const pagination = data?.pagination;
@@ -221,18 +216,10 @@ export default function HcpScoresPage() {
           )}
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={handleRecalculateComposites}
-            disabled={!activeDiseaseAreaId || recalculateComposites.isPending}
-          >
-            {recalculateComposites.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Calculator className="w-4 h-4 mr-2" />
-            )}
-            Recalculate Composites
-          </Button>
+          {/* "Recalculate Composites" button removed in Phase 3 PR A — its
+              endpoint used hardcoded weights (the bug KOL Analysis was built
+              to fix). For per-analysis composite recompute, go to
+              /admin/kol-analysis/<id> and click Recalculate. */}
           <Button variant="outline" onClick={() => setShowImportDialog(true)}>
             <Upload className="w-4 h-4 mr-2" />
             Import {activeTab === 'survey' ? 'Survey' : 'Segment'} Scores

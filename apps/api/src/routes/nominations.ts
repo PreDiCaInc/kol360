@@ -1,7 +1,9 @@
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { nominationService } from '../services/nomination.service';
-import { scoreCalculationService } from '../services/score-calculation.service';
+// score-calculation.service removed in Phase 3 PR A. The campaign-level
+// post-bulk-match recalc calls are gone — the KOL Analysis recalc happens
+// on /publish (or via the explicit Recalculate button on the analysis page).
 import {
   nominationListQuerySchema,
   matchNominationSchema,
@@ -124,16 +126,9 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
 
     try {
       const result = await nominationService.bulkAutoMatch(campaignId, request.user.sub);
-
-      // Auto-calculate survey and composite scores after matching
-      try {
-        await scoreCalculationService.calculateSurveyScores(campaignId);
-        await scoreCalculationService.calculateCompositeScores(campaignId);
-      } catch (scoreError) {
-        // Log but don't fail - matching was successful
-        fastify.log.warn({ campaignId, error: scoreError }, 'Auto score calculation failed after bulk match');
-      }
-
+      // Campaign-level survey/composite recalc was here pre-v1.16.0; removed in
+      // Phase 3 PR A. The KOL Analysis recalc fires on /publish (auto) or via
+      // the explicit Recalculate button on the analysis page.
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to bulk match';
@@ -195,15 +190,7 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
         matchConfidence,
         true // isManual — human picked this from the dialog, mark as MATCHED
       );
-
-      // Auto-calculate survey and composite scores after matching
-      try {
-        await scoreCalculationService.calculateSurveyScores(campaignId);
-        await scoreCalculationService.calculateCompositeScores(campaignId);
-      } catch (scoreError) {
-        fastify.log.warn({ campaignId, error: scoreError }, 'Auto score calculation failed after match');
-      }
-
+      // Campaign-level score recalc removed in Phase 3 PR A — see /publish.
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to match nomination';
@@ -243,15 +230,7 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
         hcpData,
         request.user.sub
       );
-
-      // Auto-calculate survey and composite scores after matching
-      try {
-        await scoreCalculationService.calculateSurveyScores(campaignId);
-        await scoreCalculationService.calculateCompositeScores(campaignId);
-      } catch (scoreError) {
-        fastify.log.warn({ campaignId, error: scoreError }, 'Auto score calculation failed after create-hcp');
-      }
-
+      // Campaign-level score recalc removed in Phase 3 PR A — see /publish.
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to create HCP';
@@ -349,15 +328,7 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const { nominationIds } = bulkAcceptNominationsSchema.parse(request.body);
       const result = await nominationService.bulkAccept(campaignId, nominationIds, request.user.sub);
-
-      // Recompute scores after a successful bulk-accept (mirrors bulk-match).
-      try {
-        await scoreCalculationService.calculateSurveyScores(campaignId);
-        await scoreCalculationService.calculateCompositeScores(campaignId);
-      } catch (scoreError) {
-        fastify.log.warn({ campaignId, error: scoreError }, 'Auto score calculation failed after bulk accept');
-      }
-
+      // Campaign-level score recalc removed in Phase 3 PR A — see /publish.
       return result;
     } catch (error) {
       if (error instanceof z.ZodError) {

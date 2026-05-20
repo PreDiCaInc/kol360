@@ -1,6 +1,8 @@
 import { prisma } from '../lib/prisma';
 import { SurveyTemplateService } from './survey-template.service';
-import { scoreCalculationService } from './score-calculation.service';
+// score-calculation.service removed in Phase 3 PR A. /publish is now a
+// status transition only; the KOL Analysis auto-recalc covers what
+// publishScores() / calculateSurveyScores() / calculateCompositeScores() did.
 import { kolAnalysisService } from './kol-analysis.service';
 import { CreateCampaignInput, UpdateCampaignInput, CampaignListQuery, EmailTemplatesInput, LandingPageTemplatesInput } from '@kol360/shared';
 import { CampaignStatus, Prisma } from '@prisma/client';
@@ -103,10 +105,9 @@ export class CampaignService {
       },
     });
 
-    // Create default score config
-    await prisma.compositeScoreConfig.create({
-      data: { campaignId: campaign.id },
-    });
+    // CompositeScoreConfig row creation removed in Phase 3 PR A — weights are
+    // now per-analysis (KolAnalysis.weightsJson), not per-campaign. The legacy
+    // table still exists in PR A so existing rows remain readable; PR B drops it.
 
     // If template selected, instantiate questions
     if (data.surveyTemplateId) {
@@ -288,12 +289,10 @@ export class CampaignService {
       throw new Error('Can only publish closed campaigns');
     }
 
-    // Calculate final scores before publishing
-    await scoreCalculationService.calculateSurveyScores(id);
-    await scoreCalculationService.calculateCompositeScores(id);
-
-    // Publish scores (update disease area aggregates)
-    await scoreCalculationService.publishScores(id, publishedBy);
+    // Phase 3 PR A: campaign-level calculateSurveyScores / calculateCompositeScores /
+    // publishScores all removed. /publish is now a pure status transition; the
+    // KOL Analysis auto-recalc below produces the customer-visible scores.
+    void publishedBy; // intentionally unused — was passed to the deleted publishScores
 
     const published = await prisma.campaign.update({
       where: { id },

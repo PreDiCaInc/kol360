@@ -13,7 +13,8 @@ import { hcpRoutes } from './routes/hcps';
 import { questionRoutes } from './routes/questions';
 import { sectionRoutes } from './routes/sections';
 import { surveyTemplateRoutes } from './routes/survey-templates';
-import { scoreConfigRoutes } from './routes/score-config';
+// score-config routes removed in Phase 3 PR A (campaign-level scoring teardown).
+// Weights now live on KolAnalysis per-analysis; see /admin/kol-analysis dashboard.
 import { campaignRoutes } from './routes/campaigns';
 import { diseaseAreaRoutes } from './routes/disease-areas';
 import { distributionRoutes } from './routes/distribution';
@@ -22,7 +23,10 @@ import { responseRoutes } from './routes/responses';
 import { nominationRoutes } from './routes/nominations';
 import { dashboardRoutes } from './routes/dashboards';
 import { liteClientRoutes } from './routes/lite-client';
-import { scoreCalculationRoutes } from './routes/score-calculation';
+// score-calculation routes removed in Phase 3 PR A — calculate-survey / calculate-
+// composite / publish-scores all obsoleted by KOL Analysis pooled normalization.
+// Disease-area composite recalc (hardcoded weights bug) also retired with the
+// service — see Phase 3 plan motivation #2.
 import { exportRoutes } from './routes/exports';
 import { specialtyRoutes } from './routes/specialties';
 import { insightsReportRoutes } from './routes/insights-report';
@@ -80,14 +84,14 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(questionRoutes, { prefix: '/api/v1/questions' });
   await fastify.register(sectionRoutes, { prefix: '/api/v1/sections' });
   await fastify.register(surveyTemplateRoutes, { prefix: '/api/v1/survey-templates' });
-  await fastify.register(scoreConfigRoutes, { prefix: '/api/v1' });
+  // scoreConfigRoutes removed in Phase 3 PR A.
   await fastify.register(campaignRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(diseaseAreaRoutes, { prefix: '/api/v1/disease-areas' });
   await fastify.register(specialtyRoutes, { prefix: '/api/v1/specialties' });
   await fastify.register(distributionRoutes, { prefix: '/api/v1' });
   await fastify.register(responseRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(nominationRoutes, { prefix: '/api/v1/campaigns' });
-  await fastify.register(scoreCalculationRoutes, { prefix: '/api/v1/campaigns' });
+  // scoreCalculationRoutes removed in Phase 3 PR A.
   await fastify.register(exportRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(dashboardRoutes, { prefix: '/api/v1' });
   await fastify.register(insightsReportRoutes, { prefix: '/api/v1/insights' });

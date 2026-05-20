@@ -585,44 +585,12 @@ export class ApiClient {
   }
 
   // ==================== Score Calculation ====================
-
-  async getScores(campaignId: string) {
-    return this.request<{ items: HcpCampaignScore[]; maxNominations: number; nominationTypes: string[]; total: number }>(
-      'GET',
-      `/api/v1/campaigns/${campaignId}/scores`
-    );
-  }
-
-  async getScoreStatus(campaignId: string) {
-    return this.request<ScoreStatus>(
-      'GET',
-      `/api/v1/campaigns/${campaignId}/scores/status`
-    );
-  }
-
-  async calculateSurveyScores(campaignId: string) {
-    return this.request<{ processed: number; created: number; updated: number }>(
-      'POST',
-      `/api/v1/campaigns/${campaignId}/scores/calculate-survey`
-    );
-  }
-
-  async calculateCompositeScores(campaignId: string) {
-    return this.request<{ processed: number; updated: number }>(
-      'POST',
-      `/api/v1/campaigns/${campaignId}/scores/calculate-composite`
-    );
-  }
-
-  async calculateAllScores(campaignId: string) {
-    return this.request<{
-      surveyScores: { processed: number; created: number; updated: number };
-      compositeScores: { processed: number; updated: number };
-    }>(
-      'POST',
-      `/api/v1/campaigns/${campaignId}/scores/calculate-all`
-    );
-  }
+  //
+  // All routes under /api/v1/campaigns/:id/scores/* removed in Phase 3 PR A
+  // (v1.16.0). Campaign-level scoring is gone — scores live on the KOL
+  // Analysis pipeline (HcpAnalysisScore per (client, DA)). Use
+  // /admin/kol-analysis surfaces / future kol-analysis api-client methods
+  // for recompute + read.
 
   // ==================== Survey Taking (Public) ====================
 
