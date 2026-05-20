@@ -59,6 +59,8 @@ describe('HCP × DiseaseArea (sub-specialty)', () => {
         npi: `99${Math.floor(10000000 + Math.random() * 89999999)}`,
         firstName: 'E2EDaTest',
         lastName: `hcpda_${suffix}`,
+        // createHcpSchema requires a valid email — synthetic but well-formed.
+        email: `hcpda_${suffix}@e2etest.example.com`,
         specialty: 'Optometrist',
         diseaseAreaIds: [daId],
       });
