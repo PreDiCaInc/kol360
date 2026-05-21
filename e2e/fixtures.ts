@@ -77,13 +77,18 @@ export const TEST_IDS = {
   // Campaign prefix (campaigns are created dynamically)
   CAMPAIGN_PREFIX: 'E2E_TEST_CAMPAIGN_',
 
-  // HCP for import test (with segmentation data)
+  // HCP for import test (with segmentation data).
+  // v1.15.32: specialty flipped from 'Oncology' to 'Optometry' (canonical).
+  // The old value was out-of-domain and accumulated as test pollution on prod
+  // over ~2 months of E2E runs (the cleanup-script leak + the broken
+  // normalizer on the bulk-import path both let it through). With the v1.15.32
+  // strict whitelist CHECK constraint, non-canonical values now fail at the DB.
   HCP_IMPORT: {
     npi: '9990000004',
     firstName: 'Import',
     lastName: 'TestHCP',
     email: 'import.test@e2etest.example.com',
-    specialty: 'Oncology',
+    specialty: 'Optometry',
     city: 'Los Angeles',
     state: 'CA',
     // Segmentation fields

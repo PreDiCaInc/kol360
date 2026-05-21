@@ -99,7 +99,13 @@ async function seedTestData() {
         firstName: hcpData.firstName,
         lastName: hcpData.lastName,
         email: hcpData.email,
-        specialty: TEST_IDS.SPECIALTY_NAME,
+        // v1.15.32: Hcp.specialty is now constrained to a strict whitelist
+        // (Optometry / Ophthalmology / NULL). The Specialty TABLE row name
+        // (TEST_IDS.SPECIALTY_NAME = 'E2E Test Oncology Specialist') stays
+        // unchanged — that's a separate entity linked via HcpSpecialty for
+        // multi-specialty support. The Hcp.specialty STRING here just needs
+        // to satisfy the whitelist; 'Optometry' is the canonical default.
+        specialty: 'Optometry',
         city: hcpData.city,
         state: hcpData.state,
       },
