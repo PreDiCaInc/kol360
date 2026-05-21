@@ -55,7 +55,8 @@ export class CampaignService {
         client: true,
         diseaseArea: true,
         surveyTemplate: true,
-        compositeScoreConfig: true,
+        // compositeScoreConfig include removed in Phase 3 PR B —
+        // the model and table are dropped in this release.
         surveyQuestions: {
           include: { question: true },
           orderBy: { sortOrder: 'asc' },
@@ -218,8 +219,8 @@ export class CampaignService {
       // Delete survey questions
       await tx.surveyQuestion.deleteMany({ where: { campaignId: id } });
 
-      // Delete composite score config
-      await tx.compositeScoreConfig.deleteMany({ where: { campaignId: id } });
+      // CompositeScoreConfig.deleteMany call removed in Phase 3 PR B —
+      // the table is dropped in this release.
 
       // Delete payments
       await tx.payment.deleteMany({ where: { campaignId: id } });

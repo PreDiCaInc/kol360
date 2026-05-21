@@ -13,6 +13,27 @@ interface HcpScoreFilters {
   limit?: number;
 }
 
+/**
+ * Phase 3 PR B: lite-client repointed from HcpDiseaseAreaScore.scoreSurvey/
+ * compositeScore (vestigial, dropped in this PR) to HcpAnalysisScore for the
+ * per-(client, DA) KolAnalysis. Objective columns (scorePublications etc.)
+ * continue to come from HcpDiseaseAreaScore — that's the canonical store
+ * for external-import objective measures and is untouched by PR B.
+ *
+ * Behavior change customers should know: lite client now shows the
+ * client-specific KOL Analysis scores (pooled-normalization + per-analysis
+ * weights), not disease-area-wide aggregates from publishScores() averaging.
+ * If a (client, DA) doesn't have a KolAnalysis yet, the response carries
+ * `notConfigured: true` and survey/composite values are null — same shape
+ * the insights dashboard uses for unconfigured analyses.
+ */
+async function resolveAnalysis(clientId: string, diseaseAreaId: string) {
+  return prisma.kolAnalysis.findUnique({
+    where: { clientId_diseaseAreaId: { clientId, diseaseAreaId } },
+    select: { id: true },
+  });
+}
+
 export class LiteClientService {
   /**
    * Get all disease areas assigned to a lite client
@@ -87,7 +108,24 @@ export class LiteClientService {
       throw new Error('Access denied to this disease area');
     }
 
-    // Build HCP filters
+    // Phase 3 PR B: repointed from HcpDiseaseAreaScore to HcpAnalysisScore for
+    // survey + composite + nomination counts. Objective columns still come from
+    // HcpDiseaseAreaScore (canonical objective store, untouched by PR B).
+    // Driver query is now HcpAnalysisScore (per-(client, DA)); HcpDiseaseAreaScore
+    // is joined in-memory by hcpId for the 8 objective columns.
+    const analysis = await resolveAnalysis(clientId, diseaseAreaId);
+    if (!analysis) {
+      // No analysis configured for this (client, DA) yet. Same shape as
+      // insights-report uses — return empty + notConfigured so the lite
+      // client UI can prompt customers to contact admin.
+      return {
+        data: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+        notConfigured: true,
+      };
+    }
+
+    // Build HCP filters (applied via the hcp relation on HcpAnalysisScore)
     const hcpWhere: Record<string, unknown> = {};
     if (search) {
       hcpWhere.OR = [
@@ -96,18 +134,11 @@ export class LiteClientService {
         { npi: { contains: search } },
       ];
     }
-    if (specialty) {
-      hcpWhere.specialty = specialty;
-    }
-    if (state) {
-      hcpWhere.state = state;
-    }
+    if (specialty) hcpWhere.specialty = specialty;
+    if (state) hcpWhere.state = state;
 
-    // Build score filters
-    const scoreWhere: Record<string, unknown> = {
-      diseaseAreaId,
-      isCurrent: true,
-    };
+    // Build score filters on HcpAnalysisScore
+    const scoreWhere: Record<string, unknown> = { analysisId: analysis.id };
     if (minCompositeScore !== undefined || maxCompositeScore !== undefined) {
       scoreWhere.compositeScore = {};
       if (minCompositeScore !== undefined) {
@@ -118,28 +149,21 @@ export class LiteClientService {
       }
     }
 
-    // Get total count
-    const totalCount = await prisma.hcpDiseaseAreaScore.count({
-      where: {
-        ...scoreWhere,
-        hcp: hcpWhere,
-      },
+    // Total count (analysis-scoped) — apply HCP filters via relation
+    const totalCount = await prisma.hcpAnalysisScore.count({
+      where: { ...scoreWhere, hcp: hcpWhere },
     });
 
-    // Determine sort field
-    let orderBy: Record<string, unknown>;
-    if (sortBy === 'compositeScore') {
-      orderBy = { compositeScore: sortOrder };
-    } else {
-      orderBy = { hcp: { [sortBy]: sortOrder } };
-    }
+    // Sort: compositeScore lives on HcpAnalysisScore now; the other 3 sort
+    // keys are HCP attributes (lastName, specialty, state) — applied via the
+    // hcp relation.
+    const orderBy: Record<string, unknown> = sortBy === 'compositeScore'
+      ? { compositeScore: sortOrder }
+      : { hcp: { [sortBy]: sortOrder } };
 
-    // Get paginated scores with HCP data
-    const scores = await prisma.hcpDiseaseAreaScore.findMany({
-      where: {
-        ...scoreWhere,
-        hcp: hcpWhere,
-      },
+    // Page of analysis scores with HCP attrs
+    const analysisScores = await prisma.hcpAnalysisScore.findMany({
+      where: { ...scoreWhere, hcp: hcpWhere },
       include: {
         hcp: {
           select: {
@@ -154,38 +178,64 @@ export class LiteClientService {
             yearsInPractice: true,
           },
         },
-        diseaseArea: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
       },
       orderBy,
       skip: (page - 1) * limit,
       take: limit,
     });
 
+    // Join objective columns from HcpDiseaseAreaScore by hcpId (live pull —
+    // same pattern as the analysis composite recompute itself).
+    const hcpIds = analysisScores.map((s) => s.hcpId);
+    const objectiveRows = hcpIds.length === 0
+      ? []
+      : await prisma.hcpDiseaseAreaScore.findMany({
+          where: { hcpId: { in: hcpIds }, diseaseAreaId, isCurrent: true },
+          select: {
+            hcpId: true,
+            scorePublications: true,
+            scoreClinicalTrials: true,
+            scoreTradePubs: true,
+            scoreOrgLeadership: true,
+            scoreOrgAwards: true,
+            scoreConference: true,
+            scoreSocialMedia: true,
+            scoreMediaPodcasts: true,
+          },
+        });
+    const objByHcp = new Map(objectiveRows.map((o) => [o.hcpId, o]));
+
+    // Disease area name + code (single fetch, shared across all rows)
+    const diseaseArea = await prisma.diseaseArea.findUnique({
+      where: { id: diseaseAreaId },
+      select: { id: true, name: true, code: true },
+    });
+
     return {
-      data: scores.map((score: typeof scores[number]) => ({
-        hcp: score.hcp,
-        diseaseArea: score.diseaseArea,
-        scores: {
-          publications: score.scorePublications ? Number(score.scorePublications) : null,
-          clinicalTrials: score.scoreClinicalTrials ? Number(score.scoreClinicalTrials) : null,
-          tradePubs: score.scoreTradePubs ? Number(score.scoreTradePubs) : null,
-          orgLeadership: score.scoreOrgLeadership ? Number(score.scoreOrgLeadership) : null,
-          orgAwards: score.scoreOrgAwards ? Number(score.scoreOrgAwards) : null,
-          conference: score.scoreConference ? Number(score.scoreConference) : null,
-          socialMedia: score.scoreSocialMedia ? Number(score.scoreSocialMedia) : null,
-          mediaPodcasts: score.scoreMediaPodcasts ? Number(score.scoreMediaPodcasts) : null,
-          survey: score.scoreSurvey ? Number(score.scoreSurvey) : null,
-          composite: score.compositeScore ? Number(score.compositeScore) : null,
-        },
-        nominationCount: score.totalNominationCount,
-        lastCalculatedAt: score.lastCalculatedAt,
-      })),
+      data: analysisScores.map((s) => {
+        const o = objByHcp.get(s.hcpId);
+        return {
+          hcp: s.hcp,
+          diseaseArea,
+          scores: {
+            publications: o?.scorePublications ? Number(o.scorePublications) : null,
+            clinicalTrials: o?.scoreClinicalTrials ? Number(o.scoreClinicalTrials) : null,
+            tradePubs: o?.scoreTradePubs ? Number(o.scoreTradePubs) : null,
+            orgLeadership: o?.scoreOrgLeadership ? Number(o.scoreOrgLeadership) : null,
+            orgAwards: o?.scoreOrgAwards ? Number(o.scoreOrgAwards) : null,
+            conference: o?.scoreConference ? Number(o.scoreConference) : null,
+            socialMedia: o?.scoreSocialMedia ? Number(o.scoreSocialMedia) : null,
+            mediaPodcasts: o?.scoreMediaPodcasts ? Number(o.scoreMediaPodcasts) : null,
+            survey: s.scoreSurvey ? Number(s.scoreSurvey) : null,
+            composite: s.compositeScore ? Number(s.compositeScore) : null,
+          },
+          // HcpAnalysisScore has its own nominationCount (pre-summed across
+          // the analysis's included campaigns) — same shape as the old
+          // HcpDiseaseAreaScore.totalNominationCount field.
+          nominationCount: s.nominationCount,
+          lastCalculatedAt: s.calculatedAt,
+        };
+      }),
       pagination: {
         page,
         limit,
@@ -204,14 +254,47 @@ export class LiteClientService {
       throw new Error('Access denied to this disease area');
     }
 
-    const scores = await prisma.hcpDiseaseAreaScore.findMany({
+    // Phase 3 PR B: composite + survey from HcpAnalysisScore (per-(client, DA)),
+    // objective columns from HcpDiseaseAreaScore (live, canonical).
+    const analysis = await resolveAnalysis(clientId, diseaseAreaId);
+    const emptyStats = {
+      totalHcps: 0,
+      averageCompositeScore: 0,
+      segmentAverages: {
+        publications: 0,
+        clinicalTrials: 0,
+        tradePubs: 0,
+        orgLeadership: 0,
+        orgAwards: 0,
+        conference: 0,
+        socialMedia: 0,
+        mediaPodcasts: 0,
+        survey: 0,
+      },
+      scoreDistribution: [],
+      notConfigured: !analysis,
+    };
+    if (!analysis) return emptyStats;
+
+    const analysisScores = await prisma.hcpAnalysisScore.findMany({
+      where: { analysisId: analysis.id, compositeScore: { not: null } },
+      select: {
+        hcpId: true,
+        compositeScore: true,
+        scoreSurvey: true,
+      },
+    });
+    if (analysisScores.length === 0) return { ...emptyStats, notConfigured: false };
+
+    // Live-pull objective columns for the same HCPs.
+    const objectiveRows = await prisma.hcpDiseaseAreaScore.findMany({
       where: {
+        hcpId: { in: analysisScores.map((a) => a.hcpId) },
         diseaseAreaId,
         isCurrent: true,
-        compositeScore: { not: null },
       },
       select: {
-        compositeScore: true,
+        hcpId: true,
         scorePublications: true,
         scoreClinicalTrials: true,
         scoreTradePubs: true,
@@ -220,28 +303,9 @@ export class LiteClientService {
         scoreConference: true,
         scoreSocialMedia: true,
         scoreMediaPodcasts: true,
-        scoreSurvey: true,
       },
     });
-
-    if (scores.length === 0) {
-      return {
-        totalHcps: 0,
-        averageCompositeScore: 0,
-        segmentAverages: {
-          publications: 0,
-          clinicalTrials: 0,
-          tradePubs: 0,
-          orgLeadership: 0,
-          orgAwards: 0,
-          conference: 0,
-          socialMedia: 0,
-          mediaPodcasts: 0,
-          survey: 0,
-        },
-        scoreDistribution: [],
-      };
-    }
+    const objByHcp = new Map(objectiveRows.map((o) => [o.hcpId, o]));
 
     // Calculate averages
     const calcAvg = (values: (number | null)[]) => {
@@ -249,7 +313,7 @@ export class LiteClientService {
       return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : 0;
     };
 
-    const compositeScores = scores.map((s: typeof scores[number]) => Number(s.compositeScore));
+    const compositeScores = analysisScores.map((s) => Number(s.compositeScore));
     const avgComposite = calcAvg(compositeScores);
 
     // Score distribution (buckets of 10)
@@ -265,27 +329,34 @@ export class LiteClientService {
       { min: 80, max: 90, count: 0 },
       { min: 90, max: 100, count: 0 },
     ];
-
     compositeScores.forEach((score: number) => {
       const bucket = Math.min(Math.floor(score / 10), 9);
       distribution[bucket].count++;
     });
 
+    // Objective-column lookup with type narrowing
+    const objNum = (hcpId: string, key: keyof NonNullable<ReturnType<typeof objByHcp.get>>) => {
+      const o = objByHcp.get(hcpId);
+      const v = o?.[key];
+      return v ? Number(v) : null;
+    };
+
     return {
-      totalHcps: scores.length,
+      totalHcps: analysisScores.length,
       averageCompositeScore: Math.round(avgComposite * 100) / 100,
       segmentAverages: {
-        publications: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scorePublications ? Number(s.scorePublications) : null)) * 100) / 100,
-        clinicalTrials: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scoreClinicalTrials ? Number(s.scoreClinicalTrials) : null)) * 100) / 100,
-        tradePubs: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scoreTradePubs ? Number(s.scoreTradePubs) : null)) * 100) / 100,
-        orgLeadership: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scoreOrgLeadership ? Number(s.scoreOrgLeadership) : null)) * 100) / 100,
-        orgAwards: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scoreOrgAwards ? Number(s.scoreOrgAwards) : null)) * 100) / 100,
-        conference: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scoreConference ? Number(s.scoreConference) : null)) * 100) / 100,
-        socialMedia: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scoreSocialMedia ? Number(s.scoreSocialMedia) : null)) * 100) / 100,
-        mediaPodcasts: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scoreMediaPodcasts ? Number(s.scoreMediaPodcasts) : null)) * 100) / 100,
-        survey: Math.round(calcAvg(scores.map((s: typeof scores[number]) => s.scoreSurvey ? Number(s.scoreSurvey) : null)) * 100) / 100,
+        publications: Math.round(calcAvg(analysisScores.map((s) => objNum(s.hcpId, 'scorePublications'))) * 100) / 100,
+        clinicalTrials: Math.round(calcAvg(analysisScores.map((s) => objNum(s.hcpId, 'scoreClinicalTrials'))) * 100) / 100,
+        tradePubs: Math.round(calcAvg(analysisScores.map((s) => objNum(s.hcpId, 'scoreTradePubs'))) * 100) / 100,
+        orgLeadership: Math.round(calcAvg(analysisScores.map((s) => objNum(s.hcpId, 'scoreOrgLeadership'))) * 100) / 100,
+        orgAwards: Math.round(calcAvg(analysisScores.map((s) => objNum(s.hcpId, 'scoreOrgAwards'))) * 100) / 100,
+        conference: Math.round(calcAvg(analysisScores.map((s) => objNum(s.hcpId, 'scoreConference'))) * 100) / 100,
+        socialMedia: Math.round(calcAvg(analysisScores.map((s) => objNum(s.hcpId, 'scoreSocialMedia'))) * 100) / 100,
+        mediaPodcasts: Math.round(calcAvg(analysisScores.map((s) => objNum(s.hcpId, 'scoreMediaPodcasts'))) * 100) / 100,
+        survey: Math.round(calcAvg(analysisScores.map((s) => s.scoreSurvey ? Number(s.scoreSurvey) : null)) * 100) / 100,
       },
       scoreDistribution: distribution,
+      notConfigured: false,
     };
   }
 
@@ -298,12 +369,12 @@ export class LiteClientService {
       throw new Error('Access denied to this disease area');
     }
 
-    const scores = await prisma.hcpDiseaseAreaScore.findMany({
-      where: {
-        diseaseAreaId,
-        isCurrent: true,
-        compositeScore: { not: null },
-      },
+    // Phase 3 PR B: top-N by composite from HcpAnalysisScore (per-(client,DA)).
+    const analysis = await resolveAnalysis(clientId, diseaseAreaId);
+    if (!analysis) return [];
+
+    const scores = await prisma.hcpAnalysisScore.findMany({
+      where: { analysisId: analysis.id, compositeScore: { not: null } },
       include: {
         hcp: {
           select: {
@@ -316,17 +387,15 @@ export class LiteClientService {
           },
         },
       },
-      orderBy: {
-        compositeScore: 'desc',
-      },
+      orderBy: { compositeScore: 'desc' },
       take: limit,
     });
 
-    return scores.map((score: typeof scores[number], index: number) => ({
+    return scores.map((s, index: number) => ({
       rank: index + 1,
-      hcp: score.hcp,
-      compositeScore: score.compositeScore ? Number(score.compositeScore) : null,
-      nominationCount: score.totalNominationCount,
+      hcp: s.hcp,
+      compositeScore: s.compositeScore ? Number(s.compositeScore) : null,
+      nominationCount: s.nominationCount,
     }));
   }
 
@@ -339,42 +408,57 @@ export class LiteClientService {
       throw new Error('Access denied to this disease area');
     }
 
-    const scores = await prisma.hcpDiseaseAreaScore.findMany({
+    // Phase 3 PR B: CSV export pulls composite+survey from HcpAnalysisScore,
+    // objective from HcpDiseaseAreaScore (live). Same pattern as getHcpScores.
+    const analysis = await resolveAnalysis(clientId, diseaseAreaId);
+    if (!analysis) return [];
+
+    const analysisScores = await prisma.hcpAnalysisScore.findMany({
+      where: { analysisId: analysis.id },
+      include: { hcp: true },
+      orderBy: { compositeScore: 'desc' },
+    });
+    if (analysisScores.length === 0) return [];
+
+    const objectiveRows = await prisma.hcpDiseaseAreaScore.findMany({
       where: {
+        hcpId: { in: analysisScores.map((a) => a.hcpId) },
         diseaseAreaId,
         isCurrent: true,
       },
-      include: {
-        hcp: true,
-        diseaseArea: true,
-      },
-      orderBy: {
-        compositeScore: 'desc',
-      },
+    });
+    const objByHcp = new Map(objectiveRows.map((o) => [o.hcpId, o]));
+
+    const diseaseArea = await prisma.diseaseArea.findUnique({
+      where: { id: diseaseAreaId },
+      select: { name: true },
     });
 
-    return scores.map((score: typeof scores[number]) => ({
-      npi: score.hcp.npi,
-      firstName: score.hcp.firstName,
-      lastName: score.hcp.lastName,
-      specialty: score.hcp.specialty || '',
-      subSpecialty: score.hcp.subSpecialty || '',
-      city: score.hcp.city || '',
-      state: score.hcp.state || '',
-      yearsInPractice: score.hcp.yearsInPractice || '',
-      diseaseArea: score.diseaseArea.name,
-      scorePublications: score.scorePublications ? Number(score.scorePublications) : '',
-      scoreClinicalTrials: score.scoreClinicalTrials ? Number(score.scoreClinicalTrials) : '',
-      scoreTradePubs: score.scoreTradePubs ? Number(score.scoreTradePubs) : '',
-      scoreOrgLeadership: score.scoreOrgLeadership ? Number(score.scoreOrgLeadership) : '',
-      scoreOrgAwards: score.scoreOrgAwards ? Number(score.scoreOrgAwards) : '',
-      scoreConference: score.scoreConference ? Number(score.scoreConference) : '',
-      scoreSocialMedia: score.scoreSocialMedia ? Number(score.scoreSocialMedia) : '',
-      scoreMediaPodcasts: score.scoreMediaPodcasts ? Number(score.scoreMediaPodcasts) : '',
-      scoreSurvey: score.scoreSurvey ? Number(score.scoreSurvey) : '',
-      compositeScore: score.compositeScore ? Number(score.compositeScore) : '',
-      nominationCount: score.totalNominationCount,
-    }));
+    return analysisScores.map((s) => {
+      const o = objByHcp.get(s.hcpId);
+      return {
+        npi: s.hcp.npi,
+        firstName: s.hcp.firstName,
+        lastName: s.hcp.lastName,
+        specialty: s.hcp.specialty || '',
+        subSpecialty: s.hcp.subSpecialty || '',
+        city: s.hcp.city || '',
+        state: s.hcp.state || '',
+        yearsInPractice: s.hcp.yearsInPractice || '',
+        diseaseArea: diseaseArea?.name || '',
+        scorePublications: o?.scorePublications ? Number(o.scorePublications) : '',
+        scoreClinicalTrials: o?.scoreClinicalTrials ? Number(o.scoreClinicalTrials) : '',
+        scoreTradePubs: o?.scoreTradePubs ? Number(o.scoreTradePubs) : '',
+        scoreOrgLeadership: o?.scoreOrgLeadership ? Number(o.scoreOrgLeadership) : '',
+        scoreOrgAwards: o?.scoreOrgAwards ? Number(o.scoreOrgAwards) : '',
+        scoreConference: o?.scoreConference ? Number(o.scoreConference) : '',
+        scoreSocialMedia: o?.scoreSocialMedia ? Number(o.scoreSocialMedia) : '',
+        scoreMediaPodcasts: o?.scoreMediaPodcasts ? Number(o.scoreMediaPodcasts) : '',
+        scoreSurvey: s.scoreSurvey ? Number(s.scoreSurvey) : '',
+        compositeScore: s.compositeScore ? Number(s.compositeScore) : '',
+        nominationCount: s.nominationCount,
+      };
+    });
   }
 
   /**

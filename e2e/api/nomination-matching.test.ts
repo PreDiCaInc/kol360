@@ -182,4 +182,48 @@ describe('Nomination Matching (v1.15.14)', () => {
       expect(status).toBe(400);
     });
   });
+
+  describe('createHcpFromNomination specialty enum (regression for prod-team bug 2026-05-21)', () => {
+    // The pre-fix createHcpFromNominationSchema used z.string() for specialty
+    // instead of hcpSpecialtySchema, letting old-form values ('Optometrist',
+    // 'Ophthalmologist') slip past Zod and hit the DB CHECK constraint with
+    // a raw Prisma error. This test asserts: clean 400, no Prisma leakage.
+    // The UI dropdown already constrains to canonical values, but stale
+    // browser tabs (during the v1.15.31 cutover) hit this path.
+
+    it('rejects old role-form specialty with a clean 400 (not 500/Prisma error)', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(c =>
+        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
+      );
+      if (!testCampaign) {
+        console.log('⊘ No active test campaign — skipping');
+        return;
+      }
+      const { data: nominations } = await client.listNominations(testCampaign.id, {
+        status: 'UNMATCHED',
+        limit: 1,
+      });
+      const target = nominations.items[0];
+      if (!target) {
+        console.log('⊘ No UNMATCHED nomination available — skipping');
+        return;
+      }
+
+      // Synthetic 10-digit NPI in the test reserved range. The request would
+      // create the HCP if Zod didn't reject it.
+      const npi = `99${Math.floor(10000000 + Math.random() * 89999999)}`;
+      const { status } = await client.createHcpFromNomination(testCampaign.id, target.id, {
+        npi,
+        firstName: 'RegressionTest',
+        lastName: 'OldFormSpecialty',
+        email: `regression.test.${npi}@e2etest.example.com`,
+        // The bug input — old role-form value the UI no longer emits, but
+        // a stale-tab user might POST. Pre-fix: 500 + Prisma error. Post-fix: 400.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        specialty: 'Optometrist' as any,
+      });
+      expect(status).toBe(400);
+    });
+  });
 });

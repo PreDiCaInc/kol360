@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hcpSpecialtySchema } from './hcp';
 
 // Schema for listing nominations
 export const nominationListQuerySchema = z.object({
@@ -29,13 +30,25 @@ export const matchNominationSchema = z.object({
 
 export type MatchNominationInput = z.infer<typeof matchNominationSchema>;
 
-// Schema for creating new HCP from nomination
+// Schema for creating new HCP from nomination.
+//
+// specialty: hcpSpecialtySchema (canonical 2-value enum) — NOT a loose
+// z.string(). The pre-2026-05-21 schema accepted any string; TypeScript
+// silently widened CreateHcpFromNominationInput.specialty (loose) into
+// the service's CreateHcpInput.specialty (strict enum), letting old-form
+// values like 'Optometrist' slip through Zod and hit the DB CHECK
+// constraint (Hcp_specialty_not_role_form) — producing a raw Prisma
+// error in the steward's browser. Fixed by prod-team report 2026-05-21
+// after Jen Pikor hit it 4 times during the v1.15.31 deploy window with
+// a stale browser tab. The UI dropdown already constrains to the enum
+// values, so anything else hitting this endpoint is a programming error
+// worth surfacing as a clean 400.
 export const createHcpFromNominationSchema = z.object({
   npi: z.string().length(10, 'NPI must be 10 digits').optional().nullable(),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email().optional().nullable(),
-  specialty: z.string().optional().nullable(),
+  specialty: hcpSpecialtySchema.optional().nullable(),
   city: z.string().optional().nullable(),
   state: z.string().optional().nullable(),
 });

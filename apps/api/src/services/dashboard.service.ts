@@ -285,9 +285,45 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Resolve the (analysisId, hcpIds) tuple for a campaign — the basis for
+   * pulling per-HCP scores from HcpAnalysisScore for the campaign's roster.
+   * Returns null if no analysis exists yet for the campaign's (client, DA),
+   * which callers should treat as "empty result" (Phase 3 PR B repoint).
+   */
+  private async getCampaignAnalysisContext(campaignId: string) {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { clientId: true, diseaseAreaId: true },
+    });
+    if (!campaign) return null;
+    const analysis = await prisma.kolAnalysis.findUnique({
+      where: {
+        clientId_diseaseAreaId: {
+          clientId: campaign.clientId,
+          diseaseAreaId: campaign.diseaseAreaId,
+        },
+      },
+      select: { id: true },
+    });
+    if (!analysis) return null;
+    const hcpRows = await prisma.hcpCampaignScore.findMany({
+      where: { campaignId },
+      select: { hcpId: true },
+    });
+    return { analysisId: analysis.id, hcpIds: hcpRows.map((r) => r.hcpId) };
+  }
+
   private async getScoreStats(campaignId: string) {
-    const scores = await prisma.hcpCampaignScore.findMany({
-      where: { campaignId, compositeScore: { not: null } },
+    // Phase 3 PR B repoint: composite scores now live on HcpAnalysisScore
+    // per-(client, DA). For a single-campaign view we filter to the
+    // campaign's HCPs within the analysis.
+    const ctx = await this.getCampaignAnalysisContext(campaignId);
+    if (!ctx || ctx.hcpIds.length === 0) {
+      return { averageScore: null, medianScore: null, minScore: null, maxScore: null };
+    }
+    const scores = await prisma.hcpAnalysisScore.findMany({
+      where: { analysisId: ctx.analysisId, hcpId: { in: ctx.hcpIds }, compositeScore: { not: null } },
       select: { compositeScore: true },
     });
 
@@ -301,7 +337,7 @@ export class DashboardService {
     }
 
     const values = scores
-      .map((s: { compositeScore: { toNumber: () => number } | null }) => s.compositeScore?.toNumber() ?? 0)
+      .map((s) => (s.compositeScore ? Number(s.compositeScore) : 0))
       .sort((a: number, b: number) => a - b);
 
     const sum = values.reduce((a: number, b: number) => a + b, 0);
@@ -342,11 +378,9 @@ export class DashboardService {
   }
 
   async getScoreDistribution(campaignId: string) {
-    const scores = await prisma.hcpCampaignScore.findMany({
-      where: { campaignId, compositeScore: { not: null } },
-      select: { compositeScore: true },
-    });
-
+    // Phase 3 PR B repoint: same pattern as getScoreStats — distribution
+    // of HcpAnalysisScore.compositeScore for the campaign's HCPs.
+    const ctx = await this.getCampaignAnalysisContext(campaignId);
     const ranges = [
       { min: 0, max: 20, count: 0 },
       { min: 20, max: 40, count: 0 },
@@ -354,9 +388,15 @@ export class DashboardService {
       { min: 60, max: 80, count: 0 },
       { min: 80, max: 100, count: 0 },
     ];
+    if (!ctx || ctx.hcpIds.length === 0) return { ranges };
+
+    const scores = await prisma.hcpAnalysisScore.findMany({
+      where: { analysisId: ctx.analysisId, hcpId: { in: ctx.hcpIds }, compositeScore: { not: null } },
+      select: { compositeScore: true },
+    });
 
     for (const score of scores) {
-      const value = score.compositeScore?.toNumber() ?? 0;
+      const value = score.compositeScore ? Number(score.compositeScore) : 0;
       for (const range of ranges) {
         if (value >= range.min && value < range.max) {
           range.count++;
@@ -364,7 +404,7 @@ export class DashboardService {
         }
       }
       // Handle exact 100
-      if (score.compositeScore?.toNumber() === 100) {
+      if (value === 100) {
         ranges[4].count++;
       }
     }
@@ -373,8 +413,14 @@ export class DashboardService {
   }
 
   async getTopKols(campaignId: string, limit = 10) {
-    const kols = await prisma.hcpCampaignScore.findMany({
-      where: { campaignId },
+    // Phase 3 PR B repoint: top-N by composite from HcpAnalysisScore for
+    // the campaign's HCPs (filtered to this analysis). Survey value also
+    // from HcpAnalysisScore (replacing the dropped HcpCampaignScore.scoreSurvey).
+    const ctx = await this.getCampaignAnalysisContext(campaignId);
+    if (!ctx || ctx.hcpIds.length === 0) return [];
+
+    const kols = await prisma.hcpAnalysisScore.findMany({
+      where: { analysisId: ctx.analysisId, hcpId: { in: ctx.hcpIds } },
       include: {
         hcp: {
           select: {
@@ -391,51 +437,59 @@ export class DashboardService {
       take: limit,
     });
 
-    interface KolWithHcp {
-      compositeScore: { toNumber: () => number } | null;
-      scoreSurvey: { toNumber: () => number } | null;
-      nominationCount: number;
-      hcp: {
-        id: string;
-        npi: string | null;
-        firstName: string;
-        lastName: string;
-        specialty: string | null;
-        state: string | null;
-      };
-    }
-
-    return kols.map((k: KolWithHcp) => ({
+    return kols.map((k) => ({
       id: k.hcp.id,
       npi: k.hcp.npi,
       firstName: k.hcp.firstName,
       lastName: k.hcp.lastName,
       specialty: k.hcp.specialty,
       state: k.hcp.state,
-      compositeScore: k.compositeScore?.toNumber() ?? null,
-      surveyScore: k.scoreSurvey?.toNumber() ?? null,
+      compositeScore: k.compositeScore ? Number(k.compositeScore) : null,
+      surveyScore: k.scoreSurvey ? Number(k.scoreSurvey) : null,
       nominationCount: k.nominationCount,
     }));
   }
 
   async getSegmentScores(campaignId: string) {
+    // Phase 3 PR B repoint:
+    // - Weights: were on Campaign.compositeScoreConfig (dropped). Now from
+    //   KolAnalysis.weightsJson for the campaign's (clientId, diseaseAreaId).
+    //   Fallback to DEFAULT_ANALYSIS_WEIGHTS if no analysis exists yet.
+    // - Survey segment value: was on HcpCampaignScore.scoreSurvey (dropped).
+    //   Now from HcpAnalysisScore.scoreSurvey for the same analysis +
+    //   the campaign's HCPs. SEMANTIC SHIFT: survey scores are now pooled
+    //   across the analysis's included campaigns (not per-campaign-normalized).
+    //   For customers viewing a single-campaign dashboard, the survey number
+    //   reflects the pooled normalization that drives the KOL Analysis
+    //   dashboard — same source-of-truth, just visible per-campaign.
+    // - Objective columns: unchanged, still from HcpDiseaseAreaScore.
     const campaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      include: {
-        // TODO (Phase 3 PR B): repoint to KolAnalysis.weightsJson before
-        // CompositeScoreConfig is dropped. PR A leaves the table in place so
-        // this read still works; the weights here are equivalent to (or older
-        // snapshots of) what KolAnalysis now owns.
-        compositeScoreConfig: true,
-      },
+      select: { diseaseAreaId: true, clientId: true },
     });
 
     if (!campaign) {
       throw new Error('Campaign not found');
     }
 
-    // Get average scores by segment
-    const scores = await prisma.hcpCampaignScore.findMany({
+    // Get the analysis for this (client, DA). May not exist for a brand-new
+    // campaign in a brand-new (client, DA) pair — fall back to defaults.
+    const analysis = await prisma.kolAnalysis.findUnique({
+      where: {
+        clientId_diseaseAreaId: {
+          clientId: campaign.clientId,
+          diseaseAreaId: campaign.diseaseAreaId,
+        },
+      },
+      select: { id: true, weightsJson: true },
+    });
+
+    const weights = ((analysis?.weightsJson as Record<string, number> | null) ?? null) as Record<string, number> | null;
+    const w = (key: string, fallback: number) =>
+      weights && typeof weights[key] === 'number' ? weights[key] : fallback;
+
+    // Pull campaign HCPs + their objective scores from HcpDiseaseAreaScore.
+    const hcpScores = await prisma.hcpCampaignScore.findMany({
       where: { campaignId },
       include: {
         hcp: {
@@ -448,27 +502,40 @@ export class DashboardService {
       },
     });
 
-    const config = campaign.compositeScoreConfig;
+    // For survey: pull HcpAnalysisScore.scoreSurvey for these HCPs, scoped
+    // to the campaign's analysis. May be empty if no analysis or no scores.
+    const hcpIds = hcpScores.map((s) => s.hcpId);
+    const analysisSurveyByHcp = new Map<string, number | null>();
+    if (analysis && hcpIds.length > 0) {
+      const analysisScores = await prisma.hcpAnalysisScore.findMany({
+        where: { analysisId: analysis.id, hcpId: { in: hcpIds } },
+        select: { hcpId: true, scoreSurvey: true },
+      });
+      for (const a of analysisScores) {
+        analysisSurveyByHcp.set(a.hcpId, a.scoreSurvey ? Number(a.scoreSurvey) : null);
+      }
+    }
+
     const segments = [
-      { name: 'Publications', key: 'scorePublications', weight: config?.weightPublications?.toNumber() ?? 10 },
-      { name: 'Clinical Trials', key: 'scoreClinicalTrials', weight: config?.weightClinicalTrials?.toNumber() ?? 15 },
-      { name: 'Trade Publications', key: 'scoreTradePubs', weight: config?.weightTradePubs?.toNumber() ?? 10 },
-      { name: 'Org Leadership', key: 'scoreOrgLeadership', weight: config?.weightOrgLeadership?.toNumber() ?? 10 },
-      { name: 'Org Awards', key: 'scoreOrgAwards', weight: config?.weightOrgAwards?.toNumber() ?? 10 },
-      { name: 'Conference', key: 'scoreConference', weight: config?.weightConference?.toNumber() ?? 10 },
-      { name: 'Social Media', key: 'scoreSocialMedia', weight: config?.weightSocialMedia?.toNumber() ?? 5 },
-      { name: 'Media/Podcasts', key: 'scoreMediaPodcasts', weight: config?.weightMediaPodcasts?.toNumber() ?? 5 },
-      { name: 'Survey', key: 'scoreSurvey', weight: config?.weightSurvey?.toNumber() ?? 25 },
+      { name: 'Publications', key: 'scorePublications', weight: w('weightPublications', 10) },
+      { name: 'Clinical Trials', key: 'scoreClinicalTrials', weight: w('weightClinicalTrials', 15) },
+      { name: 'Trade Publications', key: 'scoreTradePubs', weight: w('weightTradePubs', 10) },
+      { name: 'Org Leadership', key: 'scoreOrgLeadership', weight: w('weightOrgLeadership', 10) },
+      { name: 'Org Awards', key: 'scoreOrgAwards', weight: w('weightOrgAwards', 10) },
+      { name: 'Conference', key: 'scoreConference', weight: w('weightConference', 10) },
+      { name: 'Social Media', key: 'scoreSocialMedia', weight: w('weightSocialMedia', 5) },
+      { name: 'Media/Podcasts', key: 'scoreMediaPodcasts', weight: w('weightMediaPodcasts', 5) },
+      { name: 'Survey', key: 'scoreSurvey', weight: w('weightSurvey', 25) },
     ];
 
     const segmentAverages = segments.map((segment) => {
       let sum = 0;
       let count = 0;
 
-      for (const score of scores) {
+      for (const score of hcpScores) {
         let value: number | null = null;
         if (segment.key === 'scoreSurvey') {
-          value = score.scoreSurvey?.toNumber() ?? null;
+          value = analysisSurveyByHcp.get(score.hcpId) ?? null;
         } else {
           const diseaseScore = score.hcp.diseaseAreaScores[0];
           if (diseaseScore) {

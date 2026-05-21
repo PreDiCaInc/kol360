@@ -121,14 +121,33 @@ async function cleanupAllTestData() {
     }
   }
 
-  // Also delete the import test HCP (by NPI since ID is generated)
+  // Delete ALL import-test HCPs (both the static-NPI seed and any per-run
+  // unique-NPI rows). The full-workflow test generates a fresh NPI per run
+  // (`999${Date.now().slice(-7)}`) with email pattern `import.test.<npi>@
+  // e2etest.example.com` to avoid beId collisions. The pre-fix cleanup only
+  // deleted the static NPI, so each prod run leaked one HCP (caught
+  // 2026-05-20 — 20 leaked Oncology-specialty rows accumulated on prod
+  // over ~2 months, blocking the strict-whitelist CHECK constraint).
+  //
+  // deleteMany with a pattern catches both shapes. Email pattern is
+  // safer than NPI prefix (`999*`) because it's specific to this fixture.
   try {
-    await prisma.hcp.delete({
-      where: { npi: TEST_IDS.HCP_IMPORT.npi },
+    const result = await prisma.hcp.deleteMany({
+      where: {
+        OR: [
+          { npi: TEST_IDS.HCP_IMPORT.npi },
+          {
+            AND: [
+              { email: { startsWith: 'import.test' } },
+              { email: { endsWith: '@e2etest.example.com' } },
+            ],
+          },
+        ],
+      },
     });
-    console.log(`  ✓ Deleted import test HCP: ${TEST_IDS.HCP_IMPORT.npi}`);
-  } catch {
-    console.log(`  - Import test HCP not found (already deleted)`);
+    console.log(`  ✓ Deleted ${result.count} import test HCP(s) (static + per-run unique)`);
+  } catch (e) {
+    console.log(`  - Import test HCP cleanup failed: ${e instanceof Error ? e.message : e}`);
   }
 
   // 4. Delete test specialty
