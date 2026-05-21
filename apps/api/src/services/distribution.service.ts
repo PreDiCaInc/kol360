@@ -585,14 +585,18 @@ export class DistributionService {
           firstName: String(row['First Name'] || row['firstName'] || row['first_name'] || '').trim(),
           lastName: String(row['Last Name'] || row['lastName'] || row['last_name'] || '').trim(),
           email: (row['Email'] || row['email'] || null) as string | null,
-          specialty: (() => {
-            const raw = (row['Specialty'] || row['specialty'] || null) as string | null;
-            if (!raw) return null;
-            const s = raw.trim().toUpperCase();
-            if (s === 'OD') return 'Optometry';
-            if (s === 'MD' || s === 'DO') return 'Ophthalmology';
-            return raw.trim();
-          })(),
+          // Use the canonical shared normalizer (added 2026-05-21 after
+          // prod-team report). The old inline mini-normalizer only mapped
+          // OD/MD/DO and passed everything else through unchanged — so a
+          // CSV with 'Optometrist' (old role-form) wrote 'Optometrist' to
+          // the DB and tripped the Hcp_specialty_not_role_form CHECK
+          // constraint with a raw Prisma error. normalizeHcpSpecialty
+          // handles all the variants (OD/Optometrist/Optometry → Optometry,
+          // etc.) and returns null for out-of-domain values rather than
+          // passing them through.
+          specialty: normalizeHcpSpecialty(
+            (row['Specialty'] || row['specialty'] || null) as string | null
+          ),
           subSpecialty: (row['Sub-specialty'] || row['subSpecialty'] || row['sub_specialty'] || null) as string | null,
           city: (row['City'] || row['city'] || null) as string | null,
           state: (row['State'] || row['state'] || null) as string | null,
@@ -607,7 +611,17 @@ export class DistributionService {
         }
 
         if (!hcpData.specialty) {
-          throw new Error('Specialty is required');
+          // Distinguish "missing" from "unrecognized" so CSV uploaders know
+          // why their import was rejected. The shared normalizer accepts
+          // OD/MD/DO/Optometry/Ophthalmology/Optometrist/Ophthalmologist
+          // (and variations) but returns null for out-of-domain values
+          // (e.g. 'Cardiology', 'Oncology') — that's the trigger here.
+          const raw = (row['Specialty'] || row['specialty'] || '') as string;
+          throw new Error(
+            raw.trim()
+              ? `Specialty '${raw.trim()}' not recognized (expected Optometry or Ophthalmology, or aliases OD/MD/DO)`
+              : 'Specialty is required'
+          );
         }
 
         // Check if HCP already exists

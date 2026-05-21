@@ -108,18 +108,23 @@ describe('Nomination Schemas', () => {
     });
 
     it('should accept optional fields', () => {
+      // specialty constrained to hcpSpecialtySchema since the 2026-05-21
+      // prod-team bug report (createHcpFromNominationSchema was using a
+      // loose z.string() which let old role-form values slip past Zod and
+      // trip the DB CHECK constraint with raw Prisma errors). Cardiology
+      // is out-of-domain and is now rejected here at the Zod layer.
       const hcpWithOptionals = {
         npi: '1234567890',
         firstName: 'John',
         lastName: 'Doe',
         email: 'john@example.com',
-        specialty: 'Cardiology',
+        specialty: 'Optometry' as const,
         city: 'New York',
         state: 'NY',
       };
       const result = createHcpFromNominationSchema.parse(hcpWithOptionals);
       expect(result.email).toBe('john@example.com');
-      expect(result.specialty).toBe('Cardiology');
+      expect(result.specialty).toBe('Optometry');
     });
 
     it('should reject NPI not 10 digits', () => {
