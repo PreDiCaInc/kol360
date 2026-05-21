@@ -1,7 +1,7 @@
-# prod-rel-5.0 — Handoff to Prod Team
+# prod-rel-4.1 — Handoff to Prod Team
 
 **Status:** Ready for prod deploy + soak.
-**Tag:** [`prod-rel-5.0`](https://github.com/PreDiCaInc/kol360/releases/tag/prod-rel-5.0) → commit [`0aa82cb`](https://github.com/PreDiCaInc/kol360/commit/0aa82cb) on `main`.
+**Tag:** [`prod-rel-4.1`](https://github.com/PreDiCaInc/kol360/releases/tag/prod-rel-4.1) → commit [`0aa82cb`](https://github.com/PreDiCaInc/kol360/commit/0aa82cb) on `main`.
 **Supersedes:** `prod-rel-4.0` (v1.16.0) — Phase 3 PR A. This release completes the Phase 3 arc.
 
 ## What this is
@@ -13,7 +13,7 @@
 3. **Specialty enforcement** — strict whitelist CHECK constraint + Zod-bypass fixes + cleanup of historical test pollution
 4. **E2E cleanup-script leak plugged** — the script bug that accumulated 20 'Import TestHCP' pollution rows on prod over ~2 months
 
-This was the workstream we held for prod-rel-4.0 (v1.16.0) to deploy + soak first. **prod-rel-4.0 may or may not have actually deployed yet to your prod** — that's worth confirming before deploying 5.0. If 4.0 isn't live, deploy 4.0 first (the code-only campaign-scoring removal), let it soak briefly, *then* 5.0 (the schema drops + lite-client repoint).
+This was the workstream we held for prod-rel-4.0 (v1.16.0) to deploy + soak first. **prod-rel-4.0 may or may not have actually deployed yet to your prod** — that's worth confirming before deploying 4.1. If 4.0 isn't live, deploy 4.0 first (the code-only campaign-scoring removal), let it soak briefly, *then* 4.1 (the schema drops + lite-client repoint).
 
 ## Migrations to apply (in order)
 
@@ -93,15 +93,15 @@ Per-disease-area `scoreSurvey` and `compositeScore` columns drop from the displa
 
 For future CHECK-constraint migrations: **deploy code first, then run migration.** Reverses the default "migrate first" order. The new code only produces canonical values, so the constraint can go live without a window where stale-tab users hit it with values the old code still emits. The Jen Pikor incident is documented + captured to memory.
 
-For this release (5.0): rollout-window risk is lower than 3.3 because **no code path in v1.16.0/4.0 emits non-canonical specialty values anymore** (the v1.15.31 normalizer fix + 4.0 hasn't added any new bypass). So the default migrate-first order is fine here.
+For this release (4.1): rollout-window risk is lower than 3.3 because **no code path in v1.16.0/4.0 emits non-canonical specialty values anymore** (the v1.15.31 normalizer fix + 4.0 hasn't added any new bypass). So the default migrate-first order is fine here.
 
 ## Soak checks
 
-[`prod-rel-5.0-soak-checks.md`](prod-rel-5.0-soak-checks.md) — 3-phase checklist scoped to what 5.0 changes vs `prod-rel-4.0`. Phase A covers migration verification, Phase B covers the customer-visible surfaces (lite client semantic shift, HCP detail page, specialty enforcement), Phase C is continuous CloudWatch watch.
+[`prod-rel-4.1-soak-checks.md`](prod-rel-4.1-soak-checks.md) — 3-phase checklist scoped to what 4.1 changes vs `prod-rel-4.0`. Phase A covers migration verification, Phase B covers the customer-visible surfaces (lite client semantic shift, HCP detail page, specialty enforcement), Phase C is continuous CloudWatch watch.
 
 ## What's next on our side
 
-After 5.0 soaks cleanly: **Phase 3 is done.** No queued workstream behind it. Outstanding minor items:
+After 4.1 soaks cleanly: **Phase 3 is done.** No queued workstream behind it. Outstanding minor items:
 
 - Migration baseline reconciliation (`_prisma_migrations` table is stale on both envs — not blocking anything, housekeeping for whenever).
 - (Optional) UX bonus from your 5.21 report: wrap remaining raw Prisma errors as friendly 400s. Lower priority now since the CHECK-constraint paths can't be reached via the fixed write paths.
@@ -115,6 +115,6 @@ After 5.0 soaks cleanly: **Phase 3 is done.** No queued workstream behind it. Ou
 | v1.15.30 | prod-rel-3.2 | Same scope + cuid fix |
 | v1.15.31 | prod-rel-3.3 | Specialty canonical flip + bulk-import bypass + blacklist CHECK |
 | v1.16.0 | prod-rel-4.0 | Phase 3 PR A — campaign-scoring code teardown (-2,503 lines) |
-| **v1.17.0** | **prod-rel-5.0** | **Phase 3 PR B — schema drops + lite-client repoint + Specialty whitelist + cleanup** |
+| **v1.17.0** | **prod-rel-4.1** | **Phase 3 PR B — schema drops + lite-client repoint + Specialty whitelist + cleanup** |
 
 Three weeks of wall-clock, six prod releases, one P2 bug caught + fixed within a release cycle. Your soak discipline drove every catch.
