@@ -1,4 +1,4 @@
-# Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1
+# Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1.1
 
 **Two tags queued for prod. Deploy in this order.** Both complete the Phase 3 arc (campaign-scoring teardown → KOL Analysis as the singular scoring surface). After both ship + soak, no further releases queued.
 
@@ -13,11 +13,11 @@
 - **What's removed:** Campaign-level scoring endpoints (`/score-config`, `/scores/calculate-*`, `/hcps/recalculate-composites`), the per-campaign Score Config + Survey Scores workflow steps, the `Recalculate Composites` button on `/admin/hcps/scores`.
 - **What's preserved:** `CompositeScoreConfig` table + the 4 vestigial computed columns on `HcpCampaignScore` / `HcpDiseaseAreaScore` still exist in PR A — that's intentional. Code-only PR is reversible (redeploy v1.15.31 and everything works). The schema drops come in PR B.
 - **Customer-facing change:** `/admin/campaigns/[id]/scores` returns a redirect to `/admin/kol-analysis` (polite, lossless).
-- **Soak guidance:** [prod-rel-4.0-soak-checks.md](prod-rel-4.0-soak-checks.md) — 3-phase checklist. Recommend a brief soak (1-2 days) before moving to 4.1.
+- **Soak guidance:** [prod-rel-4.0-soak-checks.md](prod-rel-4.0-soak-checks.md) — 3-phase checklist. Recommend a brief soak (1-2 days) before moving to 4.1.1.
 
-### Step 2 — prod-rel-4.1 (v1.17.0) — Phase 3 PR B + v1.15.32, schema drops, IRREVERSIBLE
+### Step 2 — prod-rel-4.1.1 (v1.17.0) — Phase 3 PR B + v1.15.32, schema drops, IRREVERSIBLE
 
-- **Tag:** [`prod-rel-4.1`](https://github.com/PreDiCaInc/kol360/releases/tag/prod-rel-4.1) → commit [`0aa82cb`](https://github.com/PreDiCaInc/kol360/commit/0aa82cb)
+- **Tag:** [`prod-rel-4.1.1`](https://github.com/PreDiCaInc/kol360/releases/tag/prod-rel-4.1.1) → commit [`4a0b5d0`](https://github.com/PreDiCaInc/kol360/commit/4a0b5d0)
 - **Pre-cutover snapshot required.** The schema drops are irreversible — data in the dropped columns is gone for good.
 - **Migrations:** 2 files, **apply in chronological order**:
   ```bash
@@ -33,7 +33,7 @@
   - Replace `Hcp_specialty_not_role_form` blacklist CHECK with strict `Hcp_specialty_check` whitelist (`Optometry` / `Ophthalmology` / NULL only)
 - **What's preserved:** The 8 objective columns on `HcpDiseaseAreaScore` (`scorePublications` etc.) stay — they're canonical objective-score storage still actively populated by segment CSV import.
 - **Customer-facing change worth signaling to the customer team in advance:** lite-client portal repointed from disease-area-wide averages (old `publishScores()` averaging) to per-`(client, DA)` KOL Analysis scores (pooled normalization + per-analysis weights). **Composite + survey numbers will shift.** This is the more accurate value — customers see their analysis with their weights — but it's a visible behavior change.
-- **Soak guidance:** [prod-rel-4.1-soak-checks.md](prod-rel-4.1-soak-checks.md) — 3-phase checklist. Recommend 5-7 business days for the irreversible release.
+- **Soak guidance:** [prod-rel-4.1.1-soak-checks.md](prod-rel-4.1.1-soak-checks.md) — 3-phase checklist. Recommend 5-7 business days for the irreversible release.
 
 ---
 
@@ -87,7 +87,7 @@ Anything beyond those 4 indexes = real drift, worth investigating.
 
 For future CHECK-constraint migrations: deploy code first, then run migration (reverses the default order). The new code only produces canonical values; the constraint can go live without a window where stale-tab users hit it with values the old code still emits. The Jen Pikor incident showed why.
 
-For prod-rel-4.1 specifically: rollout-window risk is **lower than 3.3** because no code path in 4.0 emits non-canonical specialty values anymore. The v1.15.31 normalizer fix has been live since prod-rel-3.3, so all write paths are canonical. Default "migrate-first" order is fine here.
+For prod-rel-4.1.1 specifically: rollout-window risk is **lower than 3.3** because no code path in 4.0 emits non-canonical specialty values anymore. The v1.15.31 normalizer fix has been live since prod-rel-3.3, so all write paths are canonical. Default "migrate-first" order is fine here.
 
 ---
 
@@ -96,10 +96,10 @@ For prod-rel-4.1 specifically: rollout-window risk is **lower than 3.3** because
 | Tag | Version | Risk | Migrations | Soak doc |
 |---|---|---|---|---|
 | `prod-rel-4.0` | v1.16.0 | Code-only, reversible | None | [prod-rel-4.0-soak-checks.md](prod-rel-4.0-soak-checks.md) |
-| `prod-rel-4.1` | v1.17.0 | **Irreversible** schema drops | 2 in chronological order | [prod-rel-4.1-soak-checks.md](prod-rel-4.1-soak-checks.md) |
+| `prod-rel-4.1.1` | v1.17.0 | **Irreversible** schema drops | 2 in chronological order | [prod-rel-4.1.1-soak-checks.md](prod-rel-4.1.1-soak-checks.md) |
 
 Handoff docs with more detail:
 - [prod-rel-4.0-handoff.md](prod-rel-4.0-handoff.md)
-- [prod-rel-4.1-handoff.md](prod-rel-4.1-handoff.md)
+- [prod-rel-4.1.1-handoff.md](prod-rel-4.1.1-handoff.md)
 
-After 4.1 soaks: Phase 3 arc is done. Nothing else queued.
+After 4.1.1 soaks: Phase 3 arc is done. Nothing else queued.
