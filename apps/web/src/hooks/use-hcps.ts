@@ -23,9 +23,11 @@ interface HcpSpecialty {
   specialty: Specialty;
 }
 
+// Phase 3 PR B: compositeScore + scoreSurvey removed from this shape — they
+// were dropped from the HcpDiseaseAreaScore DB columns (vestigial, replaced
+// by HcpAnalysisScore per-(client, DA)). The 8 objective columns remain.
 interface HcpDiseaseAreaScore {
   id: string;
-  compositeScore: number | null;
   scorePublications?: number | null;
   scoreClinicalTrials?: number | null;
   scoreTradePubs?: number | null;

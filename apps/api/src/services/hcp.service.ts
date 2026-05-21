@@ -137,7 +137,12 @@ export class HcpService {
             where: { isCurrent: true },
             select: {
               id: true,
-              compositeScore: true,
+              // Phase 3 PR B: scoreSurvey + compositeScore removed (vestigial,
+              // dropped from HcpDiseaseAreaScore). The 8 objective columns
+              // remain — canonical objective store for the analysis composite
+              // live-pull. HCP detail page no longer surfaces survey/composite
+              // values per the SCD reframing (those now live per-analysis on
+              // HcpAnalysisScore; navigate to /admin/kol-analysis for them).
               scorePublications: true,
               scoreClinicalTrials: true,
               scoreTradePubs: true,
@@ -146,7 +151,6 @@ export class HcpService {
               scoreConference: true,
               scoreSocialMedia: true,
               scoreMediaPodcasts: true,
-              scoreSurvey: true,
               totalNominationCount: true,
               diseaseArea: { select: { id: true, name: true, code: true } },
             },

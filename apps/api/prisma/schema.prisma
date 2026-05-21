@@ -229,9 +229,11 @@ model HcpDiseaseAreaScore {
   scoreConference      Decimal?    @db.Decimal(5, 2)
   scoreSocialMedia     Decimal?    @db.Decimal(5, 2)
   scoreMediaPodcasts   Decimal?    @db.Decimal(5, 2)
-  scoreSurvey          Decimal?    @db.Decimal(5, 2)
+  // scoreSurvey + compositeScore removed in Phase 3 PR B (v1.17.0).
+  // The table's role narrowed to canonical objective-score storage
+  // (the 8 columns above). Survey + composite now live per-(client, DA)
+  // on HcpAnalysisScore, with pooled normalization.
   totalNominationCount Int         @default(0)
-  compositeScore       Decimal?    @db.Decimal(5, 2)
   isCurrent            Boolean     @default(true)
   effectiveFrom        DateTime    @default(now())
   effectiveTo          DateTime?
@@ -268,10 +270,11 @@ model HcpCampaignScore {
   countRegionalLeader    Int       @default(0)
   scoreBiasedLeader      Decimal?  @db.Decimal(5, 2)
   countBiasedLeader      Int       @default(0)
-  // Consolidated score
-  scoreSurvey            Decimal?  @db.Decimal(5, 2)
+  // scoreSurvey + compositeScore removed in Phase 3 PR B (v1.17.0).
+  // The campaign no longer holds per-campaign consolidated scores —
+  // KOL Analysis owns scoring now. Per-type nomination counts (above)
+  // remain as ops/QA input.
   nominationCount        Int       @default(0)
-  compositeScore         Decimal?  @db.Decimal(5, 2)
   calculatedAt           DateTime?
   publishedAt            DateTime?
   createdAt              DateTime  @default(now())
@@ -487,7 +490,7 @@ model Campaign {
   diseaseArea              DiseaseArea             @relation(fields: [diseaseAreaId], references: [id])
   surveyTemplate           SurveyTemplate?         @relation(fields: [surveyTemplateId], references: [id])
   campaignHcps             CampaignHcp[]
-  compositeScoreConfig     CompositeScoreConfig?
+  // compositeScoreConfig relation removed in Phase 3 PR B — model dropped.
   hcpCampaignScores        HcpCampaignScore[]
   hcpExclusions            CampaignHcpExclusion[]
   optOuts                  OptOut[]
@@ -549,22 +552,10 @@ model SurveyQuestion {
   @@index([nominationType])
 }
 
-model CompositeScoreConfig {
-  id                   String   @id @default(cuid())
-  campaignId           String   @unique
-  weightPublications   Decimal  @default(10) @db.Decimal(5, 2)
-  weightClinicalTrials Decimal  @default(15) @db.Decimal(5, 2)
-  weightTradePubs      Decimal  @default(10) @db.Decimal(5, 2)
-  weightOrgLeadership  Decimal  @default(10) @db.Decimal(5, 2)
-  weightOrgAwards      Decimal  @default(10) @db.Decimal(5, 2)
-  weightConference     Decimal  @default(10) @db.Decimal(5, 2)
-  weightSocialMedia    Decimal  @default(5) @db.Decimal(5, 2)
-  weightMediaPodcasts  Decimal  @default(5) @db.Decimal(5, 2)
-  weightSurvey         Decimal  @default(25) @db.Decimal(5, 2)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  campaign             Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-}
+// CompositeScoreConfig model removed in Phase 3 PR B (v1.17.0).
+// Per-campaign weight storage is gone — KolAnalysis.weightsJson owns weights
+// per-(client, DA) now. See migration 20260521_phase3_pr_b_drop_legacy_scoring
+// for the DROP TABLE.
 
 model SurveyResponse {
   id              String                 @id @default(cuid())
