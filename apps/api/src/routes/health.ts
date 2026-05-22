@@ -67,10 +67,19 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
-  // Full health check - detailed status (requires auth token in production)
+  // Full health check - detailed status (requires auth token in production
+  // AND any non-dev tier — staging, canary, preview, etc.).
+  //
+  // v1.17.1: flipped the gate from `NODE_ENV === 'production'` to a dev
+  // allowlist. The old strict-equality check meant `staging` (which the
+  // test App Runner uses) silently skipped auth — and that masked a
+  // bug in the web proxy that wasn't forwarding the token. Test went
+  // green, prod went red. See feedback_test_should_mirror_prod memory
+  // entry for the broader principle: test must mirror prod's enforcement,
+  // only dev gets lenient defaults.
   fastify.get('/full', async (request, reply) => {
-    // Require authentication for detailed health checks in production
-    if (process.env.NODE_ENV === 'production') {
+    const isDev = ['development', 'test'].includes(process.env.NODE_ENV || '');
+    if (!isDev) {
       const authHeader = request.headers['x-health-token'] || request.headers.authorization;
       const expectedToken = process.env.HEALTH_CHECK_TOKEN;
 

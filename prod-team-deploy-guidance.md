@@ -1,4 +1,6 @@
-# Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1.1
+# Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1.1 + prod-rel-4.1.2
+
+> **2026-05-22 update:** prod-rel-4.0 + prod-rel-4.1.1 are now LIVE on prod and soaking. A small patch release **prod-rel-4.1.2 (v1.17.1)** is being prepared right now with 4 bug fixes flagged during the 4.1.1 soak. See the "prod-rel-4.1.2 patch release" section at the bottom.
 
 **Two tags queued for prod. Deploy in this order.** Both complete the Phase 3 arc (campaign-scoring teardown → KOL Analysis as the singular scoring surface). After both ship + soak, no further releases queued.
 
@@ -102,4 +104,50 @@ Handoff docs with more detail:
 - [prod-rel-4.0-handoff.md](prod-rel-4.0-handoff.md)
 - [prod-rel-4.1.1-handoff.md](prod-rel-4.1.1-handoff.md)
 
-After 4.1.1 soaks: Phase 3 arc is done. Nothing else queued.
+After 4.1.1 soaks: Phase 3 arc is done. Then deploy `prod-rel-4.1.2` for the 4 patch fixes (see below).
+
+---
+
+## prod-rel-4.1.2 (v1.17.1) — patch release for items flagged during 4.1.1 soak
+
+**Status:** authored on `dev` 2026-05-22; tag will be cut after PR merges to main. Standalone patch — no migrations.
+
+### What's in it
+
+1. **Segment-score importer dedup** (P2 — your 2026-05-22 report)
+   - `apps/api/src/services/hcp.service.ts`: dedupe `(npi, diseaseAreaId)` rows before phase 3 categorization. Last row wins. New `deduped` count in the response so customers see what collapsed.
+   - E2E regression: `e2e/api/segment-import-dedup.test.ts` — CSV with Alice twice → expect `deduped=1`, `created+updated=2`, no errors.
+
+2. **Admin `/health/status` widget** (P3 — your 2026-05-22 report — 2-bug compound)
+   - `apps/web/src/app/api/health/status/route.ts`: forward `HEALTH_CHECK_TOKEN` as `Authorization: Bearer ${token}` to backend's `/health/full`.
+   - `apps/api/src/routes/health.ts`: flip the strict-equality gate (`NODE_ENV === 'production'`) to a dev allowlist (`!['development', 'test'].includes(NODE_ENV)`). Means staging now enforces the token check too — surfaces this class of bug in test before prod.
+
+3. **Insights "Clear filters" button** (UX — customer feedback via your 2026-05-22 report)
+   - `apps/web/src/components/insights/global-filters.tsx`: outline variant + `"Clear filters"` full label + drop muted-foreground class. Now visible.
+
+### Migrations: **none**
+
+Code-only patch. Reversible (redeploy 4.1.1 if anything regresses).
+
+### AWS env var change (you own)
+
+After/during 4.1.2 deploy, set `HEALTH_CHECK_TOKEN` on the **test** App Runner service (`kol360-api-test`) so the proxy works end-to-end on staging. Same value as prod's (or rotate both — see the rotation note below). Without this, the staging admin status widget will go red after fix-2 lands.
+
+### Token rotation note
+
+If you ever rotate `HEALTH_CHECK_TOKEN`, both places must update in lockstep:
+- App Runner backend env var (prod: kol360-api; test: kol360-api-test)
+- `apps/web/.env.production`
+
+Worth a check at the cutover review gate per release.
+
+### Quick reference (updated)
+
+| Tag | Version | Risk | Migrations | Soak doc |
+|---|---|---|---|---|
+| `prod-rel-4.0` | v1.16.0 | Code-only, reversible | None | [prod-rel-4.0-soak-checks.md](prod-rel-4.0-soak-checks.md) |
+| `prod-rel-4.1` | (fossil) | — | — | (do not deploy) |
+| `prod-rel-4.1.1` | v1.17.0 | Irreversible schema drops | 2 in chronological order | [prod-rel-4.1.1-soak-checks.md](prod-rel-4.1.1-soak-checks.md) |
+| `prod-rel-4.1.2` | v1.17.1 | Code-only, reversible | None | (see PR description) |
+
+After all four (4.0 → 4.1.1 → 4.1.2) soak: campaign-scoring teardown + specialty enforcement + the 4.1.1 soak follow-ups all done. Nothing else queued.

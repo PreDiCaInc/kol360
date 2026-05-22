@@ -202,16 +202,20 @@ export function GlobalFilters({
           </Select>
         </div>
 
-        {/* Clear Filters Button */}
+        {/* Clear Filters Button.
+            v1.17.1: bumped from ghost+muted-foreground+ambiguous-label to
+            outline+default-text+explicit-label after customer feedback ("can
+            we have a clear filter" — they didn't see the existing one). The
+            three changes compounding made it invisible. Outline variant
+            matches the Print Report button's prominence next to it. */}
         {hasActiveFilters && (
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={handleClearAll}
-            className="text-muted-foreground hover:text-foreground"
           >
             <X className="h-4 w-4 mr-1" />
-            Clear
+            Clear filters
           </Button>
         )}
 
