@@ -1,4 +1,4 @@
-# prod-rel-5.0 — Soak Checks (v1.17.0)
+# prod-rel-4.1.1 — Soak Checks (v1.17.0)
 
 Tag at [`0aa82cb`](https://github.com/PreDiCaInc/kol360/commit/0aa82cb). Scoped to what v1.17.0 changes vs the prior prod baseline (v1.15.31 OR v1.16.0 depending on whether prod-rel-4.0 was deployed first). Don't re-run everything — trust prior soaks.
 
@@ -209,7 +209,7 @@ Roll back to `prod-rel-4.0` **only if**:
 **Rollback procedure:**
 - Code rollback (redeploy prod-rel-4.0): v1.16.0 code paths read the now-missing `compositeScoreConfig` table + the dropped columns. **They will throw Prisma errors on prod.** This is the meaningful gotcha of irreversible migrations — a v1.16.0 redeploy doesn't restore the dropped data.
 - True rollback would require: restore from the pre-cutover snapshot OR add the columns back as nullable + the table back as empty. **Hours of work, not minutes.** That's why we held PR B for 4.0 soak.
-- More pragmatic if 5.0 breaks: hotfix forward (small bug fix on top of v1.17.0), not rollback.
+- More pragmatic if 4.1.1 breaks: hotfix forward (small bug fix on top of v1.17.0), not rollback.
 
 ---
 
@@ -221,4 +221,4 @@ Recommend **5-7 business days** with all of these holding:
 - Phase C shows no persistent CHECK hits + no lite-client 500s + no rogue new HCP specialty values
 - Customer team has been told about the lite-client composite number shift and has signed off
 
-After 5.0 soaks: **Phase 3 is officially done.** No queued workstream behind it.
+After 4.1.1 soaks: **Phase 3 is officially done.** No queued workstream behind it.
