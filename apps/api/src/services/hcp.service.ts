@@ -721,7 +721,7 @@ export class HcpService {
     const { importProgressStore } = await import('./import-progress.service');
     const rows = await this.parseFileToRows(buffer, filename || 'file.xlsx');
 
-    const result = { importId, total: rows.length, created: 0, updated: 0, errors: [] as { row: number; error: string }[] };
+    const result = { importId, total: rows.length, created: 0, updated: 0, deduped: 0, errors: [] as { row: number; error: string }[] };
 
     if (importId) {
       importProgressStore.start(importId, 'segment-scores', rows.length);
@@ -809,7 +809,19 @@ export class HcpService {
 
       // Filter to only valid rows with matching HCPs
       const rowsWithHcps = validRows.filter(r => hcpByNpi.has(r.npi));
-      const hcpIds = rowsWithHcps.map(r => hcpByNpi.get(r.npi)!.id);
+
+      // Dedupe within-file: if the same NPI appears more than once in the
+      // CSV, last row wins. Without this, both rows would be categorized as
+      // "new" in phase 3 (the existingByHcpId map isn't updated mid-loop)
+      // and the second createMany would hit the @@unique([hcpId, diseaseAreaId])
+      // constraint. P2 bug flagged by prod team 2026-05-22; fix shape (1)
+      // from the report — dedupe before categorization.
+      const dedupedByNpi = new Map<string, typeof rowsWithHcps[number]>();
+      for (const r of rowsWithHcps) dedupedByNpi.set(r.npi, r);
+      result.deduped = rowsWithHcps.length - dedupedByNpi.size;
+      const dedupedRows = Array.from(dedupedByNpi.values());
+
+      const hcpIds = dedupedRows.map(r => hcpByNpi.get(r.npi)!.id);
 
       const existingScores = await prisma.hcpDiseaseAreaScore.findMany({
         where: { hcpId: { in: hcpIds }, diseaseAreaId, isCurrent: true },
@@ -835,7 +847,7 @@ export class HcpService {
       const toUpdate: Array<{ id: string; data: Record<string, unknown> }> = [];
 
       const now = new Date();
-      for (const row of rowsWithHcps) {
+      for (const row of dedupedRows) {
         const hcp = hcpByNpi.get(row.npi)!;
         const existing = existingByHcpId.get(hcp.id);
 

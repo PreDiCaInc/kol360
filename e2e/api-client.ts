@@ -303,6 +303,31 @@ export class ApiClient {
     return { status: response.status, data };
   }
 
+  /**
+   * Import segment scores (objective HCP × DiseaseArea scores). Multipart file
+   * upload with diseaseAreaId as a query param. Returns counts incl. `deduped`
+   * which is the count of within-file (hcpId, diseaseAreaId) duplicates that
+   * were collapsed before insert (v1.17.1 dedup fix).
+   */
+  async importSegmentScores(diseaseAreaId: string, csvContent: string, filename: string = 'segment-scores.csv') {
+    const url = `${this.baseUrl}/api/v1/hcps/import-segment-scores?diseaseAreaId=${encodeURIComponent(diseaseAreaId)}`;
+    const formData = new FormData();
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    formData.append('file', blob, filename);
+
+    const headers: Record<string, string> = {};
+    if (this.authToken) headers['Authorization'] = `Bearer ${this.authToken}`;
+
+    const response = await fetch(url, { method: 'POST', headers, body: formData });
+    let data: { total: number; created: number; updated: number; deduped?: number; errors: Array<{ row: number; error: string }> };
+    try {
+      data = await response.json();
+    } catch {
+      data = { total: 0, created: 0, updated: 0, errors: [] };
+    }
+    return { status: response.status, data };
+  }
+
   // ==================== KOL Analyses ====================
 
   async listKolAnalyses() {

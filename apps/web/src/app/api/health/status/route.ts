@@ -41,12 +41,26 @@ export async function GET() {
   // Check Frontend
   checks.push({ name: 'Frontend', status: 'ok' });
 
-  // Check Backend API and Database via backend's /health/full endpoint
+  // Check Backend API and Database via backend's /health/full endpoint.
+  //
+  // v1.17.1: forward HEALTH_CHECK_TOKEN as Authorization Bearer. The backend
+  // gates /health/full in any non-dev environment (see health.ts). The token
+  // IS available in this server-side route's env (apps/web/.env.production
+  // sets HEALTH_CHECK_TOKEN) — it was just never being read. Pre-fix: prod's
+  // admin status widget showed red because the proxy got a 401 from the
+  // backend's gate. Fix discovered by prod team 2026-05-22 during 4.1.1 soak.
+  //
+  // Header rotation: if HEALTH_CHECK_TOKEN is ever rotated, both the
+  // App Runner backend env var AND apps/web/.env.production must update
+  // in lockstep.
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (apiUrl) {
     const start = Date.now();
     try {
-      const response = await fetchWithTimeout(`${apiUrl}/health/full`);
+      const token = process.env.HEALTH_CHECK_TOKEN;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await fetchWithTimeout(`${apiUrl}/health/full`, { headers });
       const latency = Date.now() - start;
 
       if (response.ok) {
