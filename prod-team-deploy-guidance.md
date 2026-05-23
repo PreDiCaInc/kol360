@@ -1,6 +1,6 @@
 # Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1.1 + prod-rel-4.1.2
 
-> **2026-05-22 update:** prod-rel-4.0 + prod-rel-4.1.1 are now LIVE on prod and soaking. A small patch release **prod-rel-4.1.2 (v1.17.1)** is being prepared right now with 4 bug fixes flagged during the 4.1.1 soak. See the "prod-rel-4.1.2 patch release" section at the bottom.
+> **2026-05-22 update:** prod-rel-4.0 + prod-rel-4.1.1 are now LIVE on prod and soaking. A small patch release **prod-rel-4.1.2 (v1.17.1)** is now **tagged + verified on test** — see the "prod-rel-4.1.2 patch release" section at the bottom for the 3 fixes + the AWS env var change you'll need to apply.
 
 **Two tags queued for prod. Deploy in this order.** Both complete the Phase 3 arc (campaign-scoring teardown → KOL Analysis as the singular scoring surface). After both ship + soak, no further releases queued.
 
@@ -110,7 +110,12 @@ After 4.1.1 soaks: Phase 3 arc is done. Then deploy `prod-rel-4.1.2` for the 4 p
 
 ## prod-rel-4.1.2 (v1.17.1) — patch release for items flagged during 4.1.1 soak
 
-**Status:** authored on `dev` 2026-05-22; tag will be cut after PR merges to main. Standalone patch — no migrations.
+**Status:** Tagged + verified on test 2026-05-22. Ready for prod deploy.
+- **Tag:** [`prod-rel-4.1.2`](https://github.com/PreDiCaInc/kol360/releases/tag/prod-rel-4.1.2) → commit [`f2922d8`](https://github.com/PreDiCaInc/kol360/commit/f2922d8)
+- **Handoff doc:** [prod-rel-4.1.2-handoff.md](prod-rel-4.1.2-handoff.md)
+- **Soak doc:** [prod-rel-4.1.2-soak-checks.md](prod-rel-4.1.2-soak-checks.md) — 3-phase checklist, recommend 2-3 day soak
+
+Standalone patch — no migrations.
 
 ### What's in it
 
