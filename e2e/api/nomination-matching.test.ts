@@ -14,18 +14,37 @@
  *  - Tier 1/2/3 suggestion search
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { ApiClient } from '../api-client';
 import { config } from '../config';
 
 describe('Nomination Matching (v1.15.14)', () => {
   let client: ApiClient;
+  // Dedicated DRAFT campaign owned by this file. Used by the empty-array
+  // input-validation tests so they don't fish from listCampaigns() and race
+  // with full-workflow.test.ts cleanup running in a parallel worker.
+  // The name prefix deliberately differs from E2E_TEST_CAMPAIGN_ so other
+  // suites won't pick it up.
+  let ownedCampaignId: string | null = null;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     if (!config.authToken) {
       throw new Error('E2E_AUTH_TOKEN is required. Run with auth: pnpm test:api:test:auth');
     }
     client = new ApiClient();
+    const { status, data } = await client.createTestCampaign({
+      name: `E2E_NOMINATION_EMPTY_INPUT_${Date.now()}`,
+      description: 'Owned by nomination-matching.test.ts for input-validation tests',
+    });
+    if (status === 200 || status === 201) {
+      ownedCampaignId = data.id;
+    }
+  });
+
+  afterAll(async () => {
+    if (ownedCampaignId) {
+      await client.deleteCampaign(ownedCampaignId);
+    }
   });
 
   describe('Manual match status', () => {
@@ -109,12 +128,10 @@ describe('Nomination Matching (v1.15.14)', () => {
     });
 
     it('rejects empty id array with 400', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(c =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_')
-      );
-      if (!testCampaign) return;
-      const { status } = await client.getNominationTopSuggestions(testCampaign.id, []);
+      if (!ownedCampaignId) {
+        throw new Error('beforeAll failed to provision the owned campaign');
+      }
+      const { status } = await client.getNominationTopSuggestions(ownedCampaignId, []);
       expect(status).toBe(400);
     });
 
@@ -173,12 +190,10 @@ describe('Nomination Matching (v1.15.14)', () => {
     });
 
     it('rejects empty id array with 400', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(c =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_')
-      );
-      if (!testCampaign) return;
-      const { status } = await client.bulkAcceptNominations(testCampaign.id, []);
+      if (!ownedCampaignId) {
+        throw new Error('beforeAll failed to provision the owned campaign');
+      }
+      const { status } = await client.bulkAcceptNominations(ownedCampaignId, []);
       expect(status).toBe(400);
     });
   });
