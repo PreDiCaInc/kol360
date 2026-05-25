@@ -64,7 +64,16 @@ describe('Access Control', () => {
           console.log('⊘ No non-test disease area on this env — skipping');
           return;
         }
-        const { status, data } = await client.getInsightsSummary(DRY_EYE_DISEASE_AREA_ID);
+        // v1.17.2: the 5 analysis-backed insights endpoints now require
+        // clientId (was: silent {0,0,0, notConfigured:true} shape). Pass
+        // TEST_IDS.CLIENT_ID — the access check + clientId resolution must
+        // both succeed; 200 with a numeric totalKols proves PLATFORM_ADMIN
+        // has access regardless of whether the (client, DA) pair is
+        // configured.
+        const { status, data } = await client.getInsightsSummary(
+          DRY_EYE_DISEASE_AREA_ID,
+          TEST_IDS.CLIENT_ID
+        );
 
         expect(status).toBe(200);
         expect(typeof data.totalKols).toBe('number');

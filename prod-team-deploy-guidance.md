@@ -1,6 +1,8 @@
 # Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1.1 + prod-rel-4.1.2
 
-> **2026-05-22 update:** prod-rel-4.0 + prod-rel-4.1.1 are now LIVE on prod and soaking. A small patch release **prod-rel-4.1.2 (v1.17.1)** is now **tagged + verified on test** — see the "prod-rel-4.1.2 patch release" section at the bottom for the 3 fixes + the AWS env var change you'll need to apply.
+> **2026-05-25 update — P1 hotfix in 4.1.3:** every HCP CSV upload has been crashing with 503 since the 4.1.1 deploy on 2026-05-22. Multiple admins blocked. **`prod-rel-4.1.3` (v1.17.2)** is now tagged + verified on test — **please deploy ahead of the 4.1.2 soak schedule.** See the "prod-rel-4.1.3 patch release" section at the bottom (the 4.1.2 section above it is now historical — 4.1.3 supersedes it and bundles 4.1.2 forward).
+>
+> _Earlier 2026-05-22 update: prod-rel-4.0 + prod-rel-4.1.1 LIVE + soaking; 4.1.2 (v1.17.1) was tagged with 3 small fixes — see section below._
 
 **Two tags queued for prod. Deploy in this order.** Both complete the Phase 3 arc (campaign-scoring teardown → KOL Analysis as the singular scoring surface). After both ship + soak, no further releases queued.
 
@@ -153,6 +155,41 @@ Worth a check at the cutover review gate per release.
 | `prod-rel-4.0` | v1.16.0 | Code-only, reversible | None | [prod-rel-4.0-soak-checks.md](prod-rel-4.0-soak-checks.md) |
 | `prod-rel-4.1` | (fossil) | — | — | (do not deploy) |
 | `prod-rel-4.1.1` | v1.17.0 | Irreversible schema drops | 2 in chronological order | [prod-rel-4.1.1-soak-checks.md](prod-rel-4.1.1-soak-checks.md) |
-| `prod-rel-4.1.2` | v1.17.1 | Code-only, reversible | None | (see PR description) |
+| `prod-rel-4.1.2` | v1.17.1 | Code-only, reversible | None | [prod-rel-4.1.2-soak-checks.md](prod-rel-4.1.2-soak-checks.md) |
+| **`prod-rel-4.1.3`** | **v1.17.2** | **Code-only, reversible — P1 hotfix** | **None** | [prod-rel-4.1.3-soak-checks.md](prod-rel-4.1.3-soak-checks.md) |
+
+---
+
+## prod-rel-4.1.3 (v1.17.2) — P1 hotfix for HCP CSV import 503 + Insights Dashboard silent-zero class
+
+**Status:** Tagged + verified on test 2026-05-25. **Deploy ahead of 4.1.2 soak schedule.**
+- **Tag:** [`prod-rel-4.1.3`](https://github.com/PreDiCaInc/kol360/releases/tag/prod-rel-4.1.3) → commit [`3516fe7`](https://github.com/PreDiCaInc/kol360/commit/3516fe7)
+- **Handoff doc:** [prod-rel-4.1.3-handoff.md](prod-rel-4.1.3-handoff.md)
+- **Soak doc:** [prod-rel-4.1.3-soak-checks.md](prod-rel-4.1.3-soak-checks.md) — 3-phase checklist, recommend 2-3 day soak
+- **Bundles forward:** all of 4.1.2 (no need to deploy 4.1.2 separately)
+
+Code-only patch. No migrations.
+
+### What's in it
+
+1. **HCP CSV import P1 hotfix** (your 2026-05-25 report — multiple admins blocked)
+   - `apps/api/src/services/hcp.service.ts`: deleted the local credential-form normalizer (`normalizeSpecialty` → MD/DO/OD output). All 3 write paths (CREATE/UPDATE/MERGE) now normalize via the canonical `normalizeHcpSpecialty` at the validation phase. Unrecognized inputs land as per-row errors instead of crashing the batch with 503.
+   - E2E regression: `e2e/api/hcp-import-update-specialty.test.ts` — parameterized over 10 recognized input forms + 4 unrecognized.
+
+2. **Insights Dashboard silent-zero class (P2 — latent ~2 months)**
+   - Backend: 5 analysis-backed endpoints (`summary`, `kol-explorer`, `leader-rankings`, `kol-profile`, `sociometric-summary`) return **400** when `clientId` is missing (was: silent `{0,0,0, notConfigured:true}` shape that hid 5 frontend prop-forwarding bugs).
+   - Frontend: `useKolExplorer` signature standardized; all 5 analysis-backed hooks gated on `enabled: !!clientId`; `ScoreTableView` / `ProfileView` / `KolExplorerTab` forward `clientId` end-to-end.
+   - UI cleanup: duplicate "Demographics At A Glance" tiles removed from IntroductionTab (already render in the dashboard header).
+
+3. **"Clear filters" button consistency (UX)**
+   - Demographics + Leader Rankings filter bars match the v1.17.1 global-filters fix (outline variant + explicit "Clear filters" label).
+
+### Migrations: **none**
+
+Code-only patch. Reversible (redeploy 4.1.2 if anything regresses — but rollback returns the P1).
+
+### What changed in our dev process as a result
+
+The HCP P1 went undetected for ~2 months because the E2E suite tested only the CREATE write path with canonical inputs — no test exercised the UPDATE/MERGE paths or the role-form/credential-form inputs. We've added a process gate in [`CONTRIBUTING.md`](CONTRIBUTING.md): **any migration that adds a CHECK / UNIQUE / FK constraint now requires paired compatibility + rejection tests** before the PR is merged. Reference implementation: `e2e/api/hcp-import-update-specialty.test.ts`.
 
 After all four (4.0 → 4.1.1 → 4.1.2) soak: campaign-scoring teardown + specialty enforcement + the 4.1.1 soak follow-ups all done. Nothing else queued.

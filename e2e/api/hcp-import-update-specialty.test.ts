@@ -1,5 +1,5 @@
 /**
- * HCP CSV import: UPDATE path with role-form specialty (v1.17.2 regression)
+ * HCP CSV import: UPDATE path specialty normalization (v1.17.2 regression)
  *
  * P1 bug flagged by prod team 2026-05-25 during 4.1.2 soak: every HCP CSV
  * upload was crashing with 503 since the 4.1.1 deploy 3 days earlier.
@@ -15,6 +15,13 @@
  * canonical values. Local normalizeSpecialty deleted. Unrecognized values
  * now reported as per-row errors instead of crashing the batch.
  *
+ * Why parameterized: the bug went undetected for ~2 months because the
+ * existing import test only used a single canonical input ('Optometry').
+ * Parameterizing over the full input matrix locks in the contract for
+ * every recognized form — if anyone touches normalizeHcpSpecialty again,
+ * all 10 input shapes get verified end-to-end against the actual prod
+ * write path.
+ *
  * Run with: cd e2e && pnpm test:api:test:auth
  */
 
@@ -23,7 +30,36 @@ import { ApiClient } from '../api-client';
 import { config } from '../config';
 import { TEST_IDS } from '../fixtures';
 
-describe('HCP CSV import — UPDATE path with role-form specialty (v1.17.2)', () => {
+// Mirrors the 10 forms accepted by normalizeHcpSpecialty in
+// packages/shared/src/schemas/hcp.ts. If you add/remove a form there,
+// update this matrix too — the test will catch divergence.
+const RECOGNIZED_SPECIALTIES: Array<{ input: string; canonical: 'Optometry' | 'Ophthalmology' }> = [
+  // Canonical (field-form)
+  { input: 'Optometry',       canonical: 'Optometry' },
+  { input: 'Ophthalmology',   canonical: 'Ophthalmology' },
+  // Role-form (legacy / pre-v1.15.31 — must still import cleanly)
+  { input: 'Optometrist',     canonical: 'Optometry' },
+  { input: 'Ophthalmologist', canonical: 'Ophthalmology' },
+  // Credential-form (real NPI exports)
+  { input: 'OD',              canonical: 'Optometry' },
+  { input: 'MD',              canonical: 'Ophthalmology' },
+  { input: 'DO',              canonical: 'Ophthalmology' },
+  // Credential with periods
+  { input: 'O.D.',            canonical: 'Optometry' },
+  { input: 'M.D.',            canonical: 'Ophthalmology' },
+  { input: 'D.O.',            canonical: 'Ophthalmology' },
+];
+
+// Out-of-domain values must NOT crash the batch. Should land as per-row
+// errors in the response and let the rest of the rows process.
+const UNRECOGNIZED_SPECIALTIES = [
+  'Cardiology',
+  'Oncology',
+  'Surgeon',
+  'xyz123', // pure noise — sanity that no fallback fuzzy-match leaks
+];
+
+describe('HCP CSV import — UPDATE path specialty normalization (v1.17.2)', () => {
   let client: ApiClient;
 
   beforeAll(() => {
@@ -33,54 +69,53 @@ describe('HCP CSV import — UPDATE path with role-form specialty (v1.17.2)', ()
     client = new ApiClient();
   });
 
-  it('updates an existing HCP with role-form specialty without crashing (200, not 503)', async () => {
-    // Alice (TEST_IDS.HCP_1) is a seeded fixture — already exists with
-    // canonical specialty. Upload a CSV that matches her NPI and provides
-    // a ROLE-form specialty ("Optometrist"). Pre-fix: UPDATE path wrote
-    // 'OD' into the column → CHECK violation → 503 for the whole batch.
-    // Post-fix: validation normalizes to 'Optometry' → UPDATE succeeds.
-    const alice = TEST_IDS.HCP_1;
-    const csv = [
-      'NPI,First Name,Last Name,Email,Specialty,City,State',
-      `${alice.npi},${alice.firstName},${alice.lastName},${alice.email},Optometrist,${alice.city},${alice.state}`,
-    ].join('\n');
+  it.each(RECOGNIZED_SPECIALTIES)(
+    'UPDATE path: CSV with "$input" → DB column = "$canonical" (no 503)',
+    async ({ input, canonical }) => {
+      // Alice (TEST_IDS.HCP_1) is a seeded fixture — already exists in the
+      // DB. Each iteration re-imports her with a different specialty input
+      // form and verifies (a) the upload doesn't 503 and (b) the column
+      // ends up canonical. Pre-fix: 'Optometrist'/'OD'/'MD' etc. produced
+      // 'OD'/'MD' in the column → CHECK violation → 503 for the whole batch.
+      const alice = TEST_IDS.HCP_1;
+      const csv = [
+        'NPI,First Name,Last Name,Email,Specialty,City,State',
+        `${alice.npi},${alice.firstName},${alice.lastName},${alice.email},${input},${alice.city},${alice.state}`,
+      ].join('\n');
 
-    const { status, data } = await client.importHcps(csv);
+      const { status, data } = await client.importHcps(csv);
 
-    // Pre-fix behavior would be: status=503, data shape malformed.
-    expect(status).toBe(200);
-    expect(data.errors).toEqual([]);
-    expect(data.updated).toBeGreaterThanOrEqual(1);
+      expect(status).toBe(200);
+      expect(data.errors).toEqual([]);
+      expect(data.updated).toBeGreaterThanOrEqual(1);
 
-    // Verify the column ended up canonical (Optometry), not the raw 'Optometrist'
-    // or the credential-form 'OD' that the old local normalizer would have produced.
-    const { status: getStatus, data: hcp } = await client.getHcp(alice.id);
-    expect(getStatus).toBe(200);
-    expect(hcp.specialty).toBe('Optometry');
+      const { status: getStatus, data: hcp } = await client.getHcp(alice.id);
+      expect(getStatus).toBe(200);
+      expect(hcp.specialty).toBe(canonical);
+    }
+  );
 
-    console.log(`✅ HCP UPDATE with role-form specialty: updated=${data.updated}, errors=${data.errors.length}, specialty="${hcp.specialty}"`);
-  });
+  it.each(UNRECOGNIZED_SPECIALTIES)(
+    'rejects "%s" as a per-row error (no 503)',
+    async (input) => {
+      // Use a non-existent NPI so we don't accidentally mutate state — the
+      // row should fail at the validation phase before any DB write attempt,
+      // which exercises the "throw row-level, continue batch" contract
+      // regardless of CREATE vs UPDATE.
+      const csv = [
+        'NPI,First Name,Last Name,Email,Specialty,City,State',
+        `9991234567,Test,Doc,not.a.real@example.com,${input},NYC,NY`,
+      ].join('\n');
 
-  it('rejects an unrecognized specialty as a per-row error (not 503)', async () => {
-    // Pre-fix: 'Cardiology' would either slip through (pre-4.1.1) or 503 the
-    // batch (post-4.1.1, on UPDATE path). Post-fix: validation phase throws
-    // per-row, batch continues, error is reported in the response.
-    const csv = [
-      'NPI,First Name,Last Name,Email,Specialty,City,State',
-      // Use a non-existent NPI so we're not actually mutating any state — the
-      // row should fail at validation before any DB write attempt.
-      '9991234567,Test,Cardiologist,not.a.real@example.com,Cardiology,NYC,NY',
-    ].join('\n');
+      const { status, data } = await client.importHcps(csv);
 
-    const { status, data } = await client.importHcps(csv);
-    // 200 with row-level errors is the correct shape; the batch as a whole
-    // succeeded (0 rows landed, 1 row reported).
-    expect(status).toBe(200);
-    expect(data.created).toBe(0);
-    expect(data.updated).toBe(0);
-    expect(data.errors.length).toBeGreaterThanOrEqual(1);
-    expect(data.errors[0].error).toMatch(/specialty.*not recognized|Cardiology/i);
-
-    console.log(`✅ Unrecognized specialty reported as row error, not 503: "${data.errors[0].error}"`);
-  });
+      // 200 with row-level errors is the correct shape; the batch as a
+      // whole succeeded (0 rows landed, 1 row reported as error).
+      expect(status).toBe(200);
+      expect(data.created).toBe(0);
+      expect(data.updated).toBe(0);
+      expect(data.errors.length).toBeGreaterThanOrEqual(1);
+      expect(data.errors[0].error).toMatch(/specialty.*not recognized/i);
+    }
+  );
 });
