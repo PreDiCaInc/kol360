@@ -3,31 +3,15 @@ import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { CreateHcpInput, UpdateHcpInput, normalizeHcpSpecialty } from '@kol360/shared';
 
-/**
- * Normalize specialty values to canonical credentials (MD, DO, OD).
- * Handles common variants from NPI data and CSV imports.
- */
-function normalizeSpecialty(raw: string): string {
-  const trimmed = raw.trim();
-  const upper = trimmed.toUpperCase();
-
-  // Direct credential matches
-  if (upper === 'MD' || upper === 'M.D.' || upper === 'M.D') return 'MD';
-  if (upper === 'DO' || upper === 'D.O.' || upper === 'D.O') return 'DO';
-  if (upper === 'OD' || upper === 'O.D.' || upper === 'O.D') return 'OD';
-
-  // Credential with suffixes (e.g., "OD, FAAO", "MD, PhD")
-  const commaMatch = upper.match(/^(MD|DO|OD)\s*,/);
-  if (commaMatch) return commaMatch[1];
-
-  // Common full-text mappings
-  const lower = trimmed.toLowerCase();
-  if (lower === 'ophthalmologist' || lower.includes('ophthalmolog')) return 'MD';
-  if (lower === 'optometrist' || lower.includes('optometr')) return 'OD';
-
-  // Return original if no mapping found
-  return trimmed;
-}
+// v1.17.2: the local normalizeSpecialty() that used to live here mapped CSV
+// inputs to credential-form (MD/DO/OD) — a different output domain than the
+// canonical normalizeHcpSpecialty from @kol360/shared (Optometry/Ophthalmology).
+// Having two normalizers made it inevitable that one would be called in the
+// wrong place. The v1.15.31 fix patched only the CREATE path; UPDATE + MERGE
+// kept writing 'MD'/'OD'/'DO' until the v1.17.0 whitelist CHECK turned them
+// into 503s on every CSV upload (latent for ~2 months, user-visible for 3
+// days post-4.1.1). Removed entirely; all paths now go through the single
+// canonical normalizer.
 
 interface SearchParams {
   query?: string;
@@ -363,7 +347,17 @@ export class HcpService {
             throw new Error('Specialty is required');
           }
 
-          const specialty = normalizeSpecialty(rawSpecialty);
+          // v1.17.2: normalize at validation phase so UPDATE + MERGE + CREATE
+          // paths all see canonical values. Pre-fix, the local normalizer
+          // produced credentials (MD/DO/OD) which slipped past the v1.17.0
+          // Hcp_specialty_check whitelist for UPDATE + MERGE → 503 on every
+          // CSV containing existing HCPs.
+          const specialty = normalizeHcpSpecialty(rawSpecialty);
+          if (!specialty) {
+            throw new Error(
+              `Specialty "${rawSpecialty}" not recognized (expected Optometry or Ophthalmology, or aliases OD/MD/DO)`
+            );
+          }
 
           validRows.push({
             rowIndex: i,
@@ -514,15 +508,11 @@ export class HcpService {
             firstName: row.firstName,
             lastName: row.lastName,
             email: row.email,
-            // Bulk-import bypassed createHcpSchema pre-v1.15.31 — wrote raw
-            // CSV strings ('Optometry', 'Ophthalmology', 'OD', 'MD'…) directly,
-            // which slipped past the Zod 2-value enum. v1.15.31 routes
-            // bulk-import specialty values through the same normalizer the
-            // Zod helper uses, so the column ends up canonical regardless of
-            // CSV variant. The Hcp_specialty_not_role_form CHECK constraint
-            // (same migration) is the safety net if a future write path
-            // bypasses this normalization too.
-            specialty: normalizeHcpSpecialty(row.specialty),
+            // v1.17.2: row.specialty is already canonical (normalized at the
+            // validation phase above). Pre-fix, this line called the canonical
+            // normalizer a second time to clean up output from the local
+            // credential-form normalizer — that local function is gone now.
+            specialty: row.specialty,
             subSpecialty: row.subSpecialty,
             city: row.city,
             state: row.state,

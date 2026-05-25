@@ -85,9 +85,11 @@ const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
 function ScoreTableView({
   diseaseAreaId,
   onKolSelect,
+  clientId,
 }: {
   diseaseAreaId: string;
   onKolSelect: (kolId: string) => void;
+  clientId?: string;
 }) {
   const [filters, setFilters] = useState<Partial<InsightsFilterInput>>({
     page: 1,
@@ -109,7 +111,7 @@ function ScoreTableView({
     influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes.join(',') : undefined,
   }), [filters, selectedSpecialties, selectedStates, selectedInfluencerTypes]);
 
-  const { data, isLoading } = useKolExplorer(diseaseAreaId, apiFilters);
+  const { data, isLoading } = useKolExplorer(diseaseAreaId, apiFilters, clientId);
   const { status: excelExportStatus, exportExcel } = useExcelExport();
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -389,7 +391,7 @@ function ProfileView({
     limit: 50,
     sortBy: 'compositeScore',
     sortOrder: 'desc',
-  });
+  }, clientId);
 
   const { data: profile, isLoading } = useKolProfile(diseaseAreaId, selectedKolId, clientId);
   const { data: nominationMeta } = useKolNominationMetadata(diseaseAreaId, selectedKolId, clientId);
@@ -850,6 +852,7 @@ export function KolExplorerTab({ diseaseAreaId, initialKolId, clientId }: Props)
     <ScoreTableView
       diseaseAreaId={diseaseAreaId}
       onKolSelect={handleKolSelect}
+      clientId={clientId}
     />
   );
 }

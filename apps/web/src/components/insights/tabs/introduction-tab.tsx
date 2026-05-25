@@ -1,16 +1,16 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, UserCheck, MessageSquare } from 'lucide-react';
-import { useInsightsSummary } from '@/hooks/use-insights-report';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface IntroductionTabProps {
   diseaseAreaId: string;
 }
 
-export function IntroductionTab({ diseaseAreaId }: IntroductionTabProps) {
-  const { data: summary, isLoading } = useInsightsSummary(diseaseAreaId);
-
+// diseaseAreaId is currently unused but kept for parity with the other tab
+// components — the Introduction tab may surface DA-specific text/branding
+// later, and keeping the prop shape stable means InsightsDashboard can pass
+// it without conditionals.
+export function IntroductionTab(_props: IntroductionTabProps) {
   return (
     <div className="space-y-8">
       {/* Hero Header */}
@@ -55,63 +55,6 @@ export function IntroductionTab({ diseaseAreaId }: IntroductionTabProps) {
           </p>
         </CardContent>
       </Card>
-
-      {/* Demographics At A Glance */}
-      <section className="space-y-4">
-        <h3 className="text-xl font-bold">Demographics At A Glance</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800 shadow-md rounded-xl">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Total KOLs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-extrabold text-blue-700 dark:text-blue-300">
-                {isLoading ? '...' : (summary?.totalKols ?? 0).toLocaleString()}
-              </div>
-              <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">
-                Unique KOLs identified through peer nominations
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950 dark:to-emerald-900 border-emerald-200 dark:border-emerald-800 shadow-md rounded-xl">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                <UserCheck className="h-4 w-4" />
-                Total Respondents
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-extrabold text-emerald-700 dark:text-emerald-300">
-                {isLoading ? '...' : (summary?.totalRespondents ?? 0).toLocaleString()}
-              </div>
-              <p className="text-xs text-emerald-500 dark:text-emerald-400 mt-1">
-                Healthcare professionals who completed the survey
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900 border-amber-200 dark:border-amber-800 shadow-md rounded-xl">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                Total Nominations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-extrabold text-amber-700 dark:text-amber-300">
-                {isLoading ? '...' : (summary?.totalNominations ?? 0).toLocaleString()}
-              </div>
-              <p className="text-xs text-amber-500 dark:text-amber-400 mt-1">
-                Peer nominations received across all categories
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
     </div>
   );
 }

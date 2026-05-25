@@ -1,11 +1,33 @@
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
-import { insightsReportService } from '../services/insights-report.service';
+import { insightsReportService, MissingClientIdError } from '../services/insights-report.service';
 import {
   insightsFilterSchema,
   leaderRankingQuerySchema,
   kolProfileQuerySchema,
   NOMINATION_TYPES,
 } from '@kol360/shared';
+
+/**
+ * Wrap a 5-analysis-backed route handler so MissingClientIdError → 400.
+ * The 3 campaign-scoped routes (demographics, respondent-analytics,
+ * kol-nomination-metadata) accept clientId as an optional filter and don't
+ * need this wrapper.
+ */
+async function requireClientId<T>(reply: FastifyReply, fn: () => Promise<T>): Promise<T | void> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof MissingClientIdError) {
+      reply.status(400).send({
+        error: 'Bad Request',
+        message: err.message,
+        statusCode: 400,
+      });
+      return;
+    }
+    throw err;
+  }
+}
 
 export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
   // List disease areas accessible to the current user, with campaign/KOL counts
@@ -128,7 +150,7 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return insightsReportService.getSummary(diseaseAreaId, clientId);
+      return requireClientId(reply, () => insightsReportService.getSummary(diseaseAreaId, clientId));
     }
   );
 
@@ -145,7 +167,7 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
 
       const filters = insightsFilterSchema.parse(request.query);
       const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return insightsReportService.getKolExplorer(diseaseAreaId, filters, clientId);
+      return requireClientId(reply, () => insightsReportService.getKolExplorer(diseaseAreaId, filters, clientId));
     }
   );
 
@@ -163,7 +185,7 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       const query = leaderRankingQuerySchema.parse(request.query);
       const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
       const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return insightsReportService.getLeaderRankings(diseaseAreaId, query, excludeInternal, clientId);
+      return requireClientId(reply, () => insightsReportService.getLeaderRankings(diseaseAreaId, query, excludeInternal, clientId));
     }
   );
 
@@ -180,7 +202,10 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
 
       const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
       const clientId = resolveClientId(user, request.query as Record<string, string>);
-      const profile = await insightsReportService.getKolProfile(diseaseAreaId, hcpId, excludeInternal, clientId);
+      const profile = await requireClientId(reply, () =>
+        insightsReportService.getKolProfile(diseaseAreaId, hcpId, excludeInternal, clientId)
+      );
+      if (reply.sent) return; // requireClientId already sent 400
       if (!profile) {
         return reply.status(404).send({
           error: 'Not Found',
@@ -206,7 +231,7 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
 
       const filters = insightsFilterSchema.parse(request.query);
       const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return insightsReportService.getSociometricSummary(diseaseAreaId, filters, clientId);
+      return requireClientId(reply, () => insightsReportService.getSociometricSummary(diseaseAreaId, filters, clientId));
     }
   );
 

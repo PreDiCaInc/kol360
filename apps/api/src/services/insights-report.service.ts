@@ -62,18 +62,32 @@ const INFLUENCER_THRESHOLDS = {
 type AnalysisScoreRow = Prisma.HcpAnalysisScoreGetPayload<object>;
 type ObjectiveRow = Prisma.HcpDiseaseAreaScoreGetPayload<object>;
 
+/**
+ * Thrown by analysis-backed read methods when clientId is omitted. The route
+ * layer catches this and returns 400. Replaces the prior silent-zero
+ * behavior where an omitted clientId looked indistinguishable from "this
+ * (client, DA) has no analysis configured" — that ambiguity hid 5 latent
+ * prop-forwarding bugs on the Insights Dashboard for ~2 months.
+ */
+export class MissingClientIdError extends Error {
+  constructor() {
+    super('clientId is required for analysis-backed insights endpoints');
+    this.name = 'MissingClientIdError';
+  }
+}
+
 export class InsightsReportService {
   /**
    * Resolve the curated KolAnalysis for a (client, disease area).
-   * Returns null when not configured — clientId is REQUIRED (platform-admin
-   * "all clients" must select a client; a cross-client view is just a
-   * dedicated aggregate-client analysis). Callers render "not configured".
+   * Throws MissingClientIdError when clientId is absent (programming error;
+   * route maps it to 400). Returns null when clientId is present but no
+   * analysis exists — callers render "not configured".
    */
   private async resolveAnalysis(
     clientId: string | undefined,
     diseaseAreaId: string
   ): Promise<{ id: string } | null> {
-    if (!clientId) return null;
+    if (!clientId) throw new MissingClientIdError();
     return prisma.kolAnalysis.findUnique({
       where: { clientId_diseaseAreaId: { clientId, diseaseAreaId } },
       select: { id: true },
