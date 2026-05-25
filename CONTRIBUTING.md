@@ -7,6 +7,33 @@ This file is the subset that every contributor should know.
 
 ---
 
+## Documentation layout
+
+The repo root holds only docs that are **actively load-bearing**
+(`README`, `CONTRIBUTING`, `DEPLOYMENT`, `TEST`) or tied to the
+**current** release cycle (`prod-rel-X.Y.Z-*` for whatever's
+deploying/soaking, plus the always-current
+`prod-team-deploy-guidance.md`). Everything else lives under `docs/`:
+
+| Folder | What's in it |
+|---|---|
+| `docs/releases/` | Historical `prod-rel-X.Y.Z-handoff.md` + `-soak-checks.md` pairs. Each pair captures *what shipped + what to watch*. |
+| `docs/plans/` | Completed planning docs — feature plans, teardown plans, cutover runbooks. |
+| `docs/findings/` | Bug investigations + landmines documented but not yet acted on. |
+| `docs/team-notes/` | Snapshot communications with the prod team. |
+
+**Convention:** release docs **stay at root while current** (currently
+soaking, or queued for deploy). Once superseded, they move to
+`docs/releases/` so the root stays scannable. When moving a file,
+update any cross-references — `prod-team-deploy-guidance.md` at the
+root commonly links into `docs/releases/`; keep those paths in sync.
+
+Note: `docs/` itself is gitignored to keep local working files out of
+the repo; files moved here via `git mv` from previously-tracked
+locations stay tracked (git's "tracked-trumps-ignore" behavior).
+
+---
+
 ## When the migration adds a constraint (CHECK / UNIQUE / FK)
 
 **A migration that adds a constraint is not done until two paired tests

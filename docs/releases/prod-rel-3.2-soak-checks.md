@@ -224,4 +224,4 @@ Recommend: **3-5 business days** with all of these holding:
 - Phase C shows no novel errors over the window
 - No customer-reported issues with HCP forms, nominations, or sub-specialty filter
 
-Then Phase 3 teardown is unblocked per [phase-3-teardown-plan.md](phase-3-teardown-plan.md).
+Then Phase 3 teardown is unblocked per [phase-3-teardown-plan.md](../plans/phase-3-teardown-plan.md).
