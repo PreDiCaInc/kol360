@@ -1,8 +1,10 @@
 # Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1.1 + prod-rel-4.1.2
 
-> **2026-05-25 update — P1 hotfix in 4.1.3:** every HCP CSV upload has been crashing with 503 since the 4.1.1 deploy on 2026-05-22. Multiple admins blocked. **`prod-rel-4.1.3` (v1.17.2)** is now tagged + verified on test — **please deploy ahead of the 4.1.2 soak schedule.** See the "prod-rel-4.1.3 patch release" section at the bottom (the 4.1.2 section above it is now historical — 4.1.3 supersedes it and bundles 4.1.2 forward).
+> **2026-05-25 update — `prod-rel-4.1.4` (v1.17.3) ready:** UI-only patch on the Insights surface — Clear filters reworked + applied to all 5 filter bars (2 of which had no Clear button at all), sidebar nav reorganized so the previously-disabled Insights link is now live under a "KOL Insights" collapsible parent. No backend changes, no migrations, low-risk 1-2 day soak. See the "prod-rel-4.1.4 patch release" section at the bottom. **Bundles 4.1.3 + 4.1.2 forward** — deploying 4.1.4 deploys the full ladder.
 >
-> _Earlier 2026-05-22 update: prod-rel-4.0 + prod-rel-4.1.1 LIVE + soaking; 4.1.2 (v1.17.1) was tagged with 3 small fixes — see section below._
+> _Earlier 2026-05-25: P1 hotfix `prod-rel-4.1.3` (v1.17.2) shipped — HCP CSV upload had been 503-ing every upload since 4.1.1. Section retained below._
+>
+> _2026-05-22: prod-rel-4.0 + prod-rel-4.1.1 LIVE + soaking; 4.1.2 (v1.17.1) tagged with 3 small fixes; supersession history kept in sections below._
 
 **Two tags queued for prod. Deploy in this order.** Both complete the Phase 3 arc (campaign-scoring teardown → KOL Analysis as the singular scoring surface). After both ship + soak, no further releases queued.
 
@@ -17,7 +19,7 @@
 - **What's removed:** Campaign-level scoring endpoints (`/score-config`, `/scores/calculate-*`, `/hcps/recalculate-composites`), the per-campaign Score Config + Survey Scores workflow steps, the `Recalculate Composites` button on `/admin/hcps/scores`.
 - **What's preserved:** `CompositeScoreConfig` table + the 4 vestigial computed columns on `HcpCampaignScore` / `HcpDiseaseAreaScore` still exist in PR A — that's intentional. Code-only PR is reversible (redeploy v1.15.31 and everything works). The schema drops come in PR B.
 - **Customer-facing change:** `/admin/campaigns/[id]/scores` returns a redirect to `/admin/kol-analysis` (polite, lossless).
-- **Soak guidance:** [prod-rel-4.0-soak-checks.md](prod-rel-4.0-soak-checks.md) — 3-phase checklist. Recommend a brief soak (1-2 days) before moving to 4.1.1.
+- **Soak guidance:** [prod-rel-4.0-soak-checks.md](docs/releases/prod-rel-4.0-soak-checks.md) — 3-phase checklist. Recommend a brief soak (1-2 days) before moving to 4.1.1.
 
 ### Step 2 — prod-rel-4.1.1 (v1.17.0) — Phase 3 PR B + v1.15.32, schema drops, IRREVERSIBLE
 
@@ -37,7 +39,7 @@
   - Replace `Hcp_specialty_not_role_form` blacklist CHECK with strict `Hcp_specialty_check` whitelist (`Optometry` / `Ophthalmology` / NULL only)
 - **What's preserved:** The 8 objective columns on `HcpDiseaseAreaScore` (`scorePublications` etc.) stay — they're canonical objective-score storage still actively populated by segment CSV import.
 - **Customer-facing change worth signaling to the customer team in advance:** lite-client portal repointed from disease-area-wide averages (old `publishScores()` averaging) to per-`(client, DA)` KOL Analysis scores (pooled normalization + per-analysis weights). **Composite + survey numbers will shift.** This is the more accurate value — customers see their analysis with their weights — but it's a visible behavior change.
-- **Soak guidance:** [prod-rel-4.1.1-soak-checks.md](prod-rel-4.1.1-soak-checks.md) — 3-phase checklist. Recommend 5-7 business days for the irreversible release.
+- **Soak guidance:** [prod-rel-4.1.1-soak-checks.md](docs/releases/prod-rel-4.1.1-soak-checks.md) — 3-phase checklist. Recommend 5-7 business days for the irreversible release.
 
 ---
 
@@ -99,12 +101,12 @@ For prod-rel-4.1.1 specifically: rollout-window risk is **lower than 3.3** becau
 
 | Tag | Version | Risk | Migrations | Soak doc |
 |---|---|---|---|---|
-| `prod-rel-4.0` | v1.16.0 | Code-only, reversible | None | [prod-rel-4.0-soak-checks.md](prod-rel-4.0-soak-checks.md) |
-| `prod-rel-4.1.1` | v1.17.0 | **Irreversible** schema drops | 2 in chronological order | [prod-rel-4.1.1-soak-checks.md](prod-rel-4.1.1-soak-checks.md) |
+| `prod-rel-4.0` | v1.16.0 | Code-only, reversible | None | [prod-rel-4.0-soak-checks.md](docs/releases/prod-rel-4.0-soak-checks.md) |
+| `prod-rel-4.1.1` | v1.17.0 | **Irreversible** schema drops | 2 in chronological order | [prod-rel-4.1.1-soak-checks.md](docs/releases/prod-rel-4.1.1-soak-checks.md) |
 
 Handoff docs with more detail:
-- [prod-rel-4.0-handoff.md](prod-rel-4.0-handoff.md)
-- [prod-rel-4.1.1-handoff.md](prod-rel-4.1.1-handoff.md)
+- [prod-rel-4.0-handoff.md](docs/releases/prod-rel-4.0-handoff.md)
+- [prod-rel-4.1.1-handoff.md](docs/releases/prod-rel-4.1.1-handoff.md)
 
 After 4.1.1 soaks: Phase 3 arc is done. Then deploy `prod-rel-4.1.2` for the 4 patch fixes (see below).
 
@@ -152,11 +154,39 @@ Worth a check at the cutover review gate per release.
 
 | Tag | Version | Risk | Migrations | Soak doc |
 |---|---|---|---|---|
-| `prod-rel-4.0` | v1.16.0 | Code-only, reversible | None | [prod-rel-4.0-soak-checks.md](prod-rel-4.0-soak-checks.md) |
+| `prod-rel-4.0` | v1.16.0 | Code-only, reversible | None | [prod-rel-4.0-soak-checks.md](docs/releases/prod-rel-4.0-soak-checks.md) |
 | `prod-rel-4.1` | (fossil) | — | — | (do not deploy) |
-| `prod-rel-4.1.1` | v1.17.0 | Irreversible schema drops | 2 in chronological order | [prod-rel-4.1.1-soak-checks.md](prod-rel-4.1.1-soak-checks.md) |
+| `prod-rel-4.1.1` | v1.17.0 | Irreversible schema drops | 2 in chronological order | [prod-rel-4.1.1-soak-checks.md](docs/releases/prod-rel-4.1.1-soak-checks.md) |
 | `prod-rel-4.1.2` | v1.17.1 | Code-only, reversible | None | [prod-rel-4.1.2-soak-checks.md](prod-rel-4.1.2-soak-checks.md) |
-| **`prod-rel-4.1.3`** | **v1.17.2** | **Code-only, reversible — P1 hotfix** | **None** | [prod-rel-4.1.3-soak-checks.md](prod-rel-4.1.3-soak-checks.md) |
+| `prod-rel-4.1.3` | v1.17.2 | Code-only, reversible — P1 hotfix | None | [prod-rel-4.1.3-soak-checks.md](prod-rel-4.1.3-soak-checks.md) |
+| **`prod-rel-4.1.4`** | **v1.17.3** | **UI-only, reversible** | **None** | [prod-rel-4.1.4-soak-checks.md](prod-rel-4.1.4-soak-checks.md) |
+
+---
+
+## prod-rel-4.1.4 (v1.17.3) — Insights UI rework: Clear filters consistency + KOL Insights nav grouping
+
+**Status:** Ready for prod deploy. UI-only, low risk.
+- **Tag:** `prod-rel-4.1.4` → commit on `main` (cut after the docs PR merges)
+- **Handoff doc:** [prod-rel-4.1.4-handoff.md](prod-rel-4.1.4-handoff.md)
+- **Soak doc:** [prod-rel-4.1.4-soak-checks.md](prod-rel-4.1.4-soak-checks.md) — 2-phase checklist, recommend **1-2 day soak**
+- **Bundles forward:** all of 4.1.3 + 4.1.2 (deploy 4.1.4 directly — no need to step through)
+
+No migrations. No backend changes. Reversible (redeploy 4.1.3 if anything regresses).
+
+### What's in it
+
+1. **Insights "Clear filters" rework** (customer feedback — second recurrence)
+   - New shared `FilterClearControls` component (`apps/web/src/components/insights/shared/filter-clear-controls.tsx`): prominent right-anchored Clear button with count badge + removable chip row below the filter inputs.
+   - Applied consistently to all 5 insights filter bars: global filters, Demographics, Dynamic Benchmarking, Total Weighted Score (KOL Explorer), Sociometric Leaders. The last two had **no Clear button at all** before 4.1.4.
+
+2. **Sidebar nav — KOL Insights grouping**
+   - Disabled "Insights" link now enabled.
+   - "Insights" + "KOL Analyses" grouped under a new collapsible "KOL Insights" parent with verb-pair children ("View" → `/admin/dashboards`, "Configure" → `/admin/kol-analysis`). Resolves the long-standing naming clash with the top-level "Dashboard" (program overview).
+   - CLIENT_ADMIN sees View only — Configure is platform-admin territory.
+
+### Migrations: **none**
+
+Code-only patch. Reversible (redeploy 4.1.3).
 
 ---
 

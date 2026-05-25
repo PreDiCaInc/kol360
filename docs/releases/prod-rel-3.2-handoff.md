@@ -50,7 +50,7 @@ Rollback criteria + procedure: in the same doc.
 
 ## Related — heads-up (no action needed from you)
 
-While sweeping for the same class of bug in other migrations, found **`20241225_add_specialty_model`** has the same UUID-shaped seed pattern for `Specialty.id` + `HcpSpecialty.id`. **Latent — not biting today** (no Zod validator targets `specialtyId`, swept 35 sites). Captured as a known landmine in [`latent-cuid-bugs-finding.md`](latent-cuid-bugs-finding.md). The heal will fold into the upcoming **Phase 3 PR A** (`20260520_heal_specialty_cuid_ids/migration.sql`) — same `pg_temp.cuid_like()` HEAL pattern, ~2-5 rows touched on prod. You'll see that come through when we ship Phase 3 (campaign-scoring teardown) — no rush, no separate hotfix, riding on the Phase 3 ship.
+While sweeping for the same class of bug in other migrations, found **`20241225_add_specialty_model`** has the same UUID-shaped seed pattern for `Specialty.id` + `HcpSpecialty.id`. **Latent — not biting today** (no Zod validator targets `specialtyId`, swept 35 sites). Captured as a known landmine in [`latent-cuid-bugs-finding.md`](../findings/latent-cuid-bugs-finding.md). The heal will fold into the upcoming **Phase 3 PR A** (`20260520_heal_specialty_cuid_ids/migration.sql`) — same `pg_temp.cuid_like()` HEAL pattern, ~2-5 rows touched on prod. You'll see that come through when we ship Phase 3 (campaign-scoring teardown) — no rush, no separate hotfix, riding on the Phase 3 ship.
 
 ## Next on our side (in parallel with your soak)
 
