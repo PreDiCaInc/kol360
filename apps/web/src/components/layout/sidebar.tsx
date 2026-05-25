@@ -82,17 +82,27 @@ const platformAdminNavigation: NavItem[] = [
     ],
   },
   {
-    title: 'Insights',
-    href: '/admin/dashboards',
+    // v1.17.3: grouped parent (was: two flat items — 'Insights' (disabled)
+    // and 'KOL Analyses'). Top-level 'Dashboard' (/admin) is the program
+    // overview and stays put; this groups the per-disease-area analytics
+    // surface (View) with its underlying analysis configuration (Configure).
+    // Verb-pair children = clearest mental model ("am I looking or editing?").
+    title: 'KOL Insights',
     icon: BarChart3,
+    collapsible: true,
     roles: ['PLATFORM_ADMIN'],
-    disabled: true,
-  },
-  {
-    title: 'KOL Analyses',
-    href: '/admin/kol-analysis',
-    icon: BarChart3,
-    roles: ['PLATFORM_ADMIN'],
+    children: [
+      {
+        title: 'View',
+        href: '/admin/dashboards',
+        icon: BarChart3,
+      },
+      {
+        title: 'Configure',
+        href: '/admin/kol-analysis',
+        icon: BarChart3,
+      },
+    ],
   },
   {
     title: 'Users',
@@ -120,10 +130,19 @@ const clientAdminNavigation: NavItem[] = [
     icon: Megaphone,
   },
   {
-    title: 'Insights',
-    href: '/admin/dashboards',
+    // v1.17.3: CLIENT_ADMIN sees the View child only — analysis configuration
+    // is platform-admin territory. Keeping the same KOL Insights parent for
+    // consistency with the platform-admin sidebar.
+    title: 'KOL Insights',
     icon: BarChart3,
-    disabled: true,
+    collapsible: true,
+    children: [
+      {
+        title: 'View',
+        href: '/admin/dashboards',
+        icon: BarChart3,
+      },
+    ],
   },
   {
     title: 'Users',

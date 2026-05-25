@@ -37,6 +37,27 @@ import { BarDistributionChart } from '@/components/insights/charts/bar-distribut
 import { useKolExplorer, useKolProfile, useInsightsFilterOptions, useKolNominationMetadata } from '@/hooks/use-insights-report';
 import { useExcelExport } from '@/lib/excel-export';
 import type { InsightsFilterInput, KolExplorerItem, NominationType } from '@kol360/shared';
+import {
+  ActiveFilter,
+  ClearFiltersButton,
+  ActiveFilterChips,
+} from '@/components/insights/shared/filter-clear-controls';
+
+// Score filter keys (mirror the suffixes in score-range-filter.tsx). Kept
+// here so the activeFilters builder doesn't have to know about every score
+// dimension by name twice.
+const SCORE_FILTER_KEYS = [
+  'scorePublications',
+  'scoreTradePubs',
+  'scoreOrgLeadership',
+  'scoreOrgAwards',
+  'scoreClinicalTrials',
+  'scoreConference',
+  'scoreSocialMedia',
+  'scoreMediaPodcasts',
+  'scoreSurvey',
+  'compositeScore',
+] as const;
 
 interface Props {
   diseaseAreaId: string;
@@ -113,6 +134,69 @@ function ScoreTableView({
 
   const { data, isLoading } = useKolExplorer(diseaseAreaId, apiFilters, clientId);
   const { status: excelExportStatus, exportExcel } = useExcelExport();
+
+  // v1.17.3: Clear filters was missing from this surface entirely —
+  // customers with active filters had no way to reset without page
+  // refresh. Feeds the shared FilterClearControls used everywhere in
+  // insights now.
+  const activeFilters = useMemo<ActiveFilter[]>(() => {
+    const entries: ActiveFilter[] = [];
+    if (filters.search) {
+      entries.push({
+        key: 'search',
+        label: `Search: "${filters.search}"`,
+        onRemove: () => setFilters((prev) => ({ ...prev, search: undefined, page: 1 })),
+      });
+    }
+    for (const s of selectedSpecialties) {
+      entries.push({
+        key: `spec-${s}`,
+        label: `Specialty: ${s}`,
+        onRemove: () => setSelectedSpecialties((prev) => prev.filter((x) => x !== s)),
+      });
+    }
+    for (const s of selectedStates) {
+      entries.push({
+        key: `state-${s}`,
+        label: `State: ${s}`,
+        onRemove: () => setSelectedStates((prev) => prev.filter((x) => x !== s)),
+      });
+    }
+    for (const t of selectedInfluencerTypes) {
+      entries.push({
+        key: `type-${t}`,
+        label: `Type: ${t}`,
+        onRemove: () => setSelectedInfluencerTypes((prev) => prev.filter((x) => x !== t)),
+      });
+    }
+    for (const key of SCORE_FILTER_KEYS) {
+      const minKey = `${key}Min` as keyof InsightsFilterInput;
+      const maxKey = `${key}Max` as keyof InsightsFilterInput;
+      const min = filters[minKey];
+      const max = filters[maxKey];
+      if (min === undefined && max === undefined) continue;
+      entries.push({
+        key: `${key}-range`,
+        label: `${key}: ${min ?? 0}–${max ?? 100}`,
+        onRemove: () =>
+          setFilters((prev) => ({ ...prev, [minKey]: undefined, [maxKey]: undefined, page: 1 })),
+      });
+    }
+    return entries;
+  }, [filters, selectedSpecialties, selectedStates, selectedInfluencerTypes]);
+
+  const handleClearAllFilters = useCallback(() => {
+    setFilters((prev) => ({
+      // Preserve sort + pagination; only reset filter values + jump to page 1.
+      page: 1,
+      limit: prev.limit,
+      sortBy: prev.sortBy,
+      sortOrder: prev.sortOrder,
+    }));
+    setSelectedSpecialties([]);
+    setSelectedStates([]);
+    setSelectedInfluencerTypes([]);
+  }, []);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilters((prev) => ({ ...prev, search: e.target.value, page: 1 }));
@@ -193,25 +277,29 @@ function ScoreTableView({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div>
           <h2 className="text-xl font-bold">KOL Weighted Score Table</h2>
           <p className="text-sm text-muted-foreground">
             All KOLs with their 9-dimension scores and total weighted score. Click a name to view profile.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleExportExcel}
-          disabled={!data?.items.length || excelExportStatus === 'exporting'}
-        >
-          {excelExportStatus === 'success' ? (
-            <><Check className="h-4 w-4 mr-2 text-green-600" />Exported!</>
-          ) : (
-            <><FileSpreadsheet className="h-4 w-4 mr-2" />Export Excel</>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* v1.17.3: Clear filters surfaced for the first time on this tab. */}
+          <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAllFilters} />
+          <Button
+            variant="outline"
+            size="default"
+            onClick={handleExportExcel}
+            disabled={!data?.items.length || excelExportStatus === 'exporting'}
+          >
+            {excelExportStatus === 'success' ? (
+              <><Check className="h-4 w-4 mr-2 text-green-600" />Exported!</>
+            ) : (
+              <><FileSpreadsheet className="h-4 w-4 mr-2" />Export Excel</>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -244,6 +332,8 @@ function ScoreTableView({
           placeholder="All Types"
         />
       </div>
+
+      <ActiveFilterChips filters={activeFilters} />
 
       {/* Score Range Filters */}
       <div>

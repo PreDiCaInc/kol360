@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -13,6 +13,11 @@ import { SortableHeader } from '@/components/insights/shared/sortable-header';
 import { HeatMapCell } from '@/components/insights/shared/heat-map-cell';
 import { KolNameLink } from '@/components/insights/shared/kol-name-link';
 import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
+import {
+  ActiveFilter,
+  ClearFiltersButton,
+  ActiveFilterChips,
+} from '@/components/insights/shared/filter-clear-controls';
 import type { InsightsFilterInput } from '@kol360/shared';
 import { cn } from '@/lib/utils';
 
@@ -91,6 +96,60 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     setPage(1);
   };
 
+  // v1.17.3: Clear filters added (was missing). Search + 3 multi-selects.
+  const activeFilters = useMemo<ActiveFilter[]>(() => {
+    const entries: ActiveFilter[] = [];
+    if (search.trim()) {
+      entries.push({
+        key: 'search',
+        label: `Search: "${search}"`,
+        onRemove: () => {
+          setSearch('');
+          setPage(1);
+        },
+      });
+    }
+    for (const s of selectedSpecialties) {
+      entries.push({
+        key: `spec-${s}`,
+        label: `Specialty: ${s}`,
+        onRemove: () => {
+          setSelectedSpecialties((prev) => prev.filter((x) => x !== s));
+          setPage(1);
+        },
+      });
+    }
+    for (const s of selectedStates) {
+      entries.push({
+        key: `state-${s}`,
+        label: `State: ${s}`,
+        onRemove: () => {
+          setSelectedStates((prev) => prev.filter((x) => x !== s));
+          setPage(1);
+        },
+      });
+    }
+    for (const t of selectedInfluencerTypes) {
+      entries.push({
+        key: `type-${t}`,
+        label: `Type: ${t}`,
+        onRemove: () => {
+          setSelectedInfluencerTypes((prev) => prev.filter((x) => x !== t));
+          setPage(1);
+        },
+      });
+    }
+    return entries;
+  }, [search, selectedSpecialties, selectedStates, selectedInfluencerTypes]);
+
+  const handleClearAllFilters = useCallback(() => {
+    setSearch('');
+    setSelectedSpecialties([]);
+    setSelectedStates([]);
+    setSelectedInfluencerTypes([]);
+    setPage(1);
+  }, []);
+
   // Export ALL: fetch with limit=5000 then export
   const handleExportAll = useCallback(() => {
     if (!data?.items.length) return;
@@ -145,31 +204,35 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
   return (
     <Card className="shadow-md rounded-xl">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div>
             <CardTitle className="text-lg font-bold">Sociometric Leaders</CardTitle>
             <CardDescription>
               Master table of all KOLs with nomination counts by type
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportAll}
-            disabled={!items.length || excelExportStatus === 'exporting'}
-          >
-            {excelExportStatus === 'success' ? (
-              <>
-                <Check className="h-4 w-4 mr-2 text-green-600" />
-                Exported!
-              </>
-            ) : (
-              <>
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
-                Export Excel
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* v1.17.3: Clear filters surfaced for the first time on this tab. */}
+            <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAllFilters} />
+            <Button
+              variant="outline"
+              size="default"
+              onClick={handleExportAll}
+              disabled={!items.length || excelExportStatus === 'exporting'}
+            >
+              {excelExportStatus === 'success' ? (
+                <>
+                  <Check className="h-4 w-4 mr-2 text-green-600" />
+                  Exported!
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Export Excel
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -203,6 +266,8 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
             placeholder="All Influencer Types"
           />
         </div>
+
+        <ActiveFilterChips filters={activeFilters} />
 
         {/* Table */}
         <div className="rounded-md border overflow-x-auto">
