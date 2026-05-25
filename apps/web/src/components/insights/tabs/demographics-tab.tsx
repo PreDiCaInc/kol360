@@ -216,15 +216,19 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
         <div className="flex items-center gap-2 mb-3 text-sm font-medium text-muted-foreground">
           <Filter className="h-4 w-4" />
           <span>Demographic Filters</span>
+          {/* v1.17.2: matches the v1.17.1 global-filters fix — outline
+              variant + explicit "Clear filters" label so customers can find
+              it. ghost+muted-foreground+"Clear All" was invisible (same
+              feedback class). */}
           {hasActiveFilters && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={handleClearAll}
-              className="ml-2 text-muted-foreground hover:text-foreground h-7 px-2"
+              className="ml-2 h-7 px-2"
             >
               <X className="h-3 w-3 mr-1" />
-              Clear All
+              Clear filters
             </Button>
           )}
           {isLoading && (

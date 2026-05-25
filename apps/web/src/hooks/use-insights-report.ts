@@ -46,7 +46,10 @@ interface FilterOptions {
 }
 
 /**
- * Get summary stats for a disease area
+ * Get summary stats for a disease area.
+ * Analysis-backed: backend requires clientId (returns 400 otherwise). Hook
+ * gates on clientId so the dashboard's "select a client" state doesn't fire
+ * a useless request.
  */
 export function useInsightsSummary(diseaseAreaId: string, clientId?: string) {
   const params = new URLSearchParams();
@@ -57,19 +60,24 @@ export function useInsightsSummary(diseaseAreaId: string, clientId?: string) {
     queryKey: ['insights-summary', diseaseAreaId, clientId],
     queryFn: () =>
       apiClient.get<InsightsSummary>(`/api/v1/insights/${diseaseAreaId}/summary${qs ? '?' + qs : ''}`),
-    enabled: !!diseaseAreaId,
+    enabled: !!diseaseAreaId && !!clientId,
   });
 }
 
 /**
- * Get KOL Explorer data - paginated list of all KOLs with their scores
+ * Get KOL Explorer data - paginated list of all KOLs with their scores.
+ * Analysis-backed: backend requires clientId. clientId is a typed parameter
+ * (not buried in filters) to match the rest of the insights hook cluster
+ * and to make missing-clientId a TypeScript-visible mistake.
  */
 export function useKolExplorer(
   diseaseAreaId: string,
-  filters: Partial<InsightsFilterInput> = {}
+  filters: Partial<InsightsFilterInput> = {},
+  clientId?: string
 ) {
   // Build query params from filters
   const params = new URLSearchParams();
+  if (clientId) params.append('clientId', clientId);
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       params.append(key, String(value));
@@ -77,18 +85,19 @@ export function useKolExplorer(
   });
 
   return useQuery({
-    queryKey: ['kol-explorer', diseaseAreaId, filters],
+    queryKey: ['kol-explorer', diseaseAreaId, filters, clientId],
     queryFn: () =>
       apiClient.get<KolExplorerResponse>(
         `/api/v1/insights/${diseaseAreaId}/kol-explorer?${params.toString()}`
       ),
-    enabled: !!diseaseAreaId,
+    enabled: !!diseaseAreaId && !!clientId,
     staleTime: 30000, // 30 seconds
   });
 }
 
 /**
- * Get leader rankings by nomination type
+ * Get leader rankings by nomination type.
+ * Analysis-backed: backend requires clientId.
  */
 export function useLeaderRankings(
   diseaseAreaId: string,
@@ -111,13 +120,14 @@ export function useLeaderRankings(
       apiClient.get<LeaderRankingsResponse>(
         `/api/v1/insights/${diseaseAreaId}/leader-rankings?${params.toString()}`
       ),
-    enabled: !!diseaseAreaId,
+    enabled: !!diseaseAreaId && !!clientId,
     staleTime: 30000,
   });
 }
 
 /**
- * Get individual KOL profile with all scores, nomination counts, and nominator details
+ * Get individual KOL profile with all scores, nomination counts, and nominator details.
+ * Analysis-backed: backend requires clientId.
  */
 export function useKolProfile(diseaseAreaId: string, hcpId: string | null, clientId?: string) {
   const params = new URLSearchParams();
@@ -130,13 +140,14 @@ export function useKolProfile(diseaseAreaId: string, hcpId: string | null, clien
       apiClient.get<KolProfileWithNominators>(
         `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}${qs ? '?' + qs : ''}`
       ),
-    enabled: !!diseaseAreaId && !!hcpId,
+    enabled: !!diseaseAreaId && !!hcpId && !!clientId,
     staleTime: 60000,
   });
 }
 
 /**
- * Get sociometric summary - master table with all nomination counts
+ * Get sociometric summary - master table with all nomination counts.
+ * Analysis-backed: backend requires clientId.
  */
 export function useSociometricSummary(
   diseaseAreaId: string,
@@ -157,7 +168,7 @@ export function useSociometricSummary(
       apiClient.get<SociometricSummaryResponse>(
         `/api/v1/insights/${diseaseAreaId}/sociometric-summary?${params.toString()}`
       ),
-    enabled: !!diseaseAreaId,
+    enabled: !!diseaseAreaId && !!clientId,
     staleTime: 30000,
   });
 }

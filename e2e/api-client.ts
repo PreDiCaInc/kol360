@@ -304,6 +304,37 @@ export class ApiClient {
   }
 
   /**
+   * General HCP CSV import (NOT campaign-scoped). Uploads to /api/v1/hcps/import
+   * which goes through HcpService.importFromFile() — the same code path that
+   * had the v1.17.0 503 regression. Returns { total, created, updated, merged,
+   * errors[] }.
+   */
+  async importHcps(csvContent: string, filename: string = 'hcps.csv') {
+    const url = `${this.baseUrl}/api/v1/hcps/import`;
+    const formData = new FormData();
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    formData.append('file', blob, filename);
+
+    const headers: Record<string, string> = {};
+    if (this.authToken) headers['Authorization'] = `Bearer ${this.authToken}`;
+
+    const response = await fetch(url, { method: 'POST', headers, body: formData });
+    let data: {
+      total: number;
+      created: number;
+      updated: number;
+      merged: number;
+      errors: Array<{ row: number; error: string }>;
+    };
+    try {
+      data = await response.json();
+    } catch {
+      data = { total: 0, created: 0, updated: 0, merged: 0, errors: [] };
+    }
+    return { status: response.status, data };
+  }
+
+  /**
    * Import segment scores (objective HCP × DiseaseArea scores). Multipart file
    * upload with diseaseAreaId as a query param. Returns counts incl. `deduped`
    * which is the count of within-file (hcpId, diseaseAreaId) duplicates that
@@ -920,6 +951,7 @@ export class ApiClient {
     nominationType?: string;
     specialty?: string;
     state?: string;
+    clientId?: string;
     page?: number;
     limit?: number;
   }) {
@@ -927,14 +959,16 @@ export class ApiClient {
     if (params?.nominationType) query.set('nominationType', params.nominationType);
     if (params?.specialty) query.set('specialty', params.specialty);
     if (params?.state) query.set('state', params.state);
+    if (params?.clientId) query.set('clientId', params.clientId);
     if (params?.page) query.set('page', params.page.toString());
     if (params?.limit) query.set('limit', params.limit.toString());
     const queryStr = query.toString() ? `?${query.toString()}` : '';
     return this.request<LeaderRankings>('GET', `/api/v1/insights/${diseaseAreaId}/leader-rankings${queryStr}`);
   }
 
-  async getInsightsKolProfile(diseaseAreaId: string, hcpId: string) {
-    return this.request<KolProfile>('GET', `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}`);
+  async getInsightsKolProfile(diseaseAreaId: string, hcpId: string, clientId?: string) {
+    const qs = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
+    return this.request<KolProfile>('GET', `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}${qs}`);
   }
 
   async getInsightsKolExplorer(diseaseAreaId: string, params?: {
@@ -962,6 +996,7 @@ export class ApiClient {
     search?: string;
     specialty?: string;
     state?: string;
+    clientId?: string;
     page?: number;
     limit?: number;
   }) {
@@ -969,6 +1004,7 @@ export class ApiClient {
     if (params?.search) query.set('search', params.search);
     if (params?.specialty) query.set('specialty', params.specialty);
     if (params?.state) query.set('state', params.state);
+    if (params?.clientId) query.set('clientId', params.clientId);
     if (params?.page) query.set('page', params.page.toString());
     if (params?.limit) query.set('limit', params.limit.toString());
     const queryStr = query.toString() ? `?${query.toString()}` : '';

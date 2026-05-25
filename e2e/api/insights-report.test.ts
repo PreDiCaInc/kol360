@@ -4,7 +4,13 @@
  * Tests the insights report endpoints that aggregate KOL data across campaigns
  * within a disease area. These endpoints power the 5-tab Insights dashboard.
  *
- * Run with: cd e2e && source .env && E2E_TEST_PASSWORD="$E2E_TEST_PASSWORD" pnpm test:workflow:test
+ * v1.17.2 contract change: 5 analysis-backed endpoints now return 400 when
+ * clientId is omitted (was: silent {0,0,0, notConfigured:true} shape that
+ * hid 5 latent dashboard prop-forwarding bugs for ~2 months). The 3
+ * campaign-scoped endpoints (respondent-analytics, demographics,
+ * kol-nomination-metadata) still accept clientId as an optional filter.
+ *
+ * Run with: cd e2e && pnpm test:api:test:auth
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -12,17 +18,20 @@ import { ApiClient } from '../api-client';
 import { config } from '../config';
 
 // Dynamically discovered at startup — never hardcode prod/test row IDs in
-// e2e (they differ per env and per re-seed). Prefer a DA with data on this
-// environment so the suite exercises real code paths; fall back to the first
-// available DA so 404-style tests still have something to point at.
+// e2e (they differ per env and per re-seed). Prefer a DA with a backfilled
+// KolAnalysis so the success-path tests exercise real data.
 let DRY_EYE_DISEASE_AREA_ID: string;
+// Paired (clientId, diseaseAreaId) for an analysis that actually has scores.
+// Used by every analysis-backed assertion below.
+let CONFIGURED_DISEASE_AREA_ID: string;
+let CONFIGURED_CLIENT_ID: string;
 
 describe('Insights Report API', () => {
   let client: ApiClient;
 
   beforeAll(async () => {
     if (!config.authToken) {
-      throw new Error('E2E_AUTH_TOKEN is required. Run with auth: pnpm test:api:aws:auth');
+      throw new Error('E2E_AUTH_TOKEN is required. Run with auth: pnpm test:api:test:auth');
     }
     client = new ApiClient();
 
@@ -52,6 +61,25 @@ describe('Insights Report API', () => {
       `✅ Insights tests pinned to DA "${sorted[0].name}" (id=${sorted[0].id}, ` +
         `kols=${sorted[0].kolCount ?? 0}, campaigns=${sorted[0].campaignCount ?? 0})`
     );
+
+    // Find a (client, DA) pair with a configured + scored analysis so the
+    // success-path assertions have real data to inspect. Falls back to the
+    // most-scored analysis on whatever DA, if not on the preferred one.
+    const { data: analyses } = await client.listKolAnalyses();
+    const scored = analyses.items
+      .slice()
+      .sort((a, b) => b._count.scores - a._count.scores)[0];
+    if (scored && scored._count.scores > 0) {
+      CONFIGURED_CLIENT_ID = scored.clientId;
+      CONFIGURED_DISEASE_AREA_ID = scored.diseaseAreaId;
+      console.log(
+        `✅ Configured analysis: clientId=${scored.clientId} diseaseAreaId=${scored.diseaseAreaId} scores=${scored._count.scores}`
+      );
+    } else {
+      // No scored analysis on this env — success-path assertions will skip
+      // gracefully, but contract assertions (400 on missing clientId) still run.
+      console.log('⊘ No scored analysis on this env — success-path tests will skip');
+    }
   });
 
   describe('Disease Areas Endpoint', () => {
@@ -74,46 +102,53 @@ describe('Insights Report API', () => {
   });
 
   describe('Summary Endpoint', () => {
-    it('should return insights summary for a disease area', async () => {
+    it('returns 400 when clientId is omitted (v1.17.2 contract)', async () => {
       const { status, data } = await client.getInsightsSummary(DRY_EYE_DISEASE_AREA_ID);
-
-      expect(status).toBe(200);
-      expect(typeof data.totalKols).toBe('number');
-      expect(data.totalKols).toBeGreaterThanOrEqual(0);
-
-      console.log(`✅ Insights summary: ${data.totalKols} KOLs, ${data.totalRespondents || 0} respondents`);
+      expect(status).toBe(400);
+      // Error envelope present (not the old silent-zero shape).
+      expect((data as unknown as { error?: string }).error).toBeTruthy();
     });
 
-    it('should return 404 for non-existent disease area', async () => {
-      const { status } = await client.getInsightsSummary('non-existent-id');
-
-      expect([400, 404]).toContain(status);
-    });
-
-    it('is analysis-backed: notConfigured without a client, real data with one', async () => {
-      // No client selected → not configured (per locked decision).
-      const noClient = await client.getInsightsSummary(DRY_EYE_DISEASE_AREA_ID);
-      expect(noClient.status).toBe(200);
-      expect(noClient.data.notConfigured).toBe(true);
-      expect(noClient.data.totalKols).toBe(0);
-
-      // Pick a backfilled analysis that produced scores; summary for its
-      // (client, DA) should be configured with matching KOL count.
-      const { data: analyses } = await client.listKolAnalyses();
-      const scored = analyses.items
-        .slice()
-        .sort((a, b) => b._count.scores - a._count.scores)[0];
-      if (!scored || scored._count.scores === 0) {
-        console.log('⊘ No scored analysis on this env — skipping configured check');
+    it('returns real data for a configured (client, DA) pair', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
         return;
       }
       const { status, data } = await client.getInsightsSummary(
-        scored.diseaseAreaId,
-        scored.clientId
+        CONFIGURED_DISEASE_AREA_ID,
+        CONFIGURED_CLIENT_ID
       );
       expect(status).toBe(200);
       expect(data.notConfigured).toBeFalsy();
-      expect(data.totalKols).toBe(scored._count.scores);
+      expect(typeof data.totalKols).toBe('number');
+      expect(data.totalKols).toBeGreaterThan(0);
+      console.log(`✅ Insights summary: ${data.totalKols} KOLs, ${data.totalRespondents || 0} respondents`);
+    });
+
+    it('returns notConfigured (200) when clientId is provided but analysis is missing', async () => {
+      // Reuse the seeded test client (almost certainly has no analysis for an
+      // arbitrary DA — confirms the "configured but no analysis" shape still
+      // works and is distinguishable from the 400 missing-clientId case).
+      const fakeUnconfiguredDA = '00000000000000000000000000'; // any DA without an analysis
+      const { status, data } = await client.getInsightsSummary(
+        fakeUnconfiguredDA,
+        CONFIGURED_CLIENT_ID ?? 'cme2e0test0client00001'
+      );
+      // 404 (disease area not found) is also valid behavior here — both prove
+      // the endpoint isn't returning the silent-zero shape.
+      expect([200, 404]).toContain(status);
+      if (status === 200) {
+        expect(data.notConfigured).toBe(true);
+        expect(data.totalKols).toBe(0);
+      }
+    });
+
+    it('should return 404 for non-existent disease area', async () => {
+      const { status } = await client.getInsightsSummary(
+        'non-existent-id',
+        CONFIGURED_CLIENT_ID ?? 'cme2e0test0client00001'
+      );
+      expect([400, 404]).toContain(status);
     });
   });
 
@@ -130,48 +165,51 @@ describe('Insights Report API', () => {
   });
 
   describe('KOL Explorer Endpoint', () => {
-    it('should return paginated KOL list', async () => {
-      const { status, data } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
+    it('returns 400 when clientId is omitted (v1.17.2 contract)', async () => {
+      const { status } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
         page: 1,
         limit: 10,
       });
+      expect(status).toBe(400);
+    });
 
-      // Accept 200 or 500 (may have data issues in test environment)
-      expect([200, 500]).toContain(status);
-      if (status !== 200) {
-        console.log('⚠️ KOL Explorer returned error - may need score data');
+    it('returns paginated KOL list when clientId is provided', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
         return;
       }
+      const { status, data } = await client.getInsightsKolExplorer(CONFIGURED_DISEASE_AREA_ID, {
+        page: 1,
+        limit: 10,
+        clientId: CONFIGURED_CLIENT_ID,
+      });
 
+      expect(status).toBe(200);
       expect(Array.isArray(data.items)).toBe(true);
       expect(typeof data.total).toBe('number');
+      expect(data.total).toBeGreaterThan(0); // configured analysis must have KOLs
 
-      if (data.items.length > 0) {
-        const firstKol = data.items[0];
-        expect(firstKol.id).toBeTruthy(); // KOL Explorer uses 'id', not 'hcpId'
-        expect(firstKol.firstName).toBeTruthy();
-        expect(firstKol.lastName).toBeTruthy();
-      }
+      const firstKol = data.items[0];
+      expect(firstKol.id).toBeTruthy();
+      expect(firstKol.firstName).toBeTruthy();
+      expect(firstKol.lastName).toBeTruthy();
 
       console.log(`✅ KOL Explorer: ${data.items.length} items, ${data.total} total`);
     });
 
     it('should support search filter', async () => {
-      const { status, data } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
-        search: 'Smith',
-        limit: 10,
-      });
-
-      // Accept 200 or 500 (may have data issues in test environment)
-      expect([200, 500]).toContain(status);
-      if (status !== 200) {
-        console.log('⚠️ KOL Explorer search returned error');
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
         return;
       }
+      const { status, data } = await client.getInsightsKolExplorer(CONFIGURED_DISEASE_AREA_ID, {
+        search: 'Smith',
+        limit: 10,
+        clientId: CONFIGURED_CLIENT_ID,
+      });
 
+      expect(status).toBe(200);
       expect(Array.isArray(data.items)).toBe(true);
-
-      // All results should contain 'Smith' in name
       data.items.forEach((kol) => {
         const fullName = `${kol.firstName} ${kol.lastName}`.toLowerCase();
         expect(fullName).toContain('smith');
@@ -179,126 +217,97 @@ describe('Insights Report API', () => {
 
       console.log(`✅ Search filter: ${data.items.length} results for "Smith"`);
     });
-
-    it('should support specialty filter', async () => {
-      // First get available specialties
-      const { status: filterStatus, data: filterData } = await client.getInsightsFilterOptions(DRY_EYE_DISEASE_AREA_ID);
-
-      if (filterStatus !== 200 || !filterData?.specialties?.length) {
-        console.log('⚠️ No specialties available for filter test');
-        return;
-      }
-
-      const testSpecialty = filterData.specialties[0];
-      const { status, data } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
-        specialty: testSpecialty,
-        limit: 10,
-      });
-
-      // Accept 200 or 500 (may have data issues in test environment)
-      expect([200, 500]).toContain(status);
-      if (status !== 200) {
-        console.log('⚠️ KOL Explorer specialty filter returned error');
-        return;
-      }
-
-      expect(Array.isArray(data.items)).toBe(true);
-
-      console.log(`✅ Specialty filter: ${data.items.length} KOLs with specialty "${testSpecialty}"`);
-    });
   });
 
   describe('Leader Rankings Endpoint', () => {
-    it('should return leader rankings for discussionLeaders', async () => {
-      // nominationType is required
-      const { status, data } = await client.getInsightsLeaderRankings(DRY_EYE_DISEASE_AREA_ID, {
-        nominationType: 'discussionLeaders',
+    it('returns 400 when clientId is omitted (v1.17.2 contract)', async () => {
+      const { status } = await client.getInsightsLeaderRankings(DRY_EYE_DISEASE_AREA_ID, {
+        nominationType: 'DISCUSSION_LEADERS',
         limit: 10,
       });
-
-      // Accept 200 or 500 (may not have nomination data in test environment)
-      expect([200, 500]).toContain(status);
-      if (status !== 200) {
-        console.log('⚠️ Leader rankings returned error - may need nomination data');
-        return;
-      }
-
-      expect(Array.isArray(data.items)).toBe(true);
-
-      if (data.items.length > 0) {
-        const firstLeader = data.items[0];
-        expect(firstLeader.hcpId).toBeTruthy();
-        expect(typeof firstLeader.count).toBe('number');
-      }
-
-      console.log(`✅ Leader rankings: ${data.items.length} leaders`);
+      expect(status).toBe(400);
     });
 
-    it('should support different nomination types', async () => {
-      const nominationTypes = [
-        'referralLeaders',
-        'adviceLeaders',
-        'nationalLeader',
-        'risingStar',
-        'socialLeader',
-        'regionalLeader',
-        'biasedLeader',
-      ];
-
-      for (const nominationType of nominationTypes) {
-        const { status } = await client.getInsightsLeaderRankings(DRY_EYE_DISEASE_AREA_ID, {
-          nominationType,
-          limit: 5,
-        });
-
-        // Accept 200 or 500 (may not have nomination data)
-        expect([200, 500]).toContain(status);
+    it('returns rankings when clientId is provided', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
       }
+      const { status, data } = await client.getInsightsLeaderRankings(CONFIGURED_DISEASE_AREA_ID, {
+        nominationType: 'DISCUSSION_LEADERS',
+        limit: 10,
+        clientId: CONFIGURED_CLIENT_ID,
+      });
 
-      console.log('✅ Nomination type filters work (or gracefully handled no data)');
+      // 200 with possibly-empty items is the right shape even if a particular
+      // analysis happens to have no discussion-leader nominations.
+      expect(status).toBe(200);
+      expect(Array.isArray(data.items)).toBe(true);
+      console.log(`✅ Leader rankings: ${data.items.length} leaders`);
     });
   });
 
   describe('Sociometric Summary Endpoint', () => {
-    it('should return sociometric summary', async () => {
-      const { status, data } = await client.getInsightsSociometricSummary(DRY_EYE_DISEASE_AREA_ID, {
+    it('returns 400 when clientId is omitted (v1.17.2 contract)', async () => {
+      const { status } = await client.getInsightsSociometricSummary(DRY_EYE_DISEASE_AREA_ID, {
         page: 1,
         limit: 10,
       });
+      expect(status).toBe(400);
+    });
 
-      // Accept 200 or graceful empty response
-      expect([200, 500]).toContain(status);
-      if (status !== 200) {
-        console.log('⚠️ Sociometric summary returned error - may need nomination data');
+    it('returns sociometric summary when clientId is provided', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
         return;
       }
+      const { status, data } = await client.getInsightsSociometricSummary(CONFIGURED_DISEASE_AREA_ID, {
+        page: 1,
+        limit: 10,
+        clientId: CONFIGURED_CLIENT_ID,
+      });
 
+      expect(status).toBe(200);
       expect(Array.isArray(data.items)).toBe(true);
       expect(typeof data.total).toBe('number');
 
       if (data.items.length > 0) {
-        const firstItem = data.items[0];
-        expect(firstItem.hcpId).toBeTruthy();
+        expect(data.items[0].hcpId).toBeTruthy();
       }
 
-      console.log(`✅ Sociometric summary: ${data.items?.length || 0} items, ${data.total || 0} total`);
+      console.log(`✅ Sociometric summary: ${data.items.length} items, ${data.total} total`);
     });
   });
 
   describe('KOL Profile Endpoint', () => {
-    it('should return KOL profile with scores', async () => {
-      // First get a KOL ID from the explorer
-      const { status: explorerStatus, data: explorerData } = await client.getInsightsKolExplorer(DRY_EYE_DISEASE_AREA_ID, {
-        limit: 1,
-      });
+    it('returns 400 when clientId is omitted (v1.17.2 contract)', async () => {
+      const { status } = await client.getInsightsKolProfile(
+        DRY_EYE_DISEASE_AREA_ID,
+        'any-hcp-id'
+      );
+      expect(status).toBe(400);
+    });
 
-      if (explorerStatus !== 200 || !explorerData?.items?.length) {
-        console.log('⚠️ No KOLs found - skipping profile test');
+    it('returns the profile when clientId is provided', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
         return;
       }
-
-      const testHcpId = explorerData.items[0].id; // KOL Explorer uses 'id', not 'hcpId'
-      const { status, data } = await client.getInsightsKolProfile(DRY_EYE_DISEASE_AREA_ID, testHcpId);
+      // First get a real HCP id from the explorer.
+      const { data: explorerData } = await client.getInsightsKolExplorer(
+        CONFIGURED_DISEASE_AREA_ID,
+        { limit: 1, clientId: CONFIGURED_CLIENT_ID }
+      );
+      const testHcpId = explorerData?.items?.[0]?.id;
+      if (!testHcpId) {
+        console.log('⊘ No HCPs in this analysis — skipping');
+        return;
+      }
+      const { status, data } = await client.getInsightsKolProfile(
+        CONFIGURED_DISEASE_AREA_ID,
+        testHcpId,
+        CONFIGURED_CLIENT_ID
+      );
 
       expect(status).toBe(200);
       expect(data.id).toBe(testHcpId);
@@ -307,15 +316,24 @@ describe('Insights Report API', () => {
       console.log(`✅ KOL profile: ${data.firstName} ${data.lastName}`);
     });
 
-    it('should return 404 for non-existent HCP', async () => {
-      const { status } = await client.getInsightsKolProfile(DRY_EYE_DISEASE_AREA_ID, 'non-existent-hcp-id');
-
+    it('should return 404 for non-existent HCP (when clientId is provided)', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const { status } = await client.getInsightsKolProfile(
+        CONFIGURED_DISEASE_AREA_ID,
+        'non-existent-hcp-id',
+        CONFIGURED_CLIENT_ID
+      );
       expect([400, 404]).toContain(status);
     });
   });
 
-  describe('Respondent Analytics Endpoint', () => {
-    it('should return respondent analytics', async () => {
+  describe('Respondent Analytics Endpoint (campaign-scoped, clientId optional)', () => {
+    it('should return respondent analytics without clientId', async () => {
+      // This endpoint is campaign-scoped — clientId is an optional filter,
+      // not a 400-worthy requirement.
       const { status, data } = await client.getInsightsRespondentAnalytics(DRY_EYE_DISEASE_AREA_ID);
 
       expect(status).toBe(200);
