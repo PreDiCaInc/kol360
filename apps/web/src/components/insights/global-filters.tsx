@@ -2,10 +2,15 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { Filter, X, Printer } from 'lucide-react';
+import { Filter, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MultiSelect } from '@/components/ui/multi-select';
+import {
+  ActiveFilter,
+  ClearFiltersButton,
+  ActiveFilterChips,
+} from './shared/filter-clear-controls';
 import {
   Select,
   SelectContent,
@@ -140,6 +145,36 @@ export function GlobalFilters({
     filters.specialties.length +
     (filters.influencerType ? 1 : 0);
 
+  const activeFilters: ActiveFilter[] = [
+    ...filters.states.map<ActiveFilter>((state) => ({
+      key: `state-${state}`,
+      label: `State: ${state}`,
+      onRemove: () =>
+        setFilters((prev) => ({
+          ...prev,
+          states: prev.states.filter((s) => s !== state),
+        })),
+    })),
+    ...filters.specialties.map<ActiveFilter>((spec) => ({
+      key: `spec-${spec}`,
+      label: `Specialty: ${spec}`,
+      onRemove: () =>
+        setFilters((prev) => ({
+          ...prev,
+          specialties: prev.specialties.filter((s) => s !== spec),
+        })),
+    })),
+    ...(filters.influencerType
+      ? [
+          {
+            key: `type-${filters.influencerType}`,
+            label: `Type: ${filters.influencerType}`,
+            onRemove: () => setFilters((prev) => ({ ...prev, influencerType: null })),
+          } as ActiveFilter,
+        ]
+      : []),
+  ];
+
   const handlePrint = useCallback(() => {
     if (onPrint) {
       onPrint();
@@ -202,22 +237,12 @@ export function GlobalFilters({
           </Select>
         </div>
 
-        {/* Clear Filters Button.
-            v1.17.1: bumped from ghost+muted-foreground+ambiguous-label to
-            outline+default-text+explicit-label after customer feedback ("can
-            we have a clear filter" — they didn't see the existing one). The
-            three changes compounding made it invisible. Outline variant
-            matches the Print Report button's prominence next to it. */}
-        {hasActiveFilters && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClearAll}
-          >
-            <X className="h-4 w-4 mr-1" />
-            Clear filters
-          </Button>
-        )}
+        {/* v1.17.3: prominent right-anchored Clear button (default size,
+            secondary variant, count badge) + chip row below. Replaces the
+            small outline button that customers still couldn't find after
+            v1.17.1's first attempt. See [FilterClearControls]
+            (./shared/filter-clear-controls.tsx) for the rationale. */}
+        <ClearFiltersButton activeCount={activeFilterCount} onClear={handleClearAll} />
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -225,7 +250,7 @@ export function GlobalFilters({
         {/* Print Button */}
         <Button
           variant="outline"
-          size="sm"
+          size="default"
           onClick={handlePrint}
           className="gap-2"
         >
@@ -234,55 +259,7 @@ export function GlobalFilters({
         </Button>
       </div>
 
-      {/* Active Filter Pills */}
-      {hasActiveFilters && (
-        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border/50">
-          {filters.states.map((state) => (
-            <Badge
-              key={`state-${state}`}
-              variant="outline"
-              className="cursor-pointer hover:bg-destructive/10"
-              onClick={() =>
-                setFilters((prev) => ({
-                  ...prev,
-                  states: prev.states.filter((s) => s !== state),
-                }))
-              }
-            >
-              State: {state}
-              <X className="h-3 w-3 ml-1" />
-            </Badge>
-          ))}
-          {filters.specialties.map((spec) => (
-            <Badge
-              key={`spec-${spec}`}
-              variant="outline"
-              className="cursor-pointer hover:bg-destructive/10"
-              onClick={() =>
-                setFilters((prev) => ({
-                  ...prev,
-                  specialties: prev.specialties.filter((s) => s !== spec),
-                }))
-              }
-            >
-              Specialty: {spec}
-              <X className="h-3 w-3 ml-1" />
-            </Badge>
-          ))}
-          {filters.influencerType && (
-            <Badge
-              variant="outline"
-              className="cursor-pointer hover:bg-destructive/10"
-              onClick={() =>
-                setFilters((prev) => ({ ...prev, influencerType: null }))
-              }
-            >
-              Type: {filters.influencerType}
-              <X className="h-3 w-3 ml-1" />
-            </Badge>
-          )}
-        </div>
-      )}
+      <ActiveFilterChips filters={activeFilters} />
     </div>
   );
 }

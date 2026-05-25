@@ -7,7 +7,6 @@ import { BarDistributionChart } from '@/components/insights/charts/bar-distribut
 import { StateBarChart } from '@/components/insights/charts/state-bar-chart';
 import { StackedBarChart } from '@/components/insights/charts/stacked-bar-chart';
 import { useDemographics, useInsightsFilterOptions } from '@/hooks/use-insights-report';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -17,7 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Filter, X } from 'lucide-react';
+import { Filter } from 'lucide-react';
+import {
+  ActiveFilter,
+  ClearFiltersButton,
+  ActiveFilterChips,
+} from '@/components/insights/shared/filter-clear-controls';
 
 interface Props {
   diseaseAreaId: string;
@@ -109,11 +113,47 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
     return US_STATES;
   }, [filterOptions?.states]);
 
-  const hasActiveFilters = Object.values(filters).some(v => v !== undefined && v !== '');
-
   const handleClearAll = useCallback(() => {
     setFilters({});
   }, []);
+
+  // v1.17.3: drive the shared FilterClearControls (button count + chips).
+  // Each entry knows how to remove itself from local state.
+  const activeFilters = useMemo<ActiveFilter[]>(() => {
+    const entries: ActiveFilter[] = [];
+    const set = <K extends keyof DemographicFilters>(key: K, label: string) => {
+      const value = filters[key];
+      if (value === undefined || value === '') return;
+      entries.push({
+        key: `${key}-${value}`,
+        label: `${label}: ${value}`,
+        onRemove: () => setFilters((prev) => ({ ...prev, [key]: undefined })),
+      });
+    };
+    set('respondentRole', 'Role');
+    set('coreFocus', 'Focus');
+    set('stateOfPractice', 'State');
+    set('practiceSetting', 'Practice');
+    // Range filters reported as a single chip when either bound is set.
+    const rangeChip = (
+      keyMin: keyof DemographicFilters,
+      keyMax: keyof DemographicFilters,
+      label: string
+    ) => {
+      const min = filters[keyMin];
+      const max = filters[keyMax];
+      if (min === undefined && max === undefined) return;
+      entries.push({
+        key: `${String(keyMin)}-${min ?? ''}-${max ?? ''}`,
+        label: `${label}: ${min ?? '0'}–${max ?? '∞'}`,
+        onRemove: () => setFilters((prev) => ({ ...prev, [keyMin]: undefined, [keyMax]: undefined })),
+      });
+    };
+    rangeChip('yearsMin', 'yearsMax', 'Years');
+    rangeChip('monthlyPatientsMin', 'monthlyPatientsMax', 'Monthly patients');
+    rangeChip('dedPatientsMin', 'dedPatientsMax', 'DED patients');
+    return entries;
+  }, [filters]);
 
   const handleSelectChange = useCallback((key: keyof DemographicFilters, value: string) => {
     setFilters(prev => ({
@@ -213,27 +253,18 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
     <div className="space-y-8">
       {/* Filter Bar */}
       <div className="bg-muted/50 rounded-lg p-4 print:hidden">
-        <div className="flex items-center gap-2 mb-3 text-sm font-medium text-muted-foreground">
-          <Filter className="h-4 w-4" />
-          <span>Demographic Filters</span>
-          {/* v1.17.2: matches the v1.17.1 global-filters fix — outline
-              variant + explicit "Clear filters" label so customers can find
-              it. ghost+muted-foreground+"Clear All" was invisible (same
-              feedback class). */}
-          {hasActiveFilters && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearAll}
-              className="ml-2 h-7 px-2"
-            >
-              <X className="h-3 w-3 mr-1" />
-              Clear filters
-            </Button>
-          )}
-          {isLoading && (
-            <span className="ml-auto text-xs text-muted-foreground animate-pulse">Updating...</span>
-          )}
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Filter className="h-4 w-4" />
+            <span>Demographic Filters</span>
+            {isLoading && (
+              <span className="text-xs text-muted-foreground animate-pulse">Updating...</span>
+            )}
+          </div>
+          {/* v1.17.3: prominent right-anchored Clear button (default size,
+              secondary variant, count badge). Earlier sm/outline button
+              wasn't visible enough for customers. */}
+          <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAll} />
         </div>
 
         {/* Row 1: Dropdowns */}
@@ -388,13 +419,15 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             </div>
           </div>
         </div>
+
+        <ActiveFilterChips filters={activeFilters} />
       </div>
 
       <div>
         <h2 className="text-xl font-bold">Respondent Demographics</h2>
         <p className="text-sm text-muted-foreground">
           Survey respondent demographics across {data.totalRespondents} respondents
-          {hasActiveFilters && ' (filtered)'}
+          {activeFilters.length > 0 && ' (filtered)'}
         </p>
       </div>
 

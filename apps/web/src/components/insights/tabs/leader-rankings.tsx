@@ -3,7 +3,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useLeaderRankings, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import { LeaderTable } from '@/components/insights/tables/leader-table';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -13,7 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Filter, X, Search } from 'lucide-react';
+import { Filter, Search } from 'lucide-react';
+import {
+  ActiveFilter,
+  ClearFiltersButton,
+  ActiveFilterChips,
+} from '@/components/insights/shared/filter-clear-controls';
 import type { NominationType } from '@kol360/shared';
 import type { LeaderTableColumn } from '@/components/insights/tables/leader-table';
 
@@ -180,13 +184,46 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
     setSearchTerms(prev => ({ ...prev, [nominationType]: value }));
   }, []);
 
-  const hasActiveFilters = Object.values(filters).some(v => v !== undefined && v !== '');
-  const hasActiveSearch = Object.values(searchTerms).some(v => v.trim() !== '');
-
   const handleClearAll = useCallback(() => {
     setFilters({});
     setSearchTerms({});
   }, []);
+
+  // v1.17.3: feed the shared FilterClearControls. Search-per-panel is
+  // captured as a single chip per panel that has text — clicking it
+  // clears only that panel's search.
+  const activeFilters = useMemo<ActiveFilter[]>(() => {
+    const entries: ActiveFilter[] = [];
+    if (filters.specialty) {
+      entries.push({
+        key: `specialty-${filters.specialty}`,
+        label: `Specialty: ${filters.specialty}`,
+        onRemove: () => setFilters((prev) => ({ ...prev, specialty: undefined })),
+      });
+    }
+    if (filters.state) {
+      entries.push({
+        key: `state-${filters.state}`,
+        label: `State: ${filters.state}`,
+        onRemove: () => setFilters((prev) => ({ ...prev, state: undefined })),
+      });
+    }
+    for (const [nominationType, term] of Object.entries(searchTerms)) {
+      if (term.trim()) {
+        entries.push({
+          key: `search-${nominationType}`,
+          label: `Search (${nominationType}): "${term}"`,
+          onRemove: () =>
+            setSearchTerms((prev) => {
+              const next = { ...prev };
+              delete next[nominationType];
+              return next;
+            }),
+        });
+      }
+    }
+    return entries;
+  }, [filters, searchTerms]);
 
   return (
     <div className="space-y-6">
@@ -199,24 +236,13 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
 
       {/* Filter Bar */}
       <div className="bg-muted/50 rounded-lg p-4 print:hidden">
-        <div className="flex items-center gap-2 mb-3 text-sm font-medium text-muted-foreground">
-          <Filter className="h-4 w-4" />
-          <span>Leader Filters</span>
-          {/* v1.17.2: matches the v1.17.1 global-filters fix — outline
-              variant + explicit "Clear filters" label so customers can find
-              it. ghost+muted-foreground+"Clear All" was invisible (same
-              feedback class). */}
-          {(hasActiveFilters || hasActiveSearch) && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearAll}
-              className="ml-2 h-7 px-2"
-            >
-              <X className="h-3 w-3 mr-1" />
-              Clear filters
-            </Button>
-          )}
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Filter className="h-4 w-4" />
+            <span>Leader Filters</span>
+          </div>
+          {/* v1.17.3: shared FilterClearControls — see filter-clear-controls.tsx. */}
+          <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAll} />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -256,6 +282,8 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
             </Select>
           </div>
         </div>
+
+        <ActiveFilterChips filters={activeFilters} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
