@@ -1,10 +1,12 @@
 # Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1.1 + prod-rel-4.1.2
 
-> **2026-05-25 update — `prod-rel-4.1.4` (v1.17.3) ready:** UI-only patch on the Insights surface — Clear filters reworked + applied to all 5 filter bars (2 of which had no Clear button at all), sidebar nav reorganized so the previously-disabled Insights link is now live under a "KOL Insights" collapsible parent. No backend changes, no migrations, low-risk 1-2 day soak. See the "prod-rel-4.1.4 patch release" section at the bottom. **Bundles 4.1.3 + 4.1.2 forward** — deploying 4.1.4 deploys the full ladder.
+> **2026-05-26 update — `prod-rel-4.1.5` (v1.17.4 + v1.17.5 bundled) ready:** Insights filter improvements + nominations bug bundle. Single merge, two commit-versions: (a) v1.17.4 nominations tile fix + audit-log gap + 4 insights polishes (multi-select, US state whitelist, city case, label tweak); (b) v1.17.5 respondent filters from Demographics now also apply to Sociometric Leaders + Dynamic Benchmarking tabs. Code-only, no migrations, recommend **2-day soak**. See the "prod-rel-4.1.5" section at the bottom.
 >
-> _Earlier 2026-05-25: P1 hotfix `prod-rel-4.1.3` (v1.17.2) shipped — HCP CSV upload had been 503-ing every upload since 4.1.1. Section retained below._
+> _Earlier 2026-05-25: `prod-rel-4.1.4` (v1.17.3) shipped — Insights UI rework (Clear filters consistency + KOL Insights nav grouping)._
 >
-> _2026-05-22: prod-rel-4.0 + prod-rel-4.1.1 LIVE + soaking; 4.1.2 (v1.17.1) tagged with 3 small fixes; supersession history kept in sections below._
+> _2026-05-25 earlier: P1 hotfix `prod-rel-4.1.3` (v1.17.2) — HCP CSV upload was 503-ing every upload since 4.1.1._
+>
+> _2026-05-22: prod-rel-4.0 + prod-rel-4.1.1 LIVE; 4.1.2 (v1.17.1) tagged with 3 small fixes._
 
 **Two tags queued for prod. Deploy in this order.** Both complete the Phase 3 arc (campaign-scoring teardown → KOL Analysis as the singular scoring surface). After both ship + soak, no further releases queued.
 
@@ -159,7 +161,42 @@ Worth a check at the cutover review gate per release.
 | `prod-rel-4.1.1` | v1.17.0 | Irreversible schema drops | 2 in chronological order | [prod-rel-4.1.1-soak-checks.md](docs/releases/prod-rel-4.1.1-soak-checks.md) |
 | `prod-rel-4.1.2` | v1.17.1 | Code-only, reversible | None | [prod-rel-4.1.2-soak-checks.md](prod-rel-4.1.2-soak-checks.md) |
 | `prod-rel-4.1.3` | v1.17.2 | Code-only, reversible — P1 hotfix | None | [prod-rel-4.1.3-soak-checks.md](prod-rel-4.1.3-soak-checks.md) |
-| **`prod-rel-4.1.4`** | **v1.17.3** | **UI-only, reversible** | **None** | [prod-rel-4.1.4-soak-checks.md](prod-rel-4.1.4-soak-checks.md) |
+| `prod-rel-4.1.4` | v1.17.3 | UI-only, reversible | None | [prod-rel-4.1.4-soak-checks.md](prod-rel-4.1.4-soak-checks.md) |
+| **`prod-rel-4.1.5`** | **v1.17.4 + v1.17.5 bundled** | **Code-only, reversible** | **None** | [prod-rel-4.1.5-soak-checks.md](prod-rel-4.1.5-soak-checks.md) |
+
+---
+
+## prod-rel-4.1.5 (v1.17.4 + v1.17.5 bundled) — Insights filter improvements + nominations bug bundle
+
+**Status:** Ready for prod deploy. Code-only, reversible.
+- **Tag:** `prod-rel-4.1.5` → commit on `main` (cut after the docs PR merges)
+- **Handoff doc:** [prod-rel-4.1.5-handoff.md](prod-rel-4.1.5-handoff.md)
+- **Soak doc:** [prod-rel-4.1.5-soak-checks.md](prod-rel-4.1.5-soak-checks.md) — 3-phase checklist, recommend **2-day soak**
+- **Bundles forward:** all of 4.1.4 + 4.1.3 + 4.1.2 (deploy 4.1.5 directly)
+
+No migrations. No backend contract breaks. Reversible (redeploy 4.1.4).
+
+### What's in it (v1.17.4 portion)
+
+1. **Nominations tile counts now respect `excludeInternalEmails`** — pre-fix the tile counts disagreed with the list when the campaign had the flag on. Audit gap closed: `updateRawName` now writes an audit log entry + accepts `actor`.
+
+2. **Insights polishes (4 items):**
+   - Demographics + Dynamic Benchmarking single-selects → multi-select.
+   - State filter options whitelisted to US 50+DC (hardcoded; per-client setting queued as future PR).
+   - City displays normalized to Title Case via shared `toTitleCase()`.
+   - KOL Explorer "All Types" placeholder → "Influencer Type".
+
+### What's in it (v1.17.5 portion)
+
+3. **Respondent filters carry from Demographics → Sociometric Leaders + Dynamic Benchmarking.** The 7 respondent-side filters (4 multi-selects + 3 ranges) now also apply on those two tabs, additive to existing KOL-side filters. When active, per-type nomination counts are recomputed on the fly from filtered nominations (bypasses pre-aggregated `HcpAnalysisScore`).
+
+### Migrations: **none**
+
+Code-only patch. Reversible (redeploy 4.1.4).
+
+### Performance heads-up
+
+When respondent filters are active, the leader-rankings + sociometric endpoints fall off the pre-aggregated fast path and re-query `Nomination` joined to `SurveyResponseAnswer`. Acceptable for current dataset sizes (~hundreds of HCPs, ~thousands of nominations). Watch C1 in the soak doc for latency drift.
 
 ---
 
