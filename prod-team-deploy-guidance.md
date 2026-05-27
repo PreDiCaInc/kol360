@@ -1,8 +1,10 @@
 # Prod team deploy guidance — prod-rel-4.0 + prod-rel-4.1.1 + prod-rel-4.1.2
 
-> **2026-05-26 update — `prod-rel-4.1.5` (v1.17.4 + v1.17.5 bundled) ready:** Insights filter improvements + nominations bug bundle. Single merge, two commit-versions: (a) v1.17.4 nominations tile fix + audit-log gap + 4 insights polishes (multi-select, US state whitelist, city case, label tweak); (b) v1.17.5 respondent filters from Demographics now also apply to Sociometric Leaders + Dynamic Benchmarking tabs. Code-only, no migrations, recommend **2-day soak**. See the "prod-rel-4.1.5" section at the bottom.
+> **2026-05-26 update — `prod-rel-4.1.6` (v1.17.6) ready:** Single small UX fix — the Edit nomination name dialog now surfaces an exact-name match inline as the user types, preventing the rename → MatchDialog → "Create new HCP" → "this HCP already exists" dead end that prod team flagged on 2026-05-26. Code-only, no migrations, **1-day soak**. See the "prod-rel-4.1.6" section at the bottom.
 >
-> _Earlier 2026-05-25: `prod-rel-4.1.4` (v1.17.3) shipped — Insights UI rework (Clear filters consistency + KOL Insights nav grouping)._
+> _Earlier 2026-05-26: `prod-rel-4.1.5` (v1.17.4 + v1.17.5 bundled) shipped — Insights filter improvements + nominations bug bundle (tile fix, audit gap, multi-select, US whitelist, city case, "Influencer Type" label, respondent filters carry to Sociometric + Dynamic Benchmarking)._
+>
+> _2026-05-25: `prod-rel-4.1.4` (v1.17.3) — Insights UI rework (Clear filters consistency + KOL Insights nav grouping)._
 >
 > _2026-05-25 earlier: P1 hotfix `prod-rel-4.1.3` (v1.17.2) — HCP CSV upload was 503-ing every upload since 4.1.1._
 >
@@ -162,7 +164,30 @@ Worth a check at the cutover review gate per release.
 | `prod-rel-4.1.2` | v1.17.1 | Code-only, reversible | None | [prod-rel-4.1.2-soak-checks.md](prod-rel-4.1.2-soak-checks.md) |
 | `prod-rel-4.1.3` | v1.17.2 | Code-only, reversible — P1 hotfix | None | [prod-rel-4.1.3-soak-checks.md](prod-rel-4.1.3-soak-checks.md) |
 | `prod-rel-4.1.4` | v1.17.3 | UI-only, reversible | None | [prod-rel-4.1.4-soak-checks.md](prod-rel-4.1.4-soak-checks.md) |
-| **`prod-rel-4.1.5`** | **v1.17.4 + v1.17.5 bundled** | **Code-only, reversible** | **None** | [prod-rel-4.1.5-soak-checks.md](prod-rel-4.1.5-soak-checks.md) |
+| `prod-rel-4.1.5` | v1.17.4 + v1.17.5 bundled | Code-only, reversible | None | [prod-rel-4.1.5-soak-checks.md](prod-rel-4.1.5-soak-checks.md) |
+| **`prod-rel-4.1.6`** | **v1.17.6** | **Code-only, reversible** | **None** | [prod-rel-4.1.6-soak-checks.md](prod-rel-4.1.6-soak-checks.md) |
+
+---
+
+## prod-rel-4.1.6 (v1.17.6) — Rename dialog inline exact-match (Bug 3 fix)
+
+**Status:** Ready for prod deploy. Single small UX fix.
+- **Tag:** `prod-rel-4.1.6` → commit on `main` (cut after the docs PR merges)
+- **Handoff doc:** [prod-rel-4.1.6-handoff.md](prod-rel-4.1.6-handoff.md)
+- **Soak doc:** [prod-rel-4.1.6-soak-checks.md](prod-rel-4.1.6-soak-checks.md) — 2-phase checklist, recommend **1-day soak**
+- **Bundles forward:** all of 4.1.5 + 4.1.4 + ... (deploy 4.1.6 directly)
+
+No migrations. No backend contract breaks. Reversible (redeploy 4.1.5).
+
+### What's in it
+
+The **Edit nomination name** dialog now previews suggestions as the user types (300ms debounce). When the typed name matches an existing HCP (`isNameMatch=true` AND score ≥ 90), an inline blue callout appears with a "Match to this HCP instead" button — matches directly instead of the rename → MatchDialog → wrong "Create new HCP" click → "this HCP already exists" dead end.
+
+Backend: `/suggestions` accepts new optional `?previewRawName=...` query param. Existing call shape unchanged.
+
+### Migrations: **none**
+
+Code-only patch. Reversible (redeploy 4.1.5).
 
 ---
 
