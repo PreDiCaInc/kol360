@@ -136,9 +136,13 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Get suggestions for a nomination
+  // Get suggestions for a nomination.
+  // v1.17.6: optional ?previewRawName=... overrides the saved rawNameEntered
+  // for the search — drives the inline "Match to existing" UI in the
+  // rename dialog (Bug 3 from the 2026-05-26 bug bundle).
   fastify.get<{
     Params: z.infer<typeof nominationIdParamSchema>;
+    Querystring: { previewRawName?: string };
   }>('/:id/nominations/:nid/suggestions', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ message: 'Unauthorized' });
@@ -150,7 +154,8 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
     if (!hasAccess) return;
 
-    const suggestions = await nominationService.getSuggestions(nominationId);
+    const previewRawName = (request.query as { previewRawName?: string }).previewRawName;
+    const suggestions = await nominationService.getSuggestions(nominationId, previewRawName);
     return suggestions;
   });
 

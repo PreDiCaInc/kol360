@@ -129,12 +129,26 @@ export function useNominationStats(campaignId: string) {
   });
 }
 
-export function useNominationSuggestions(campaignId: string, nominationId: string | null) {
+/**
+ * v1.17.6: optional previewRawName query param drives the inline
+ * "Match to existing" UI in the rename dialog. When provided, the
+ * suggestions search uses that name instead of the saved
+ * `nomination.rawNameEntered`. Caller is responsible for debouncing
+ * the value to avoid a request per keystroke.
+ */
+export function useNominationSuggestions(
+  campaignId: string,
+  nominationId: string | null,
+  previewRawName?: string
+) {
+  const qs = previewRawName
+    ? `?previewRawName=${encodeURIComponent(previewRawName)}`
+    : '';
   return useQuery({
-    queryKey: ['campaigns', campaignId, 'nominations', nominationId, 'suggestions'],
+    queryKey: ['campaigns', campaignId, 'nominations', nominationId, 'suggestions', previewRawName ?? null],
     queryFn: () =>
       apiClient.get<HcpSuggestion[]>(
-        `/api/v1/campaigns/${campaignId}/nominations/${nominationId}/suggestions`
+        `/api/v1/campaigns/${campaignId}/nominations/${nominationId}/suggestions${qs}`
       ),
     enabled: !!campaignId && !!nominationId,
   });
