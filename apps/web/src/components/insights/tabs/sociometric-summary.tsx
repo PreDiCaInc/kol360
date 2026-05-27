@@ -6,8 +6,8 @@ import { Input } from '@/components/ui/input';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Search, ChevronLeft, ChevronRight, FileSpreadsheet, Check } from 'lucide-react';
-import { useSociometricSummary, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import { Search, ChevronLeft, ChevronRight, FileSpreadsheet, Check, Filter } from 'lucide-react';
+import { useSociometricSummary, useInsightsFilterOptions, useDemographics } from '@/hooks/use-insights-report';
 import { useExcelExport } from '@/lib/excel-export';
 import { SortableHeader } from '@/components/insights/shared/sortable-header';
 import { HeatMapCell } from '@/components/insights/shared/heat-map-cell';
@@ -18,8 +18,14 @@ import {
   ClearFiltersButton,
   ActiveFilterChips,
 } from '@/components/insights/shared/filter-clear-controls';
+import {
+  RespondentFiltersBar,
+  RespondentFiltersState,
+  respondentFiltersToApiParams,
+  hasAnyRespondentFilter as hasAnyResp,
+} from '@/components/insights/shared/respondent-filters-bar';
 import type { InsightsFilterInput } from '@kol360/shared';
-import { cn } from '@/lib/utils';
+import { cn, toTitleCase } from '@/lib/utils';
 
 interface Props {
   diseaseAreaId: string;
@@ -53,11 +59,29 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
   const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedInfluencerTypes, setSelectedInfluencerTypes] = useState<string[]>([]);
+  // v1.17.5: respondent-side filters carried over from Demographics tab.
+  const [respondentFilters, setRespondentFilters] = useState<RespondentFiltersState>({});
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
+  // v1.17.5: source role/focus/practice-setting options from the
+  // demographics aggregation (no-filter call). Cheap thanks to React
+  // Query cache shared with the Demographics tab.
+  const { data: demographicsData } = useDemographics(diseaseAreaId, clientId);
+  const roleOptions = useMemo(
+    () => (demographicsData?.byRole ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [demographicsData?.byRole]
+  );
+  const coreFocusOptions = useMemo(
+    () => (demographicsData?.byCoreFocus ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [demographicsData?.byCoreFocus]
+  );
+  const practiceSettingOptions = useMemo(
+    () => (demographicsData?.byPracticeSetting ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [demographicsData?.byPracticeSetting]
+  );
 
-  // Build API filters
-  const apiFilters: Partial<InsightsFilterInput> = {
+  // Build API filters. Respondent filters merge into the same query string.
+  const apiFilters: Partial<InsightsFilterInput> & Record<string, string | number | undefined> = {
     page,
     limit,
     sortBy,
@@ -66,6 +90,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     specialties: selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined,
     states: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
     influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes.join(',') : undefined,
+    ...respondentFiltersToApiParams(respondentFilters),
   };
 
   const { data, isLoading } = useSociometricSummary(diseaseAreaId, apiFilters, clientId);
@@ -96,57 +121,97 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     setPage(1);
   };
 
-  // v1.17.3: Clear filters added (was missing). Search + 3 multi-selects.
+  // v1.17.3 + v1.17.5: chips for BOTH KOL-side filters (search,
+  // specialty, state, influencer type) AND respondent-side filters
+  // (role, focus, state of practice, practice setting, ranges).
   const activeFilters = useMemo<ActiveFilter[]>(() => {
     const entries: ActiveFilter[] = [];
     if (search.trim()) {
       entries.push({
         key: 'search',
         label: `Search: "${search}"`,
-        onRemove: () => {
-          setSearch('');
-          setPage(1);
-        },
+        onRemove: () => { setSearch(''); setPage(1); },
       });
     }
     for (const s of selectedSpecialties) {
       entries.push({
         key: `spec-${s}`,
         label: `Specialty: ${s}`,
-        onRemove: () => {
-          setSelectedSpecialties((prev) => prev.filter((x) => x !== s));
-          setPage(1);
-        },
+        onRemove: () => { setSelectedSpecialties((prev) => prev.filter((x) => x !== s)); setPage(1); },
       });
     }
     for (const s of selectedStates) {
       entries.push({
         key: `state-${s}`,
         label: `State: ${s}`,
-        onRemove: () => {
-          setSelectedStates((prev) => prev.filter((x) => x !== s));
-          setPage(1);
-        },
+        onRemove: () => { setSelectedStates((prev) => prev.filter((x) => x !== s)); setPage(1); },
       });
     }
     for (const t of selectedInfluencerTypes) {
       entries.push({
         key: `type-${t}`,
         label: `Type: ${t}`,
+        onRemove: () => { setSelectedInfluencerTypes((prev) => prev.filter((x) => x !== t)); setPage(1); },
+      });
+    }
+    // Respondent-side chips.
+    const respChip = (
+      key: 'respondentRoles' | 'coreFocuses' | 'stateOfPractices' | 'practiceSettings',
+      label: string
+    ) => {
+      for (const v of respondentFilters[key] ?? []) {
+        entries.push({
+          key: `${key}-${v}`,
+          label: `${label}: ${v}`,
+          onRemove: () => {
+            setRespondentFilters((prev) => ({
+              ...prev,
+              [key]: (prev[key] ?? []).filter((x) => x !== v),
+            }));
+            setPage(1);
+          },
+        });
+      }
+    };
+    respChip('respondentRoles', 'Resp Role');
+    respChip('coreFocuses', 'Resp Focus');
+    respChip('stateOfPractices', 'Resp State');
+    respChip('practiceSettings', 'Resp Practice');
+    const respRange = (
+      keyMin: keyof RespondentFiltersState,
+      keyMax: keyof RespondentFiltersState,
+      label: string
+    ) => {
+      const min = respondentFilters[keyMin];
+      const max = respondentFilters[keyMax];
+      if (min === undefined && max === undefined) return;
+      entries.push({
+        key: `${String(keyMin)}-${min ?? ''}-${max ?? ''}`,
+        label: `${label}: ${min ?? '0'}–${max ?? '∞'}`,
         onRemove: () => {
-          setSelectedInfluencerTypes((prev) => prev.filter((x) => x !== t));
+          setRespondentFilters((prev) => ({ ...prev, [keyMin]: undefined, [keyMax]: undefined }));
           setPage(1);
         },
       });
-    }
+    };
+    respRange('yearsMin', 'yearsMax', 'Years');
+    respRange('monthlyPatientsMin', 'monthlyPatientsMax', 'Monthly patients');
+    respRange('dedPatientsMin', 'dedPatientsMax', 'DED patients');
     return entries;
-  }, [search, selectedSpecialties, selectedStates, selectedInfluencerTypes]);
+  }, [search, selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters]);
 
   const handleClearAllFilters = useCallback(() => {
     setSearch('');
     setSelectedSpecialties([]);
     setSelectedStates([]);
     setSelectedInfluencerTypes([]);
+    setRespondentFilters({});
+    setPage(1);
+  }, []);
+
+  // Respondent-filter onChange that resets pagination.
+  const handleRespondentFiltersChange = useCallback((next: RespondentFiltersState) => {
+    setRespondentFilters(next);
     setPage(1);
   }, []);
 
@@ -165,7 +230,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
       item.name,
       item.specialty,
       item.influencerType,
-      item.city,
+      toTitleCase(item.city),
       item.state,
       item.discussionLeaders,
       item.referralLeaders,
@@ -236,36 +301,53 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Filters */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name..."
-              className="pl-9"
-              value={search}
-              onChange={handleSearchChange}
+        {/* KOL Filters — who the leader is. */}
+        <div className="bg-muted/50 rounded-lg p-4 print:hidden space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Filter className="h-4 w-4" />
+            <span>KOL Filters</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name..."
+                className="pl-9"
+                value={search}
+                onChange={handleSearchChange}
+              />
+            </div>
+            <MultiSelect
+              options={filterOptions?.specialties || []}
+              selected={selectedSpecialties}
+              onChange={handleMultiSelectChange(setSelectedSpecialties)}
+              placeholder="All Specialties"
+            />
+            <MultiSelect
+              options={filterOptions?.states || []}
+              selected={selectedStates}
+              onChange={handleMultiSelectChange(setSelectedStates)}
+              placeholder="All States"
+            />
+            <MultiSelect
+              options={filterOptions?.influencerTypes || []}
+              selected={selectedInfluencerTypes}
+              onChange={handleMultiSelectChange(setSelectedInfluencerTypes)}
+              placeholder="All Influencer Types"
             />
           </div>
-          <MultiSelect
-            options={filterOptions?.specialties || []}
-            selected={selectedSpecialties}
-            onChange={handleMultiSelectChange(setSelectedSpecialties)}
-            placeholder="All Specialties"
-          />
-          <MultiSelect
-            options={filterOptions?.states || []}
-            selected={selectedStates}
-            onChange={handleMultiSelectChange(setSelectedStates)}
-            placeholder="All States"
-          />
-          <MultiSelect
-            options={filterOptions?.influencerTypes || []}
-            selected={selectedInfluencerTypes}
-            onChange={handleMultiSelectChange(setSelectedInfluencerTypes)}
-            placeholder="All Influencer Types"
-          />
         </div>
+
+        {/* v1.17.5: Respondent Filters — who's voting. Carried over from
+            the Demographics tab; applies to nomination counts on the fly. */}
+        <RespondentFiltersBar
+          value={respondentFilters}
+          onChange={handleRespondentFiltersChange}
+          roleOptions={roleOptions}
+          coreFocusOptions={coreFocusOptions}
+          stateOptions={filterOptions?.states ?? []}
+          practiceSettingOptions={practiceSettingOptions}
+        />
 
         <ActiveFilterChips filters={activeFilters} />
 
@@ -352,7 +434,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                         </Badge>
                       ) : '-'}
                     </td>
-                    <td className="px-3 py-2">{item.city || '-'}</td>
+                    <td className="px-3 py-2">{toTitleCase(item.city) || '-'}</td>
                     <td className="px-3 py-2">{item.state || '-'}</td>
                     <HeatMapCell value={item.discussionLeaders} maxValue={maxValues.discussionLeaders} />
                     <HeatMapCell value={item.referralLeaders} maxValue={maxValues.referralLeaders} />

@@ -1,18 +1,17 @@
 'use client';
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useLeaderRankings, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import { useLeaderRankings, useInsightsFilterOptions, useDemographics } from '@/hooks/use-insights-report';
 import { LeaderTable } from '@/components/insights/tables/leader-table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { Filter, Search } from 'lucide-react';
+import {
+  RespondentFiltersBar,
+  RespondentFiltersState,
+  respondentFiltersToApiParams,
+} from '@/components/insights/shared/respondent-filters-bar';
 import {
   ActiveFilter,
   ClearFiltersButton,
@@ -28,8 +27,10 @@ interface Props {
 }
 
 interface LeaderFilters {
-  specialty?: string;
-  state?: string;
+  // v1.17.4: multi-select (was single-select). Backend accepts comma-
+  // separated `specialties` / `states` via the leader-rankings query params.
+  specialties?: string[];
+  states?: string[];
 }
 
 const NOMINATION_TYPES: {
@@ -55,6 +56,7 @@ function LeaderRankingPanel({
   onKolSelect,
   clientId,
   filters,
+  respondentFilters,
   searchTerm,
   onSearchChange,
 }: {
@@ -65,6 +67,7 @@ function LeaderRankingPanel({
   onKolSelect?: (kolId: string) => void;
   clientId?: string;
   filters: LeaderFilters;
+  respondentFilters: RespondentFiltersState;
   searchTerm: string;
   onSearchChange: (value: string) => void;
 }) {
@@ -73,20 +76,27 @@ function LeaderRankingPanel({
   const [sortBy, setSortBy] = useState('count');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Build API options with filters
+  // Build API options with filters. v1.17.4: arrays serialize as
+  // comma-separated `specialties` / `states` (matches KOL Explorer pattern).
+  // v1.17.5: respondent filters merge in via the shared serializer.
   const apiOptions = useMemo(() => {
-    const opts: Record<string, string | number> = { page, limit };
-    if (filters.specialty) opts.specialty = filters.specialty;
-    if (filters.state) opts.state = filters.state;
+    const opts: Record<string, string | number | undefined> = { page, limit };
+    if (filters.specialties && filters.specialties.length > 0) {
+      opts.specialties = filters.specialties.join(',');
+    }
+    if (filters.states && filters.states.length > 0) {
+      opts.states = filters.states.join(',');
+    }
+    Object.assign(opts, respondentFiltersToApiParams(respondentFilters));
     return opts;
-  }, [page, limit, filters]);
+  }, [page, limit, filters, respondentFilters]);
 
   const { data, isLoading } = useLeaderRankings(diseaseAreaId, nominationType, apiOptions, clientId);
 
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [filters.specialty, filters.state]);
+  }, [filters.specialties, filters.states, respondentFilters]);
 
   const handleSort = (field: string) => {
     if (sortBy === field) {
@@ -175,7 +185,23 @@ function LeaderRankingPanel({
 
 export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Props) {
   const [filters, setFilters] = useState<LeaderFilters>({});
+  // v1.17.5: respondent-side filters carried over from Demographics.
+  const [respondentFilters, setRespondentFilters] = useState<RespondentFiltersState>({});
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
+  // Source respondent-filter options from the demographics aggregation.
+  const { data: demographicsData } = useDemographics(diseaseAreaId, clientId);
+  const roleOptions = useMemo(
+    () => (demographicsData?.byRole ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [demographicsData?.byRole]
+  );
+  const coreFocusOptions = useMemo(
+    () => (demographicsData?.byCoreFocus ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [demographicsData?.byCoreFocus]
+  );
+  const practiceSettingOptions = useMemo(
+    () => (demographicsData?.byPracticeSetting ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [demographicsData?.byPracticeSetting]
+  );
 
   // Per-panel search terms
   const [searchTerms, setSearchTerms] = useState<Record<string, string>>({});
@@ -187,25 +213,34 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
   const handleClearAll = useCallback(() => {
     setFilters({});
     setSearchTerms({});
+    setRespondentFilters({});
   }, []);
 
-  // v1.17.3: feed the shared FilterClearControls. Search-per-panel is
-  // captured as a single chip per panel that has text — clicking it
-  // clears only that panel's search.
+  // v1.17.3 + v1.17.4: feed the shared FilterClearControls. Each selected
+  // multi-select value gets its own chip. Search-per-panel is captured as a
+  // single chip per panel that has text.
   const activeFilters = useMemo<ActiveFilter[]>(() => {
     const entries: ActiveFilter[] = [];
-    if (filters.specialty) {
+    for (const s of filters.specialties ?? []) {
       entries.push({
-        key: `specialty-${filters.specialty}`,
-        label: `Specialty: ${filters.specialty}`,
-        onRemove: () => setFilters((prev) => ({ ...prev, specialty: undefined })),
+        key: `specialty-${s}`,
+        label: `Specialty: ${s}`,
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            specialties: (prev.specialties ?? []).filter((v) => v !== s),
+          })),
       });
     }
-    if (filters.state) {
+    for (const s of filters.states ?? []) {
       entries.push({
-        key: `state-${filters.state}`,
-        label: `State: ${filters.state}`,
-        onRemove: () => setFilters((prev) => ({ ...prev, state: undefined })),
+        key: `state-${s}`,
+        label: `State: ${s}`,
+        onRemove: () =>
+          setFilters((prev) => ({
+            ...prev,
+            states: (prev.states ?? []).filter((v) => v !== s),
+          })),
       });
     }
     for (const [nominationType, term] of Object.entries(searchTerms)) {
@@ -222,8 +257,47 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
         });
       }
     }
+    // v1.17.5: respondent-side chips.
+    const respChip = (
+      key: 'respondentRoles' | 'coreFocuses' | 'stateOfPractices' | 'practiceSettings',
+      label: string
+    ) => {
+      for (const v of respondentFilters[key] ?? []) {
+        entries.push({
+          key: `${key}-${v}`,
+          label: `${label}: ${v}`,
+          onRemove: () =>
+            setRespondentFilters((prev) => ({
+              ...prev,
+              [key]: (prev[key] ?? []).filter((x) => x !== v),
+            })),
+        });
+      }
+    };
+    respChip('respondentRoles', 'Resp Role');
+    respChip('coreFocuses', 'Resp Focus');
+    respChip('stateOfPractices', 'Resp State');
+    respChip('practiceSettings', 'Resp Practice');
+    const respRange = (
+      keyMin: keyof RespondentFiltersState,
+      keyMax: keyof RespondentFiltersState,
+      label: string
+    ) => {
+      const min = respondentFilters[keyMin];
+      const max = respondentFilters[keyMax];
+      if (min === undefined && max === undefined) return;
+      entries.push({
+        key: `${String(keyMin)}-${min ?? ''}-${max ?? ''}`,
+        label: `${label}: ${min ?? '0'}–${max ?? '∞'}`,
+        onRemove: () =>
+          setRespondentFilters((prev) => ({ ...prev, [keyMin]: undefined, [keyMax]: undefined })),
+      });
+    };
+    respRange('yearsMin', 'yearsMax', 'Years');
+    respRange('monthlyPatientsMin', 'monthlyPatientsMax', 'Monthly patients');
+    respRange('dedPatientsMin', 'dedPatientsMax', 'DED patients');
     return entries;
-  }, [filters, searchTerms]);
+  }, [filters, searchTerms, respondentFilters]);
 
   return (
     <div className="space-y-6">
@@ -245,46 +319,53 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
           <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAll} />
         </div>
 
+        {/* v1.17.4: multi-select Specialty + State (was single-select). */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <Label className="text-xs text-muted-foreground mb-1 block">KOL Specialty</Label>
-            <Select
-              value={filters.specialty || 'all'}
-              onValueChange={(v) => setFilters(prev => ({ ...prev, specialty: v === 'all' ? undefined : v }))}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="All Specialties" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Specialties</SelectItem>
-                {(filterOptions?.specialties || []).map((opt) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={filterOptions?.specialties ?? []}
+              selected={filters.specialties ?? []}
+              onChange={(values) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  specialties: values.length > 0 ? values : undefined,
+                }))
+              }
+              placeholder="All Specialties"
+            />
           </div>
 
           <div>
             <Label className="text-xs text-muted-foreground mb-1 block">KOL State</Label>
-            <Select
-              value={filters.state || 'all'}
-              onValueChange={(v) => setFilters(prev => ({ ...prev, state: v === 'all' ? undefined : v }))}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="All States" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All States</SelectItem>
-                {(filterOptions?.states || []).map((opt) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={filterOptions?.states ?? []}
+              selected={filters.states ?? []}
+              onChange={(values) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  states: values.length > 0 ? values : undefined,
+                }))
+              }
+              placeholder="All States"
+            />
           </div>
         </div>
-
-        <ActiveFilterChips filters={activeFilters} />
       </div>
+
+      {/* v1.17.5: Respondent Filters — who's voting. Carried over from
+          the Demographics tab; applies to leader counts on the fly. */}
+      <RespondentFiltersBar
+        value={respondentFilters}
+        onChange={setRespondentFilters}
+        roleOptions={roleOptions}
+        coreFocusOptions={coreFocusOptions}
+        stateOptions={filterOptions?.states ?? []}
+        practiceSettingOptions={practiceSettingOptions}
+      />
+
+      {/* Combined chip row covers both KOL-side and respondent-side filters. */}
+      <ActiveFilterChips filters={activeFilters} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {NOMINATION_TYPES.map((type) => (
@@ -297,6 +378,7 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
             onKolSelect={onKolSelect}
             clientId={clientId}
             filters={filters}
+            respondentFilters={respondentFilters}
             searchTerm={searchTerms[type.value] || ''}
             onSearchChange={(v) => handleSearchChange(type.value, v)}
           />

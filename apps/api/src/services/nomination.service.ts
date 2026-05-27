@@ -11,7 +11,7 @@ const hcpServiceInstance = new HcpService();
  */
 async function auditNomination(
   cognitoSub: string,
-  action: 'nomination.matched' | 'nomination.excluded',
+  action: 'nomination.matched' | 'nomination.excluded' | 'nomination.raw_name_updated',
   entityId: string,
   oldValues: Record<string, unknown> | undefined,
   newValues: Record<string, unknown>
@@ -756,7 +756,7 @@ export class NominationService {
     return { count: result.count };
   }
 
-  async updateRawName(nominationId: string, newRawName: string) {
+  async updateRawName(nominationId: string, newRawName: string, actor: string) {
     const nomination = await prisma.nomination.findUnique({
       where: { id: nominationId },
     });
@@ -769,11 +769,14 @@ export class NominationService {
       throw new Error('Can only edit unmatched or review-needed nominations');
     }
 
+    const priorRawName = nomination.rawNameEntered;
+    const newRawNameTrimmed = newRawName.trim();
+
     // Reset to UNMATCHED when editing so it can be matched again
-    return prisma.nomination.update({
+    const updated = await prisma.nomination.update({
       where: { id: nominationId },
       data: {
-        rawNameEntered: newRawName.trim(),
+        rawNameEntered: newRawNameTrimmed,
         matchStatus: 'UNMATCHED',
         matchedHcpId: null,
         matchType: null,
@@ -787,12 +790,42 @@ export class NominationService {
         nominatorHcp: { select: { firstName: true, lastName: true } },
       },
     });
+
+    // v1.17.4: audit-trail gap fixed — rename was previously silent,
+    // making it impossible to trace who renamed what.
+    await auditNomination(
+      actor,
+      'nomination.raw_name_updated',
+      nominationId,
+      { rawNameEntered: priorRawName },
+      { rawNameEntered: newRawNameTrimmed }
+    );
+
+    return updated;
   }
 
   async getStats(campaignId: string) {
+    // v1.17.4: tile counts on the nominations page now respect the campaign's
+    // excludeInternalEmails flag — matches listForCampaign's behavior. Pre-fix
+    // the list filtered internal-respondent nominations out but the tiles
+    // (matched/excluded/unresolved) counted them anyway, so the numbers
+    // disagreed once the flag was on.
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { excludeInternalEmails: true },
+    });
+    const excludeInternal = campaign?.excludeInternalEmails ?? false;
+
     const stats = await prisma.nomination.groupBy({
       by: ['matchStatus'],
-      where: { response: { campaignId } },
+      where: {
+        response: {
+          campaignId,
+          ...(excludeInternal && {
+            respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+          }),
+        },
+      },
       _count: true,
     });
 

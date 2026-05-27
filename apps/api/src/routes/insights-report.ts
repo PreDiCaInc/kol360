@@ -29,6 +29,33 @@ async function requireClientId<T>(reply: FastifyReply, fn: () => Promise<T>): Pr
   }
 }
 
+/**
+ * v1.17.5: parse respondent filters from query string. Used by
+ * /demographics, /leader-rankings, /sociometric-summary. Categorical
+ * filters are comma-separated; range filters are min/max numerics.
+ * Accepts both the new plural names and the legacy singular fallbacks
+ * so an older client tab doesn't break mid-deploy.
+ */
+function parseRespondentFilters(q: Record<string, string>) {
+  const splitCsv = (v: string | undefined): string[] | undefined => {
+    if (!v) return undefined;
+    const parts = v.split(',').map((s) => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : undefined;
+  };
+  return {
+    respondentRoles: splitCsv(q.respondentRoles) ?? splitCsv(q.respondentRole),
+    coreFocuses: splitCsv(q.coreFocuses) ?? splitCsv(q.coreFocus),
+    stateOfPractices: splitCsv(q.stateOfPractices) ?? splitCsv(q.stateOfPractice),
+    practiceSettings: splitCsv(q.practiceSettings) ?? splitCsv(q.practiceSetting),
+    yearsMin: q.yearsMin ? Number(q.yearsMin) : undefined,
+    yearsMax: q.yearsMax ? Number(q.yearsMax) : undefined,
+    monthlyPatientsMin: q.monthlyPatientsMin ? Number(q.monthlyPatientsMin) : undefined,
+    monthlyPatientsMax: q.monthlyPatientsMax ? Number(q.monthlyPatientsMax) : undefined,
+    dedPatientsMin: q.dedPatientsMin ? Number(q.dedPatientsMin) : undefined,
+    dedPatientsMax: q.dedPatientsMax ? Number(q.dedPatientsMax) : undefined,
+  };
+}
+
 export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
   // List disease areas accessible to the current user, with campaign/KOL counts
   fastify.get('/disease-areas', async (request) => {
@@ -183,9 +210,14 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const query = leaderRankingQuerySchema.parse(request.query);
-      const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
-      const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return requireClientId(reply, () => insightsReportService.getLeaderRankings(diseaseAreaId, query, excludeInternal, clientId));
+      const q = request.query as Record<string, string>;
+      const excludeInternal = q.excludeInternalEmails === 'true';
+      const clientId = resolveClientId(user, q);
+      // v1.17.5: respondent filters carry over from Demographics.
+      const respondentFilters = parseRespondentFilters(q);
+      return requireClientId(reply, () =>
+        insightsReportService.getLeaderRankings(diseaseAreaId, query, excludeInternal, clientId, respondentFilters)
+      );
     }
   );
 
@@ -230,8 +262,13 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const filters = insightsFilterSchema.parse(request.query);
-      const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return requireClientId(reply, () => insightsReportService.getSociometricSummary(diseaseAreaId, filters, clientId));
+      const q = request.query as Record<string, string>;
+      const clientId = resolveClientId(user, q);
+      // v1.17.5: respondent filters carry over from Demographics.
+      const respondentFilters = parseRespondentFilters(q);
+      return requireClientId(reply, () =>
+        insightsReportService.getSociometricSummary(diseaseAreaId, filters, clientId, respondentFilters)
+      );
     }
   );
 
@@ -263,20 +300,11 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
         return;
       }
 
-      const clientId = resolveClientId(user, request.query as Record<string, string>);
       const q = request.query as Record<string, string>;
-      const demographicFilters = {
-        respondentRole: q.respondentRole || undefined,
-        coreFocus: q.coreFocus || undefined,
-        stateOfPractice: q.stateOfPractice || undefined,
-        practiceSetting: q.practiceSetting || undefined,
-        yearsMin: q.yearsMin ? Number(q.yearsMin) : undefined,
-        yearsMax: q.yearsMax ? Number(q.yearsMax) : undefined,
-        monthlyPatientsMin: q.monthlyPatientsMin ? Number(q.monthlyPatientsMin) : undefined,
-        monthlyPatientsMax: q.monthlyPatientsMax ? Number(q.monthlyPatientsMax) : undefined,
-        dedPatientsMin: q.dedPatientsMin ? Number(q.dedPatientsMin) : undefined,
-        dedPatientsMax: q.dedPatientsMax ? Number(q.dedPatientsMax) : undefined,
-      };
+      const clientId = resolveClientId(user, q);
+      // v1.17.5: parser shared with /leader-rankings + /sociometric-summary
+      // so the three surfaces accept the same query-param shape.
+      const demographicFilters = parseRespondentFilters(q);
       const hasFilters = Object.values(demographicFilters).some(v => v !== undefined);
       return insightsReportService.getDemographics(diseaseAreaId, clientId, hasFilters ? demographicFilters : undefined);
     }
