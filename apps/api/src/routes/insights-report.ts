@@ -265,11 +265,20 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
 
       const clientId = resolveClientId(user, request.query as Record<string, string>);
       const q = request.query as Record<string, string>;
+      // v1.17.4: the 4 categorical filters are comma-separated multi-select.
+      // Accept either the new plural (`respondentRoles`) or fall back to the
+      // legacy singular (`respondentRole`) so an older client tab doesn't
+      // 400 mid-deploy. Empty arrays normalize to `undefined`.
+      const splitCsv = (v: string | undefined): string[] | undefined => {
+        if (!v) return undefined;
+        const parts = v.split(',').map((s) => s.trim()).filter(Boolean);
+        return parts.length > 0 ? parts : undefined;
+      };
       const demographicFilters = {
-        respondentRole: q.respondentRole || undefined,
-        coreFocus: q.coreFocus || undefined,
-        stateOfPractice: q.stateOfPractice || undefined,
-        practiceSetting: q.practiceSetting || undefined,
+        respondentRoles: splitCsv(q.respondentRoles) ?? splitCsv(q.respondentRole),
+        coreFocuses: splitCsv(q.coreFocuses) ?? splitCsv(q.coreFocus),
+        stateOfPractices: splitCsv(q.stateOfPractices) ?? splitCsv(q.stateOfPractice),
+        practiceSettings: splitCsv(q.practiceSettings) ?? splitCsv(q.practiceSetting),
         yearsMin: q.yearsMin ? Number(q.yearsMin) : undefined,
         yearsMax: q.yearsMax ? Number(q.yearsMax) : undefined,
         monthlyPatientsMin: q.monthlyPatientsMin ? Number(q.monthlyPatientsMin) : undefined,

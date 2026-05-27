@@ -9,13 +9,7 @@ import { StackedBarChart } from '@/components/insights/charts/stacked-bar-chart'
 import { useDemographics, useInsightsFilterOptions } from '@/hooks/use-insights-report';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { Filter } from 'lucide-react';
 import {
   ActiveFilter,
@@ -29,10 +23,13 @@ interface Props {
 }
 
 interface DemographicFilters {
-  respondentRole?: string;
-  coreFocus?: string;
-  stateOfPractice?: string;
-  practiceSetting?: string;
+  // v1.17.4: the 4 categorical filters are multi-select arrays (was single
+  // string). Backend accepts comma-separated values via the same query
+  // param name (`respondentRoles=A,B,C`).
+  respondentRoles?: string[];
+  coreFocuses?: string[];
+  stateOfPractices?: string[];
+  practiceSettings?: string[];
   yearsMin?: number;
   yearsMax?: number;
   monthlyPatientsMin?: number;
@@ -69,13 +66,16 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
   const [filters, setFilters] = useState<DemographicFilters>({});
   const debouncedFilters = useDebounce(filters, 500);
 
-  // Build the API filter object (only include defined values)
+  // Build the API filter object (only include defined values).
+  // v1.17.4: arrays serialize as comma-separated strings.
   const apiFilters = useMemo(() => {
     const result: Record<string, string | number | undefined> = {};
-    if (debouncedFilters.respondentRole) result.respondentRole = debouncedFilters.respondentRole;
-    if (debouncedFilters.coreFocus) result.coreFocus = debouncedFilters.coreFocus;
-    if (debouncedFilters.stateOfPractice) result.stateOfPractice = debouncedFilters.stateOfPractice;
-    if (debouncedFilters.practiceSetting) result.practiceSetting = debouncedFilters.practiceSetting;
+    const csv = (arr?: string[]): string | undefined =>
+      arr && arr.length > 0 ? arr.join(',') : undefined;
+    if (csv(debouncedFilters.respondentRoles)) result.respondentRoles = csv(debouncedFilters.respondentRoles);
+    if (csv(debouncedFilters.coreFocuses)) result.coreFocuses = csv(debouncedFilters.coreFocuses);
+    if (csv(debouncedFilters.stateOfPractices)) result.stateOfPractices = csv(debouncedFilters.stateOfPractices);
+    if (csv(debouncedFilters.practiceSettings)) result.practiceSettings = csv(debouncedFilters.practiceSettings);
     if (debouncedFilters.yearsMin !== undefined) result.yearsMin = debouncedFilters.yearsMin;
     if (debouncedFilters.yearsMax !== undefined) result.yearsMax = debouncedFilters.yearsMax;
     if (debouncedFilters.monthlyPatientsMin !== undefined) result.monthlyPatientsMin = debouncedFilters.monthlyPatientsMin;
@@ -118,22 +118,32 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
   }, []);
 
   // v1.17.3: drive the shared FilterClearControls (button count + chips).
-  // Each entry knows how to remove itself from local state.
+  // v1.17.4: 4 categorical filters now multi-select arrays — each selected
+  // value gets its own removable chip.
   const activeFilters = useMemo<ActiveFilter[]>(() => {
     const entries: ActiveFilter[] = [];
-    const set = <K extends keyof DemographicFilters>(key: K, label: string) => {
-      const value = filters[key];
-      if (value === undefined || value === '') return;
-      entries.push({
-        key: `${key}-${value}`,
-        label: `${label}: ${value}`,
-        onRemove: () => setFilters((prev) => ({ ...prev, [key]: undefined })),
-      });
+    const chipsForArray = (
+      key: 'respondentRoles' | 'coreFocuses' | 'stateOfPractices' | 'practiceSettings',
+      label: string
+    ) => {
+      const arr = filters[key];
+      if (!arr || arr.length === 0) return;
+      for (const value of arr) {
+        entries.push({
+          key: `${key}-${value}`,
+          label: `${label}: ${value}`,
+          onRemove: () =>
+            setFilters((prev) => ({
+              ...prev,
+              [key]: (prev[key] ?? []).filter((v) => v !== value),
+            })),
+        });
+      }
     };
-    set('respondentRole', 'Role');
-    set('coreFocus', 'Focus');
-    set('stateOfPractice', 'State');
-    set('practiceSetting', 'Practice');
+    chipsForArray('respondentRoles', 'Role');
+    chipsForArray('coreFocuses', 'Focus');
+    chipsForArray('stateOfPractices', 'State');
+    chipsForArray('practiceSettings', 'Practice');
     // Range filters reported as a single chip when either bound is set.
     const rangeChip = (
       keyMin: keyof DemographicFilters,
@@ -155,12 +165,16 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
     return entries;
   }, [filters]);
 
-  const handleSelectChange = useCallback((key: keyof DemographicFilters, value: string) => {
-    setFilters(prev => ({
-      ...prev,
-      [key]: value === 'all' ? undefined : value,
-    }));
-  }, []);
+  const handleMultiSelectChange = useCallback(
+    (key: 'respondentRoles' | 'coreFocuses' | 'stateOfPractices' | 'practiceSettings') =>
+      (values: string[]) => {
+        setFilters((prev) => ({
+          ...prev,
+          [key]: values.length > 0 ? values : undefined,
+        }));
+      },
+    []
+  );
 
   const handleNumberChange = useCallback((key: keyof DemographicFilters, value: string) => {
     setFilters(prev => ({
@@ -267,78 +281,46 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
           <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAll} />
         </div>
 
-        {/* Row 1: Dropdowns */}
+        {/* Row 1: Multi-select dropdowns (v1.17.4 — was single Select) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <div>
             <Label className="text-xs text-muted-foreground mb-1 block">Respondent Role</Label>
-            <Select
-              value={filters.respondentRole || 'all'}
-              onValueChange={(v) => handleSelectChange('respondentRole', v)}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="All Roles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                {roleOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={roleOptions}
+              selected={filters.respondentRoles ?? []}
+              onChange={handleMultiSelectChange('respondentRoles')}
+              placeholder="All Roles"
+            />
           </div>
 
           <div>
             <Label className="text-xs text-muted-foreground mb-1 block">Core Focus</Label>
-            <Select
-              value={filters.coreFocus || 'all'}
-              onValueChange={(v) => handleSelectChange('coreFocus', v)}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="All Focus Areas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Focus Areas</SelectItem>
-                {coreFocusOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={coreFocusOptions}
+              selected={filters.coreFocuses ?? []}
+              onChange={handleMultiSelectChange('coreFocuses')}
+              placeholder="All Focus Areas"
+            />
           </div>
 
           <div>
             <Label className="text-xs text-muted-foreground mb-1 block">State of Practice</Label>
-            <Select
-              value={filters.stateOfPractice || 'all'}
-              onValueChange={(v) => handleSelectChange('stateOfPractice', v)}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="All States" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All States</SelectItem>
-                {stateOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={stateOptions}
+              selected={filters.stateOfPractices ?? []}
+              onChange={handleMultiSelectChange('stateOfPractices')}
+              placeholder="All States"
+            />
           </div>
 
           <div>
             <Label className="text-xs text-muted-foreground mb-1 block">Practice Setting</Label>
-            <Select
-              value={filters.practiceSetting || 'all'}
-              onValueChange={(v) => handleSelectChange('practiceSetting', v)}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue placeholder="All Settings" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Settings</SelectItem>
-                {practiceSettingOptions.map((opt) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={practiceSettingOptions}
+              selected={filters.practiceSettings ?? []}
+              onChange={handleMultiSelectChange('practiceSettings')}
+              placeholder="All Settings"
+            />
           </div>
         </div>
 

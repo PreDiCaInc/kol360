@@ -62,6 +62,19 @@ const INFLUENCER_THRESHOLDS = {
 type AnalysisScoreRow = Prisma.HcpAnalysisScoreGetPayload<object>;
 type ObjectiveRow = Prisma.HcpDiseaseAreaScoreGetPayload<object>;
 
+// US 50 + DC. Used by getFilterOptions to filter out non-US state codes
+// (Canadian provinces, country codes, etc.) that legacy NPI imports left
+// scattered in the Hcp.state column. Hardcoded because all current
+// customers are US-only; future per-client `region` setting can supersede.
+const US_STATE_CODES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  'DC',
+]);
+
 /**
  * Thrown by analysis-backed read methods when clientId is omitted. The route
  * layer catches this and returns 400. Replaces the prior silent-zero
@@ -916,7 +929,14 @@ export class InsightsReportService {
 
     for (const score of hcpsWithScores) {
       if (score.hcp.specialty) specialties.add(score.hcp.specialty);
-      if (score.hcp.state) states.add(score.hcp.state);
+      // v1.17.4: state filter whitelist — only emit US 50 + DC.
+      // Customers (Sun Pharma, B+L) are US-only; non-US values like 'AB'
+      // (Alberta) or 'AU' (Australia) had leaked into the dropdown from
+      // legacy NPI imports. Hardcoded for now; revisit as a per-client
+      // Client.region setting if/when we onboard a non-US customer.
+      if (score.hcp.state && US_STATE_CODES.has(score.hcp.state)) {
+        states.add(score.hcp.state);
+      }
     }
 
     return {
@@ -934,10 +954,13 @@ export class InsightsReportService {
    * Get demographics data from survey response answers
    */
   async getDemographics(diseaseAreaId: string, clientId?: string, filters?: {
-    respondentRole?: string;
-    coreFocus?: string;
-    stateOfPractice?: string;
-    practiceSetting?: string;
+    // v1.17.4: these 4 are now multi-select. Each accepts an array of
+    // accepted values; empty/undefined = no filter on that field. Range
+    // filters below stay single-valued.
+    respondentRoles?: string[];
+    coreFocuses?: string[];
+    stateOfPractices?: string[];
+    practiceSettings?: string[];
     yearsMin?: number;
     yearsMax?: number;
     monthlyPatientsMin?: number;
@@ -1013,13 +1036,16 @@ export class InsightsReportService {
 
         filteredResponseIds = new Set(answersByResponseId.keys());
 
-        if (filters.respondentRole) {
+        // v1.17.4: filters changed from single value (`===`) to multi-select
+        // (`.includes(value)`). Empty array = no filter on that field.
+        if (filters.respondentRoles && filters.respondentRoles.length > 0) {
+          const accept = new Set(filters.respondentRoles);
           const matching = new Set<string>();
           for (const a of answers) {
             const qt = a.question.questionTextSnapshot.toLowerCase();
             if (qt.includes('primary medical specialty')) {
               const value = this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, a.question.question.type);
-              if (value === filters.respondentRole) {
+              if (value && accept.has(value)) {
                 matching.add(a.response.id);
               }
             }
@@ -1027,13 +1053,14 @@ export class InsightsReportService {
           filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
         }
 
-        if (filters.coreFocus) {
+        if (filters.coreFocuses && filters.coreFocuses.length > 0) {
+          const accept = new Set(filters.coreFocuses);
           const matching = new Set<string>();
           for (const a of answers) {
             const qt = a.question.questionTextSnapshot.toLowerCase();
             if (qt.includes('core focus')) {
               const value = a.answerText || this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, a.question.question.type);
-              if (value === filters.coreFocus) {
+              if (value && accept.has(value)) {
                 matching.add(a.response.id);
               }
             }
@@ -1041,18 +1068,20 @@ export class InsightsReportService {
           filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
         }
 
-        if (filters.stateOfPractice) {
-          // Filter by the respondent HCP's state
+        if (filters.stateOfPractices && filters.stateOfPractices.length > 0) {
+          const accept = new Set(filters.stateOfPractices);
           const matching = new Set<string>();
           for (const a of answers) {
-            if (a.response.respondentHcp?.state === filters.stateOfPractice) {
+            const state = a.response.respondentHcp?.state;
+            if (state && accept.has(state)) {
               matching.add(a.response.id);
             }
           }
           filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
         }
 
-        if (filters.practiceSetting) {
+        if (filters.practiceSettings && filters.practiceSettings.length > 0) {
+          const accept = new Set(filters.practiceSettings);
           const matching = new Set<string>();
           for (const a of answers) {
             const qt = a.question.questionTextSnapshot.toLowerCase();
@@ -1060,12 +1089,12 @@ export class InsightsReportService {
               const questionType = a.question.question.type;
               if (questionType === 'MULTI_CHOICE' && a.answerJson) {
                 const selected = (a.answerJson as { selected?: string[] }).selected;
-                if (Array.isArray(selected) && selected.includes(filters.practiceSetting!)) {
+                if (Array.isArray(selected) && selected.some((s) => accept.has(s))) {
                   matching.add(a.response.id);
                 }
               } else {
                 const value = this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, questionType);
-                if (value === filters.practiceSetting) {
+                if (value && accept.has(value)) {
                   matching.add(a.response.id);
                 }
               }

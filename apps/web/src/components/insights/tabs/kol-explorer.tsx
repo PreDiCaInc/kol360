@@ -36,6 +36,7 @@ import { StateBarChart } from '@/components/insights/charts/state-bar-chart';
 import { BarDistributionChart } from '@/components/insights/charts/bar-distribution-chart';
 import { useKolExplorer, useKolProfile, useInsightsFilterOptions, useKolNominationMetadata } from '@/hooks/use-insights-report';
 import { useExcelExport } from '@/lib/excel-export';
+import { toTitleCase } from '@/lib/utils';
 import type { InsightsFilterInput, KolExplorerItem, NominationType } from '@kol360/shared';
 import {
   ActiveFilter,
@@ -254,7 +255,7 @@ function ScoreTableView({
       kol.name,
       kol.specialty,
       kol.degree,
-      kol.city,
+      toTitleCase(kol.city),
       kol.state,
       kol.influencerType,
       kol.scorePublications?.toFixed(1),
@@ -329,7 +330,7 @@ function ScoreTableView({
           options={filterOptions?.influencerTypes || []}
           selected={selectedInfluencerTypes}
           onChange={handleMultiSelectChange(setSelectedInfluencerTypes)}
-          placeholder="All Types"
+          placeholder="Influencer Type"
         />
       </div>
 
@@ -400,7 +401,7 @@ function ScoreTableView({
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">{kol.degree}</Badge>
                     ) : '-'}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{kol.city || '-'}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{toTitleCase(kol.city) || '-'}</td>
                   <td className="px-3 py-2">{kol.state || '-'}</td>
                   <td className="px-3 py-2">
                     {kol.influencerType ? (

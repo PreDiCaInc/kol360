@@ -16,7 +16,7 @@ import { HeatMapCell } from '@/components/insights/shared/heat-map-cell';
 import { KolNameLink } from '@/components/insights/shared/kol-name-link';
 import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
 import { useExcelExport } from '@/lib/excel-export';
-import { cn } from '@/lib/utils';
+import { cn, toTitleCase } from '@/lib/utils';
 
 export interface LeaderTableItem {
   rank: number;
@@ -91,7 +91,7 @@ export function LeaderTable({
         if (col === 'count') row.push(item.count);
         else if (col === 'name') row.push(item.name);
         else if (col === 'specialty') row.push(item.specialty);
-        else if (col === 'city') row.push(item.city);
+        else if (col === 'city') row.push(toTitleCase(item.city));
         else if (col === 'state') row.push(item.state);
         else if (col === 'influencerType') row.push(item.influencerType);
       });
@@ -181,7 +181,7 @@ export function LeaderTable({
                     }
                     const value =
                       col === 'specialty' ? item.specialty :
-                      col === 'city' ? item.city :
+                      col === 'city' ? toTitleCase(item.city) :
                       col === 'state' ? item.state :
                       col === 'influencerType' ? item.influencerType :
                       null;

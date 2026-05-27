@@ -409,7 +409,11 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     const { rawNameEntered } = updateNominationRawNameSchema.parse(request.body);
 
     try {
-      const result = await nominationService.updateRawName(nominationId, rawNameEntered);
+      const result = await nominationService.updateRawName(
+        nominationId,
+        rawNameEntered,
+        request.user.sub
+      );
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to update nomination';

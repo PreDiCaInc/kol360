@@ -545,7 +545,7 @@ describe('NominationService', () => {
         matchStatus: 'UNMATCHED',
       });
 
-      const result = await nominationService.updateRawName('nom-1', 'Jane Smith');
+      const result = await nominationService.updateRawName('nom-1', 'Jane Smith', 'test-actor');
 
       expect(result.rawNameEntered).toBe('Jane Smith');
       expect(prisma.nomination.update).toHaveBeenCalledWith(
@@ -566,7 +566,7 @@ describe('NominationService', () => {
       });
 
       await expect(
-        nominationService.updateRawName('nom-1', 'New Name')
+        nominationService.updateRawName('nom-1', 'New Name', 'test-actor')
       ).rejects.toThrow('Can only edit unmatched or review-needed nominations');
     });
   });

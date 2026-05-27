@@ -19,7 +19,7 @@ import {
   ActiveFilterChips,
 } from '@/components/insights/shared/filter-clear-controls';
 import type { InsightsFilterInput } from '@kol360/shared';
-import { cn } from '@/lib/utils';
+import { cn, toTitleCase } from '@/lib/utils';
 
 interface Props {
   diseaseAreaId: string;
@@ -165,7 +165,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
       item.name,
       item.specialty,
       item.influencerType,
-      item.city,
+      toTitleCase(item.city),
       item.state,
       item.discussionLeaders,
       item.referralLeaders,
@@ -352,7 +352,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                         </Badge>
                       ) : '-'}
                     </td>
-                    <td className="px-3 py-2">{item.city || '-'}</td>
+                    <td className="px-3 py-2">{toTitleCase(item.city) || '-'}</td>
                     <td className="px-3 py-2">{item.state || '-'}</td>
                     <HeatMapCell value={item.discussionLeaders} maxValue={maxValues.discussionLeaders} />
                     <HeatMapCell value={item.referralLeaders} maxValue={maxValues.referralLeaders} />
