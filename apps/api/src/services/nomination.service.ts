@@ -177,7 +177,19 @@ export class NominationService {
     };
   }
 
-  async getSuggestions(nominationId: string): Promise<HcpSuggestion[]> {
+  /**
+   * Suggestions for a nomination. Normally uses `nomination.rawNameEntered`
+   * as the search input. v1.17.6: optional `previewRawName` overrides it
+   * — drives the inline "Match to existing" UI in the rename dialog so
+   * users see exact-name matches BEFORE saving the rename + landing in
+   * the post-save match dialog (where they sometimes clicked "Create new
+   * HCP" anyway and hit the duplicate-name dead end). Nominator context
+   * still comes from the saved nomination.
+   */
+  async getSuggestions(
+    nominationId: string,
+    previewRawName?: string
+  ): Promise<HcpSuggestion[]> {
     const nomination = await prisma.nomination.findUnique({
       where: { id: nominationId },
       include: {
@@ -197,8 +209,13 @@ export class NominationService {
     const nominatorState = nomination.response?.respondentHcp?.state ?? null;
     const nominatorSpecialty = nomination.response?.respondentHcp?.specialty ?? null;
 
+    // v1.17.6: search the preview name if provided; falls back to the
+    // saved rawNameEntered.
+    const searchInput = (previewRawName?.trim() || nomination.rawNameEntered).trim();
+    if (!searchInput) return [];
+
     // Normalize name: strip titles, credentials, suffixes, and smart apostrophes
-    let normalizedName = normalizeApostrophes(nomination.rawNameEntered)
+    let normalizedName = normalizeApostrophes(searchInput)
       // Remove leading titles. MUST have closing \b + a required separator (\s+):
       // without it, the "Dr" inside "Drake" matched and "Dr Carol Drake"
       // silently became "Carol ake". The \b\.?\s+ ensures we only strip a
@@ -255,11 +272,13 @@ export class NominationService {
                 },
               ]
             : []),
-          // Alias exact match (try normalized + original + both apostrophe forms,
-          // so D'Aversa (curly) and D'Aversa (straight) cross-match).
+          // Alias exact match (try normalized + the search input + both
+          // apostrophe forms, so D'Aversa (curly) and D'Aversa (straight)
+          // cross-match). v1.17.6: searchInput replaces the saved rawName
+          // when previewRawName is provided.
           ...Array.from(new Set([
             ...apostropheForms(rawNameTrimmed),
-            ...apostropheForms(nomination.rawNameEntered.trim()),
+            ...apostropheForms(searchInput),
           ])).map(form => ({
             aliases: {
               some: {

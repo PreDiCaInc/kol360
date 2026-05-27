@@ -1777,16 +1777,44 @@ function EditNominationDialog({
   onSaveAndRematch,
 }: EditNominationDialogProps) {
   const updateRawName = useUpdateNominationRawName();
+  const matchNomination = useMatchNomination();
   const [newName, setNewName] = useState(nomination?.rawNameEntered || '');
 
+  // v1.17.6: live exact-match preview. As the user types, debounce 300ms
+  // then call the suggestions endpoint with the proposed name. If the top
+  // suggestion is an exact name match (isNameMatch=true), surface an
+  // inline "Match to existing X" callout — saves the user from the
+  // rename → MatchDialog → Create-new-HCP dead end where "this HCP
+  // already exists" would otherwise fire.
+  const trimmedNewName = newName.trim();
+  const hasChanged = trimmedNewName !== nomination?.rawNameEntered;
+  const [debouncedName, setDebouncedName] = useState(trimmedNewName);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedName(trimmedNewName), 300);
+    return () => clearTimeout(t);
+  }, [trimmedNewName]);
+  // Only search when the user has actually changed the name AND the
+  // debounced value is non-empty. Skip when name matches the original
+  // (those suggestions already drive the existing MatchDialog flow).
+  const shouldPreview =
+    hasChanged && debouncedName.length > 0 && debouncedName === trimmedNewName;
+  const { data: previewSuggestions } = useNominationSuggestions(
+    campaignId,
+    shouldPreview ? nominationId : null,
+    shouldPreview ? debouncedName : undefined
+  );
+  const exactMatchSuggestion = previewSuggestions?.find(
+    (s) => s.isNameMatch && s.score >= 90
+  );
+
   const handleSubmit = async () => {
-    if (!newName.trim()) return;
+    if (!trimmedNewName) return;
 
     try {
       await updateRawName.mutateAsync({
         campaignId,
         nominationId,
-        rawNameEntered: newName.trim(),
+        rawNameEntered: trimmedNewName,
       });
       onClose();
       // Auto-open the match dialog after save
@@ -1799,7 +1827,27 @@ function EditNominationDialog({
     }
   };
 
-  const hasChanged = newName.trim() !== nomination?.rawNameEntered;
+  // v1.17.6: inline match path. Skips rename + post-save MatchDialog —
+  // goes straight from rename input to a matched nomination via
+  // matchNomination. matchType='exact' / confidence=100 reflects the
+  // user-confirmed exact name match.
+  const handleInlineMatch = async () => {
+    if (!exactMatchSuggestion) return;
+    try {
+      await matchNomination.mutateAsync({
+        campaignId,
+        nominationId,
+        hcpId: exactMatchSuggestion.hcp.id,
+        addAlias: false, // name match — no alias needed
+        matchType: 'exact',
+        matchConfidence: 100,
+      });
+      onClose();
+    } catch (error) {
+      console.error('Failed to match:', error);
+      alert(error instanceof Error ? error.message : 'Failed to match nomination');
+    }
+  };
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -1822,12 +1870,50 @@ function EditNominationDialog({
               placeholder="Enter corrected name"
               autoFocus
             />
-            {nomination?.rawNameEntered && newName.trim() !== nomination.rawNameEntered && (
+            {nomination?.rawNameEntered && hasChanged && (
               <p className="text-xs text-muted-foreground mt-1">
                 Original: "{nomination.rawNameEntered}"
               </p>
             )}
           </div>
+
+          {/* v1.17.6: inline exact-match callout. Surfaces a one-click
+              Match path when the typed name matches an existing HCP. */}
+          {exactMatchSuggestion && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950 p-3 space-y-2">
+              <div className="flex items-start gap-2 text-sm">
+                <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <div className="font-medium text-blue-900 dark:text-blue-100">
+                    Existing HCP with this name found
+                  </div>
+                  <div className="text-blue-800 dark:text-blue-200">
+                    {exactMatchSuggestion.hcp.firstName} {exactMatchSuggestion.hcp.lastName}
+                    {exactMatchSuggestion.hcp.npi && (
+                      <span className="text-blue-700 dark:text-blue-300"> · NPI {exactMatchSuggestion.hcp.npi}</span>
+                    )}
+                    {exactMatchSuggestion.hcp.specialty && (
+                      <span className="text-blue-700 dark:text-blue-300"> · {exactMatchSuggestion.hcp.specialty}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handleInlineMatch}
+                disabled={matchNomination.isPending}
+                className="w-full"
+              >
+                {matchNomination.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <LinkIcon className="w-4 h-4 mr-2" />
+                )}
+                Match to this HCP instead
+              </Button>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -1836,7 +1922,7 @@ function EditNominationDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!newName.trim() || !hasChanged || updateRawName.isPending}
+            disabled={!trimmedNewName || !hasChanged || updateRawName.isPending}
           >
             {updateRawName.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
