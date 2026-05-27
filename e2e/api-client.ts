@@ -954,6 +954,14 @@ export class ApiClient {
     clientId?: string;
     page?: number;
     limit?: number;
+    // v1.17.5: respondent filters carried over from Demographics.
+    // Comma-separated CSV for the 4 categorical filters; numeric for ranges.
+    respondentRoles?: string;
+    coreFocuses?: string;
+    stateOfPractices?: string;
+    practiceSettings?: string;
+    yearsMin?: number;
+    yearsMax?: number;
   }) {
     const query = new URLSearchParams();
     if (params?.nominationType) query.set('nominationType', params.nominationType);
@@ -962,6 +970,12 @@ export class ApiClient {
     if (params?.clientId) query.set('clientId', params.clientId);
     if (params?.page) query.set('page', params.page.toString());
     if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.respondentRoles) query.set('respondentRoles', params.respondentRoles);
+    if (params?.coreFocuses) query.set('coreFocuses', params.coreFocuses);
+    if (params?.stateOfPractices) query.set('stateOfPractices', params.stateOfPractices);
+    if (params?.practiceSettings) query.set('practiceSettings', params.practiceSettings);
+    if (params?.yearsMin !== undefined) query.set('yearsMin', params.yearsMin.toString());
+    if (params?.yearsMax !== undefined) query.set('yearsMax', params.yearsMax.toString());
     const queryStr = query.toString() ? `?${query.toString()}` : '';
     return this.request<LeaderRankings>('GET', `/api/v1/insights/${diseaseAreaId}/leader-rankings${queryStr}`);
   }
@@ -999,6 +1013,11 @@ export class ApiClient {
     clientId?: string;
     page?: number;
     limit?: number;
+    // v1.17.5: respondent filters.
+    respondentRoles?: string;
+    coreFocuses?: string;
+    stateOfPractices?: string;
+    practiceSettings?: string;
   }) {
     const query = new URLSearchParams();
     if (params?.search) query.set('search', params.search);
@@ -1007,6 +1026,10 @@ export class ApiClient {
     if (params?.clientId) query.set('clientId', params.clientId);
     if (params?.page) query.set('page', params.page.toString());
     if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.respondentRoles) query.set('respondentRoles', params.respondentRoles);
+    if (params?.coreFocuses) query.set('coreFocuses', params.coreFocuses);
+    if (params?.stateOfPractices) query.set('stateOfPractices', params.stateOfPractices);
+    if (params?.practiceSettings) query.set('practiceSettings', params.practiceSettings);
     const queryStr = query.toString() ? `?${query.toString()}` : '';
     return this.request<SociometricSummary>('GET', `/api/v1/insights/${diseaseAreaId}/sociometric-summary${queryStr}`);
   }

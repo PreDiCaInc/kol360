@@ -76,6 +76,47 @@ const US_STATE_CODES = new Set([
 ]);
 
 /**
+ * v1.17.5: shared respondent-filter shape. Drives:
+ *   - getDemographics      (filters which respondents' answers feed the aggregations)
+ *   - getLeaderRankings    (filters which nominations count toward leader rank)
+ *   - getSociometricSummary (filters which nominations count toward sociometric counts)
+ *
+ * 4 categorical filters are multi-select; 3 are min/max range filters.
+ * An empty/undefined filter on a field means "no filter on that field".
+ * An empty Map / no-arg call to `hasAnyRespondentFilter()` means
+ * "skip filtering entirely" (caller should use the pre-aggregated path
+ * to avoid the live Nomination scan).
+ */
+export interface RespondentFilters {
+  respondentRoles?: string[];
+  coreFocuses?: string[];
+  stateOfPractices?: string[];
+  practiceSettings?: string[];
+  yearsMin?: number;
+  yearsMax?: number;
+  monthlyPatientsMin?: number;
+  monthlyPatientsMax?: number;
+  dedPatientsMin?: number;
+  dedPatientsMax?: number;
+}
+
+function hasAnyRespondentFilter(f?: RespondentFilters): boolean {
+  if (!f) return false;
+  return (
+    (f.respondentRoles?.length ?? 0) > 0 ||
+    (f.coreFocuses?.length ?? 0) > 0 ||
+    (f.stateOfPractices?.length ?? 0) > 0 ||
+    (f.practiceSettings?.length ?? 0) > 0 ||
+    f.yearsMin !== undefined ||
+    f.yearsMax !== undefined ||
+    f.monthlyPatientsMin !== undefined ||
+    f.monthlyPatientsMax !== undefined ||
+    f.dedPatientsMin !== undefined ||
+    f.dedPatientsMax !== undefined
+  );
+}
+
+/**
  * Thrown by analysis-backed read methods when clientId is omitted. The route
  * layer catches this and returns 400. Replaces the prior silent-zero
  * behavior where an omitted clientId looked indistinguishable from "this
@@ -138,6 +179,264 @@ export class InsightsReportService {
       where: { hcpId: { in: hcpIds }, diseaseAreaId, isCurrent: true },
     });
     return new Map(rows.map((r) => [r.hcpId, r]));
+  }
+
+  /**
+   * v1.17.5: shared respondent-filter pipeline. Returns the set of
+   * SurveyResponse IDs that pass ALL active filters.
+   *
+   * Used by getDemographics (filters which answers feed aggregations)
+   * and by getLeaderRankings / getSociometricSummary (filters which
+   * nominations count toward leader/sociometric counts).
+   *
+   * Caller pre-loads the answers (so the same query that drives the
+   * caller's main work is reused — avoids a redundant DB round-trip).
+   * Empty `answers` input returns empty Set. The caller is expected to
+   * skip calling this helper entirely if `hasAnyRespondentFilter(f)`
+   * returns false — see callers for the gate.
+   *
+   * Filter semantics:
+   *  - 4 categorical filters: each accepts string[]; "value passes" if
+   *    `accept.has(answer)`. Empty array = no filter on that field.
+   *  - 3 range filters: numeric min/max; both bounds optional.
+   *  - All active filters AND together (set intersection).
+   */
+  private async computeFilteredResponseIds(
+    filters: RespondentFilters,
+    answers: Array<{
+      answerText: string | null;
+      answerJson: unknown;
+      question: {
+        questionTextSnapshot: string;
+        question: { type: string };
+      };
+      response: {
+        id: string;
+        respondentHcp?: { state: string | null } | null;
+      };
+    }>
+  ): Promise<Set<string>> {
+    let filteredResponseIds = new Set<string>(answers.map((a) => a.response.id));
+
+    const intersect = (matching: Set<string>) => {
+      filteredResponseIds = new Set([...filteredResponseIds].filter((id) => matching.has(id)));
+    };
+
+    if (filters.respondentRoles && filters.respondentRoles.length > 0) {
+      const accept = new Set(filters.respondentRoles);
+      const matching = new Set<string>();
+      for (const a of answers) {
+        const qt = a.question.questionTextSnapshot.toLowerCase();
+        if (qt.includes('primary medical specialty')) {
+          const value = this.extractSingleChoice(
+            a.answerJson as Record<string, unknown> | null,
+            a.answerText,
+            a.question.question.type
+          );
+          if (value && accept.has(value)) matching.add(a.response.id);
+        }
+      }
+      intersect(matching);
+    }
+
+    if (filters.coreFocuses && filters.coreFocuses.length > 0) {
+      const accept = new Set(filters.coreFocuses);
+      const matching = new Set<string>();
+      for (const a of answers) {
+        const qt = a.question.questionTextSnapshot.toLowerCase();
+        if (qt.includes('core focus')) {
+          const value =
+            a.answerText ||
+            this.extractSingleChoice(
+              a.answerJson as Record<string, unknown> | null,
+              a.answerText,
+              a.question.question.type
+            );
+          if (value && accept.has(value)) matching.add(a.response.id);
+        }
+      }
+      intersect(matching);
+    }
+
+    if (filters.stateOfPractices && filters.stateOfPractices.length > 0) {
+      const accept = new Set(filters.stateOfPractices);
+      const matching = new Set<string>();
+      for (const a of answers) {
+        const state = a.response.respondentHcp?.state;
+        if (state && accept.has(state)) matching.add(a.response.id);
+      }
+      intersect(matching);
+    }
+
+    if (filters.practiceSettings && filters.practiceSettings.length > 0) {
+      const accept = new Set(filters.practiceSettings);
+      const matching = new Set<string>();
+      for (const a of answers) {
+        const qt = a.question.questionTextSnapshot.toLowerCase();
+        if (qt.includes('practice setting')) {
+          const questionType = a.question.question.type;
+          if (questionType === 'MULTI_CHOICE' && a.answerJson) {
+            const selected = (a.answerJson as { selected?: string[] }).selected;
+            if (Array.isArray(selected) && selected.some((s) => accept.has(s))) {
+              matching.add(a.response.id);
+            }
+          } else {
+            const value = this.extractSingleChoice(
+              a.answerJson as Record<string, unknown> | null,
+              a.answerText,
+              questionType
+            );
+            if (value && accept.has(value)) matching.add(a.response.id);
+          }
+        }
+      }
+      intersect(matching);
+    }
+
+    if (filters.yearsMin !== undefined || filters.yearsMax !== undefined) {
+      const matching = new Set<string>();
+      for (const a of answers) {
+        const qt = a.question.questionTextSnapshot.toLowerCase();
+        if (qt.includes('years') && qt.includes('practice')) {
+          const num = this.parseNumber(a.answerText);
+          if (num !== null) {
+            const passMin = filters.yearsMin === undefined || num >= filters.yearsMin;
+            const passMax = filters.yearsMax === undefined || num <= filters.yearsMax;
+            if (passMin && passMax) matching.add(a.response.id);
+          }
+        }
+      }
+      intersect(matching);
+    }
+
+    if (filters.monthlyPatientsMin !== undefined || filters.monthlyPatientsMax !== undefined) {
+      const matching = new Set<string>();
+      for (const a of answers) {
+        const qt = a.question.questionTextSnapshot.toLowerCase();
+        if (qt.includes('how many patients') && !qt.includes('dry eye')) {
+          const num = this.parseNumber(a.answerText);
+          if (num !== null) {
+            const passMin = filters.monthlyPatientsMin === undefined || num >= filters.monthlyPatientsMin;
+            const passMax = filters.monthlyPatientsMax === undefined || num <= filters.monthlyPatientsMax;
+            if (passMin && passMax) matching.add(a.response.id);
+          }
+        }
+      }
+      intersect(matching);
+    }
+
+    if (filters.dedPatientsMin !== undefined || filters.dedPatientsMax !== undefined) {
+      const matching = new Set<string>();
+      for (const a of answers) {
+        const qt = a.question.questionTextSnapshot.toLowerCase();
+        if (qt.includes('dry eye') && qt.includes('patient')) {
+          const num = this.parseNumber(a.answerText);
+          if (num !== null) {
+            const passMin = filters.dedPatientsMin === undefined || num >= filters.dedPatientsMin;
+            const passMax = filters.dedPatientsMax === undefined || num <= filters.dedPatientsMax;
+            if (passMin && passMax) matching.add(a.response.id);
+          }
+        }
+      }
+      intersect(matching);
+    }
+
+    return filteredResponseIds;
+  }
+
+  /**
+   * v1.17.5: companion to computeFilteredResponseIds. Given a set of
+   * response IDs that pass respondent filters, count nominations per HCP
+   * per nomination-type, restricted to nominations whose responseId is in
+   * the set. Used by getLeaderRankings + getSociometricSummary to
+   * recompute per-type counts on the fly when respondent filters are
+   * active (bypassing the pre-aggregated HcpAnalysisScore counts).
+   *
+   * Returns: hcpId -> (nominationType -> count). HCPs with zero filtered
+   * nominations don't appear in the map.
+   */
+  private async computeRespondentFilteredCounts(
+    filteredResponseIds: Set<string>
+  ): Promise<Map<string, Map<NominationType, number>>> {
+    if (filteredResponseIds.size === 0) return new Map();
+
+    const nominations = await prisma.nomination.findMany({
+      where: {
+        responseId: { in: [...filteredResponseIds] },
+        matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
+        matchedHcpId: { not: null },
+      },
+      select: {
+        matchedHcpId: true,
+        question: { select: { nominationType: true } },
+      },
+    });
+
+    const counts = new Map<string, Map<NominationType, number>>();
+    for (const n of nominations) {
+      if (!n.matchedHcpId) continue;
+      const type = n.question.nominationType as NominationType;
+      let perType = counts.get(n.matchedHcpId);
+      if (!perType) {
+        perType = new Map<NominationType, number>();
+        counts.set(n.matchedHcpId, perType);
+      }
+      perType.set(type, (perType.get(type) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  /**
+   * v1.17.5: shared loader for the answer set that drives respondent
+   * filtering on the leader-rankings + sociometric-summary endpoints.
+   * Scoped to the analysis's included campaigns + the campaign-level
+   * excludeInternalEmails flag (any included campaign with the flag on
+   * triggers the exclusion globally, matching getDemographics' behavior).
+   */
+  private async loadAnswersForRespondentFilter(
+    includedCampaignIds: string[]
+  ): Promise<
+    Array<{
+      answerText: string | null;
+      answerJson: unknown;
+      question: { questionTextSnapshot: string; question: { type: string } };
+      response: { id: string; respondentHcp: { state: string | null } | null };
+    }>
+  > {
+    if (includedCampaignIds.length === 0) return [];
+    const campaigns = await prisma.campaign.findMany({
+      where: { id: { in: includedCampaignIds } },
+      select: { id: true, excludeInternalEmails: true },
+    });
+    const excludeInternal = campaigns.some((c) => c.excludeInternalEmails);
+
+    return prisma.surveyResponseAnswer.findMany({
+      where: {
+        response: {
+          campaignId: { in: includedCampaignIds },
+          status: 'COMPLETED',
+          ...(excludeInternal && {
+            respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
+          }),
+        },
+      },
+      select: {
+        answerText: true,
+        answerJson: true,
+        question: {
+          select: {
+            questionTextSnapshot: true,
+            question: { select: { type: true } },
+          },
+        },
+        response: {
+          select: {
+            id: true,
+            respondentHcp: { select: { state: true } },
+          },
+        },
+      },
+    });
   }
 
   /**
@@ -367,13 +666,21 @@ export class InsightsReportService {
   }
 
   /**
-   * Get leader rankings by nomination type
+   * Get leader rankings by nomination type.
+   *
+   * v1.17.5: when `respondentFilters` is provided, counts are recomputed
+   * on the fly from filtered nominations (bypassing the pre-aggregated
+   * HcpAnalysisScore counts). When omitted, uses the fast pre-aggregated
+   * path. Influencer-type classification still comes from the analysis's
+   * scoreMap (the score itself isn't recomputed under a respondent filter
+   * — that would require a full pooled re-normalization).
    */
   async getLeaderRankings(
     diseaseAreaId: string,
     query: LeaderRankingQuery,
     _excludeInternalEmails = false,
-    clientId?: string
+    clientId?: string,
+    respondentFilters?: RespondentFilters
   ): Promise<LeaderRankingsResponse> {
     try {
     const { nominationType, page, limit, specialty, state, specialties, states } = query;
@@ -385,16 +692,41 @@ export class InsightsReportService {
     const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
     if (!analysis) return empty;
 
-    // Rank by the analysis's pooled per-type count (respects the curated
-    // campaign set + internal-email exclusion already applied at recalc).
     const countField = NOMINATION_TYPE_FIELDS[nominationType].count as
       keyof AnalysisScoreRow;
     const scoreMap = await this.loadAnalysisScores(analysis.id);
 
-    const ranked = [...scoreMap.values()]
-      .map((s) => ({ hcpId: s.hcpId, count: Number(s[countField] ?? 0), score: s }))
-      .filter((r) => r.count > 0)
-      .sort((a, b) => b.count - a.count);
+    let ranked: Array<{ hcpId: string; count: number; score: AnalysisScoreRow | undefined }>;
+    if (hasAnyRespondentFilter(respondentFilters)) {
+      // Recompute counts from filtered nominations.
+      const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
+      const answers = await this.loadAnswersForRespondentFilter(includedCampaignIds);
+      const filteredResponseIds = await this.computeFilteredResponseIds(
+        respondentFilters!,
+        answers
+      );
+      if (filteredResponseIds.size === 0) return empty;
+      const perHcpCounts = await this.computeRespondentFilteredCounts(filteredResponseIds);
+
+      ranked = [...perHcpCounts.entries()]
+        .map(([hcpId, perType]) => ({
+          hcpId,
+          count: perType.get(nominationType) ?? 0,
+          // Keep the analysis-derived score row for influencer-type
+          // classification downstream — may be undefined if the filtered
+          // hcp isn't in the analysis (shouldn't happen since responses
+          // are scoped to included campaigns, but defensive).
+          score: scoreMap.get(hcpId),
+        }))
+        .filter((r) => r.count > 0)
+        .sort((a, b) => b.count - a.count);
+    } else {
+      // Fast path: pre-aggregated counts from HcpAnalysisScore.
+      ranked = [...scoreMap.values()]
+        .map((s) => ({ hcpId: s.hcpId, count: Number(s[countField] ?? 0), score: s }))
+        .filter((r) => r.count > 0)
+        .sort((a, b) => b.count - a.count);
+    }
 
     if (ranked.length === 0) return empty;
 
@@ -435,9 +767,13 @@ export class InsightsReportService {
         city: hcp.city,
         state: hcp.state,
         count: r.count,
+        // v1.17.5: r.score may be undefined under respondent filtering
+        // (the HCP appears in filtered nominations but not in the
+        // pre-aggregated scoreMap). determineInfluencerType handles
+        // missing values gracefully (defaults to 0).
         influencerType: this.determineInfluencerType({
-          compositeScore: r.score.compositeScore,
-          scoreSurvey: r.score.scoreSurvey,
+          compositeScore: r.score?.compositeScore ?? null,
+          scoreSurvey: r.score?.scoreSurvey ?? null,
         }),
       });
     }
@@ -629,12 +965,18 @@ export class InsightsReportService {
   }
 
   /**
-   * Get sociometric summary - master table with all nomination counts
+   * Get sociometric summary - master table with all nomination counts.
+   *
+   * v1.17.5: when `respondentFilters` is provided, per-type counts are
+   * recomputed on the fly from filtered nominations. Influencer-type
+   * classification still comes from the analysis's scoreMap (the score
+   * isn't recomputed under a respondent filter).
    */
   async getSociometricSummary(
     diseaseAreaId: string,
     filters: InsightsFilter,
-    clientId?: string
+    clientId?: string,
+    respondentFilters?: RespondentFilters
   ): Promise<SociometricSummaryResponse> {
     try {
     const { page, limit, search, specialty, state, sortBy, sortOrder } = filters;
@@ -647,13 +989,38 @@ export class InsightsReportService {
     if (!analysis) return empty;
 
     const scoreMap = await this.loadAnalysisScores(analysis.id);
-    const hcpIds = [...scoreMap.keys()];
-    if (hcpIds.length === 0) return empty;
+
+    // v1.17.5: when respondent filters are active, recompute per-type
+    // counts from nominations within the filtered response set.
+    // perHcpCounts is keyed by hcpId; we use it instead of scoreMap.count*
+    // for the row counts. The scoreMap is still consulted for influencer
+    // type classification (no live re-score under a respondent filter).
+    let perHcpCounts: Map<string, Map<NominationType, number>> | null = null;
+    let filteredHcpIds: Set<string> | null = null;
+    if (hasAnyRespondentFilter(respondentFilters)) {
+      const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
+      const answers = await this.loadAnswersForRespondentFilter(includedCampaignIds);
+      const filteredResponseIds = await this.computeFilteredResponseIds(
+        respondentFilters!,
+        answers
+      );
+      if (filteredResponseIds.size === 0) return empty;
+      perHcpCounts = await this.computeRespondentFilteredCounts(filteredResponseIds);
+      filteredHcpIds = new Set(perHcpCounts.keys());
+    }
+
+    // Base HCP set: when respondent filtering is active, only HCPs with
+    // at least one nomination from a filtered response. Otherwise, all
+    // HCPs in the analysis.
+    const baseHcpIds = filteredHcpIds
+      ? [...filteredHcpIds]
+      : [...scoreMap.keys()];
+    if (baseHcpIds.length === 0) return empty;
 
     const searchLc = search?.toLowerCase();
     const hcps = await prisma.hcp.findMany({
       where: {
-        id: { in: hcpIds },
+        id: { in: baseHcpIds },
         ...(specialty ? { specialty } : {}),
         ...(state ? { state } : {}),
       },
@@ -666,9 +1033,9 @@ export class InsightsReportService {
       },
     });
 
-    // Build the full result set from the analysis's pooled per-type counts
-    // (post respondent-dedup), then sort+paginate the whole set so ranking
-    // is global (the old code sorted only the current page — a bug).
+    // Build the full result set from per-type counts (filtered or
+    // pre-aggregated), then sort+paginate the whole set so ranking is
+    // global (the old code sorted only the current page — a bug).
     const all: SociometricSummaryItem[] = [];
     for (const hcp of hcps) {
       if (
@@ -679,15 +1046,42 @@ export class InsightsReportService {
         continue;
       }
       const a = scoreMap.get(hcp.id);
-      if (!a) continue;
+      // Under respondent filtering, perHcpCounts is the source of truth
+      // for counts; a may be undefined (rare — see getLeaderRankings).
+      // Without respondent filtering, fall through the existing semantics.
+      const filteredPerType = perHcpCounts?.get(hcp.id);
       const primarySpecialty = hcp.specialties[0]?.specialty?.name || hcp.specialty;
-      const discussionLeaders = a.countDiscussionLeaders || 0;
-      const referralLeaders = a.countReferralLeaders || 0;
-      const adviceLeaders = a.countAdviceLeaders || 0;
-      const nationalLeaders = a.countNationalLeader || 0;
-      const risingStars = a.countRisingStar || 0;
-      const socialLeaders = a.countSocialLeader || 0;
-      const biasedLeaders = a.countBiasedLeader || 0;
+      const discussionLeaders = filteredPerType
+        ? filteredPerType.get('DISCUSSION_LEADERS') ?? 0
+        : a?.countDiscussionLeaders ?? 0;
+      const referralLeaders = filteredPerType
+        ? filteredPerType.get('REFERRAL_LEADERS') ?? 0
+        : a?.countReferralLeaders ?? 0;
+      const adviceLeaders = filteredPerType
+        ? filteredPerType.get('ADVICE_LEADERS') ?? 0
+        : a?.countAdviceLeaders ?? 0;
+      const nationalLeaders = filteredPerType
+        ? filteredPerType.get('NATIONAL_LEADER') ?? 0
+        : a?.countNationalLeader ?? 0;
+      const risingStars = filteredPerType
+        ? filteredPerType.get('RISING_STAR') ?? 0
+        : a?.countRisingStar ?? 0;
+      const socialLeaders = filteredPerType
+        ? filteredPerType.get('SOCIAL_LEADER') ?? 0
+        : a?.countSocialLeader ?? 0;
+      const biasedLeaders = filteredPerType
+        ? filteredPerType.get('BIASED_LEADER') ?? 0
+        : a?.countBiasedLeader ?? 0;
+      const total = discussionLeaders + referralLeaders + adviceLeaders +
+        nationalLeaders + risingStars + socialLeaders + biasedLeaders;
+      // Under respondent filtering, "regional" (total nomination count for
+      // the HCP within the analysis) is replaced with the filtered total.
+      const regional = filteredPerType
+        ? total
+        : Number(a?.nominationCount ?? 0);
+      // Skip HCPs with zero filtered nominations (only possible under
+      // respondent filtering — pre-aggregated path includes everyone).
+      if (filteredPerType && total === 0) continue;
       all.push({
         rank: 0, // assigned after global sort
         hcpId: hcp.id,
@@ -696,8 +1090,8 @@ export class InsightsReportService {
         city: hcp.city,
         state: hcp.state,
         influencerType: this.determineInfluencerType({
-          compositeScore: a.compositeScore,
-          scoreSurvey: a.scoreSurvey,
+          compositeScore: a?.compositeScore ?? null,
+          scoreSurvey: a?.scoreSurvey ?? null,
         }),
         discussionLeaders,
         referralLeaders,
@@ -706,10 +1100,8 @@ export class InsightsReportService {
         risingStars,
         socialLeaders,
         biasedLeaders,
-        regional: a.nominationCount || 0,
-        total:
-          discussionLeaders + referralLeaders + adviceLeaders +
-          nationalLeaders + risingStars + socialLeaders + biasedLeaders,
+        regional,
+        total,
       });
     }
 
@@ -953,21 +1345,7 @@ export class InsightsReportService {
   /**
    * Get demographics data from survey response answers
    */
-  async getDemographics(diseaseAreaId: string, clientId?: string, filters?: {
-    // v1.17.4: these 4 are now multi-select. Each accepts an array of
-    // accepted values; empty/undefined = no filter on that field. Range
-    // filters below stay single-valued.
-    respondentRoles?: string[];
-    coreFocuses?: string[];
-    stateOfPractices?: string[];
-    practiceSettings?: string[];
-    yearsMin?: number;
-    yearsMax?: number;
-    monthlyPatientsMin?: number;
-    monthlyPatientsMax?: number;
-    dedPatientsMin?: number;
-    dedPatientsMax?: number;
-  }) {
+  async getDemographics(diseaseAreaId: string, clientId?: string, filters?: RespondentFilters) {
     try {
       // Get all campaigns for this disease area (scoped to client if provided)
       const campaigns = await prisma.campaign.findMany({
@@ -1018,145 +1396,14 @@ export class InsightsReportService {
         },
       });
 
-      // --- Filter respondents by demographic criteria ---
-      // Build a set of all response IDs, then narrow by each filter
-      let filteredResponseIds: Set<string> | null = null;
-
-      if (filters) {
-        // Group answers by response ID for efficient filtering
-        const answersByResponseId = new Map<string, typeof answers>();
-        for (const a of answers) {
-          const existing = answersByResponseId.get(a.response.id);
-          if (existing) {
-            existing.push(a);
-          } else {
-            answersByResponseId.set(a.response.id, [a]);
-          }
-        }
-
-        filteredResponseIds = new Set(answersByResponseId.keys());
-
-        // v1.17.4: filters changed from single value (`===`) to multi-select
-        // (`.includes(value)`). Empty array = no filter on that field.
-        if (filters.respondentRoles && filters.respondentRoles.length > 0) {
-          const accept = new Set(filters.respondentRoles);
-          const matching = new Set<string>();
-          for (const a of answers) {
-            const qt = a.question.questionTextSnapshot.toLowerCase();
-            if (qt.includes('primary medical specialty')) {
-              const value = this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, a.question.question.type);
-              if (value && accept.has(value)) {
-                matching.add(a.response.id);
-              }
-            }
-          }
-          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
-        }
-
-        if (filters.coreFocuses && filters.coreFocuses.length > 0) {
-          const accept = new Set(filters.coreFocuses);
-          const matching = new Set<string>();
-          for (const a of answers) {
-            const qt = a.question.questionTextSnapshot.toLowerCase();
-            if (qt.includes('core focus')) {
-              const value = a.answerText || this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, a.question.question.type);
-              if (value && accept.has(value)) {
-                matching.add(a.response.id);
-              }
-            }
-          }
-          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
-        }
-
-        if (filters.stateOfPractices && filters.stateOfPractices.length > 0) {
-          const accept = new Set(filters.stateOfPractices);
-          const matching = new Set<string>();
-          for (const a of answers) {
-            const state = a.response.respondentHcp?.state;
-            if (state && accept.has(state)) {
-              matching.add(a.response.id);
-            }
-          }
-          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
-        }
-
-        if (filters.practiceSettings && filters.practiceSettings.length > 0) {
-          const accept = new Set(filters.practiceSettings);
-          const matching = new Set<string>();
-          for (const a of answers) {
-            const qt = a.question.questionTextSnapshot.toLowerCase();
-            if (qt.includes('practice setting')) {
-              const questionType = a.question.question.type;
-              if (questionType === 'MULTI_CHOICE' && a.answerJson) {
-                const selected = (a.answerJson as { selected?: string[] }).selected;
-                if (Array.isArray(selected) && selected.some((s) => accept.has(s))) {
-                  matching.add(a.response.id);
-                }
-              } else {
-                const value = this.extractSingleChoice(a.answerJson as Record<string, unknown> | null, a.answerText, questionType);
-                if (value && accept.has(value)) {
-                  matching.add(a.response.id);
-                }
-              }
-            }
-          }
-          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
-        }
-
-        if (filters.yearsMin !== undefined || filters.yearsMax !== undefined) {
-          const matching = new Set<string>();
-          for (const a of answers) {
-            const qt = a.question.questionTextSnapshot.toLowerCase();
-            if (qt.includes('years') && qt.includes('practice')) {
-              const num = this.parseNumber(a.answerText);
-              if (num !== null) {
-                const passMin = filters.yearsMin === undefined || num >= filters.yearsMin;
-                const passMax = filters.yearsMax === undefined || num <= filters.yearsMax;
-                if (passMin && passMax) {
-                  matching.add(a.response.id);
-                }
-              }
-            }
-          }
-          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
-        }
-
-        if (filters.monthlyPatientsMin !== undefined || filters.monthlyPatientsMax !== undefined) {
-          const matching = new Set<string>();
-          for (const a of answers) {
-            const qt = a.question.questionTextSnapshot.toLowerCase();
-            if (qt.includes('how many patients') && !qt.includes('dry eye')) {
-              const num = this.parseNumber(a.answerText);
-              if (num !== null) {
-                const passMin = filters.monthlyPatientsMin === undefined || num >= filters.monthlyPatientsMin;
-                const passMax = filters.monthlyPatientsMax === undefined || num <= filters.monthlyPatientsMax;
-                if (passMin && passMax) {
-                  matching.add(a.response.id);
-                }
-              }
-            }
-          }
-          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
-        }
-
-        if (filters.dedPatientsMin !== undefined || filters.dedPatientsMax !== undefined) {
-          const matching = new Set<string>();
-          for (const a of answers) {
-            const qt = a.question.questionTextSnapshot.toLowerCase();
-            if (qt.includes('dry eye') && qt.includes('patient')) {
-              const num = this.parseNumber(a.answerText);
-              if (num !== null) {
-                const passMin = filters.dedPatientsMin === undefined || num >= filters.dedPatientsMin;
-                const passMax = filters.dedPatientsMax === undefined || num <= filters.dedPatientsMax;
-                if (passMin && passMax) {
-                  matching.add(a.response.id);
-                }
-              }
-            }
-          }
-          filteredResponseIds = new Set([...filteredResponseIds].filter(id => matching.has(id)));
-        }
-      }
+      // v1.17.5: filtering extracted to computeFilteredResponseIds — shared
+      // with getLeaderRankings + getSociometricSummary so the same
+      // respondent filters apply consistently across the 3 surfaces.
+      // Gate on hasAnyRespondentFilter so we skip a pointless pass when
+      // no filters are active.
+      const filteredResponseIds = hasAnyRespondentFilter(filters)
+        ? await this.computeFilteredResponseIds(filters!, answers)
+        : null;
 
       // If filters were applied, narrow answers to only matching responses
       const effectiveAnswers = filteredResponseIds
