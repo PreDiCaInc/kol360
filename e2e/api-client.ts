@@ -576,7 +576,16 @@ export class ApiClient {
     );
   }
 
-  async getNominationSuggestions(campaignId: string, nominationId: string) {
+  async getNominationSuggestions(
+    campaignId: string,
+    nominationId: string,
+    options?: { previewRawName?: string }
+  ) {
+    // v1.17.6: previewRawName overrides the saved rawName for the search —
+    // drives the inline-match preview UI in EditNominationDialog.
+    const qs = options?.previewRawName
+      ? `?previewRawName=${encodeURIComponent(options.previewRawName)}`
+      : '';
     return this.request<Array<{
       hcp: { id: string; firstName: string; lastName: string; state: string | null; specialty: string | null };
       score: number;
@@ -584,7 +593,23 @@ export class ApiClient {
       isNameMatch: boolean;
     }>>(
       'GET',
-      `/api/v1/campaigns/${campaignId}/nominations/${nominationId}/suggestions`
+      `/api/v1/campaigns/${campaignId}/nominations/${nominationId}/suggestions${qs}`
+    );
+  }
+
+  /**
+   * v1.17.4: rename a nomination (PATCH). Resets matchStatus to UNMATCHED
+   * and writes an audit log entry (`nomination.raw_name_updated`).
+   */
+  async updateNominationRawName(
+    campaignId: string,
+    nominationId: string,
+    rawNameEntered: string
+  ) {
+    return this.request<Nomination>(
+      'PATCH',
+      `/api/v1/campaigns/${campaignId}/nominations/${nominationId}`,
+      { rawNameEntered }
     );
   }
 
@@ -1036,6 +1061,36 @@ export class ApiClient {
 
   async getInsightsFilterOptions(diseaseAreaId: string) {
     return this.request<FilterOptions>('GET', `/api/v1/insights/${diseaseAreaId}/filter-options`);
+  }
+
+  /**
+   * v1.17.4: demographics endpoint accepts comma-separated multi-select
+   * for the 4 categorical filters (respondentRoles, coreFocuses,
+   * stateOfPractices, practiceSettings) + numeric ranges.
+   */
+  async getInsightsDemographics(diseaseAreaId: string, params?: {
+    clientId?: string;
+    respondentRoles?: string;
+    coreFocuses?: string;
+    stateOfPractices?: string;
+    practiceSettings?: string;
+    yearsMin?: number;
+    yearsMax?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (params?.clientId) query.set('clientId', params.clientId);
+    if (params?.respondentRoles) query.set('respondentRoles', params.respondentRoles);
+    if (params?.coreFocuses) query.set('coreFocuses', params.coreFocuses);
+    if (params?.stateOfPractices) query.set('stateOfPractices', params.stateOfPractices);
+    if (params?.practiceSettings) query.set('practiceSettings', params.practiceSettings);
+    if (params?.yearsMin !== undefined) query.set('yearsMin', params.yearsMin.toString());
+    if (params?.yearsMax !== undefined) query.set('yearsMax', params.yearsMax.toString());
+    const queryStr = query.toString() ? `?${query.toString()}` : '';
+    return this.request<{
+      totalRespondents: number;
+      byRole: Array<{ name: string; count: number }>;
+      byState: Array<{ name: string; count: number }>;
+    }>('GET', `/api/v1/insights/${diseaseAreaId}/demographics${queryStr}`);
   }
 }
 
