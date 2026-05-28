@@ -65,8 +65,13 @@ apps/api/lambda-bundle/
 # Deprecated folders
 bioexec/
 
-# Claude Code local settings
-.claude/settings.local.json
+# Claude Code tool allowlists, skill caches, session state — never commit.
+# Files under .claude/ embed dev-machine tool permission allowlists which can
+# include literal credentials from past sessions (RDS passwords, bastion key
+# paths, etc.). Broadened from `.claude/settings.local.json` to the whole
+# directory 2026-05-28 after a credential leak surfaced in the prod-rel-4.1.6
+# cutover — see docs/findings/dev-team-asks-2026-05-28.md (item 2).
+.claude/
 
 # Documentation folder
 docs/
