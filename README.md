@@ -1,5 +1,14 @@
 # KOL360
 
+## Release docs (prod team — start here)
+
+Per-release handoff + soak-check documents for every `prod-rel-X.Y.Z` tag live in [`releases/`](releases/). Each release has two files:
+
+- `prod-rel-X.Y.Z-handoff.md` — what changed, migrations, rollback shape
+- `prod-rel-X.Y.Z-soak-checks.md` — phased verification checklist (sanity / functional smoke / 24h watch)
+
+Index with one-line summaries: [`releases/README.md`](releases/README.md).
+
 ## Deployment
 
 ### AWS Profiles Required
