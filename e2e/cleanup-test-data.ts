@@ -121,33 +121,50 @@ async function cleanupAllTestData() {
     }
   }
 
-  // Delete ALL import-test HCPs (both the static-NPI seed and any per-run
-  // unique-NPI rows). The full-workflow test generates a fresh NPI per run
-  // (`999${Date.now().slice(-7)}`) with email pattern `import.test.<npi>@
-  // e2etest.example.com` to avoid beId collisions. The pre-fix cleanup only
-  // deleted the static NPI, so each prod run leaked one HCP (caught
-  // 2026-05-20 — 20 leaked Oncology-specialty rows accumulated on prod
-  // over ~2 months, blocking the strict-whitelist CHECK constraint).
+  // Delete ALL per-run E2E-generated HCPs. Two known fixture shapes:
+  //   - full-workflow.test.ts: `import.test.<npi>@e2etest.example.com`
+  //     with NPI = `999${Date.now().slice(-7)}` to avoid beId collisions.
+  //   - hcp-disease-areas.test.ts: `hcpda_<suffix>@e2etest.example.com`
+  //     with firstName='E2EDaTest'.
   //
-  // deleteMany with a pattern catches both shapes. Email pattern is
-  // safer than NPI prefix (`999*`) because it's specific to this fixture.
+  // 2026-05-20 history: full-workflow leak caught — 20 'import.test' rows
+  //   accumulated on prod over ~2 months, blocking the v1.17.0 strict-
+  //   whitelist CHECK constraint. Cleanup added; only matched 'import.test'.
+  // 2026-05-28 history: hcp-disease-areas leak caught — 12 'hcpda_'/E2EDaTest
+  //   rows accumulated since 2026-05-20 (cleanup script only matched the
+  //   one shape, missed the other). Pattern broadened here to ANY
+  //   @e2etest.example.com email so future fixtures auto-clean without
+  //   another script update.
+  //
+  // FK note: HcpDiseaseArea rows reference Hcp via hcpId — delete those
+  // first to avoid FK violation on the Hcp delete.
   try {
+    const hcpDaResult = await prisma.hcpDiseaseArea.deleteMany({
+      where: {
+        hcp: {
+          OR: [
+            { npi: TEST_IDS.HCP_IMPORT.npi },
+            { email: { endsWith: '@e2etest.example.com' } },
+            { firstName: 'E2EDaTest' },
+          ],
+        },
+      },
+    });
     const result = await prisma.hcp.deleteMany({
       where: {
         OR: [
           { npi: TEST_IDS.HCP_IMPORT.npi },
-          {
-            AND: [
-              { email: { startsWith: 'import.test' } },
-              { email: { endsWith: '@e2etest.example.com' } },
-            ],
-          },
+          { email: { endsWith: '@e2etest.example.com' } },
+          { firstName: 'E2EDaTest' },
         ],
       },
     });
-    console.log(`  ✓ Deleted ${result.count} import test HCP(s) (static + per-run unique)`);
+    console.log(
+      `  ✓ Deleted ${result.count} per-run test HCP(s) ` +
+      `(import.test + hcpda_ + static seed; ${hcpDaResult.count} HcpDiseaseArea rows)`
+    );
   } catch (e) {
-    console.log(`  - Import test HCP cleanup failed: ${e instanceof Error ? e.message : e}`);
+    console.log(`  - Per-run test HCP cleanup failed: ${e instanceof Error ? e.message : e}`);
   }
 
   // 4. Delete test specialty

@@ -46,16 +46,22 @@ aws s3 sync apps/web/out s3://kol360-web --delete --profile koladmin
 
 ### Database Access
 
-To access the AWS RDS database locally, use SSH tunnel through the bastion host:
+To access the AWS RDS database locally, use an SSH tunnel through the bastion host. **Connection details (bastion key path, bastion IP, DB host, credentials) are not committed to the repo** — get them from a team member or your local `apps/api/.env` file.
 
 ```bash
-# Start SSH tunnel (runs in background)
-ssh -i /Users/haranath/genai/kol360/kol360-bastion-key.pem \
-    -L 5432:kol360-db.czkyi4mem2bj.us-east-2.rds.amazonaws.com:5432 \
-    ec2-user@3.142.171.8 -N -o StrictHostKeyChecking=no -f
+# Start SSH tunnel (runs in background). Set the variables from your local
+# .env or onboarding doc; never commit literals.
+ssh -i "${BASTION_KEY_PATH}" \
+    -L 5432:"${DB_HOST}":5432 \
+    "ec2-user@${BASTION_IP}" -N -o StrictHostKeyChecking=no -f
 
-# Test connection
-psql 'postgresql://kol360admin:RDS4Bioexec!@localhost:5432/kol360'
+# Test connection. Export PGPASSWORD locally (or use a ~/.pgpass entry);
+# the literal password used to live in this README and shipped to the
+# Bio-Exec mirror — sanitized 2026-05-28 (see docs/findings/
+# dev-team-asks-2026-05-28.md item 3). Test DB password rotation is
+# tracked as a follow-up ops action.
+export PGPASSWORD='<TEST_DB_PASSWORD>'
+psql 'postgresql://kol360admin@localhost:5432/kol360'
 
 # Example query
 select * from "User";
