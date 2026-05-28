@@ -36,27 +36,30 @@ const NOMINATION_TYPE_FIELDS: Record<NominationType, { score: string; count: str
 /**
  * INFLUENCER TYPE CLASSIFICATION THRESHOLDS
  *
- * These thresholds determine how KOLs are classified into influencer categories.
- * Modify these values to adjust classification based on business requirements.
+ * Live values live in the `InfluencerThreshold` table (singleton row,
+ * id='default'). Edit them directly in DB (Prisma Studio for test,
+ * psql for prod) to tune classification without a redeploy.
  *
- * Current logic:
- * - National Leaders: High overall influence (composite >= threshold) AND strong survey presence (survey >= threshold)
- * - Rising Stars: Strong survey presence but still building overall influence
- * - Regional Influencers: Default category for others
+ * The constants below are the seed defaults and the in-code fallback if
+ * the row is somehow missing. Keep them in sync with the seed INSERT in
+ * `20260528_add_influencer_threshold_table/migration.sql`.
  *
- * Score ranges: 0-100 (normalized scores)
+ * Classification logic:
+ * - National Leaders: composite >= minComposite AND survey >= minSurvey
+ * - Rising Stars:     survey >= minSurvey AND composite < maxComposite
+ * - Regional Influencers: everyone else
+ *
+ * Score ranges: 0-100 (normalized scores).
  */
-const INFLUENCER_THRESHOLDS = {
-  nationalLeader: {
-    minCompositeScore: 30,  // Minimum composite score to be considered a national leader
-    minSurveyScore: 50,     // Minimum survey score to be considered a national leader
-  },
-  risingStar: {
-    minSurveyScore: 30,     // Minimum survey score to be considered a rising star
-    maxCompositeScore: 30,  // Must have composite below this to be rising star (not national leader)
-  },
-  // Regional Influencers: Everyone else (no thresholds needed)
-} as const;
+type InfluencerThresholds = {
+  nationalLeader: { minCompositeScore: number; minSurveyScore: number };
+  risingStar:     { minSurveyScore: number; maxCompositeScore: number };
+};
+
+const DEFAULT_INFLUENCER_THRESHOLDS: InfluencerThresholds = {
+  nationalLeader: { minCompositeScore: 30, minSurveyScore: 50 },
+  risingStar:     { minSurveyScore: 30, maxCompositeScore: 30 },
+};
 
 // Score row from HcpAnalysisScore, keyed by hcpId.
 type AnalysisScoreRow = Prisma.HcpAnalysisScoreGetPayload<object>;
@@ -543,6 +546,7 @@ export class InsightsReportService {
       const searchLc = search?.toLowerCase();
       const specSet = specialties && specialties.length > 0 ? new Set(specialties) : null;
       const stateSet = states && states.length > 0 ? new Set(states) : null;
+      const thresholds = await this.getInfluencerThresholds();
       const influencerTypeFilter =
         influencerTypes && influencerTypes.length > 0
           ? influencerTypes
@@ -560,9 +564,9 @@ export class InsightsReportService {
 
         // HCP attribute filters
         if (searchLc) {
+          const fullName = `${hcp.firstName} ${hcp.lastName}`.toLowerCase();
           const hit =
-            hcp.firstName.toLowerCase().includes(searchLc) ||
-            hcp.lastName.toLowerCase().includes(searchLc) ||
+            fullName.includes(searchLc) ||
             (hcp.npi ?? '').includes(search!);
           if (!hit) continue;
         }
@@ -599,7 +603,7 @@ export class InsightsReportService {
         const influencerTypeVal = this.determineInfluencerType({
           compositeScore: a.compositeScore,
           scoreSurvey: a.scoreSurvey,
-        });
+        }, thresholds);
         if (
           influencerTypeFilter &&
           !influencerTypeFilter.includes(influencerTypeVal)
@@ -749,6 +753,7 @@ export class InsightsReportService {
       },
     });
     const hcpMap = new Map(hcps.map((h) => [h.id, h]));
+    const thresholds = await this.getInfluencerThresholds();
 
     const rankedItems: LeaderRankingItem[] = [];
     let rank = 0;
@@ -774,7 +779,7 @@ export class InsightsReportService {
         influencerType: this.determineInfluencerType({
           compositeScore: r.score?.compositeScore ?? null,
           scoreSurvey: r.score?.scoreSurvey ?? null,
-        }),
+        }, thresholds),
       });
     }
 
@@ -828,6 +833,7 @@ export class InsightsReportService {
 
     const objective = hcp.diseaseAreaScores[0] ?? null;
     const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
+    const thresholds = await this.getInfluencerThresholds();
 
     // Nominators list — scoped to the analysis's included campaigns so it
     // matches the pooled scores.
@@ -935,7 +941,7 @@ export class InsightsReportService {
       influencerType: this.determineInfluencerType({
         compositeScore: a.compositeScore,
         scoreSurvey: a.scoreSurvey,
-      }),
+      }, thresholds),
       scores: {
         // Objective: live from HcpDiseaseAreaScore (null if not enriched).
         scorePublications: objective?.scorePublications ? Number(objective.scorePublications) : null,
@@ -1018,6 +1024,7 @@ export class InsightsReportService {
     if (baseHcpIds.length === 0) return empty;
 
     const searchLc = search?.toLowerCase();
+    const thresholds = await this.getInfluencerThresholds();
     const hcps = await prisma.hcp.findMany({
       where: {
         id: { in: baseHcpIds },
@@ -1040,8 +1047,7 @@ export class InsightsReportService {
     for (const hcp of hcps) {
       if (
         searchLc &&
-        !hcp.firstName.toLowerCase().includes(searchLc) &&
-        !hcp.lastName.toLowerCase().includes(searchLc)
+        !`${hcp.firstName} ${hcp.lastName}`.toLowerCase().includes(searchLc)
       ) {
         continue;
       }
@@ -1092,7 +1098,7 @@ export class InsightsReportService {
         influencerType: this.determineInfluencerType({
           compositeScore: a?.compositeScore ?? null,
           scoreSurvey: a?.scoreSurvey ?? null,
-        }),
+        }, thresholds),
         discussionLeaders,
         referralLeaders,
         adviceLeaders,
@@ -2053,36 +2059,50 @@ export class InsightsReportService {
   }
 
   /**
-   * Determine influencer type based on scores
+   * Load the live influencer-type thresholds from the singleton row.
+   * Falls back to DEFAULT_INFLUENCER_THRESHOLDS if the row is missing
+   * (e.g., a fresh DB where the seed migration hasn't run yet).
    *
-   * Uses configurable thresholds defined in INFLUENCER_THRESHOLDS at the top of this file.
-   * Adjust those values to change classification behavior.
-   *
-   * Classification logic:
-   * 1. National Leaders: composite >= threshold AND survey >= threshold
-   * 2. Rising Stars: survey >= threshold AND composite < threshold
-   * 3. Regional Influencers: Default for everyone else
+   * Called once per public insights method, then passed down to
+   * determineInfluencerType — so per-HCP loops don't hit the DB.
    */
-  private determineInfluencerType(score: {
-    compositeScore: unknown;
-    scoreSurvey: unknown;
-  }): string {
+  private async getInfluencerThresholds(): Promise<InfluencerThresholds> {
+    const row = await prisma.influencerThreshold.findUnique({
+      where: { id: 'default' },
+    });
+    if (!row) return DEFAULT_INFLUENCER_THRESHOLDS;
+    return {
+      nationalLeader: {
+        minCompositeScore: row.nationalLeaderMinComposite,
+        minSurveyScore: row.nationalLeaderMinSurvey,
+      },
+      risingStar: {
+        minSurveyScore: row.risingStarMinSurvey,
+        maxCompositeScore: row.risingStarMaxComposite,
+      },
+    };
+  }
+
+  /**
+   * Classify an HCP into an influencer-type bucket.
+   * Thresholds are passed in (loaded once per request) so this stays sync
+   * and cheap to call in tight per-HCP loops.
+   */
+  private determineInfluencerType(
+    score: { compositeScore: unknown; scoreSurvey: unknown },
+    thresholds: InfluencerThresholds,
+  ): string {
     const composite = score.compositeScore ? Number(score.compositeScore) : 0;
     const survey = score.scoreSurvey ? Number(score.scoreSurvey) : 0;
 
-    const { nationalLeader, risingStar } = INFLUENCER_THRESHOLDS;
+    const { nationalLeader, risingStar } = thresholds;
 
-    // High composite + high survey = National Leader
     if (composite >= nationalLeader.minCompositeScore && survey >= nationalLeader.minSurveyScore) {
       return 'National Leaders';
     }
-
-    // High survey but moderate composite = Rising Star
     if (survey >= risingStar.minSurveyScore && composite < risingStar.maxCompositeScore) {
       return 'Rising Stars';
     }
-
-    // Default to Regional Influencer
     return 'Regional Influencers';
   }
 }

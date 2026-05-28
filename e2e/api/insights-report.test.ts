@@ -217,6 +217,66 @@ describe('Insights Report API', () => {
 
       console.log(`✅ Search filter: ${data.items.length} results for "Smith"`);
     });
+
+    // v1.17.7: regression test for the "joseph allen returns 0 records" bug.
+    // Pre-fix, search was checking firstName.includes(search) || lastName.includes(search)
+    // separately, so a multi-token full-name query could never match. Pick a real
+    // KOL from the dataset and round-trip their full name through the search filter.
+    it('matches multi-token full-name search (firstName lastName)', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const seed = await client.getInsightsKolExplorer(CONFIGURED_DISEASE_AREA_ID, {
+        page: 1,
+        limit: 1,
+        clientId: CONFIGURED_CLIENT_ID,
+      });
+      if (seed.status !== 200 || seed.data.items.length === 0) {
+        console.log('⊘ No KOLs to round-trip — skipping');
+        return;
+      }
+      const seedKol = seed.data.items[0];
+      const fullNameQuery = `${seedKol.firstName} ${seedKol.lastName}`;
+
+      const { status, data } = await client.getInsightsKolExplorer(CONFIGURED_DISEASE_AREA_ID, {
+        search: fullNameQuery,
+        limit: 50,
+        clientId: CONFIGURED_CLIENT_ID,
+      });
+
+      expect(status).toBe(200);
+      expect(data.items.length).toBeGreaterThan(0);
+      expect(data.items.some((k) => k.id === seedKol.id)).toBe(true);
+
+      console.log(`✅ Full-name search "${fullNameQuery}": ${data.items.length} result(s)`);
+    });
+
+    // v1.17.7: thresholds moved from compiled const to InfluencerThreshold table.
+    // Sanity-check that the refactor still produces one of the three expected
+    // labels for every row. Doesn't mutate the threshold row (shared global
+    // state); tuning happens out-of-band via Prisma Studio / psql.
+    it('labels every KOL with a valid influencer type', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const { status, data } = await client.getInsightsKolExplorer(CONFIGURED_DISEASE_AREA_ID, {
+        page: 1,
+        limit: 50,
+        clientId: CONFIGURED_CLIENT_ID,
+      });
+      expect(status).toBe(200);
+      expect(data.items.length).toBeGreaterThan(0);
+
+      const valid = new Set(['National Leaders', 'Rising Stars', 'Regional Influencers']);
+      data.items.forEach((kol) => {
+        expect(kol.influencerType).toBeDefined();
+        expect(valid.has(kol.influencerType as string)).toBe(true);
+      });
+
+      console.log(`✅ Influencer-type labels valid for ${data.items.length} KOL(s)`);
+    });
   });
 
   describe('Leader Rankings Endpoint', () => {
