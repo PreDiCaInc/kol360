@@ -37,7 +37,7 @@ non-disruptive and can run during normal operation.
 
 - **AWS:** profile `koluser`, region `us-east-2`.
 - **Prod DB:** `kol360-db-prod.czkyi4mem2bj.us-east-2.rds.amazonaws.com:5432`,
-  db `kol360`, user `kol360admin`, pw `RDS4Bioexec2025`.
+  db `kol360`, user `kol360admin`, pw `${PGPASSWORD}`.
 - **Prod DB tunnel (local port 5433 — do NOT use 5432, that's the test tunnel):**
   ```
   ssh -i /Users/haranath/genai/kol360/kol360-bastion-key.pem \
@@ -45,7 +45,7 @@ non-disruptive and can run during normal operation.
     ec2-user@3.142.171.8 -N -o StrictHostKeyChecking=no -f
   ```
   Prod connection string used below:
-  `postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360`
+  `postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360`
 - **Local checkout** on the target commit (PreDiCaInc `main` after the relevant
   PRs are merged), with:
   ```
@@ -77,14 +77,14 @@ non-disruptive and can run during normal operation.
    ```
 3. Open the prod tunnel (Section 1) and confirm connectivity:
    ```
-   PGPASSWORD='RDS4Bioexec2025' psql -h localhost -p 5433 -U kol360admin -d kol360 -c "select now();"
+   PGPASSWORD='${PGPASSWORD}' psql -h localhost -p 5433 -U kol360admin -d kol360 -c "select now();"
    ```
 4. **Enumerate pending migrations** (prod may be several versions behind — do
    not assume only the two KOL ones):
    ```
    cd apps/api
-   DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
-   DB_DIRECT_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+   DATABASE_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
+   DB_DIRECT_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
      npx prisma migrate status
    ```
    Expected genuinely-new: `20260515_add_kol_analysis_scoring`,
@@ -103,7 +103,7 @@ non-disruptive and can run during normal operation.
    ```
    for m in 20260310_<name> 20260320_<name> 20260323_<name> \
             20260403_add_beid_sequence 20260514_add_pg_trgm_for_fuzzy_match; do
-     DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+     DATABASE_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
        npx prisma migrate resolve --applied "$m"
    done
    ```
@@ -111,7 +111,7 @@ non-disruptive and can run during normal operation.
    `migrate deploy` will run **only** the genuinely-new migrations.
 5. **Drift check** (prod has a history of manual-SQL drift — Feb 2025 incident):
    ```
-   DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+   DATABASE_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
      npx prisma migrate diff \
      --from-url "$DATABASE_URL" \
      --to-schema-datamodel prisma/schema.prisma --exit-code
@@ -164,8 +164,8 @@ before prod DDL.)
 Old prod code does not touch the new tables, so this is non-disruptive.
 ```
 cd apps/api
-DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
-DB_DIRECT_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+DATABASE_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
+DB_DIRECT_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
   npx prisma migrate deploy
 ```
 - Runs **only the genuinely-new** migrations now (ledger reconciled in §2.4):
@@ -185,13 +185,13 @@ DB_DIRECT_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
 
 Verify the three tables exist:
 ```
-PGPASSWORD='RDS4Bioexec2025' psql -h localhost -p 5433 -U kol360admin -d kol360 -c "\dt \"KolAnalysis\" \"KolAnalysisCampaign\" \"HcpAnalysisScore\""
+PGPASSWORD='${PGPASSWORD}' psql -h localhost -p 5433 -U kol360admin -d kol360 -c "\dt \"KolAnalysis\" \"KolAnalysisCampaign\" \"HcpAnalysisScore\""
 ```
 
 ### Step B' — Post-migration drift check
 ```
 cd apps/api
-DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+DATABASE_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
   npx prisma migrate diff --from-url "$DATABASE_URL" \
   --to-schema-datamodel prisma/schema.prisma --exit-code
 ```
@@ -222,7 +222,7 @@ still serving and is unaffected (new tables only).
 Dry-run (no writes — review the plan):
 ```
 cd apps/api
-DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+DATABASE_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
   npx tsx ../../scripts/backfill-kol-analysis.ts
 ```
 Review: number of (client, disease area) pairs → analyses, campaign counts,
@@ -231,7 +231,7 @@ count is plausible for prod's client/disease-area footprint.
 
 Execute:
 ```
-DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+DATABASE_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
   npx tsx ../../scripts/backfill-kol-analysis.ts --execute
 ```
 - Idempotent: re-runs skip existing (client, DA) analyses. Safe to re-run.
@@ -244,7 +244,7 @@ DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
 
 Via psql on the prod tunnel:
 ```
-PGPASSWORD='RDS4Bioexec2025' psql -h localhost -p 5433 -U kol360admin -d kol360 -c "
+PGPASSWORD='${PGPASSWORD}' psql -h localhost -p 5433 -U kol360admin -d kol360 -c "
   SELECT count(*) AS analyses,
          (SELECT count(*) FROM \"HcpAnalysisScore\") AS scores,
          (SELECT count(*) FROM \"KolAnalysisCampaign\") AS links
@@ -253,7 +253,7 @@ PGPASSWORD='RDS4Bioexec2025' psql -h localhost -p 5433 -U kol360admin -d kol360 
 Pick the largest analysis and verify internal consistency (per-type score must
 equal `count / pooledMax × 100`; on test this was exact, e.g. 48/71→67.61):
 ```
-PGPASSWORD='RDS4Bioexec2025' psql -h localhost -p 5433 -U kol360admin -d kol360 -c "
+PGPASSWORD='${PGPASSWORD}' psql -h localhost -p 5433 -U kol360admin -d kol360 -c "
   SELECT h.\"nominationCount\", h.\"scoreSurvey\", h.\"compositeScore\",
          h.\"countNationalLeader\", h.\"scoreNationalLeader\"
   FROM \"HcpAnalysisScore\" h
@@ -290,7 +290,7 @@ post-deploy request.
 2. Final drift check against prod (per the standing rule):
    ```
    cd apps/api
-   DATABASE_URL='postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360' \
+   DATABASE_URL='postgresql://kol360admin:${PGPASSWORD}@localhost:5433/kol360' \
      npx prisma migrate diff --from-url "$DATABASE_URL" \
      --to-schema-datamodel prisma/schema.prisma --exit-code   # expect 0
    ```
