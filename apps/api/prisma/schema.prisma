@@ -746,6 +746,20 @@ model DashboardConfig {
   @@index([campaignId])
 }
 
+/// Singleton (single row, id='default') driving Insights influencer-type
+/// labels (National Leaders / Rising Stars / Regional Influencers).
+/// Edit values directly in DB (Prisma Studio in test, psql in prod) to
+/// tune classification without redeploy. Defaults mirror
+/// DEFAULT_INFLUENCER_THRESHOLDS in insights-report.service.ts.
+model InfluencerThreshold {
+  id                         String   @id @default("default")
+  nationalLeaderMinComposite Int
+  nationalLeaderMinSurvey    Int
+  risingStarMinSurvey        Int
+  risingStarMaxComposite     Int
+  updatedAt                  DateTime @updatedAt
+}
+
 model DashboardComponent {
   id            String                 @id @default(cuid())
   dashboardId   String
