@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createUserSchema, CreateUserInput } from '@kol360/shared';
 import { useInviteUser } from '@/hooks/use-users';
-import { useClients } from '@/hooks/use-clients';
+import { useClient, useClients } from '@/hooks/use-clients';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
 import {
@@ -89,6 +89,33 @@ export function UserInviteDialog({ open, onOpenChange }: Props) {
     ? ['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']
     : ['CLIENT_ADMIN', 'TEAM_MEMBER'];
 
+  // Live preview of email-domain allowlist for the selected client.
+  // The backend is the truth — this is UX. Show the allowlist + warn
+  // inline if the email's domain isn't covered, but don't block submit
+  // (backend will reject with EMAIL_DOMAIN_NOT_ALLOWED → 400).
+  //
+  // Platform admins pick a client in the form; client admins don't see
+  // the picker because the server forces clientId to their own tenant
+  // (see apps/api/src/routes/users.ts:invite). For the client-admin
+  // case, fall back to user.tenantId so the allowlist still shows.
+  const watchedClientId = form.watch('clientId');
+  const watchedEmail = form.watch('email');
+  const effectiveClientId =
+    watchedClientId || (!isPlatformAdmin ? user?.tenantId : null);
+  const { data: selectedClient } = useClient(effectiveClientId ?? '');
+
+  const allowedDomains = selectedClient?.emailDomains ?? [];
+  const allowedDisplay = [...allowedDomains, 'bio-exec.com'];
+  const isGated = allowedDomains.length > 0;
+
+  const typedDomain = watchedEmail?.includes('@')
+    ? watchedEmail.split('@')[1]?.toLowerCase()
+    : undefined;
+  const domainMismatch =
+    isGated &&
+    typedDomain &&
+    !allowedDisplay.map((d) => d.toLowerCase()).includes(typedDomain);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -142,6 +169,19 @@ export function UserInviteDialog({ open, onOpenChange }: Props) {
                   <FormControl>
                     <Input {...field} type="email" placeholder="john@example.com" />
                   </FormControl>
+                  {isGated && (
+                    <p className="text-sm text-muted-foreground">
+                      Allowed domains for this client:{' '}
+                      <strong>{allowedDisplay.join(', ')}</strong>
+                    </p>
+                  )}
+                  {domainMismatch && (
+                    <p className="text-sm text-amber-600">
+                      ⚠️ Email domain <code>{typedDomain}</code> isn&apos;t in
+                      this client&apos;s allowlist. The invitation will be
+                      rejected.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

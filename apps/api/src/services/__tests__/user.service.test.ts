@@ -11,6 +11,13 @@ vi.mock('../../lib/prisma', () => ({
       create: vi.fn(),
       update: vi.fn(),
     },
+    client: {
+      // v1.17.9: invite() + update() now do a client lookup to enforce the
+      // per-client emailDomains allowlist. Tests below stub this with an
+      // empty allowlist (= permissive mode), matching every pre-existing
+      // client's deploy-day state.
+      findUnique: vi.fn(),
+    },
   },
 }));
 
@@ -164,6 +171,9 @@ describe('UserService', () => {
       (cognitoService.updateUserAttributes as Mock).mockResolvedValue(undefined);
       (cognitoService.addUserToGroup as Mock).mockResolvedValue(undefined);
       (prisma.user.create as Mock).mockResolvedValue(mockDbUser);
+      // v1.17.9: client lookup for emailDomains allowlist check. Empty array
+      // = permissive mode, so this invite still goes through end-to-end.
+      (prisma.client.findUnique as Mock).mockResolvedValue({ emailDomains: [] });
 
       const result = await userService.invite({
         email: 'test@example.com',

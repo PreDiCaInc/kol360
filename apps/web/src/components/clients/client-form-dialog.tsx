@@ -49,6 +49,7 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
       type: 'FULL',
       isLite: false,
       primaryColor: '#0066CC',
+      emailDomains: [],
     },
   });
 
@@ -60,9 +61,25 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
         isLite: client.isLite || false,
         primaryColor: client.primaryColor,
         logoUrl: client.logoUrl,
+        emailDomains: client.emailDomains ?? [],
       });
     }
   }, [client, form]);
+
+  // Parse comma/whitespace-separated domain input into a normalized array.
+  // Empty input → []. Trims, lowercases, drops empties + dupes. Backend
+  // re-validates via Zod (regex check) so we just clean the shape here.
+  function parseDomainsInput(raw: string): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const piece of raw.split(/[\s,]+/)) {
+      const d = piece.trim().toLowerCase();
+      if (!d || seen.has(d)) continue;
+      seen.add(d);
+      out.push(d);
+    }
+    return out;
+  }
 
   async function onSubmit(data: CreateClientInput) {
     try {
@@ -168,6 +185,34 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
                   <FormMessage />
                 </FormItem>
               )}
+            />
+
+            <FormField
+              control={form.control}
+              name="emailDomains"
+              render={({ field }) => {
+                const display = (field.value ?? []).join(', ');
+                return (
+                  <FormItem>
+                    <FormLabel>Allowed Email Domains</FormLabel>
+                    <FormControl>
+                      <Input
+                        value={display}
+                        onChange={(e) => field.onChange(parseDomainsInput(e.target.value))}
+                        placeholder="sunpharma.com, na.sunpharma.com"
+                      />
+                    </FormControl>
+                    <p className="text-sm text-muted-foreground">
+                      Comma-separated. Users invited to this client must have
+                      an email at one of these domains.{' '}
+                      <strong>Leave empty to allow any domain</strong> (opt-in
+                      enforcement). Bio-Exec staff (@bio-exec.com) are always
+                      allowed regardless of this list.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
 
             <div className="flex justify-end gap-2 pt-4">
