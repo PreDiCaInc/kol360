@@ -10,6 +10,10 @@ interface Client {
   logoUrl: string | null;
   primaryColor: string;
   isActive: boolean;
+  /// Per-client allowed email-domain allowlist (v1.17.9). Empty = no
+  /// restriction (opt-in). bio-exec.com is always allowed regardless,
+  /// hardcoded in apps/api/src/services/user.service.ts.
+  emailDomains: string[];
   createdAt: string;
   updatedAt: string;
   _count?: {
