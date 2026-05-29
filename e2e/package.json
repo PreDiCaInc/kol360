@@ -32,7 +32,8 @@
     "cleanup:all": "cd ../apps/api && npx tsx ../../e2e/cleanup-test-data.ts --all"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.600.0"
+    "@aws-sdk/client-cognito-identity-provider": "^3.600.0",
+    "@prisma/client": "^5.14.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.42.0",

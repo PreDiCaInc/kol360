@@ -99,6 +99,7 @@ export class CampaignService {
         description: data.description,
         surveyTemplateId: data.surveyTemplateId,
         honorariumAmount: data.honorariumAmount ?? 0,
+        excludeInternalEmails: data.excludeInternalEmails ?? false,
         surveyOpenDate: data.surveyOpenDate ? new Date(data.surveyOpenDate) : null,
         surveyCloseDate: data.surveyCloseDate ? new Date(data.surveyCloseDate) : null,
         createdBy,
