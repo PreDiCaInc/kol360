@@ -17,6 +17,12 @@ model Client {
   logoUrl                String?
   primaryColor           String                  @default("#0066CC")
   isActive               Boolean                 @default(true)
+  /// Allowed email domains for users assigned to this client (in addition
+  /// to the always-allowed Bio-Exec staff domains hardcoded in
+  /// userService.ALWAYS_ALLOWED_DOMAINS). Empty array = no restriction
+  /// (opt-in mode for backwards compat). Validated only at user invite +
+  /// reassignment time; existing users with mismatched domains keep working.
+  emailDomains           String[]                @default([])
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   campaigns              Campaign[]

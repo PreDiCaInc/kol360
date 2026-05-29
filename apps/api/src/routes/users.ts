@@ -185,7 +185,20 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
-    const user = await userService.invite(data);
+    let user;
+    try {
+      user = await userService.invite(data);
+    } catch (err) {
+      if ((err as { code?: string }).code === 'EMAIL_DOMAIN_NOT_ALLOWED') {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: (err as Error).message,
+          statusCode: 400,
+          code: 'EMAIL_DOMAIN_NOT_ALLOWED',
+        });
+      }
+      throw err;
+    }
 
     // Audit log
     await createAuditLog(request.user!.sub, {
@@ -232,7 +245,20 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
-    const user = await userService.update(request.params.id, data);
+    let user;
+    try {
+      user = await userService.update(request.params.id, data);
+    } catch (err) {
+      if ((err as { code?: string }).code === 'EMAIL_DOMAIN_NOT_ALLOWED') {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: (err as Error).message,
+          statusCode: 400,
+          code: 'EMAIL_DOMAIN_NOT_ALLOWED',
+        });
+      }
+      throw err;
+    }
 
     // Audit log
     await createAuditLog(request.user!.sub, {

@@ -150,6 +150,55 @@ export class ApiClient {
     return this.request<Campaign>('PUT', `/api/v1/campaigns/${id}`, data);
   }
 
+  // ==================== Clients ====================
+
+  async createClient(data: {
+    name: string;
+    type?: 'FULL' | 'LITE';
+    primaryColor?: string;
+    emailDomains?: string[];
+  }) {
+    return this.request<{ id: string; name: string; emailDomains: string[] }>(
+      'POST',
+      '/api/v1/clients',
+      { type: 'FULL', primaryColor: '#0066CC', emailDomains: [], ...data }
+    );
+  }
+
+  async getClient(id: string) {
+    return this.request<{ id: string; name: string; emailDomains: string[] }>(
+      'GET',
+      `/api/v1/clients/${id}`
+    );
+  }
+
+  async updateClient(
+    id: string,
+    data: { name?: string; primaryColor?: string; emailDomains?: string[] }
+  ) {
+    return this.request<{ id: string; name: string; emailDomains: string[] }>(
+      'PUT',
+      `/api/v1/clients/${id}`,
+      data
+    );
+  }
+
+  // ==================== Users / Invites ====================
+
+  async inviteUser(data: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: 'PLATFORM_ADMIN' | 'CLIENT_ADMIN' | 'TEAM_MEMBER';
+    clientId?: string | null;
+  }) {
+    return this.request<{ id: string; email: string; cognitoSub: string }>(
+      'POST',
+      '/api/v1/users/invite',
+      data
+    );
+  }
+
   async deleteCampaign(id: string) {
     return this.request<void>('DELETE', `/api/v1/campaigns/${id}`);
   }
