@@ -402,5 +402,134 @@ describe('Insights Report API', () => {
 
       console.log(`✅ Respondent analytics: ${data.bySpecialty.length} specialties, ${data.byState.length} states`);
     });
+
+    // Perf pass B contract checks — invariants that must hold for both
+    // the OLD (JS aggregation) and NEW (SQL aggregation) implementations.
+    // Catches refactor regressions without depending on which impl is live.
+    it('contract: structural invariants on RespondentAnalytics shape', async () => {
+      const { status, data } = await client.getInsightsRespondentAnalytics(DRY_EYE_DISEASE_AREA_ID);
+      expect(status).toBe(200);
+
+      // Top-level shape — types match the Zod schema.
+      expect(typeof data.totalRespondents).toBe('number');
+      expect(typeof data.completedSurveys).toBe('number');
+      expect(typeof data.responseRate).toBe('number');
+      expect(data.completedSurveys).toBeLessThanOrEqual(data.totalRespondents);
+
+      // responseRate is computed: (completedSurveys / totalRespondents) * 100
+      if (data.totalRespondents > 0) {
+        const expected = (data.completedSurveys / data.totalRespondents) * 100;
+        expect(Math.abs(data.responseRate - expected)).toBeLessThan(1e-6);
+      } else {
+        expect(data.responseRate).toBe(0);
+      }
+
+      // bySpecialty: sum of counts equals totalRespondents (each CampaignHcp
+      // contributes exactly one entry, with null specialty → 'Unknown' bucket).
+      const specialtySum = data.bySpecialty.reduce((s: number, d: { count: number }) => s + d.count, 0);
+      expect(specialtySum).toBe(data.totalRespondents);
+
+      // Categorical distributions: each entry has { name, count, percentage }.
+      // Percentage is count / totalRespondents * 100.
+      for (const d of data.bySpecialty) {
+        expect(typeof d.name).toBe('string');
+        expect(typeof d.count).toBe('number');
+        expect(typeof d.percentage).toBe('number');
+        if (data.totalRespondents > 0) {
+          const expected = (d.count / data.totalRespondents) * 100;
+          expect(Math.abs(d.percentage - expected)).toBeLessThan(1e-6);
+        }
+      }
+
+      // completionOverTime: cumulative is monotone non-decreasing
+      let prev = 0;
+      for (const day of data.completionOverTime) {
+        expect(typeof day.date).toBe('string');
+        expect(day.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(day.cumulative).toBeGreaterThanOrEqual(prev);
+        prev = day.cumulative;
+      }
+
+      console.log(
+        `✅ RA invariants: totalRespondents=${data.totalRespondents}, ` +
+          `completed=${data.completedSurveys}, ${data.bySpecialty.length} specialties, ` +
+          `${data.completionOverTime.length} days`
+      );
+    });
+  });
+
+  describe('Demographics Endpoint (campaign-scoped, clientId optional)', () => {
+    // Perf pass B contract checks for getDemographics. Same approach: only
+    // assert invariants that hold for both the OLD and NEW impls.
+    it('contract: structural invariants on Demographics shape', async () => {
+      const { status, data } = await client.getInsightsDemographics(DRY_EYE_DISEASE_AREA_ID);
+      expect(status).toBe(200);
+
+      expect(typeof data.totalRespondents).toBe('number');
+      expect(Array.isArray(data.byRole)).toBe(true);
+      expect(Array.isArray(data.byPracticeSetting)).toBe(true);
+      expect(Array.isArray(data.byCoreFocus)).toBe(true);
+      expect(Array.isArray(data.byMonthlyPatients)).toBe(true);
+      expect(Array.isArray(data.byDedPatients)).toBe(true);
+      expect(Array.isArray(data.byYearsInPractice)).toBe(true);
+      expect(Array.isArray(data.byState)).toBe(true);
+      expect(Array.isArray(data.byDecile)).toBe(true);
+      expect(Array.isArray(data.educationalResources)).toBe(true);
+      expect(Array.isArray(data.educationalResourcesAcademic)).toBe(true);
+      expect(Array.isArray(data.educationalResourcesOther)).toBe(true);
+      expect(Array.isArray(data.coreFocusByPatients)).toBe(true);
+
+      // Numeric bucket distributions are fixed-size (defined by app-side
+      // range arrays — 8/6/7 entries respectively).
+      expect(data.byMonthlyPatients.length).toBe(8);
+      expect(data.byDedPatients.length).toBe(6);
+      expect(data.byYearsInPractice.length).toBe(7);
+
+      // Sum of bucket counts equals non-null answer count → percentages
+      // must sum to ~100% (modulo float precision and zero-data case).
+      for (const dim of [data.byMonthlyPatients, data.byDedPatients, data.byYearsInPractice]) {
+        const totalCount = dim.reduce((s: number, d: { count: number }) => s + d.count, 0);
+        const totalPct = dim.reduce((s: number, d: { percentage: number }) => s + d.percentage, 0);
+        if (totalCount > 0) {
+          expect(Math.abs(totalPct - 100)).toBeLessThan(1e-6);
+        } else {
+          expect(totalPct).toBe(0);
+        }
+      }
+
+      // Distribution items have {name, count, percentage} shape across all dims.
+      const allCat = [
+        ...data.byRole, ...data.byPracticeSetting, ...data.byCoreFocus,
+        ...data.byState, ...data.byDecile, ...(data.topicsDiscussed ?? []),
+      ];
+      for (const d of allCat) {
+        expect(typeof d.name).toBe('string');
+        expect(typeof d.count).toBe('number');
+        expect(typeof d.percentage).toBe('number');
+      }
+
+      // Educational resources entries have rank1..5 keys.
+      for (const dim of [data.educationalResources, data.educationalResourcesAcademic, data.educationalResourcesOther]) {
+        for (const r of dim) {
+          expect(typeof r.resource).toBe('string');
+          for (const k of ['rank1', 'rank2', 'rank3', 'rank4', 'rank5'] as const) {
+            expect(typeof r[k]).toBe('number');
+          }
+        }
+      }
+
+      // coreFocusByPatients entries.
+      for (const c of data.coreFocusByPatients) {
+        expect(typeof c.coreFocus).toBe('string');
+        expect(typeof c.totalPatients).toBe('number');
+        expect(typeof c.count).toBe('number');
+      }
+
+      console.log(
+        `✅ Demographics invariants: totalRespondents=${data.totalRespondents}, ` +
+          `${data.byRole.length} roles, ${data.byPracticeSetting.length} settings, ` +
+          `${data.byState.length} states, ${data.byDecile.length} deciles`
+      );
+    });
   });
 });
