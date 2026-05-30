@@ -625,6 +625,11 @@ model Nomination {
   @@index([matchStatus])
   @@index([matchedHcpId])
   @@index([rawNameEntered])
+  /// Covers the filter pattern in computeRespondentFilteredCounts +
+  /// getKolProfile nominator lookup — `WHERE responseId IN (...)
+  /// AND matchStatus IN (...) AND matchedHcpId ...`. Composite is
+  /// growth insurance more than today's win (12k rows ≈ 10 noms/response).
+  @@index([responseId, matchStatus, matchedHcpId], name: "Nomination_filter_idx")
 }
 
 model Payment {

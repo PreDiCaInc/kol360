@@ -61,6 +61,12 @@ const DEFAULT_INFLUENCER_THRESHOLDS: InfluencerThresholds = {
   risingStar:     { minSurveyScore: 30, maxCompositeScore: 30 },
 };
 
+// Module-level cache for the InfluencerThreshold singleton — perf pass #7.
+// Operational tuning (the prod-rel-4.1.7 documented `UPDATE` flow) tolerates
+// up to 60s lag before new values propagate, which matches this TTL.
+const INFLUENCER_THRESHOLDS_TTL_MS = 60_000;
+let influencerThresholdsCache: { value: InfluencerThresholds; expiresAt: number } | null = null;
+
 // Score row from HcpAnalysisScore, keyed by hcpId.
 type AnalysisScoreRow = Prisma.HcpAnalysisScoreGetPayload<object>;
 type ObjectiveRow = Prisma.HcpDiseaseAreaScoreGetPayload<object>;
@@ -525,9 +531,19 @@ export class InsightsReportService {
 
       const [objMap, hcps] = await Promise.all([
         this.loadObjectiveScores(hcpIds, diseaseAreaId),
+        // Perf pass #6 (KOL Explorer): narrow from full Hcp row (~20 columns)
+        // to the 7 actually consumed downstream. Specialties relation kept
+        // for the primary-specialty join.
         prisma.hcp.findMany({
           where: { id: { in: hcpIds } },
-          include: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            specialty: true,
+            city: true,
+            state: true,
+            npi: true,
             specialties: {
               where: { isPrimary: true },
               include: { specialty: true },
@@ -742,9 +758,16 @@ export class InsightsReportService {
     if (states && states.length > 0) hcpWhere.state = { in: states };
     else if (state) hcpWhere.state = state;
 
+    // Perf pass #6 (Leader Rankings): narrow to the 6 fields consumed below.
     const hcps = await prisma.hcp.findMany({
       where: hcpWhere,
-      include: {
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        specialty: true,
+        city: true,
+        state: true,
         specialties: {
           where: { isPrimary: true },
           include: { specialty: true },
@@ -1025,13 +1048,20 @@ export class InsightsReportService {
 
     const searchLc = search?.toLowerCase();
     const thresholds = await this.getInfluencerThresholds();
+    // Perf pass #6 (Sociometric Summary): narrow to the 6 fields consumed below.
     const hcps = await prisma.hcp.findMany({
       where: {
         id: { in: baseHcpIds },
         ...(specialty ? { specialty } : {}),
         ...(state ? { state } : {}),
       },
-      include: {
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        specialty: true,
+        city: true,
+        state: true,
         specialties: {
           where: { isPrimary: true },
           include: { specialty: true },
@@ -1305,43 +1335,52 @@ export class InsightsReportService {
   }
 
   /**
-   * Get filter options for dropdowns
+   * Get filter options for dropdowns.
+   *
+   * Perf pass #3: previously fetched up to ~hundreds of (specialty, state)
+   * pairs and deduped in JS. Now pushes the DISTINCT down to Postgres —
+   * two narrow scans, ~tens of rows each, no app-side Set juggling.
+   *
+   * State whitelist (US 50 + DC) stays app-side because it's a small
+   * hardcoded check and SQL `IN (...)` over 51 string literals is ugly.
+   * The DB filter is `is not null + isCurrent`; the whitelist clips after.
    */
   async getFilterOptions(diseaseAreaId: string) {
     try {
-    // Get distinct specialties and states from HCPs with scores in this disease area
-    const hcpsWithScores = await prisma.hcpDiseaseAreaScore.findMany({
-      where: { diseaseAreaId, isCurrent: true },
-      select: {
-        hcp: {
-          select: {
-            specialty: true,
-            state: true,
-          },
-        },
-      },
-    });
+      const [specialtyRows, stateRows] = await Promise.all([
+        prisma.$queryRaw<{ specialty: string }[]>`
+          SELECT DISTINCT h."specialty"
+          FROM "Hcp" h
+          JOIN "HcpDiseaseAreaScore" s ON s."hcpId" = h."id"
+          WHERE s."diseaseAreaId" = ${diseaseAreaId}
+            AND s."isCurrent" = true
+            AND h."specialty" IS NOT NULL
+          ORDER BY h."specialty" ASC
+        `,
+        prisma.$queryRaw<{ state: string }[]>`
+          SELECT DISTINCT h."state"
+          FROM "Hcp" h
+          JOIN "HcpDiseaseAreaScore" s ON s."hcpId" = h."id"
+          WHERE s."diseaseAreaId" = ${diseaseAreaId}
+            AND s."isCurrent" = true
+            AND h."state" IS NOT NULL
+          ORDER BY h."state" ASC
+        `,
+      ]);
 
-    const specialties = new Set<string>();
-    const states = new Set<string>();
-
-    for (const score of hcpsWithScores) {
-      if (score.hcp.specialty) specialties.add(score.hcp.specialty);
       // v1.17.4: state filter whitelist — only emit US 50 + DC.
       // Customers (Sun Pharma, B+L) are US-only; non-US values like 'AB'
       // (Alberta) or 'AU' (Australia) had leaked into the dropdown from
       // legacy NPI imports. Hardcoded for now; revisit as a per-client
       // Client.region setting if/when we onboard a non-US customer.
-      if (score.hcp.state && US_STATE_CODES.has(score.hcp.state)) {
-        states.add(score.hcp.state);
-      }
-    }
+      const specialties = specialtyRows.map((r) => r.specialty);
+      const states = stateRows.map((r) => r.state).filter((s) => US_STATE_CODES.has(s));
 
-    return {
-      specialties: Array.from(specialties).sort(),
-      states: Array.from(states).sort(),
-      influencerTypes: ['National Leaders', 'Rising Stars', 'Regional Influencers'],
-    };
+      return {
+        specialties,
+        states,
+        influencerTypes: ['National Leaders', 'Rising Stars', 'Regional Influencers'],
+      };
     } catch (error) {
       logger.error('Error fetching filter options', { diseaseAreaId, error });
       throw error;
@@ -2063,24 +2102,40 @@ export class InsightsReportService {
    * Falls back to DEFAULT_INFLUENCER_THRESHOLDS if the row is missing
    * (e.g., a fresh DB where the seed migration hasn't run yet).
    *
-   * Called once per public insights method, then passed down to
-   * determineInfluencerType — so per-HCP loops don't hit the DB.
+   * **Cached at module scope for 60 s** (perf pass item #7). The win is
+   * cross-request: an insights dashboard load fires 3-4 parallel API
+   * calls to the 4 endpoints that consume thresholds (KOL Explorer,
+   * Sociometric, Leader Rankings, KOL Profile) — each used to make its
+   * own DB lookup of the same singleton row. With the cache, each
+   * 60-second window does 1 lookup instead of 3-4 per request.
+   *
+   * Tuning lag: an operational `UPDATE InfluencerThreshold SET ...`
+   * (the documented prod-rel-4.1.7 tuning flow) takes up to 60 s to
+   * propagate. That's acceptable per the 4.1.7 handoff which already
+   * frames tuning as out-of-band.
    */
   private async getInfluencerThresholds(): Promise<InfluencerThresholds> {
+    const now = performance.now();
+    if (influencerThresholdsCache && now < influencerThresholdsCache.expiresAt) {
+      return influencerThresholdsCache.value;
+    }
     const row = await prisma.influencerThreshold.findUnique({
       where: { id: 'default' },
     });
-    if (!row) return DEFAULT_INFLUENCER_THRESHOLDS;
-    return {
-      nationalLeader: {
-        minCompositeScore: row.nationalLeaderMinComposite,
-        minSurveyScore: row.nationalLeaderMinSurvey,
-      },
-      risingStar: {
-        minSurveyScore: row.risingStarMinSurvey,
-        maxCompositeScore: row.risingStarMaxComposite,
-      },
-    };
+    const value: InfluencerThresholds = row
+      ? {
+          nationalLeader: {
+            minCompositeScore: row.nationalLeaderMinComposite,
+            minSurveyScore: row.nationalLeaderMinSurvey,
+          },
+          risingStar: {
+            minSurveyScore: row.risingStarMinSurvey,
+            maxCompositeScore: row.risingStarMaxComposite,
+          },
+        }
+      : DEFAULT_INFLUENCER_THRESHOLDS;
+    influencerThresholdsCache = { value, expiresAt: now + INFLUENCER_THRESHOLDS_TTL_MS };
+    return value;
   }
 
   /**
