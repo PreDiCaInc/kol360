@@ -19,6 +19,7 @@ Older releases (prod-rel-3.2 through prod-rel-4.1.1) lived in `docs/releases/` b
 
 | Tag | Version | Headline |
 |---|---|---|
+| [4.1.9](prod-rel-4.1.9-handoff.md) | v1.17.10 + v1.17.11 | Insights dashboard perf pass A + B (SQL aggregations, narrower fetches, composite index, threshold cache) |
 | [4.1.8](prod-rel-4.1.8-handoff.md) | v1.17.8 + v1.17.9 | Per-client email-domain allowlist + campaign-create excludeInternalEmails fix + deferred E2E deep assertions |
 | [4.1.7](prod-rel-4.1.7-handoff.md) | v1.17.7 | Insights full-name search fix + tunable InfluencerThreshold table |
 | [4.1.6](prod-rel-4.1.6-handoff.md) | v1.17.6 | Rename-nomination dialog: inline exact-match callout |
