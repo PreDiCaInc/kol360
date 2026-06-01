@@ -11,11 +11,24 @@ Index with one-line summaries: [`releases/README.md`](releases/README.md).
 
 ## Deployment
 
+### AWS Account & App Runner Services
+
+**Both `test` and `prod` App Runner services (api + web) live in the same AWS account: the Bio-Exec account, accessed via the `koluser` profile in `us-east-2`.** Everything that runs in AWS — App Runner services, the shared Cognito user pool, both RDS instances (`kol360-db` test + `kol360-db-prod` prod), the VPC connector, the bastion host — is in this one account.
+
+The only thing that differs between test and prod is the **source GitHub repo** that App Runner auto-deploys from:
+
+| Environment | App Runner services | Source repo (`main` branch) | AWS account | Profile |
+|---|---|---|---|---|
+| **Test** | `kol360-api-test`, `kol360-web-test` | `PreDiCaInc/kol360` | Bio-Exec (`163859990568`) | `koluser` |
+| **Prod** | `kol360-api`, `kol360-web` | `Bio-Exec/kol360` | Bio-Exec (`163859990568`) | `koluser` |
+
+Service ARNs, URLs, Cognito IDs, and shared resource ARNs (VPC connector, GitHub connections) are in the operator's `CLAUDE.md` (not committed — contains DB credentials).
+
 ### AWS Profiles Required
 
 This project uses multiple AWS profiles. Make sure they are configured in `~/.aws/credentials`:
 
-- **koluser** - For Lambda API deployment (Region: us-east-2)
+- **koluser** - Primary profile for App Runner + RDS + Cognito (Region: us-east-2). Bio-Exec account.
 - **koladmin** - For S3 web deployment (if using S3 static hosting)
 
 ### Deploy Lambda API
