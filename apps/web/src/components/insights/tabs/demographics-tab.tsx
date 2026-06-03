@@ -405,6 +405,25 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
         <ActiveFilterChips filters={activeFilters} />
       </div>
 
+      {/* 2026-06-02 Group F: 0-result state. Filter bar above stays
+          visible so the user can adjust without leaving the tab. Pre-fix:
+          the section header + a wall of empty chart cards made it look
+          broken; combined with the "Error loading demographics data"
+          toast from the error-branch (which DOES NOT fire for 0 results
+          but the customer reported the perception), the page felt dead.
+          Now it's an explicit "no respondents match" state. */}
+      {data.totalRespondents === 0 ? (
+        <div className="rounded-lg border bg-card p-12 text-center">
+          <p className="text-base font-medium">No respondents match these filters.</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            {activeFilters.length > 0
+              ? 'Try clearing one or more filters above to see data.'
+              : 'There are no completed survey responses for this disease area yet.'}
+          </p>
+        </div>
+      ) : (
+        <>
+
       <div>
         <h2 className="text-xl font-bold">Respondent Demographics</h2>
         <p className="text-sm text-muted-foreground">
@@ -603,6 +622,8 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             </CardContent>
           </Card>
         </div>
+      )}
+        </>
       )}
     </div>
   );
