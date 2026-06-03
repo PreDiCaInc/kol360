@@ -3,7 +3,7 @@
 **Status:** Ready for prod deploy. **No migration.** Reversible (code-only).
 **Tag:** `prod-rel-4.1.11` → commit on `main` (cut after this docs PR merges).
 **Supersedes:** `prod-rel-4.1.10` (v1.17.16).
-**Bundles:** v1.17.17 + v1.17.18 (admin-UX policy changes + one follow-up).
+**Bundles:** v1.17.17 + v1.17.18 + v1.17.19 (admin-UX policy changes + one follow-up + escape-hatch removal & lint CI fix).
 
 ## TL;DR
 
@@ -16,6 +16,12 @@ Three policy/RBAC items + one follow-up against the v1.17.17 deploy.
 **Theme 3 — TEAM_MEMBER role gets read-only tenant access (v1.17.17).** Pre-fix, TEAM_MEMBER had zero permissions — every admin route used `requireClientAdmin()` which allowed only PLATFORM_ADMIN + CLIENT_ADMIN. Logged-in TEAM_MEMBER hit "Insufficient permissions" on HCPs, campaigns, dashboards, insights, surveys — everything. Now: read-only across all tenant-scoped data; writes (POST/PUT/PATCH/DELETE) still admin-only.
 
 **Theme 4 — ZodError → 400 in global error handler (v1.17.18).** Caught against the v1.17.17 deploy: the new emailDomains-required E2E test expected 400 on empty array, got 500. Root cause: the global error handler had branches for ApiError / Fastify / Prisma but no `ZodError` branch — so every `schema.parse(request.body)` in every route fell through to 500 on validation failure. Broad pre-fix scope; routes that had their own try/catch (nominations, kol-analysis, opt-outs) worked correctly, everything else was broken. Fix: ZodError → 400 + first issue's message surfaced in the response.
+
+**Theme 5 — emailDomains escape hatch removed + lint CI fix (v1.17.19).**
+
+*emailDomains escape hatch.* v1.17.17 made `emailDomains` required at the Zod write layer but kept a runtime escape hatch (`if (client.emailDomains.length === 0) return`) so pre-v1.17.17 clients on prod (with empty arrays) wouldn't break on read. Pteam confirmed prod had only 3 affected clients (Sun Pharma, Bausch & Lomb, Sample Pharma Corp); domains supplied (`sunpharma.com`, `bausch.com`, `sampleclient.com`) and the 3 rows backfilled. Test env's 9 clients backfilled in the same change with placeholder domains. Escape hatch removed from `userService.validateEmailForClient` — an empty `emailDomains` array now means strict-allowlist behavior (only `ALWAYS_ALLOWED_DOMAINS` like `bio-exec.com` get through). This shouldn't fire in practice since Zod blocks new empty-array creates and every existing row has a domain; defensive against Prisma-direct / raw-SQL inserts that might recreate an empty state.
+
+*Lint CI fix.* `apps/api/lint` was broken since the API was created — script `eslint src/` with no ESLint config + no `--ext .ts` resolved to "look for .js files in src/", found zero, ESLint errored with "No files matching the pattern 'src/' were found". `apps/web/lint` (`next lint`) was also broken — no `.eslintrc*` meant Next prompted interactively for setup (TTY only; non-TTY = exit 1). CI's `continue-on-error: true` was masking it, but recent runs propagated the exit code anyway. Fix: minimal `.eslintrc.json` in both apps (api: typescript-eslint parser, permissive rules; web: extends `next/core-web-vitals` with `react/no-unescaped-entities` + `@typescript-eslint/no-explicit-any` off to match existing code). One orphan `// eslint-disable-next-line @typescript-eslint/no-explicit-any` comment removed from `question-form-dialog.tsx:144` (the rule isn't loaded so the disable comment itself errored as "rule not found"). Lint now passes locally and in CI.
 
 ## What changes for customers (the visible bit)
 

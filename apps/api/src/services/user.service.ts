@@ -34,14 +34,15 @@ export function validateEmailForClient(
   client: { emailDomains: string[] } | null | undefined
 ): void {
   if (!client) return; // platform admins (no clientId) bypass
-  // v1.17.17 made emailDomains required at the write layer (Zod min(1)),
-  // but pre-v1.17.17 clients on prod were created with empty arrays.
-  // Keep this escape hatch so legacy clients aren't broken on read —
-  // any future edit through the form forces the admin to fill it in,
-  // at which point this branch stops firing for that client. Once all
-  // existing clients have been edited (or backfilled), this line can
-  // be removed and the function reduced to the strict allowlist check.
-  if (client.emailDomains.length === 0) return;
+  // v1.17.19: the legacy "empty allowlist = no enforcement" escape
+  // hatch is gone. Every prod + test client was backfilled with at
+  // least one domain alongside this change; Zod min(1) prevents new
+  // clients from being created with empty arrays. An empty array
+  // here now means someone bypassed Zod (Prisma direct, manual SQL,
+  // or a migration backfill that didn't set a value) — in which case
+  // we want the strict allowlist check below to fire (i.e., only
+  // ALWAYS_ALLOWED_DOMAINS like bio-exec.com get through, everything
+  // else is rejected) rather than silently letting any domain in.
 
   const emailDomain = email.split('@')[1]?.toLowerCase();
   const allowed = [
