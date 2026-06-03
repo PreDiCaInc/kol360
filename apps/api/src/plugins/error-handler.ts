@@ -1,6 +1,7 @@
 import { FastifyPluginAsync, FastifyError } from 'fastify';
 import fp from 'fastify-plugin';
 import { Prisma } from '@prisma/client';
+import { ZodError } from 'zod';
 import { logger } from '../lib/logger';
 import { ApiError } from '../lib/errors';
 
@@ -58,6 +59,19 @@ function getUserFriendlyMessage(error: Error | FastifyError): string {
     }
   }
 
+  // v1.17.17: Zod schema rejections surface the first issue's message
+  // so the client sees something actionable (e.g. "At least one email
+  // domain is required" from createClientSchema.min(1)) rather than a
+  // generic 500.
+  if (error instanceof ZodError) {
+    const first = error.issues[0];
+    if (first) {
+      const path = first.path.length > 0 ? first.path.join('.') + ': ' : '';
+      return `${path}${first.message}`;
+    }
+    return USER_FRIENDLY_MESSAGES.VALIDATION_ERROR;
+  }
+
   if (error instanceof Prisma.PrismaClientInitializationError) {
     return USER_FRIENDLY_MESSAGES.DATABASE_CONNECTION;
   }
@@ -106,6 +120,13 @@ function getStatusCode(error: Error | FastifyError): number {
   // ApiError has its own status code
   if (error instanceof ApiError) {
     return error.statusCode;
+  }
+
+  // v1.17.17: Zod parse failures are client-input bugs, not 500s.
+  // Routes that don't wrap .parse() in their own try/catch (most of
+  // them) used to return 500 on invalid input; map to 400 here.
+  if (error instanceof ZodError) {
+    return 400;
   }
 
   // Fastify errors have status codes
