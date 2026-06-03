@@ -133,7 +133,14 @@ export function SociometricTablesTab({ diseaseAreaId, onKolSelect, clientId }: P
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* v1.17.24: single-column layout so every leader table gets the
+          full viewport width and all 6 columns (Leader / Count /
+          Specialty / Influencer Type / State / Rank) fit without
+          horizontal scroll. Customer-reported: "some people might not
+          realize they have to scroll". The prior lg:grid-cols-2 split
+          forced each table into ~half the page, which overflowed at
+          common laptop widths. */}
+      <div className="grid grid-cols-1 gap-6">
         {NOMINATION_TYPES.map((type) => (
           <SociometricPanel
             key={type.value}
