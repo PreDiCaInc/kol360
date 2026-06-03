@@ -57,6 +57,13 @@ export const QUESTION_TYPES = {
   MULTI_TEXT: 'MULTI_TEXT',
 } as const;
 
+// v1.17.20: placeholder email for HCPs without a real email. Used
+// when manually entered HCPs lack an email (form picks this up via
+// the "Use placeholder" hint) and as the Prisma default for the now-
+// required Hcp.email column. Chosen on a non-bio-exec.com domain so
+// the excludeInternalEmails filter doesn't catch placeholder rows.
+export const HCP_PLACEHOLDER_EMAIL = 'nomail@kol360research.com';
+
 export const DISEASE_AREAS = [
   { code: 'RETINA', name: 'Retina', therapeuticArea: 'Ophthalmology' },
   { code: 'DRY_EYE', name: 'Dry Eye', therapeuticArea: 'Ophthalmology' },

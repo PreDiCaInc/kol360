@@ -179,16 +179,26 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>Email *</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       value={field.value || ''}
-                      onChange={(e) => field.onChange(e.target.value || null)}
+                      onChange={(e) => field.onChange(e.target.value)}
                       type="email"
                       placeholder="john@hospital.com"
                     />
                   </FormControl>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Required. If you don't have one yet, use the placeholder:{' '}
+                    <button
+                      type="button"
+                      className="text-primary underline hover:no-underline"
+                      onClick={() => field.onChange('nomail@kol360research.com')}
+                    >
+                      nomail@kol360research.com
+                    </button>
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}

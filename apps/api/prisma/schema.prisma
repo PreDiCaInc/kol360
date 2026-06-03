@@ -178,7 +178,7 @@ model Hcp {
   isNominated         Boolean                 @default(false)
   firstName           String
   lastName            String
-  email               String?
+  email               String                  @default("nomail@kol360research.com")
   specialty           String?                 // Legacy field - kept for backward compatibility
   subSpecialty        String?
   city                String?

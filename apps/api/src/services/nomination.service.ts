@@ -647,6 +647,10 @@ export class NominationService {
       data: {
         ...hcpCreateData,
         npi: hcpData.npi || null,
+        // v1.17.20: Hcp.email is now NOT NULL with a placeholder default.
+        // The nomination-create-HCP path may not have a real email; fall
+        // back to the placeholder so the row inserts cleanly.
+        email: hcpData.email || 'nomail@kol360research.com',
         beId,
         isNominated: true,
         createdBy: matchedBy,

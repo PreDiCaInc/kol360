@@ -52,7 +52,14 @@ export const createNominatedHcpSchema = z.object({
   npi: npiSchema.optional().nullable(),
   firstName: z.string().min(1).max(50),
   lastName: z.string().min(1).max(50),
-  email: z.string().email().optional().nullable(),
+  // v1.17.20: email required at the DB layer; preprocess null/undefined/
+  // empty-string → nomail@kol360research.com so nomination flows that
+  // don't capture an email still produce a valid row.
+  email: z
+    .preprocess(
+      (v) => (v == null || v === '' ? 'nomail@kol360research.com' : v),
+      z.string().email()
+    ),
   specialty: hcpSpecialtySchema.optional().nullable(),
   diseaseAreaIds: z.array(z.string().cuid()).optional(),
   subSpecialty: z.string().optional().nullable(),
