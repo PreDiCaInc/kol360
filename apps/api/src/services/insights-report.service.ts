@@ -1439,6 +1439,9 @@ export class InsightsReportService {
         decileRows,
         educationalRows,
         topicsRows,
+        socialMediaRanksRows,
+        valuableContentRows,
+        objectivityRatingRows,
         respondentCoreFocusRows,
         respondentMonthlyPatientsRows,
       ] = await Promise.all([
@@ -1700,6 +1703,104 @@ export class InsightsReportService {
             `
           : Promise.resolve([] as { name: string; count: number }[]),
 
+        // 2026-06-02 Group B-remainder skeleton (#5, #6 from spec): three
+        // new dimensions whose question texts the customer surfaced.
+        // Keyword patterns are best-guesses from the spec's question
+        // quotes; aggregations return [] until matching survey questions
+        // are imported AND have completed responses. If keywords miss
+        // the actual imported text, a small hotfix updates the LIKE
+        // pattern — no schema/route change needed.
+
+        // B-remainder #1: Social Media Platform Rankings (RANK_ORDER).
+        // Customer-quoted question: "Please rank top 5 social media or
+        // digital platforms". Same shape as educationalResources —
+        // CROSS JOIN LATERAL on the RANK_ORDER JSON array.
+        prisma.$queryRaw<{ resource: string; rank: number; count: number }[]>`
+          SELECT
+            elem->>'text' AS resource,
+            (elem->>'rank')::int AS rank,
+            COUNT(*)::int AS count
+          FROM "SurveyResponseAnswer" sra
+          JOIN "SurveyQuestion" sq ON sq.id = sra."questionId"
+          JOIN "Question" q ON q.id = sq."questionId"
+          JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
+          LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+          CROSS JOIN LATERAL jsonb_array_elements(sra."answerJson") AS elem
+          WHERE sr."campaignId" IN (${cids})
+            AND sr.status = 'COMPLETED'
+            AND LOWER(sq."questionTextSnapshot") LIKE '%social media%'
+            AND q."type" = 'RANK_ORDER'
+            AND sra."answerJson" IS NOT NULL
+            AND jsonb_typeof(sra."answerJson") = 'array'
+            AND elem->>'text' IS NOT NULL
+            AND (elem->>'rank') ~ '^[1-5]$'
+          ${responseFilter}
+          ${internalEmailFilter}
+          GROUP BY resource, rank
+        `,
+
+        // B-remainder #2: Valuable Social Media Content (MULTI_CHOICE).
+        // Customer-quoted question: "What type of content do you find
+        // most valuable on social media". Same UNION pattern as
+        // byPracticeSetting.
+        prisma.$queryRaw<{ name: string; count: number }[]>`
+          SELECT name, SUM(count)::int AS count FROM (
+            SELECT ${SC} AS name, 1 AS count
+            FROM "SurveyResponseAnswer" sra
+            JOIN "SurveyQuestion" sq ON sq.id = sra."questionId"
+            JOIN "Question" q ON q.id = sq."questionId"
+            JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
+            LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+            WHERE sr."campaignId" IN (${cids})
+              AND sr.status = 'COMPLETED'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%valuable%'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%social media%'
+              AND q."type" <> 'MULTI_CHOICE'
+              AND ${SC} IS NOT NULL
+            ${responseFilter}
+            ${internalEmailFilter}
+            UNION ALL
+            SELECT jsonb_array_elements_text(sra."answerJson"->'selected') AS name, 1 AS count
+            FROM "SurveyResponseAnswer" sra
+            JOIN "SurveyQuestion" sq ON sq.id = sra."questionId"
+            JOIN "Question" q ON q.id = sq."questionId"
+            JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
+            LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+            WHERE sr."campaignId" IN (${cids})
+              AND sr.status = 'COMPLETED'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%valuable%'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%social media%'
+              AND q."type" = 'MULTI_CHOICE'
+              AND sra."answerJson" ? 'selected'
+              AND jsonb_typeof(sra."answerJson"->'selected') = 'array'
+            ${responseFilter}
+            ${internalEmailFilter}
+          ) merged
+          GROUP BY name
+          ORDER BY count DESC, name ASC
+        `,
+
+        // B-remainder #3: Objectivity Rating (SINGLE_CHOICE).
+        // Customer-quoted question: "How would you rate the overall
+        // objectivity of leaders in DED". Same shape as byRole (Primary
+        // Medical Specialty).
+        prisma.$queryRaw<{ name: string; count: number }[]>`
+          SELECT ${SC} AS name, COUNT(*)::int AS count
+          FROM "SurveyResponseAnswer" sra
+          JOIN "SurveyQuestion" sq ON sq.id = sra."questionId"
+          JOIN "Question" q ON q.id = sq."questionId"
+          JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
+          LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+          WHERE sr."campaignId" IN (${cids})
+            AND sr.status = 'COMPLETED'
+            AND LOWER(sq."questionTextSnapshot") LIKE '%objectivity%'
+            AND ${SC} IS NOT NULL
+          ${responseFilter}
+          ${internalEmailFilter}
+          GROUP BY 1
+          ORDER BY count DESC, name ASC
+        `,
+
         // Cross-tab data: per-respondent core focus (last-seen wins — Map
         // overwrites in old impl). Use DISTINCT ON to mirror that semantic.
         prisma.$queryRaw<{ respondentHcpId: string; coreFocus: string }[]>`
@@ -1847,6 +1948,23 @@ export class InsightsReportService {
         }))
         .sort((a, b) => b.totalPatients - a.totalPatients);
 
+      // B-remainder skeletons: convert to the response-friendly shapes.
+      // socialMediaRanks reuses unflattenRanks → buildEducationalResources
+      // (same {resource, rank1..rank5} shape; rendered the same way).
+      // valuableContent + objectivityRating are categorical distributions
+      // computed via `cat` (same shape as byRole).
+      const socialMediaRanksFlat = socialMediaRanksRows.map((r) => ({
+        bucket: 'general',
+        resource: r.resource,
+        rank: r.rank,
+        count: r.count,
+      }));
+      const socialMediaRankings = this.buildEducationalResources(
+        unflattenRanks(socialMediaRanksFlat, 'general')
+      );
+      const valuableContent = cat(valuableContentRows);
+      const objectivityRating = cat(objectivityRatingRows);
+
       return {
         totalRespondents,
         byRole,
@@ -1862,6 +1980,9 @@ export class InsightsReportService {
         educationalResourcesOther,
         topicsDiscussed,
         coreFocusByPatients,
+        socialMediaRankings,
+        valuableContent,
+        objectivityRating,
       };
     } catch (error) {
       logger.error('Error fetching demographics', { diseaseAreaId, error });
@@ -2014,19 +2135,51 @@ export class InsightsReportService {
         const respondentId = answer.response.respondentHcpId;
         const campaignId = answer.question.campaignId;
 
+        // 2026-06-02: same MULTI_CHOICE handling as the core-focus branch
+        // below. Pre-fix this would silently produce an empty byPracticeSetting
+        // for surveys where Practice Setting is multi-select.
         if (qt.includes('practice setting')) {
-          const value = this.extractSingleChoice(json, text, questionType);
-          if (value) {
-            practiceSettingCounts.set(value, (practiceSettingCounts.get(value) || 0) + 1);
-            nominatorPracticeSetting.set(respondentId, value);
+          if (questionType === 'MULTI_CHOICE' && json) {
+            const selected = (json as { selected?: string[] }).selected;
+            if (Array.isArray(selected) && selected.length > 0) {
+              for (const s of selected) {
+                practiceSettingCounts.set(s, (practiceSettingCounts.get(s) || 0) + 1);
+              }
+              nominatorPracticeSetting.set(respondentId, selected[selected.length - 1]);
+            }
+          } else {
+            const value = this.extractSingleChoice(json, text, questionType);
+            if (value) {
+              practiceSettingCounts.set(value, (practiceSettingCounts.get(value) || 0) + 1);
+              nominatorPracticeSetting.set(respondentId, value);
+            }
           }
         }
 
+        // 2026-06-02 Group E: same MULTI_CHOICE-blind bug as getDemographics
+        // had pre-v1.17.13 — extractSingleChoice returns null for
+        // MULTI_CHOICE, so Sun-Pharma-style surveys (where Core Focus is
+        // multi-select) silently produced an empty byCoreFocus on the
+        // KOL Profile page. Now handles MULTI_CHOICE selected-array
+        // expansion like byPracticeSetting on getDemographics does.
         if (qt.includes('core focus')) {
-          const value = text || this.extractSingleChoice(json, text, questionType);
-          if (value) {
-            coreFocusCounts.set(value, (coreFocusCounts.get(value) || 0) + 1);
-            nominatorCoreFocus.set(respondentId, value);
+          if (questionType === 'MULTI_CHOICE' && json) {
+            const selected = (json as { selected?: string[] }).selected;
+            if (Array.isArray(selected) && selected.length > 0) {
+              for (const s of selected) {
+                coreFocusCounts.set(s, (coreFocusCounts.get(s) || 0) + 1);
+              }
+              // Per-respondent map keeps last selection (arbitrary among
+              // their MULTI_CHOICE picks) so cross-tabs that previously
+              // used it still work for that respondent.
+              nominatorCoreFocus.set(respondentId, selected[selected.length - 1]);
+            }
+          } else {
+            const value = text || this.extractSingleChoice(json, text, questionType);
+            if (value) {
+              coreFocusCounts.set(value, (coreFocusCounts.get(value) || 0) + 1);
+              nominatorCoreFocus.set(respondentId, value);
+            }
           }
         }
 

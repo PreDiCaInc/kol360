@@ -17,16 +17,20 @@ const NOMINATION_TYPES: {
   label: string;
   color: string;
 }[] = [
-  { value: 'DISCUSSION_LEADERS', label: 'Discussion Leaders', color: 'bg-blue-500' },
-  { value: 'REFERRAL_LEADERS', label: 'Referral Leaders', color: 'bg-green-500' },
-  { value: 'ADVICE_LEADERS', label: 'Advice Leaders', color: 'bg-purple-500' },
   { value: 'NATIONAL_LEADER', label: 'National Leaders', color: 'bg-yellow-600' },
+  { value: 'DISCUSSION_LEADERS', label: 'Discussion Leaders', color: 'bg-blue-500' },
+  { value: 'ADVICE_LEADERS', label: 'Advice Leaders', color: 'bg-purple-500' },
   { value: 'RISING_STAR', label: 'Rising Stars', color: 'bg-pink-500' },
-  { value: 'SOCIAL_LEADER', label: 'Social Media Influencers', color: 'bg-cyan-500' },
+  { value: 'REFERRAL_LEADERS', label: 'Referral Leaders', color: 'bg-green-500' },
+  { value: 'SOCIAL_LEADER', label: 'Social Media Leaders', color: 'bg-cyan-500' },
+  { value: 'BIASED_LEADER', label: 'Biased Leaders', color: 'bg-red-500' },
 ];
 
-// Tab 4 columns: Name, Specialty, Influencer Type, State, Count (no City)
-const COLUMNS: LeaderTableColumn[] = ['name', 'specialty', 'influencerType', 'state', 'count'];
+// Tab 4 columns: Name, Total (=count), Specialty, Influencer Type, State.
+// 2026-06-02 Group D: Total moved from last to first data column (pteam
+// + customer feedback — most important number, was being scrolled off on
+// narrower viewports). Default sort is already 'count' DESC (panel state).
+const COLUMNS: LeaderTableColumn[] = ['name', 'count', 'specialty', 'influencerType', 'state'];
 
 function SociometricPanel({
   diseaseAreaId,

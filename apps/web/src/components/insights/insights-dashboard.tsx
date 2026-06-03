@@ -224,7 +224,7 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
         <TabsList className="grid w-full grid-cols-5 print:hidden h-12">
           <TabsTrigger value="introduction">Introduction</TabsTrigger>
           <TabsTrigger value="demographics">Demographics</TabsTrigger>
-          <TabsTrigger value="dynamic-benchmarking">Dynamic Benchmarking</TabsTrigger>
+          <TabsTrigger value="dynamic-benchmarking">Benchmarking</TabsTrigger>
           <TabsTrigger value="sociometric-leaders">Sociometric Leaders</TabsTrigger>
           <TabsTrigger value="total-weighted-score">Total Weighted Score</TabsTrigger>
         </TabsList>

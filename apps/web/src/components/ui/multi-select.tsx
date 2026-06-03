@@ -76,16 +76,45 @@ export function MultiSelect({
           </div>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start">
+      {/* 2026-06-02 Group F: prevent the popover from closing after each
+          pick. Pteam + customer reported the demographics-tab state filter
+          (and others) closing after every selection, making multi-select
+          feel single-select. The fix is two-part:
+          (1) `onInteractOutside` here uses an opt-in close — Radix calls
+              this whenever an "outside" interaction happens, including
+              re-renders that move focus. Letting the default fire would
+              close on every parent-render triggered by the filter state
+              update from `onChange`. Prevent the default and rely on the
+              explicit triggers below (click on the trigger button, etc).
+          (2) Each row's onClick stops propagation so the row click can't
+              be interpreted as an outside-interaction.
+          The Benchmarking tab apparently doesn't have this problem
+          because its filter changes don't trigger as fast a re-render. */}
+      <PopoverContent
+        className="w-[200px] p-0"
+        align="start"
+        onInteractOutside={(e) => {
+          // Only allow close when the user clicks fully outside (the
+          // trigger button, etc) — not when an inside row click bubbles.
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('[data-multiselect-row]')) {
+            e.preventDefault();
+          }
+        }}
+      >
         <div className="max-h-60 overflow-auto p-1">
           {options.map((option) => (
             <div
               key={option}
+              data-multiselect-row
               className={cn(
                 'flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer hover:bg-accent',
                 selected.includes(option) && 'bg-accent'
               )}
-              onClick={() => handleToggle(option)}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggle(option);
+              }}
             >
               <div
                 className={cn(

@@ -405,6 +405,25 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
         <ActiveFilterChips filters={activeFilters} />
       </div>
 
+      {/* 2026-06-02 Group F: 0-result state. Filter bar above stays
+          visible so the user can adjust without leaving the tab. Pre-fix:
+          the section header + a wall of empty chart cards made it look
+          broken; combined with the "Error loading demographics data"
+          toast from the error-branch (which DOES NOT fire for 0 results
+          but the customer reported the perception), the page felt dead.
+          Now it's an explicit "no respondents match" state. */}
+      {data.totalRespondents === 0 ? (
+        <div className="rounded-lg border bg-card p-12 text-center">
+          <p className="text-base font-medium">No respondents match these filters.</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            {activeFilters.length > 0
+              ? 'Try clearing one or more filters above to see data.'
+              : 'There are no completed survey responses for this disease area yet.'}
+          </p>
+        </div>
+      ) : (
+        <>
+
       <div>
         <h2 className="text-xl font-bold">Respondent Demographics</h2>
         <p className="text-sm text-muted-foreground">
@@ -576,6 +595,66 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
         </div>
       )}
 
+      {/* 2026-06-02 Group B-remainder skeletons. All three render only
+          when data exists. They activate automatically when the matching
+          survey questions are imported AND completed responses arrive —
+          no further frontend deploy needed (provided the keyword patterns
+          in getDemographics matched the imported question text). */}
+
+      {/* Social Media Platform Rankings (RANK_ORDER, top 5) */}
+      {data.socialMediaRankings && data.socialMediaRankings.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-base font-semibold text-muted-foreground uppercase tracking-wide border-b pb-2">
+            Social Media Platforms
+          </h3>
+          <Card className="border-t-4 border-t-sky-500 shadow-md rounded-xl">
+            <CardHeader>
+              <CardTitle className="text-base font-bold">Top 5 Social Media Platforms</CardTitle>
+              <CardDescription>Ranked by respondents</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <StackedBarChart data={data.socialMediaRankings} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Valuable Social Media Content (MULTI_CHOICE) */}
+      {data.valuableContent && data.valuableContent.length > 0 && (
+        <Card className="border-t-4 border-t-violet-500 shadow-md rounded-xl">
+          <CardHeader>
+            <CardTitle className="text-base font-bold">Valuable Social Media Content</CardTitle>
+            <CardDescription>Content types respondents find most valuable</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <BarDistributionChart
+                data={data.valuableContent.map((d) => ({ name: d.name, value: d.count }))}
+                color="#8B5CF6"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Objectivity Rating (SINGLE_CHOICE) */}
+      {data.objectivityRating && data.objectivityRating.length > 0 && (
+        <Card className="border-t-4 border-t-amber-500 shadow-md rounded-xl">
+          <CardHeader>
+            <CardTitle className="text-base font-bold">Leader Objectivity Rating</CardTitle>
+            <CardDescription>Respondents' rating of leader objectivity</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <BarDistributionChart
+                data={data.objectivityRating.map((d) => ({ name: d.name, value: d.count }))}
+                color="#F59E0B"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Topics Discussed (only if data exists) */}
       {data.topicsDiscussed && data.topicsDiscussed.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -603,6 +682,8 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             </CardContent>
           </Card>
         </div>
+      )}
+        </>
       )}
     </div>
   );

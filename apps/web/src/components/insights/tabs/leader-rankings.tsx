@@ -38,12 +38,13 @@ const NOMINATION_TYPES: {
   label: string;
   color: string;
 }[] = [
-  { value: 'DISCUSSION_LEADERS', label: 'Discussion Leaders', color: 'bg-blue-500' },
-  { value: 'REFERRAL_LEADERS', label: 'Referral Leaders', color: 'bg-green-500' },
-  { value: 'ADVICE_LEADERS', label: 'Advice Leaders', color: 'bg-purple-500' },
   { value: 'NATIONAL_LEADER', label: 'National Leaders', color: 'bg-yellow-600' },
+  { value: 'DISCUSSION_LEADERS', label: 'Discussion Leaders', color: 'bg-blue-500' },
+  { value: 'ADVICE_LEADERS', label: 'Advice Leaders', color: 'bg-purple-500' },
   { value: 'RISING_STAR', label: 'Rising Stars', color: 'bg-pink-500' },
-  { value: 'SOCIAL_LEADER', label: 'Social Media Influencers', color: 'bg-cyan-500' },
+  { value: 'REFERRAL_LEADERS', label: 'Referral Leaders', color: 'bg-green-500' },
+  { value: 'SOCIAL_LEADER', label: 'Social Media Leaders', color: 'bg-cyan-500' },
+  { value: 'BIASED_LEADER', label: 'Biased Leaders', color: 'bg-red-500' },
 ];
 
 const COLUMNS: LeaderTableColumn[] = ['name', 'specialty', 'city', 'state', 'count'];
