@@ -75,9 +75,12 @@ const SCORE_FIELDS = [
 
 export default function HcpDetailPage() {
   const { isImpersonating } = useImpersonation();
-  const canEdit = !isImpersonating;
-  const { user } = useAuth();
+  const { user, canWrite } = useAuth();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
+  // v1.17.20: canEdit now also requires canWrite (PLATFORM_ADMIN only).
+  // Client roles see this page read-only; no edit / alias add+remove /
+  // opt-out actions.
+  const canEdit = canWrite && !isImpersonating;
   const params = useParams();
   const router = useRouter();
   const hcpId = params.id as string;

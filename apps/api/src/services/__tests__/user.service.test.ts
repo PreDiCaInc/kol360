@@ -171,9 +171,9 @@ describe('UserService', () => {
       (cognitoService.updateUserAttributes as Mock).mockResolvedValue(undefined);
       (cognitoService.addUserToGroup as Mock).mockResolvedValue(undefined);
       (prisma.user.create as Mock).mockResolvedValue(mockDbUser);
-      // v1.17.9: client lookup for emailDomains allowlist check. Empty array
-      // = permissive mode, so this invite still goes through end-to-end.
-      (prisma.client.findUnique as Mock).mockResolvedValue({ emailDomains: [] });
+      // v1.17.19: empty array no longer = permissive (escape hatch removed).
+      // Mock a real domain that matches the invite email below.
+      (prisma.client.findUnique as Mock).mockResolvedValue({ emailDomains: ['example.com'] });
 
       const result = await userService.invite({
         email: 'test@example.com',

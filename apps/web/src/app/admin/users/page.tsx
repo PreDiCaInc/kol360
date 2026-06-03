@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useUsers, useApproveUser, useDisableUser, useEnableUser } from '@/hooks/use-users';
 import { useImpersonation } from '@/lib/impersonation-context';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { useClients } from '@/hooks/use-clients';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +48,9 @@ interface User {
 
 export default function UsersPage() {
   const { isImpersonating } = useImpersonation();
+  const { canWrite } = useAuth();
+  // v1.17.20: client roles view-only — gate invite/disable/enable.
+  const canEditUsers = canWrite && !isImpersonating;
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -129,10 +133,12 @@ export default function UsersPage() {
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Users</h1>
           <p className="text-muted-foreground mt-1">Manage platform users and permissions</p>
         </div>
-          <Button onClick={() => setShowInviteDialog(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Invite User
-          </Button>
+          {canEditUsers && (
+            <Button onClick={() => setShowInviteDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Invite User
+            </Button>
+          )}
         </div>
 
         {/* Error Alert */}
@@ -240,10 +246,12 @@ export default function UsersPage() {
               <p className="text-muted-foreground mb-4">
                 {Object.values(filters).some(Boolean) ? 'Try adjusting your filters' : 'Invite your first user to get started'}
               </p>
-              <Button onClick={() => setShowInviteDialog(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Invite User
-              </Button>
+              {canEditUsers && (
+                <Button onClick={() => setShowInviteDialog(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Invite User
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -269,41 +277,43 @@ export default function UsersPage() {
                   <TableCell>{getRoleBadge(user.role)}</TableCell>
                   <TableCell>{getStatusBadge(user.status)}</TableCell>
                   <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => setEditingUser(user)}>
-                          <UserCog className="w-4 h-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {user.status === 'PENDING_VERIFICATION' && (
-                          <DropdownMenuItem onSelect={() => handleApprove(user.id)}>
-                            <Check className="w-4 h-4 mr-2" />
-                            Approve
+                    {canEditUsers && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => setEditingUser(user)}>
+                            <UserCog className="w-4 h-4 mr-2" />
+                            Edit
                           </DropdownMenuItem>
-                        )}
-                        {user.status === 'ACTIVE' && (
-                          <DropdownMenuItem
-                            onSelect={() => handleDisable(user.id)}
-                            className="text-destructive"
-                          >
-                            <X className="w-4 h-4 mr-2" />
-                            Disable
-                          </DropdownMenuItem>
-                        )}
-                        {user.status === 'DISABLED' && (
-                          <DropdownMenuItem onSelect={() => handleEnable(user.id)}>
-                            <Check className="w-4 h-4 mr-2" />
-                            Enable
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <DropdownMenuSeparator />
+                          {user.status === 'PENDING_VERIFICATION' && (
+                            <DropdownMenuItem onSelect={() => handleApprove(user.id)}>
+                              <Check className="w-4 h-4 mr-2" />
+                              Approve
+                            </DropdownMenuItem>
+                          )}
+                          {user.status === 'ACTIVE' && (
+                            <DropdownMenuItem
+                              onSelect={() => handleDisable(user.id)}
+                              className="text-destructive"
+                            >
+                              <X className="w-4 h-4 mr-2" />
+                              Disable
+                            </DropdownMenuItem>
+                          )}
+                          {user.status === 'DISABLED' && (
+                            <DropdownMenuItem onSelect={() => handleEnable(user.id)}>
+                              <Check className="w-4 h-4 mr-2" />
+                              Enable
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

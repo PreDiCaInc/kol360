@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useHcps, useHcpFilters } from '@/hooks/use-hcps';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { useImpersonation } from '@/lib/impersonation-context';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,7 +59,10 @@ function formatSpecialty(specialty: string | null): string {
 
 export default function HcpsPage() {
   const { isImpersonating } = useImpersonation();
-  const canEdit = !isImpersonating;
+  const { canWrite } = useAuth();
+  // v1.17.20: canEdit gates write affordances. Only PLATFORM_ADMIN
+  // writes; impersonating-as-client also drops to view-only.
+  const canEdit = canWrite && !isImpersonating;
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAliasImportDialog, setShowAliasImportDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);

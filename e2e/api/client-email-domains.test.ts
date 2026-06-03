@@ -110,10 +110,15 @@ describe('Per-client email-domain allowlist', () => {
   });
 
   // ----------------------------------------------------------------------
-  // Case 1 — Empty allowlist (every pre-existing client) → any email OK.
-  // Critical regression: this is the deploy-day state of every client.
+  // Case 1 (v1.17.19) — Empty allowlist now REJECTS everything except
+  // ALWAYS_ALLOWED_DOMAINS (bio-exec.com). The legacy "empty = no
+  // enforcement" escape hatch is gone; all prod + test clients were
+  // backfilled with at least one domain alongside this change. An
+  // empty allowlist now means someone bypassed Zod (Prisma direct,
+  // raw SQL) and we want the strict check to fire, not silently let
+  // any domain in.
   // ----------------------------------------------------------------------
-  it('case 1: empty allowlist accepts any email (deploy-day regression)', async () => {
+  it('case 1 (v1.17.19): empty allowlist rejects non-allowed domain (escape hatch removed)', async () => {
     if (!dbAvailable || !openClientId) {
       console.log('⊘ setup did not complete — skipping');
       return;
@@ -126,9 +131,9 @@ describe('Per-client email-domain allowlist', () => {
       role: 'CLIENT_ADMIN',
       clientId: openClientId,
     });
-    expect(res.status).toBe(201);
-    if (res.data?.id) createdUserDbIds.push(res.data.id);
-    console.log(`✅ empty allowlist: invited ${email} → 201`);
+    expect(res.status).toBe(400);
+    expect((res.data as { code?: string }).code).toBe('EMAIL_DOMAIN_NOT_ALLOWED');
+    console.log(`✅ empty allowlist + non-allowed domain → 400 (escape hatch gone)`);
   });
 
   // ----------------------------------------------------------------------

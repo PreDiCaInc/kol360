@@ -9,6 +9,7 @@ import {
   useCloneSurveyTemplate,
 } from '@/hooks/use-survey-templates';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -59,6 +60,7 @@ export default function SurveyTemplatesPage() {
   const deleteTemplate = useDeleteSurveyTemplate();
   const cloneTemplate = useCloneSurveyTemplate();
 
+  const { canWrite } = useAuth();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showCloneDialog, setShowCloneDialog] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -130,10 +132,12 @@ export default function SurveyTemplatesPage() {
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Survey Templates</h1>
             <p className="text-muted-foreground mt-1">Create and manage reusable survey templates</p>
           </div>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Template
-          </Button>
+          {canWrite && (
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              New Template
+            </Button>
+          )}
         </div>
 
         {/* Stats Summary */}
@@ -195,10 +199,12 @@ export default function SurveyTemplatesPage() {
             <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
               Create your first survey template to start building reusable questionnaires.
             </p>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Create Template
-            </Button>
+            {canWrite && (
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Template
+              </Button>
+            )}
           </div>
         ) : (
           <Card>
@@ -270,24 +276,28 @@ export default function SurveyTemplatesPage() {
                                 View Details
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/admin/survey-templates/${template.id}?edit=true`}>
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Edit
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openCloneDialog(template)}>
-                              <Copy className="w-4 h-4 mr-2" />
-                              Clone
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => setTemplateToDelete({ id: template.id, name: template.name })}
-                              disabled={template._count.campaigns > 0}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                            {canWrite && (
+                              <>
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/admin/survey-templates/${template.id}?edit=true`}>
+                                    <Pencil className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openCloneDialog(template)}>
+                                  <Copy className="w-4 h-4 mr-2" />
+                                  Clone
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => setTemplateToDelete({ id: template.id, name: template.name })}
+                                  disabled={template._count.campaigns > 0}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

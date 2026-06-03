@@ -57,11 +57,16 @@ export function requireTenantUser() {
 // writeGuards on every POST/PUT/PATCH/DELETE. Methods are matched
 // case-insensitively; OPTIONS/HEAD pass through.
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+// v1.17.20: tightened to PLATFORM_ADMIN only. Client-side roles
+// (CLIENT_ADMIN + TEAM_MEMBER) are both view-only across the app —
+// they can read all tenant-scoped data via requireTenantUser() but
+// no longer perform any write. CLIENT_ADMIN dropped from this list
+// per product decision: only platform staff manage tenant data.
 export function gateWritesToAdmins() {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (!WRITE_METHODS.has(request.method.toUpperCase())) return;
     const role = request.user?.role;
-    if (role === 'PLATFORM_ADMIN' || role === 'CLIENT_ADMIN') return;
+    if (role === 'PLATFORM_ADMIN') return;
     return reply.status(403).send({
       error: 'Forbidden',
       message: 'Insufficient permissions for write operation',

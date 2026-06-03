@@ -11,7 +11,7 @@ export default function DashboardDetailPage() {
 
   return (
     <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
-      <div className="p-6">
+      <div className="px-6 pt-3 pb-6">
         <InsightsDashboard
           diseaseAreaId={diseaseAreaId}
           onDiseaseAreaChange={(id) => router.push(`/admin/dashboards/${id}`)}

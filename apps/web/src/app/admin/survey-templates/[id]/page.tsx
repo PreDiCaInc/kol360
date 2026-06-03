@@ -12,6 +12,7 @@ import {
 } from '@/hooks/use-survey-templates';
 import { useSections } from '@/hooks/use-sections';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -80,6 +81,7 @@ const typeLabels: Record<string, string> = {
 };
 
 export default function SurveyTemplateDetailPage() {
+  const { canWrite } = useAuth();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -103,10 +105,13 @@ export default function SurveyTemplateDetailPage() {
   const [isAddingSections, setIsAddingSections] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  // Check for edit=true query param
+  // Check for edit=true query param. Inlined what handleStartEdit does so
+  // we don't need it in the deps array (would change identity every render).
   useEffect(() => {
     if (searchParams.get('edit') === 'true' && template) {
-      handleStartEdit();
+      setEditName(template.name);
+      setEditDescription(template.description || '');
+      setIsEditing(true);
     }
   }, [searchParams, template]);
 
@@ -251,6 +256,7 @@ export default function SurveyTemplateDetailPage() {
               Back
             </Link>
           </Button>
+          {/* Preview button stays visible to client roles — it's read-only */}
           <Button variant="outline" onClick={() => setShowPreview(true)}>
             <Eye className="w-4 h-4 mr-2" />
             Preview Survey
@@ -317,9 +323,11 @@ export default function SurveyTemplateDetailPage() {
                     <span className="text-muted-foreground">Used in:</span>{' '}
                     <span className="font-medium">{template._count.campaigns} campaign(s)</span>
                   </div>
-                  <Button variant="outline" onClick={handleStartEdit}>
-                    Edit Details
-                  </Button>
+                  {canWrite && (
+                    <Button variant="outline" onClick={handleStartEdit}>
+                      Edit Details
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -330,10 +338,12 @@ export default function SurveyTemplateDetailPage() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Sections</CardTitle>
-                <Button size="sm" onClick={() => setShowAddDialog(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Section
-                </Button>
+                {canWrite && (
+                  <Button size="sm" onClick={() => setShowAddDialog(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Section
+                  </Button>
+                )}
               </div>
               <CardDescription>
                 Manage sections in this template. Reorder to change survey flow.
@@ -394,16 +404,18 @@ export default function SurveyTemplateDetailPage() {
                             </Badge>
                           </div>
                         </AccordionTrigger>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSectionToRemove({ id: ts.sectionId, name: ts.section.name });
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                        {canWrite && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSectionToRemove({ id: ts.sectionId, name: ts.section.name });
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        )}
                       </div>
                       <AccordionContent>
                         {ts.section.description && (

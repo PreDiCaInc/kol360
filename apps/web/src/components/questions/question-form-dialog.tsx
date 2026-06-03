@@ -141,7 +141,6 @@ export function QuestionFormDialog({ open, onOpenChange, questionId }: Props) {
   useEffect(() => {
     if (needsOptions) {
       const validOptions = options.filter((opt) => opt.text.trim());
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       form.setValue('options', validOptions as any);
     } else {
       form.setValue('options', []);

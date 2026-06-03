@@ -19,6 +19,7 @@ Older releases (prod-rel-3.2 through prod-rel-4.1.1) lived in `docs/releases/` b
 
 | Tag | Version | Headline |
 |---|---|---|
+| [4.1.11](prod-rel-4.1.11-handoff.md) | v1.17.17 + v1.17.18 | emailDomains required + auto-approve invitees + TEAM_MEMBER read perms + ZodError→400 in global handler |
 | [4.1.10](prod-rel-4.1.10-handoff.md) | v1.17.12 + v1.17.13 + v1.17.14 + v1.17.15 + v1.17.16 | Consolidated 2026-06-02 customer bug bundle: respondent-counting dedup + per-campaign email filter + byCoreFocus MULTI_CHOICE fix (Demographics + KOL Profile) + filter dropdown population + Biased Leaders nomination type + tab rename + 0-result UI + 3 skeleton dimensions + v1.17.16 follow-ups (NUM-extract crash on `".."`, Demographics filter bar mount fix) |
 | [4.1.9](prod-rel-4.1.9-handoff.md) | v1.17.10 + v1.17.11 | Insights dashboard perf pass A + B (SQL aggregations, narrower fetches, composite index, threshold cache) |
 | [4.1.8](prod-rel-4.1.8-handoff.md) | v1.17.8 + v1.17.9 | Per-client email-domain allowlist + campaign-create excludeInternalEmails fix + deferred E2E deep assertions |

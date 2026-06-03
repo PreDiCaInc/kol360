@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useImpersonation } from '@/lib/impersonation-context';
+import { useAuth } from '@/lib/auth/auth-provider';
 import {
   useCampaign,
   useUpdateCampaign,
@@ -126,7 +127,14 @@ interface StepStatus {
 
 export default function CampaignDetailPage() {
   const { isImpersonating } = useImpersonation();
-  const canEdit = !isImpersonating;
+  const { canWrite } = useAuth();
+  // v1.17.20: client roles (CLIENT_ADMIN + TEAM_MEMBER) are view-only.
+  // canEdit gates write affordances; visibleSteps gates the workflow
+  // tabs so client users see only the Overview "status view" — no
+  // setup steps (HCPs / Templates / Initiate), no Survey Status (which
+  // exposes the per-HCP survey link), no Nominations / Payments.
+  const canEdit = canWrite && !isImpersonating;
+  const visibleSteps = canWrite ? WORKFLOW_STEPS : WORKFLOW_STEPS.filter(s => s.id === 'overview');
   const params = useParams();
   const router = useRouter();
   const campaignId = params.id as string;
@@ -164,7 +172,10 @@ export default function CampaignDetailPage() {
   const { data: invitationProgress } = useEmailProgress(campaignId, invitationProgressId);
   const { data: reminderProgress } = useEmailProgress(campaignId, reminderProgressId);
 
-  // When invitation progress completes, extract result and clear progressId
+  // When invitation progress completes, extract result and clear progressId.
+  // Depends on the full progress object so React knows every read field is
+  // covered. The if/else guards make non-terminal ticks a no-op, so this
+  // re-runs cheaply on each progress update without changing behavior.
   useEffect(() => {
     if (invitationProgress?.status === 'completed' && invitationProgress.resultData) {
       setInvitationResult(invitationProgress.resultData as typeof invitationResult);
@@ -178,9 +189,9 @@ export default function CampaignDetailPage() {
       });
       setInvitationProgressId(null);
     }
-  }, [invitationProgress?.status]);
+  }, [invitationProgress]);
 
-  // When reminder progress completes, extract result and clear progressId
+  // Same pattern as the invitation effect above.
   useEffect(() => {
     if (reminderProgress?.status === 'completed' && reminderProgress.resultData) {
       setReminderResult(reminderProgress.resultData as typeof reminderResult);
@@ -194,7 +205,7 @@ export default function CampaignDetailPage() {
       });
       setReminderProgressId(null);
     }
-  }, [reminderProgress?.status]);
+  }, [reminderProgress]);
 
   const handleStartEdit = () => {
     if (campaign) {
@@ -536,7 +547,7 @@ export default function CampaignDetailPage() {
         {/* Workflow Progress Steps */}
         <div className="mb-6 overflow-x-auto">
           <div className="flex items-center gap-1 min-w-max pb-2">
-            {WORKFLOW_STEPS.map((step, index) => {
+            {visibleSteps.map((step, index) => {
               const Icon = step.icon;
               const isActive = activeStep === step.id;
               const isCompleted = index < workflowProgress;
@@ -595,7 +606,7 @@ export default function CampaignDetailPage() {
                       <span className="text-[10px] text-blue-600 font-medium">Next</span>
                     )}
                   </button>
-                  {index < WORKFLOW_STEPS.length - 1 && (
+                  {index < visibleSteps.length - 1 && (
                     <div className={`w-4 h-0.5 mx-1 ${isStepComplete ? 'bg-green-400' : 'bg-muted'}`} />
                   )}
                 </div>

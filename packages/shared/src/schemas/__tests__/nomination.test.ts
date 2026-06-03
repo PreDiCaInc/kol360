@@ -97,14 +97,17 @@ describe('Nomination Schemas', () => {
   });
 
   describe('createHcpFromNominationSchema', () => {
-    it('should accept valid HCP data', () => {
+    it('should accept valid HCP data and fill in placeholder email', () => {
+      // v1.17.21: email is required at the DB layer; the schema now
+      // preprocesses null/undefined/empty → 'nomail@kol360research.com'
+      // so nomination flows that don't capture an email still validate.
       const validHcp = {
         npi: '1234567890',
         firstName: 'John',
         lastName: 'Doe',
       };
       const result = createHcpFromNominationSchema.parse(validHcp);
-      expect(result).toEqual(validHcp);
+      expect(result).toEqual({ ...validHcp, email: 'nomail@kol360research.com' });
     });
 
     it('should accept optional fields', () => {
@@ -168,14 +171,23 @@ describe('Nomination Schemas', () => {
       ).toThrow();
     });
 
-    it('should accept null email', () => {
+    it('should convert null/empty email to placeholder (v1.17.21)', () => {
+      // Same preprocess as above: null/undefined/empty → placeholder.
       const result = createHcpFromNominationSchema.parse({
         npi: '1234567890',
         firstName: 'John',
         lastName: 'Doe',
         email: null,
       });
-      expect(result.email).toBeNull();
+      expect(result.email).toBe('nomail@kol360research.com');
+
+      const empty = createHcpFromNominationSchema.parse({
+        npi: '1234567890',
+        firstName: 'John',
+        lastName: 'Doe',
+        email: '',
+      });
+      expect(empty.email).toBe('nomail@kol360research.com');
     });
   });
 
