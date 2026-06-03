@@ -10,7 +10,7 @@ export default function DashboardDetailPage() {
   const diseaseAreaId = params.diseaseAreaId as string;
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
       <div className="p-6">
         <InsightsDashboard
           diseaseAreaId={diseaseAreaId}

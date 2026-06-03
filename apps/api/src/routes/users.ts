@@ -41,12 +41,31 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
+    // v1.17.17: auto-approve on first /users/me hit. Reaching this code
+    // means the user already authenticated through Cognito (token valid
+    // + any forced password change complete), so the "manual admin
+    // approval" step the prior flow required is friction without
+    // benefit — the admin already explicitly invited them. Flip the
+    // status to ACTIVE here and continue with the normal /me response.
+    // The /users/:id/approve route is kept for the explicit-override
+    // case (e.g., admin promoting a long-dormant pending account).
+    // PENDING_APPROVAL stays a 403 — that state is for future use where
+    // a second-factor admin sign-off IS required (e.g., elevated roles);
+    // no code currently sets it, but the gate stays available.
+    let effectiveStatus: typeof user.status = user.status;
     if (user.status === 'PENDING_VERIFICATION') {
-      return reply.status(403).send({
-        error: 'Forbidden',
-        message: 'Your account is pending verification. Please contact an administrator.',
-        statusCode: 403
+      await fastify.prisma.user.update({
+        where: { id: user.id },
+        data: { status: 'ACTIVE', approvedAt: new Date(), approvedBy: user.id },
       });
+      await createAuditLog(user.id, {
+        action: 'user.auto_approved',
+        entityType: 'User',
+        entityId: user.id,
+        oldValues: { status: 'PENDING_VERIFICATION' },
+        newValues: { status: 'ACTIVE', reason: 'first-login-after-cognito-verification' },
+      });
+      effectiveStatus = 'ACTIVE';
     }
 
     if (user.status === 'PENDING_APPROVAL') {
@@ -57,10 +76,11 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // Update lastLoginAt
+    // Update lastLoginAt (auto-approve above may have written a separate
+    // row already, but that's fine — this update just stamps lastLoginAt).
     const updatedUser = await fastify.prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: { lastLoginAt: new Date(), status: effectiveStatus },
       include: { client: true },
     });
 

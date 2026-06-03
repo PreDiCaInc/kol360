@@ -5,14 +5,16 @@ import {
   addQuestionToSectionSchema,
   reorderQuestionsSchema,
 } from '@kol360/shared';
-import { requireClientAdmin } from '../middleware/rbac';
+import { requireTenantUser, gateWritesToAdmins } from '../middleware/rbac';
 import { SectionService } from '../services/section.service';
 import { createAuditLog } from '../lib/audit';
 
 const sectionService = new SectionService();
 
 export const sectionRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', requireClientAdmin());
+  // v1.17.17: tenant-user gate (TEAM_MEMBER read); writes admin-only.
+  fastify.addHook('preHandler', requireTenantUser());
+  fastify.addHook('preHandler', gateWritesToAdmins());
 
   // List all section templates
   fastify.get('/', async () => {
