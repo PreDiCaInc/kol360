@@ -1,7 +1,7 @@
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { assignHcpsSchema } from '@kol360/shared';
-import { requireClientAdmin } from '../middleware/rbac';
+import { requireTenantUser, gateWritesToAdmins } from '../middleware/rbac';
 import { distributionService } from '../services/distribution.service';
 import { createAuditLog } from '../lib/audit';
 import { importProgressStore } from '../services/import-progress.service';
@@ -14,7 +14,9 @@ const campaignIdSchema = z.object({
 
 export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
-  fastify.addHook('preHandler', requireClientAdmin());
+  // v1.17.17: tenant-user gate (TEAM_MEMBER read); writes admin-only.
+  fastify.addHook('preHandler', requireTenantUser());
+  fastify.addHook('preHandler', gateWritesToAdmins());
 
   // Helper function to verify campaign tenant access
   async function verifyCampaignAccess(

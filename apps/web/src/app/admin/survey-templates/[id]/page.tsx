@@ -219,7 +219,7 @@ export default function SurveyTemplateDetailPage() {
 
   if (isLoading) {
     return (
-      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
         <div className="p-6">Loading...</div>
       </RequireAuth>
     );
@@ -227,7 +227,7 @@ export default function SurveyTemplateDetailPage() {
 
   if (!template) {
     return (
-      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
         <div className="p-6">
           <div className="text-center py-12">
             <h2 className="text-xl font-semibold">Template not found</h2>
@@ -241,7 +241,7 @@ export default function SurveyTemplateDetailPage() {
   }
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
       <div className="p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">

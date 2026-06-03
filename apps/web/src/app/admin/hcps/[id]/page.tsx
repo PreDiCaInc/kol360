@@ -173,7 +173,7 @@ export default function HcpDetailPage() {
 
   if (isLoading) {
     return (
-      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
         <div className="p-6">Loading...</div>
       </RequireAuth>
     );
@@ -181,7 +181,7 @@ export default function HcpDetailPage() {
 
   if (!hcp) {
     return (
-      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
         <div className="p-6">
           <div className="text-center py-12">
             <h2 className="text-xl font-semibold">HCP not found</h2>
@@ -198,7 +198,7 @@ export default function HcpDetailPage() {
   }
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
       <div className="p-6">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">

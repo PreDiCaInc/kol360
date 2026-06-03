@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { createHcpSchema, updateHcpSchema } from '@kol360/shared';
-import { requireClientAdmin, getClientHcpIds, hasHcpAccess } from '../middleware/rbac';
+import { requireTenantUser, gateWritesToAdmins, getClientHcpIds, hasHcpAccess } from '../middleware/rbac';
 import { HcpService } from '../services/hcp.service';
 // score-calculation.service removed in Phase 3 PR A — see /admin/kol-analysis.
 import { importProgressStore } from '../services/import-progress.service';
@@ -11,7 +11,10 @@ const hcpService = new HcpService();
 
 export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
-  fastify.addHook('preHandler', requireClientAdmin());
+  // v1.17.17: tenant-user gate at the file level (allows TEAM_MEMBER read);
+  // writes (POST/PUT/PATCH/DELETE) gated to CLIENT_ADMIN+ in one line.
+  fastify.addHook('preHandler', requireTenantUser());
+  fastify.addHook('preHandler', gateWritesToAdmins());
 
   // Get filter options (specialties and states)
   fastify.get('/filters', async () => {

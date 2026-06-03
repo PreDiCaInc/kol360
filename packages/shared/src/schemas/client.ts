@@ -20,9 +20,15 @@ export const createClientSchema = z.object({
   isLite: z.boolean().default(false).optional(),
   logoUrl: z.string().url().optional().nullable(),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default('#0066CC'),
-  // Empty array = no restriction (opt-in mode for backwards compat).
+  // 2026-06-03 (v1.17.17): now required (was optional + default([])).
+  // Every new client must specify at least one domain. Existing clients
+  // with empty arrays are grandfathered at the service layer (see
+  // userService allowlist check) until they're next edited — at that
+  // point this rule applies and forces the admin to fill it in.
   // bio-exec.com is implicitly always allowed (see userService).
-  emailDomains: z.array(emailDomainSchema).default([]),
+  emailDomains: z
+    .array(emailDomainSchema)
+    .min(1, 'At least one email domain is required'),
 });
 
 export const updateClientSchema = createClientSchema.partial();

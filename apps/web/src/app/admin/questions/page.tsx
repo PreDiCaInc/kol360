@@ -145,7 +145,7 @@ export default function QuestionsPage() {
   const uniqueTypes = Array.from(new Set(questions.map(q => q.type))).length;
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
       <div className="p-6 lg:p-8 fade-in">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">

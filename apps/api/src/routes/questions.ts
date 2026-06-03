@@ -1,13 +1,15 @@
 import { FastifyPluginAsync } from 'fastify';
 import { createQuestionSchema, updateQuestionSchema } from '@kol360/shared';
-import { requireClientAdmin } from '../middleware/rbac';
+import { requireTenantUser, gateWritesToAdmins } from '../middleware/rbac';
 import { QuestionService } from '../services/question.service';
 import { createAuditLog } from '../lib/audit';
 
 const questionService = new QuestionService();
 
 export const questionRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', requireClientAdmin());
+  // v1.17.17: tenant-user gate (TEAM_MEMBER read); writes admin-only.
+  fastify.addHook('preHandler', requireTenantUser());
+  fastify.addHook('preHandler', gateWritesToAdmins());
 
   // Get categories (must be before /:id to avoid conflict)
   fastify.get('/categories', async () => {

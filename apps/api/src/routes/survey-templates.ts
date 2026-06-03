@@ -6,14 +6,16 @@ import {
   reorderSectionsSchema,
   cloneTemplateSchema,
 } from '@kol360/shared';
-import { requireClientAdmin } from '../middleware/rbac';
+import { requireTenantUser, gateWritesToAdmins } from '../middleware/rbac';
 import { SurveyTemplateService } from '../services/survey-template.service';
 import { createAuditLog } from '../lib/audit';
 
 const surveyTemplateService = new SurveyTemplateService();
 
 export const surveyTemplateRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', requireClientAdmin());
+  // v1.17.17: tenant-user gate (TEAM_MEMBER read); writes admin-only.
+  fastify.addHook('preHandler', requireTenantUser());
+  fastify.addHook('preHandler', gateWritesToAdmins());
 
   // List all survey templates
   fastify.get('/', async () => {

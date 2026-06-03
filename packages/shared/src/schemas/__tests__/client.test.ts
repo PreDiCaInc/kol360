@@ -20,16 +20,22 @@ describe('Client Schemas', () => {
   });
 
   describe('createClientSchema', () => {
+    // v1.17.17: emailDomains is required (min 1). Every valid-input
+    // test below includes at least one domain; rejection tests assert
+    // the new requirement.
+    const validBase = { name: 'Test Client', emailDomains: ['example.com'] };
+
     it('should accept valid client data with minimal fields', () => {
-      const result = createClientSchema.parse({ name: 'Test Client' });
+      const result = createClientSchema.parse(validBase);
       expect(result.name).toBe('Test Client');
       expect(result.type).toBe('FULL'); // default
       expect(result.primaryColor).toBe('#0066CC'); // default
+      expect(result.emailDomains).toEqual(['example.com']);
     });
 
     it('should accept all optional fields', () => {
       const clientWithOptionals = {
-        name: 'Test Client',
+        ...validBase,
         type: 'LITE',
         isLite: true,
         logoUrl: 'https://example.com/logo.png',
@@ -45,32 +51,51 @@ describe('Client Schemas', () => {
 
     it('should accept null logoUrl', () => {
       const result = createClientSchema.parse({
-        name: 'Test Client',
+        ...validBase,
         logoUrl: null,
       });
       expect(result.logoUrl).toBeNull();
     });
 
     it('should reject name less than 2 characters', () => {
-      expect(() => createClientSchema.parse({ name: 'A' })).toThrow();
-      expect(() => createClientSchema.parse({ name: '' })).toThrow();
+      expect(() => createClientSchema.parse({ ...validBase, name: 'A' })).toThrow();
+      expect(() => createClientSchema.parse({ ...validBase, name: '' })).toThrow();
     });
 
     it('should reject name over 100 characters', () => {
       expect(() =>
-        createClientSchema.parse({ name: 'A'.repeat(101) })
+        createClientSchema.parse({ ...validBase, name: 'A'.repeat(101) })
       ).toThrow();
     });
 
     it('should accept name exactly 2 characters', () => {
-      const result = createClientSchema.parse({ name: 'AB' });
+      const result = createClientSchema.parse({ ...validBase, name: 'AB' });
       expect(result.name).toBe('AB');
     });
 
     it('should accept name exactly 100 characters', () => {
       const name = 'A'.repeat(100);
-      const result = createClientSchema.parse({ name });
+      const result = createClientSchema.parse({ ...validBase, name });
       expect(result.name).toBe(name);
+    });
+
+    // v1.17.17 contract: emailDomains is required, non-empty.
+    it('should reject missing emailDomains', () => {
+      expect(() => createClientSchema.parse({ name: 'Test Client' })).toThrow();
+    });
+
+    it('should reject empty emailDomains array', () => {
+      expect(() =>
+        createClientSchema.parse({ name: 'Test Client', emailDomains: [] })
+      ).toThrow(/at least one/i);
+    });
+
+    it('should accept multiple emailDomains', () => {
+      const result = createClientSchema.parse({
+        name: 'Test Client',
+        emailDomains: ['sunpharma.com', 'na.sunpharma.com'],
+      });
+      expect(result.emailDomains).toEqual(['sunpharma.com', 'na.sunpharma.com']);
     });
 
     it('should reject invalid logoUrl', () => {
@@ -107,6 +132,7 @@ describe('Client Schemas', () => {
       const colors = ['#000000', '#FFFFFF', '#ff5733', '#ABC123'];
       colors.forEach((color) => {
         const result = createClientSchema.parse({
+          ...validBase,
           name: 'Test',
           primaryColor: color,
         });

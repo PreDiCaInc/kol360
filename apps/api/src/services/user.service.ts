@@ -34,7 +34,14 @@ export function validateEmailForClient(
   client: { emailDomains: string[] } | null | undefined
 ): void {
   if (!client) return; // platform admins (no clientId) bypass
-  if (client.emailDomains.length === 0) return; // opt-in: not enforced yet
+  // v1.17.17 made emailDomains required at the write layer (Zod min(1)),
+  // but pre-v1.17.17 clients on prod were created with empty arrays.
+  // Keep this escape hatch so legacy clients aren't broken on read —
+  // any future edit through the form forces the admin to fill it in,
+  // at which point this branch stops firing for that client. Once all
+  // existing clients have been edited (or backfilled), this line can
+  // be removed and the function reduced to the strict allowlist check.
+  if (client.emailDomains.length === 0) return;
 
   const emailDomain = email.split('@')[1]?.toLowerCase();
   const allowed = [

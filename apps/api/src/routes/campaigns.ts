@@ -6,7 +6,7 @@ import {
   emailTemplatesSchema,
   landingPageTemplatesSchema,
 } from '@kol360/shared';
-import { requireClientAdmin } from '../middleware/rbac';
+import { requireTenantUser, gateWritesToAdmins } from '../middleware/rbac';
 import { CampaignService } from '../services/campaign.service';
 // score-calculation.service removed in Phase 3 PR A.
 import { createAuditLog } from '../lib/audit';
@@ -14,7 +14,9 @@ import { createAuditLog } from '../lib/audit';
 const campaignService = new CampaignService();
 
 export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', requireClientAdmin());
+  // v1.17.17: tenant-user gate (TEAM_MEMBER read); writes admin-only.
+  fastify.addHook('preHandler', requireTenantUser());
+  fastify.addHook('preHandler', gateWritesToAdmins());
 
   // List campaigns
   fastify.get('/', async (request, reply) => {

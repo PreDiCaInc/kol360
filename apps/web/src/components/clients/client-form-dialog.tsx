@@ -194,7 +194,7 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
                 const display = (field.value ?? []).join(', ');
                 return (
                   <FormItem>
-                    <FormLabel>Allowed Email Domains</FormLabel>
+                    <FormLabel>Allowed Email Domains *</FormLabel>
                     <FormControl>
                       <Input
                         value={display}
@@ -205,9 +205,9 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
                     <p className="text-sm text-muted-foreground">
                       Comma-separated. Users invited to this client must have
                       an email at one of these domains.{' '}
-                      <strong>Leave empty to allow any domain</strong> (opt-in
-                      enforcement). Bio-Exec staff (@bio-exec.com) are always
-                      allowed regardless of this list.
+                      <strong>At least one domain is required.</strong>{' '}
+                      Bio-Exec staff (@bio-exec.com) are always allowed
+                      regardless of this list.
                     </p>
                     <FormMessage />
                   </FormItem>

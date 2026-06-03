@@ -1,11 +1,11 @@
 import { FastifyPluginAsync } from 'fastify';
-import { requirePlatformAdmin, requireClientAdmin } from '../middleware/rbac';
+import { requirePlatformAdmin, requireTenantUser } from '../middleware/rbac';
 import { prisma } from '../lib/prisma';
 import { createAuditLog } from '../lib/audit';
 
 export const specialtyRoutes: FastifyPluginAsync = async (fastify) => {
   // Get all specialties (any authenticated user can read)
-  fastify.get('/', { preHandler: [requireClientAdmin()] }, async (request) => {
+  fastify.get('/', { preHandler: [requireTenantUser()] }, async (request) => {
     const { includeInactive } = request.query as { includeInactive?: string };
 
     return prisma.specialty.findMany({
@@ -20,7 +20,7 @@ export const specialtyRoutes: FastifyPluginAsync = async (fastify) => {
   // Get specialty by ID
   fastify.get<{ Params: { id: string } }>(
     '/:id',
-    { preHandler: [requireClientAdmin()] },
+    { preHandler: [requireTenantUser()] },
     async (request, reply) => {
       const specialty = await prisma.specialty.findUnique({
         where: { id: request.params.id },

@@ -13,7 +13,7 @@ export default function DashboardsPage() {
   const diseaseAreas = data?.items || [];
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
       <div className="p-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold">Insights Dashboard</h1>

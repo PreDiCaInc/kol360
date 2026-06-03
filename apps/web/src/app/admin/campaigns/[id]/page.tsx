@@ -379,7 +379,7 @@ export default function CampaignDetailPage() {
 
   if (isLoading) {
     return (
-      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
         <div className="p-6">Loading...</div>
       </RequireAuth>
     );
@@ -387,7 +387,7 @@ export default function CampaignDetailPage() {
 
   if (!campaign) {
     return (
-      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+      <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
         <div className="p-6">
           <div className="text-center py-12">
             <h2 className="text-xl font-semibold">Campaign not found</h2>
@@ -410,7 +410,7 @@ export default function CampaignDetailPage() {
   const workflowProgress = getWorkflowProgress();
 
   return (
-    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN']}>
+    <RequireAuth allowedRoles={['PLATFORM_ADMIN', 'CLIENT_ADMIN', 'TEAM_MEMBER']}>
       <div className="p-6">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">

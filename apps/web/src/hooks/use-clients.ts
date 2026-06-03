@@ -10,8 +10,11 @@ interface Client {
   logoUrl: string | null;
   primaryColor: string;
   isActive: boolean;
-  /// Per-client allowed email-domain allowlist (v1.17.9). Empty = no
-  /// restriction (opt-in). bio-exec.com is always allowed regardless,
+  /// Per-client allowed email-domain allowlist. Required since v1.17.17
+  /// (min(1) at the Zod layer). Pre-v1.17.17 clients may still have
+  /// empty arrays — those are grandfathered at the userService runtime
+  /// check, but any edit through the form will force the admin to set
+  /// at least one domain. bio-exec.com is always allowed regardless,
   /// hardcoded in apps/api/src/services/user.service.ts.
   emailDomains: string[];
   createdAt: string;

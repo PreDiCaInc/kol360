@@ -202,4 +202,26 @@ describe('Per-client email-domain allowlist', () => {
 
     console.log(`✅ non-matching domain: ${email} → 400 EMAIL_DOMAIN_NOT_ALLOWED, no DB orphan`);
   });
+
+  // ----------------------------------------------------------------------
+  // Case 5 — v1.17.17: POST /clients with empty emailDomains is rejected.
+  // The field went from optional+default([]) to required min(1). Legacy
+  // clients (case 1) still work at the runtime layer via the escape
+  // hatch in userService, but the write path now refuses to create or
+  // update a client without at least one domain.
+  // ----------------------------------------------------------------------
+  it('case 5 (v1.17.17): create with empty emailDomains rejected (Zod min(1))', async () => {
+    const res = await client.createClient({
+      name: `E2E EmptyDomains ${RUN_TAG}`,
+      type: 'FULL',
+      emailDomains: [],
+    });
+    // Should be a 400 from Zod — message references "At least one
+    // email domain is required" (the .min(1) message we set in
+    // packages/shared/src/schemas/client.ts).
+    expect(res.status).toBe(400);
+    const body = res.data as { message?: string };
+    expect(body.message).toBeTruthy();
+    console.log(`✅ empty emailDomains rejected: 400 ${body.message ?? ''}`);
+  });
 });
