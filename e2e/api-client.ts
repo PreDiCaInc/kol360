@@ -1017,10 +1017,6 @@ export class ApiClient {
     return this.request<InsightsSummary>('GET', `/api/v1/insights/${diseaseAreaId}/summary${qs}`);
   }
 
-  async getInsightsRespondentAnalytics(diseaseAreaId: string) {
-    return this.request<RespondentAnalytics>('GET', `/api/v1/insights/${diseaseAreaId}/respondent-analytics`);
-  }
-
   async getInsightsLeaderRankings(diseaseAreaId: string, params?: {
     nominationType?: string;
     specialty?: string;
@@ -1482,14 +1478,6 @@ export interface InsightsSummary {
   notConfigured?: boolean;
 }
 
-export interface RespondentAnalytics {
-  bySpecialty: Array<{ specialty: string; count: number }>;
-  byState: Array<{ state: string; count: number }>;
-  byPracticeSetting: Array<{ setting: string; count: number }>;
-  bySurveyStatus: Array<{ status: string; count: number }>;
-  completionOverTime: Array<{ date: string; count: number; cumulative: number }>;
-}
-
 export interface LeaderRankings {
   items: Array<{
     rank: number;
@@ -1589,6 +1577,7 @@ export interface SociometricSummary {
 export interface FilterOptions {
   specialties: string[];
   states: string[];
+  coreFocuses: string[];
   influencerTypes: string[];
   nominationTypes: string[];
 }

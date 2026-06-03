@@ -272,22 +272,6 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // Get respondent analytics (demographics, distributions, completion trends)
-  fastify.get<{ Params: { diseaseAreaId: string } }>(
-    '/:diseaseAreaId/respondent-analytics',
-    async (request, reply) => {
-      const { diseaseAreaId } = request.params;
-      const user = request.user!;
-
-      if (!(await verifyDiseaseAreaAccess(diseaseAreaId, user, reply))) {
-        return;
-      }
-
-      const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
-      const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return insightsReportService.getRespondentAnalytics(diseaseAreaId, excludeInternal, clientId);
-    }
-  );
 
   // Get demographics data (aggregated from survey response answers)
   fastify.get<{ Params: { diseaseAreaId: string } }>(

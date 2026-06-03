@@ -76,8 +76,14 @@ async function cleanupTestCampaigns() {
     // Delete survey questions
     await prisma.surveyQuestion.deleteMany({ where: { campaignId } });
 
-    // Delete composite score config
-    await prisma.compositeScoreConfig.deleteMany({ where: { campaignId } });
+    // CompositeScoreConfig deleteMany removed 2026-05-30 — model was
+    // dropped in Phase 3 PR B (prod-rel-4.1 / v1.17.0). The line lived
+    // here ~1.5 weeks crashing every cleanup run with
+    // `Cannot read properties of undefined (reading 'deleteMany')`,
+    // partially walking the per-campaign cascade and leaking 16 stale
+    // campaigns on prod before pteam flagged the failure.
+    // Weights now live on KolAnalysis.weightsJson; no per-campaign row
+    // to clean up.
 
     // Delete payments
     await prisma.payment.deleteMany({ where: { campaignId } });
