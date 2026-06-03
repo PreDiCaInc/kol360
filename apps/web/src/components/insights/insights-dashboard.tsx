@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Users, UserCheck, MessageSquare } from 'lucide-react';
+import { useSidebarContext } from '@/components/layout/sidebar-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -44,6 +45,18 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
   const { user } = useAuth();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
+  // v1.17.21: auto-collapse the sidebar when this dashboard mounts so
+  // insights take most of the viewport. Restore the user's prior state
+  // on unmount. The sidebar already has a 300ms ease-out transition,
+  // so we get the animation free.
+  const { collapsed, setCollapsed } = useSidebarContext();
+  useEffect(() => {
+    const priorCollapsed = collapsed;
+    setCollapsed(true);
+    return () => setCollapsed(priorCollapsed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Fetch clients for PLATFORM_ADMIN client selector
   const { data: clientsData } = useClients();
   const clients = clientsData?.items || [];
@@ -81,7 +94,7 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Print Header */}
       <div className="print-header print-only">
         <h1>KOL 360 Insights Report</h1>
@@ -97,7 +110,7 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Insights Dashboard</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Insights Dashboard</h1>
             <p className="text-muted-foreground">
               Comprehensive KOL analytics and leader rankings
             </p>
@@ -170,51 +183,43 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
         </Card>
       ) : (
       <>
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* v1.17.21: Summary cards reshaped from a vertical (header/value)
+          stack to a single-row horizontal layout — icon + label + value
+          on one line. Cuts the cards' vertical footprint roughly in
+          half so more of the actual content (filters + tabs + charts)
+          fits above the laptop fold. */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-l-4 border-l-blue-500 shadow-md hover:shadow-lg transition-shadow rounded-xl">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <div className="p-1.5 rounded-md bg-blue-50 dark:bg-blue-950">
-                <Users className="h-4 w-4 text-blue-500" />
-              </div>
-              Total KOLs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-extrabold text-blue-600 dark:text-blue-400">
-              {summaryLoading ? '...' : (summary?.totalKols ?? 0).toLocaleString()}
+          <CardContent className="flex items-center gap-3 py-3">
+            <div className="p-1.5 rounded-md bg-blue-50 dark:bg-blue-950">
+              <Users className="h-4 w-4 text-blue-500" />
             </div>
+            <span className="text-sm font-medium text-muted-foreground">Total KOLs</span>
+            <span className="ml-auto text-2xl font-extrabold text-blue-600 dark:text-blue-400">
+              {summaryLoading ? '...' : (summary?.totalKols ?? 0).toLocaleString()}
+            </span>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-emerald-500 shadow-md hover:shadow-lg transition-shadow rounded-xl">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <div className="p-1.5 rounded-md bg-emerald-50 dark:bg-emerald-950">
-                <UserCheck className="h-4 w-4 text-emerald-500" />
-              </div>
-              Total Respondents
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-              {summaryLoading ? '...' : (summary?.totalRespondents ?? 0).toLocaleString()}
+          <CardContent className="flex items-center gap-3 py-3">
+            <div className="p-1.5 rounded-md bg-emerald-50 dark:bg-emerald-950">
+              <UserCheck className="h-4 w-4 text-emerald-500" />
             </div>
+            <span className="text-sm font-medium text-muted-foreground">Total Respondents</span>
+            <span className="ml-auto text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
+              {summaryLoading ? '...' : (summary?.totalRespondents ?? 0).toLocaleString()}
+            </span>
           </CardContent>
         </Card>
         <Card className="border-l-4 border-l-amber-500 shadow-md hover:shadow-lg transition-shadow rounded-xl">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <div className="p-1.5 rounded-md bg-amber-50 dark:bg-amber-950">
-                <MessageSquare className="h-4 w-4 text-amber-500" />
-              </div>
-              Total Nominations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-extrabold text-amber-600 dark:text-amber-400">
-              {summaryLoading ? '...' : (summary?.totalNominations ?? 0).toLocaleString()}
+          <CardContent className="flex items-center gap-3 py-3">
+            <div className="p-1.5 rounded-md bg-amber-50 dark:bg-amber-950">
+              <MessageSquare className="h-4 w-4 text-amber-500" />
             </div>
+            <span className="text-sm font-medium text-muted-foreground">Total Nominations</span>
+            <span className="ml-auto text-2xl font-extrabold text-amber-600 dark:text-amber-400">
+              {summaryLoading ? '...' : (summary?.totalNominations ?? 0).toLocaleString()}
+            </span>
           </CardContent>
         </Card>
       </div>
