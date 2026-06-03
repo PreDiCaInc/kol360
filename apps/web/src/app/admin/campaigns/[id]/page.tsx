@@ -172,7 +172,10 @@ export default function CampaignDetailPage() {
   const { data: invitationProgress } = useEmailProgress(campaignId, invitationProgressId);
   const { data: reminderProgress } = useEmailProgress(campaignId, reminderProgressId);
 
-  // When invitation progress completes, extract result and clear progressId
+  // When invitation progress completes, extract result and clear progressId.
+  // Depends on the full progress object so React knows every read field is
+  // covered. The if/else guards make non-terminal ticks a no-op, so this
+  // re-runs cheaply on each progress update without changing behavior.
   useEffect(() => {
     if (invitationProgress?.status === 'completed' && invitationProgress.resultData) {
       setInvitationResult(invitationProgress.resultData as typeof invitationResult);
@@ -186,9 +189,9 @@ export default function CampaignDetailPage() {
       });
       setInvitationProgressId(null);
     }
-  }, [invitationProgress?.status]);
+  }, [invitationProgress]);
 
-  // When reminder progress completes, extract result and clear progressId
+  // Same pattern as the invitation effect above.
   useEffect(() => {
     if (reminderProgress?.status === 'completed' && reminderProgress.resultData) {
       setReminderResult(reminderProgress.resultData as typeof reminderResult);
@@ -202,7 +205,7 @@ export default function CampaignDetailPage() {
       });
       setReminderProgressId(null);
     }
-  }, [reminderProgress?.status]);
+  }, [reminderProgress]);
 
   const handleStartEdit = () => {
     if (campaign) {

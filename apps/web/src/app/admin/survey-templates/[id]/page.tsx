@@ -105,10 +105,13 @@ export default function SurveyTemplateDetailPage() {
   const [isAddingSections, setIsAddingSections] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
-  // Check for edit=true query param
+  // Check for edit=true query param. Inlined what handleStartEdit does so
+  // we don't need it in the deps array (would change identity every render).
   useEffect(() => {
     if (searchParams.get('edit') === 'true' && template) {
-      handleStartEdit();
+      setEditName(template.name);
+      setEditDescription(template.description || '');
+      setIsEditing(true);
     }
   }, [searchParams, template]);
 
