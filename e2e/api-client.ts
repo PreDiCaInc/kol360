@@ -161,7 +161,7 @@ export class ApiClient {
     return this.request<{ id: string; name: string; emailDomains: string[] }>(
       'POST',
       '/api/v1/clients',
-      { type: 'FULL', primaryColor: '#0066CC', emailDomains: [], ...data }
+      { type: 'FULL', primaryColor: '#0066CC', emailDomains: ['e2etest.example.com'], ...data }
     );
   }
 
