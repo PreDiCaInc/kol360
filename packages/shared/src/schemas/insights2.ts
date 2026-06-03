@@ -46,6 +46,15 @@ export const demographicsResponseSchema = z.object({
   educationalResourcesOther: z.array(educationalResourceItemSchema),
   topicsDiscussed: z.array(demographicDistributionItemSchema).optional(),
   coreFocusByPatients: z.array(coreFocusByPatientsItemSchema),
+  // 2026-06-02 Group B-remainder skeletons. Each returns [] until the
+  // corresponding survey question is imported AND completed responses
+  // exist. Keyword patterns (in insights-report.service.ts:getDemographics)
+  // may need adjustment if the imported question text differs from the
+  // customer-quoted examples. Default to [] so older clients deserializing
+  // a pre-skeleton response don't fail.
+  socialMediaRankings: z.array(educationalResourceItemSchema).default([]),
+  valuableContent: z.array(demographicDistributionItemSchema).default([]),
+  objectivityRating: z.array(demographicDistributionItemSchema).default([]),
 });
 
 export type DemographicsResponse = z.infer<typeof demographicsResponseSchema>;
