@@ -2014,19 +2014,51 @@ export class InsightsReportService {
         const respondentId = answer.response.respondentHcpId;
         const campaignId = answer.question.campaignId;
 
+        // 2026-06-02: same MULTI_CHOICE handling as the core-focus branch
+        // below. Pre-fix this would silently produce an empty byPracticeSetting
+        // for surveys where Practice Setting is multi-select.
         if (qt.includes('practice setting')) {
-          const value = this.extractSingleChoice(json, text, questionType);
-          if (value) {
-            practiceSettingCounts.set(value, (practiceSettingCounts.get(value) || 0) + 1);
-            nominatorPracticeSetting.set(respondentId, value);
+          if (questionType === 'MULTI_CHOICE' && json) {
+            const selected = (json as { selected?: string[] }).selected;
+            if (Array.isArray(selected) && selected.length > 0) {
+              for (const s of selected) {
+                practiceSettingCounts.set(s, (practiceSettingCounts.get(s) || 0) + 1);
+              }
+              nominatorPracticeSetting.set(respondentId, selected[selected.length - 1]);
+            }
+          } else {
+            const value = this.extractSingleChoice(json, text, questionType);
+            if (value) {
+              practiceSettingCounts.set(value, (practiceSettingCounts.get(value) || 0) + 1);
+              nominatorPracticeSetting.set(respondentId, value);
+            }
           }
         }
 
+        // 2026-06-02 Group E: same MULTI_CHOICE-blind bug as getDemographics
+        // had pre-v1.17.13 — extractSingleChoice returns null for
+        // MULTI_CHOICE, so Sun-Pharma-style surveys (where Core Focus is
+        // multi-select) silently produced an empty byCoreFocus on the
+        // KOL Profile page. Now handles MULTI_CHOICE selected-array
+        // expansion like byPracticeSetting on getDemographics does.
         if (qt.includes('core focus')) {
-          const value = text || this.extractSingleChoice(json, text, questionType);
-          if (value) {
-            coreFocusCounts.set(value, (coreFocusCounts.get(value) || 0) + 1);
-            nominatorCoreFocus.set(respondentId, value);
+          if (questionType === 'MULTI_CHOICE' && json) {
+            const selected = (json as { selected?: string[] }).selected;
+            if (Array.isArray(selected) && selected.length > 0) {
+              for (const s of selected) {
+                coreFocusCounts.set(s, (coreFocusCounts.get(s) || 0) + 1);
+              }
+              // Per-respondent map keeps last selection (arbitrary among
+              // their MULTI_CHOICE picks) so cross-tabs that previously
+              // used it still work for that respondent.
+              nominatorCoreFocus.set(respondentId, selected[selected.length - 1]);
+            }
+          } else {
+            const value = text || this.extractSingleChoice(json, text, questionType);
+            if (value) {
+              coreFocusCounts.set(value, (coreFocusCounts.get(value) || 0) + 1);
+              nominatorCoreFocus.set(respondentId, value);
+            }
           }
         }
 
