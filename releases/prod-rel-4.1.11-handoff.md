@@ -29,11 +29,19 @@ Three policy/RBAC items + one follow-up against the v1.17.17 deploy.
 
 *Frontend.* New `canWrite` flag on the auth context (`role === 'PLATFORM_ADMIN'`). Applied to: HCP list + detail (Add/Import/Edit/Aliases/Opt-out/Specialty mgmt all gated), campaigns list (New Campaign button hidden), campaign detail (workflow tabs filtered to `['overview']` only — no setup steps, no Survey Status, no survey-link exposure; all action buttons hidden), users page (Invite User + row dropdown gated). The lower-traffic admin pages (survey-templates / sections / questions / hcps-scores) still show their write buttons to client users — clicking → backend 403 — flagged as a follow-up UX polish.
 
-**Theme 7 — HCP `nomail@bio-exec.com` placeholder backfill (v1.17.20 data fix).** Operators were entering `nomail@bio-exec.com` as a placeholder for HCPs without real emails on CSV imports. That made 2,651 legit HCPs (prod) look like internal Bio-Exec staff to every downstream filter (insights / nominations / exports / KOL analysis), silently excluding them whenever `excludeInternalEmails=true`. Backfilled prod (2,651 rows) + test (1,058 rows) via:
+**Theme 7 — HCP `nomail` placeholder + NULL-email backfill (v1.17.20 data fix).** Two related correctness bugs in the `excludeInternalEmails` filter, both fixed by data backfill rather than code change.
+
+*Bug A.* Operators were entering `nomail@bio-exec.com` as a placeholder for HCPs without real emails on CSV imports. The suffix-match filter (`email LIKE '%@bio-exec.com'`) was catching 2,651 legit HCPs as "internal Bio-Exec staff", silently excluding them whenever `excludeInternalEmails=true`.
+
+*Bug B.* HCPs with NULL emails (1,358 on prod) were ALSO being silently excluded — the SQL clause `email NOT LIKE '%@bio-exec.com'` evaluates to NULL on NULL inputs (not TRUE), so NULL-email rows failed the WHERE check entirely and were dropped. Different mechanism, same outcome.
+
+Combined fix: re-domain both populations to a neutral placeholder.
 ```sql
 UPDATE "Hcp" SET email = 'nomail@kol360research.com' WHERE email = 'nomail@bio-exec.com';
+UPDATE "Hcp" SET email = 'nomail@kol360research.com' WHERE email IS NULL;
 ```
-The 5 actual @bio-exec.com staff-on-HCP entries (charisza, haranath, jpikor, jboyd variants) keep their emails and stay caught by the filter — those are intentional internal-team test HCPs. Going forward: operators use `nomail@kol360research.com` for missing emails. Already applied to prod; no code deploy needed for the data fix itself. Backfill SQL preserved at `scripts/backfill-hcp-nomail-domain.sql` for audit.
+
+Applied to prod (2,651 + 1,358 = 4,009 rows now use `nomail@kol360research.com`) and test (1,058 + 0). Zero NULL emails or `nomail@bio-exec.com` placeholders remain. The 5 actual @bio-exec.com staff-on-HCP entries (charisza, haranath, jpikor, jboyd variants) keep their emails and stay caught by the filter — those are intentional internal-team test HCPs. Going forward: operators use `nomail@kol360research.com` for missing emails (NOT empty / NULL — same NULL-handling bug applies anywhere else in the codebase that does suffix matches on text columns). No code deploy needed for the data fix itself. Backfill SQL preserved at `scripts/backfill-hcp-nomail-domain.sql` for audit.
 
 ## What changes for customers (the visible bit)
 

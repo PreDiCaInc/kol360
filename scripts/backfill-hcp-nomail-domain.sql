@@ -19,12 +19,28 @@
 --
 -- Going forward: operators should use `nomail@kol360research.com` as
 -- the placeholder for missing HCP emails, not `nomail@bio-exec.com`.
+--
+-- Step 2 (also v1.17.20): NULL emails were being silently excluded
+-- too — the suffix filter `email NOT LIKE '%@bio-exec.com'` evaluates
+-- to NULL on NULL inputs (not TRUE), so any HCP with NULL email
+-- failed the WHERE check and was dropped. Backfilled NULLs to the
+-- same placeholder so every "no email" HCP has the same shape and
+-- passes through the filter consistently. Prod: 1358 NULLs → placeholder.
+-- Test: 0 NULLs at backfill time.
 
 UPDATE "Hcp"
 SET email = 'nomail@kol360research.com'
 WHERE email = 'nomail@bio-exec.com';
 
--- Sanity check (should return 0):
+UPDATE "Hcp"
+SET email = 'nomail@kol360research.com'
+WHERE email IS NULL;
+
+-- Sanity checks (both should return 0):
 SELECT COUNT(*) AS remaining_old_placeholder
 FROM "Hcp"
 WHERE email = 'nomail@bio-exec.com';
+
+SELECT COUNT(*) AS remaining_null_emails
+FROM "Hcp"
+WHERE email IS NULL;
