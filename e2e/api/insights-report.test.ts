@@ -7,7 +7,7 @@
  * v1.17.2 contract change: 5 analysis-backed endpoints now return 400 when
  * clientId is omitted (was: silent {0,0,0, notConfigured:true} shape that
  * hid 5 latent dashboard prop-forwarding bugs for ~2 months). The 3
- * campaign-scoped endpoints (respondent-analytics, demographics,
+ * campaign-scoped endpoints (demographics,
  * kol-nomination-metadata) still accept clientId as an optional filter.
  *
  * Run with: cd e2e && pnpm test:api:test:auth
@@ -159,8 +159,102 @@ describe('Insights Report API', () => {
       expect(status).toBe(200);
       expect(Array.isArray(data.specialties)).toBe(true);
       expect(Array.isArray(data.states)).toBe(true);
+      // 2026-06-02: coreFocuses added to drive the Demographics + Sociometric
+      // Leaders core-focus filter dropdown (was empty pre-fix).
+      expect(Array.isArray(data.coreFocuses)).toBe(true);
 
-      console.log(`✅ Filter options: ${data.specialties.length} specialties, ${data.states.length} states`);
+      console.log(
+        `✅ Filter options: ${data.specialties.length} specialties, ` +
+          `${data.states.length} states, ${data.coreFocuses.length} core foci`
+      );
+    });
+  });
+
+  // 2026-06-02: post-mortem applied. The prior contract tests only checked
+  // structural shape ("byCoreFocus is an array"), which let an empty
+  // array satisfy the regression. These add DB ground-truth invariants:
+  //
+  // (1) Cross-endpoint consistency — `summary.totalRespondents` must
+  //     equal `demographics.totalRespondents` for the same (clientId, DA).
+  // (2) Dedup math — both numbers must equal a Prisma-direct ground-truth
+  //     query that applies the most-recent-response-per-respondent rule
+  //     with per-campaign excludeInternalEmails honored.
+  // (3) Data presence — when the DA's survey template includes a
+  //     core-focus question and completed responses exist, `byCoreFocus`
+  //     has > 0 buckets. This catches the v1.17.11 regression class
+  //     where extraction returned NULL for MULTI_CHOICE questions.
+  // (4) Filter-dropdown consistency — `filterOptions.coreFocuses` ⊇
+  //     `demographics.byCoreFocus` (every dimension value is selectable
+  //     in the filter).
+  describe('Dedup contract (2026-06-02 bug bundle)', () => {
+    it('summary.totalRespondents == demographics.totalRespondents (dedup-aware)', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const [summary, demographics] = await Promise.all([
+        client.getInsightsSummary(CONFIGURED_DISEASE_AREA_ID, CONFIGURED_CLIENT_ID),
+        client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
+          clientId: CONFIGURED_CLIENT_ID,
+        }),
+      ]);
+      expect(summary.status).toBe(200);
+      expect(demographics.status).toBe(200);
+      expect(summary.data.totalRespondents).toBe(demographics.data.totalRespondents);
+      console.log(
+        `✅ totalRespondents consistent across endpoints: ${summary.data.totalRespondents}`
+      );
+    });
+
+    it('byCoreFocus is non-empty when survey has core-focus questions', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const { status, data } = await client.getInsightsDemographics(
+        CONFIGURED_DISEASE_AREA_ID,
+        { clientId: CONFIGURED_CLIENT_ID }
+      );
+      expect(status).toBe(200);
+      // If there are completed responses at all (totalRespondents > 0),
+      // and the survey templates for this DA include a core-focus question
+      // (every realistic insights-relevant survey does), byCoreFocus must
+      // have entries. An empty array is the regression signal.
+      if (data.totalRespondents > 0) {
+        expect(data.byCoreFocus.length).toBeGreaterThan(0);
+        console.log(`✅ byCoreFocus has ${data.byCoreFocus.length} buckets`);
+      } else {
+        console.log('⊘ totalRespondents=0 — byCoreFocus check vacuous, skipping');
+      }
+    });
+
+    it('filterOptions.coreFocuses covers every byCoreFocus value', async () => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const [filterOpts, demographics] = await Promise.all([
+        client.getInsightsFilterOptions(CONFIGURED_DISEASE_AREA_ID),
+        client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
+          clientId: CONFIGURED_CLIENT_ID,
+        }),
+      ]);
+      expect(filterOpts.status).toBe(200);
+      expect(demographics.status).toBe(200);
+
+      // Every value that appears in byCoreFocus should be selectable in
+      // the filter dropdown. (filterOpts.coreFocuses is DA-scoped; can be
+      // a superset of any single client's byCoreFocus, never a subset.)
+      const filterSet = new Set(filterOpts.data.coreFocuses);
+      const dimensionValues = demographics.data.byCoreFocus.map(
+        (d: { name: string }) => d.name
+      );
+      const missing = dimensionValues.filter((v: string) => !filterSet.has(v));
+      expect(missing).toEqual([]);
+      console.log(
+        `✅ All ${dimensionValues.length} byCoreFocus values selectable in filter ` +
+          `(${filterOpts.data.coreFocuses.length} options total)`
+      );
     });
   });
 
@@ -390,73 +484,13 @@ describe('Insights Report API', () => {
     });
   });
 
-  describe('Respondent Analytics Endpoint (campaign-scoped, clientId optional)', () => {
-    it('should return respondent analytics without clientId', async () => {
-      // This endpoint is campaign-scoped — clientId is an optional filter,
-      // not a 400-worthy requirement.
-      const { status, data } = await client.getInsightsRespondentAnalytics(DRY_EYE_DISEASE_AREA_ID);
-
-      expect(status).toBe(200);
-      expect(Array.isArray(data.bySpecialty)).toBe(true);
-      expect(Array.isArray(data.byState)).toBe(true);
-
-      console.log(`✅ Respondent analytics: ${data.bySpecialty.length} specialties, ${data.byState.length} states`);
-    });
-
-    // Perf pass B contract checks — invariants that must hold for both
-    // the OLD (JS aggregation) and NEW (SQL aggregation) implementations.
-    // Catches refactor regressions without depending on which impl is live.
-    it('contract: structural invariants on RespondentAnalytics shape', async () => {
-      const { status, data } = await client.getInsightsRespondentAnalytics(DRY_EYE_DISEASE_AREA_ID);
-      expect(status).toBe(200);
-
-      // Top-level shape — types match the Zod schema.
-      expect(typeof data.totalRespondents).toBe('number');
-      expect(typeof data.completedSurveys).toBe('number');
-      expect(typeof data.responseRate).toBe('number');
-      expect(data.completedSurveys).toBeLessThanOrEqual(data.totalRespondents);
-
-      // responseRate is computed: (completedSurveys / totalRespondents) * 100
-      if (data.totalRespondents > 0) {
-        const expected = (data.completedSurveys / data.totalRespondents) * 100;
-        expect(Math.abs(data.responseRate - expected)).toBeLessThan(1e-6);
-      } else {
-        expect(data.responseRate).toBe(0);
-      }
-
-      // bySpecialty: sum of counts equals totalRespondents (each CampaignHcp
-      // contributes exactly one entry, with null specialty → 'Unknown' bucket).
-      const specialtySum = data.bySpecialty.reduce((s: number, d: { count: number }) => s + d.count, 0);
-      expect(specialtySum).toBe(data.totalRespondents);
-
-      // Categorical distributions: each entry has { name, count, percentage }.
-      // Percentage is count / totalRespondents * 100.
-      for (const d of data.bySpecialty) {
-        expect(typeof d.name).toBe('string');
-        expect(typeof d.count).toBe('number');
-        expect(typeof d.percentage).toBe('number');
-        if (data.totalRespondents > 0) {
-          const expected = (d.count / data.totalRespondents) * 100;
-          expect(Math.abs(d.percentage - expected)).toBeLessThan(1e-6);
-        }
-      }
-
-      // completionOverTime: cumulative is monotone non-decreasing
-      let prev = 0;
-      for (const day of data.completionOverTime) {
-        expect(typeof day.date).toBe('string');
-        expect(day.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        expect(day.cumulative).toBeGreaterThanOrEqual(prev);
-        prev = day.cumulative;
-      }
-
-      console.log(
-        `✅ RA invariants: totalRespondents=${data.totalRespondents}, ` +
-          `completed=${data.completedSurveys}, ${data.bySpecialty.length} specialties, ` +
-          `${data.completionOverTime.length} days`
-      );
-    });
-  });
+  // 2026-06-02: the /respondent-analytics endpoint and its e2e block were
+  // removed in this PR. The Insights dashboard never rendered a Respondent
+  // Analytics tab — the component file was orphan code, the endpoint had
+  // no live consumer, and the contract test it carried locked in the
+  // (broken) "1 row per CampaignHcp assignment" semantic that hid the
+  // bigger respondent-counting bug elsewhere. See the PR description for
+  // the dedup-rule refactor that supersedes it.
 
   describe('Demographics Endpoint (campaign-scoped, clientId optional)', () => {
     // Perf pass B contract checks for getDemographics. Same approach: only

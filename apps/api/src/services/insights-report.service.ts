@@ -15,7 +15,6 @@ import {
   NominatorDemographics,
   SociometricSummaryResponse,
   SociometricSummaryItem,
-  RespondentAnalytics,
   DistributionItem,
   NOMINATION_TYPES,
   NominationType,
@@ -468,7 +467,7 @@ export class InsightsReportService {
       // Campaign filter scoped to the selected client.
       const campaignFilter: Record<string, unknown> = { diseaseAreaId, clientId };
 
-      const [scoreAgg, totalCampaigns, totalNominations] = await Promise.all([
+      const [scoreAgg, totalCampaigns, totalNominations, totalRespondentsRow] = await Promise.all([
         // KOL count + avg composite from the analysis's scores.
         prisma.hcpAnalysisScore.aggregate({
           where: { analysisId: analysis.id },
@@ -479,15 +478,35 @@ export class InsightsReportService {
         prisma.nomination.count({
           where: { response: { campaign: campaignFilter } },
         }),
+        // totalRespondents — one row per respondent (most-recent completed
+        // response per HCP), with each campaign's own excludeInternalEmails
+        // flag honored. Matches getDemographics' definition so the top tile
+        // and the Demographics-tab header agree. See PR notes on the
+        // dedup rule for the "most-recent SurveyResponse per respondent;
+        // all dimensions derived from THAT one response" semantic.
+        prisma.$queryRaw<{ total: number }[]>`
+          SELECT COUNT(*)::int AS total
+          FROM (
+            SELECT DISTINCT ON (sr."respondentHcpId") sr.id
+            FROM "SurveyResponse" sr
+            JOIN "Campaign" c ON c.id = sr."campaignId"
+            LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+            WHERE c."diseaseAreaId" = ${diseaseAreaId}
+              AND (${clientId ?? null}::text IS NULL OR c."clientId" = ${clientId ?? null})
+              AND sr.status = 'COMPLETED'
+              AND (
+                c."excludeInternalEmails" = false
+                OR h.email IS NULL
+                OR h.email NOT LIKE '%@bio-exec.com'
+              )
+            ORDER BY sr."respondentHcpId", sr."completedAt" DESC NULLS LAST
+          ) latest_per_respondent
+        `,
       ]);
-
-      const totalRespondents = await prisma.surveyResponse.count({
-        where: { status: 'COMPLETED', campaign: campaignFilter },
-      });
 
       return {
         totalKols: scoreAgg._count._all,
-        totalRespondents,
+        totalRespondents: totalRespondentsRow[0]?.total ?? 0,
         totalNominations,
         totalCampaigns,
         averageCompositeScore: scoreAgg._avg.compositeScore
@@ -1169,301 +1188,6 @@ export class InsightsReportService {
     }
   }
 
-  /**
-   * Get respondent analytics — demographics + survey behavior.
-   *
-   * **Perf pass B item #2:** previously loaded ALL CampaignHcp rows (with
-   * HCP scalar fields) + ALL SurveyResponse rows and computed 8
-   * distributions app-side. Now runs ~10 narrow parallel `GROUP BY`
-   * queries; ~tens of rows each instead of ~thousands.
-   *
-   * Output is semantically identical to the prior impl. Tie-break order
-   * for categorical distributions is `count DESC, name ASC` — previously
-   * was Map insertion order (= Prisma physical row order, non-deterministic).
-   * The new ordering is strictly more consistent; UI charts label by
-   * name, no semantic dependency on tie ordering.
-   */
-  async getRespondentAnalytics(
-    diseaseAreaId: string,
-    excludeInternalEmails = false,
-    clientId?: string
-  ): Promise<RespondentAnalytics> {
-    try {
-      const campaigns = await prisma.campaign.findMany({
-        where: { diseaseAreaId, ...(clientId && { clientId }) },
-        select: { id: true },
-      });
-      const campaignIds = campaigns.map((c) => c.id);
-
-      if (campaignIds.length === 0) {
-        return this.emptyRespondentAnalytics();
-      }
-
-      const cids = Prisma.sql`${Prisma.join(campaignIds)}`;
-      // Encode the v1.17.4 internal-email filter as a SQL fragment so each
-      // sub-query can splice it in without N-way branching app-side.
-      const internalEmailFilter = excludeInternalEmails
-        ? Prisma.sql`AND (h.email IS NULL OR h.email NOT LIKE '%@bio-exec.com')`
-        : Prisma.sql``;
-
-      // Range bucket definitions stay in code — labels are user-facing
-      // and the SQL `CASE WHEN` mirrors them 1:1.
-      const yearsRanges = [
-        { label: '0-5 years', min: 0, max: 5 },
-        { label: '6-10 years', min: 6, max: 10 },
-        { label: '11-20 years', min: 11, max: 20 },
-        { label: '21-30 years', min: 21, max: 30 },
-        { label: '31+ years', min: 31, max: 100 },
-      ];
-      const decileRanges = Array.from({ length: 10 }, (_, i) => ({
-        label: `Decile ${i + 1}`,
-        min: i + 1,
-        max: i + 1,
-      }));
-
-      // Fire all aggregations in parallel — they're independent SQL queries.
-      const [
-        totalsRow,
-        completedRow,
-        bySpecialtyRows,
-        byStateRows,
-        byPracticeSettingRows,
-        byPrescribingRows,
-        bySurveyStatusRows,
-        byYearsRows,
-        byMarketDecileRows,
-        byProduct1DecileRows,
-        completionRows,
-      ] = await Promise.all([
-        // 1. totalRespondents — count of CampaignHcp matching campaigns
-        //    (with HCP email filter applied). LEFT JOIN so internal-email-
-        //    filter logic stays symmetric when HCP row missing.
-        prisma.$queryRaw<{ total: number }[]>`
-          SELECT COUNT(*)::int AS total
-          FROM "CampaignHcp" ch
-          LEFT JOIN "Hcp" h ON h.id = ch."hcpId"
-          WHERE ch."campaignId" IN (${cids})
-          ${internalEmailFilter}
-        `,
-        // 2. completedSurveys — count of completed responses
-        prisma.$queryRaw<{ total: number }[]>`
-          SELECT COUNT(*)::int AS total
-          FROM "SurveyResponse" sr
-          LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-          WHERE sr."campaignId" IN (${cids})
-            AND sr.status = 'COMPLETED'
-          ${internalEmailFilter}
-        `,
-        // 3. bySpecialty — categorical distribution of HCP specialty.
-        //    COALESCE NULLIF '' captures null + empty string into 'Unknown'
-        //    bucket (matches the JS `item || 'Unknown'` short-circuit).
-        prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT COALESCE(NULLIF(h.specialty, ''), 'Unknown') AS name, COUNT(*)::int AS count
-          FROM "CampaignHcp" ch
-          LEFT JOIN "Hcp" h ON h.id = ch."hcpId"
-          WHERE ch."campaignId" IN (${cids})
-          ${internalEmailFilter}
-          GROUP BY 1
-          ORDER BY count DESC, name ASC
-        `,
-        // 4. byState — categorical distribution of HCP state
-        prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT COALESCE(NULLIF(h.state, ''), 'Unknown') AS name, COUNT(*)::int AS count
-          FROM "CampaignHcp" ch
-          LEFT JOIN "Hcp" h ON h.id = ch."hcpId"
-          WHERE ch."campaignId" IN (${cids})
-          ${internalEmailFilter}
-          GROUP BY 1
-          ORDER BY count DESC, name ASC
-        `,
-        // 5. byPracticeSetting — CampaignHcp.practiceSetting (scalar on CH)
-        prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT COALESCE(NULLIF(ch."practiceSetting", ''), 'Unknown') AS name, COUNT(*)::int AS count
-          FROM "CampaignHcp" ch
-          LEFT JOIN "Hcp" h ON h.id = ch."hcpId"
-          WHERE ch."campaignId" IN (${cids})
-          ${internalEmailFilter}
-          GROUP BY 1
-          ORDER BY count DESC, name ASC
-        `,
-        // 6. byPrescribingBehavior — CampaignHcp.prescribingBehavior
-        prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT COALESCE(NULLIF(ch."prescribingBehavior", ''), 'Unknown') AS name, COUNT(*)::int AS count
-          FROM "CampaignHcp" ch
-          LEFT JOIN "Hcp" h ON h.id = ch."hcpId"
-          WHERE ch."campaignId" IN (${cids})
-          ${internalEmailFilter}
-          GROUP BY 1
-          ORDER BY count DESC, name ASC
-        `,
-        // 7. bySurveyStatus — distribution over SurveyResponse.status
-        prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT sr.status AS name, COUNT(*)::int AS count
-          FROM "SurveyResponse" sr
-          LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-          WHERE sr."campaignId" IN (${cids})
-          ${internalEmailFilter}
-          GROUP BY 1
-          ORDER BY count DESC, name ASC
-        `,
-        // 8. byYearsInPractice — range distribution via CASE WHEN.
-        //    NULLs are skipped (matches createRangeDistribution semantics —
-        //    null/undefined values don't contribute to total nor any bucket).
-        prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT bucket AS name, COUNT(*)::int AS count FROM (
-            SELECT CASE
-              WHEN h."yearsInPractice" BETWEEN 0 AND 5 THEN '0-5 years'
-              WHEN h."yearsInPractice" BETWEEN 6 AND 10 THEN '6-10 years'
-              WHEN h."yearsInPractice" BETWEEN 11 AND 20 THEN '11-20 years'
-              WHEN h."yearsInPractice" BETWEEN 21 AND 30 THEN '21-30 years'
-              WHEN h."yearsInPractice" BETWEEN 31 AND 100 THEN '31+ years'
-            END AS bucket
-            FROM "CampaignHcp" ch
-            LEFT JOIN "Hcp" h ON h.id = ch."hcpId"
-            WHERE ch."campaignId" IN (${cids})
-              AND h."yearsInPractice" IS NOT NULL
-            ${internalEmailFilter}
-          ) sub
-          WHERE bucket IS NOT NULL
-          GROUP BY 1
-        `,
-        // 9. byMarketDecile — CampaignHcp.marketDecile (1..10), one bucket per decile
-        prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT 'Decile ' || ch."marketDecile" AS name, COUNT(*)::int AS count
-          FROM "CampaignHcp" ch
-          LEFT JOIN "Hcp" h ON h.id = ch."hcpId"
-          WHERE ch."campaignId" IN (${cids})
-            AND ch."marketDecile" IS NOT NULL
-          ${internalEmailFilter}
-          GROUP BY ch."marketDecile"
-        `,
-        // 10. byProduct1Decile — CampaignHcp.product1Decile
-        prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT 'Decile ' || ch."product1Decile" AS name, COUNT(*)::int AS count
-          FROM "CampaignHcp" ch
-          LEFT JOIN "Hcp" h ON h.id = ch."hcpId"
-          WHERE ch."campaignId" IN (${cids})
-            AND ch."product1Decile" IS NOT NULL
-          ${internalEmailFilter}
-          GROUP BY ch."product1Decile"
-        `,
-        // 11. completionOverTime — daily counts of COMPLETED responses with
-        //     cumulative via window function. Date format ISO YYYY-MM-DD
-        //     matches the prior impl's `toISOString().split('T')[0]`.
-        prisma.$queryRaw<{ date: string; count: number; cumulative: number }[]>`
-          SELECT
-            TO_CHAR(d, 'YYYY-MM-DD') AS date,
-            cnt::int AS count,
-            SUM(cnt) OVER (ORDER BY d ASC ROWS UNBOUNDED PRECEDING)::int AS cumulative
-          FROM (
-            SELECT DATE(sr."completedAt") AS d, COUNT(*) AS cnt
-            FROM "SurveyResponse" sr
-            LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-            WHERE sr."campaignId" IN (${cids})
-              AND sr.status = 'COMPLETED'
-              AND sr."completedAt" IS NOT NULL
-            ${internalEmailFilter}
-            GROUP BY 1
-          ) daily
-          ORDER BY d ASC
-        `,
-      ]);
-
-      const totalRespondents = totalsRow[0]?.total ?? 0;
-      const completedSurveys = completedRow[0]?.total ?? 0;
-      const responseRate =
-        totalRespondents > 0 ? (completedSurveys / totalRespondents) * 100 : 0;
-
-      // Categorical distributions: percent denom = totalRespondents (matches
-      // prior `total = items.length` including null-bucketed 'Unknown').
-      const cat = (rows: { name: string; count: number }[]): DistributionItem[] =>
-        rows.map((r) => ({
-          name: r.name,
-          count: r.count,
-          percentage: totalRespondents > 0 ? (r.count / totalRespondents) * 100 : 0,
-        }));
-
-      // Range distributions: percent denom = non-null count. SQL only
-      // emits buckets that had at least one row, so fill in zero-count
-      // buckets in code and preserve the explicit input order.
-      const range = (
-        rows: { name: string; count: number }[],
-        ranges: { label: string; min: number; max: number }[]
-      ): DistributionItem[] => {
-        const byLabel = new Map(rows.map((r) => [r.name, r.count]));
-        const total = rows.reduce((s, r) => s + r.count, 0);
-        return ranges.map(({ label }) => {
-          const count = byLabel.get(label) ?? 0;
-          return {
-            name: label,
-            count,
-            percentage: total > 0 ? (count / total) * 100 : 0,
-          };
-        });
-      };
-
-      // Status distribution: SurveyResponse.status is always non-null in
-      // the schema, so it never bucketed into 'Unknown' previously. Use
-      // completedSurveys + non-completed for denom? Actually the JS impl
-      // used `responses.length` (= all responses matching filter, not
-      // just completed). Mirror that here by re-summing the rows.
-      const totalSurveyStatusItems = bySurveyStatusRows.reduce(
-        (s, r) => s + r.count,
-        0
-      );
-      const bySurveyStatus: DistributionItem[] = bySurveyStatusRows.map((r) => ({
-        name: r.name,
-        count: r.count,
-        percentage:
-          totalSurveyStatusItems > 0
-            ? (r.count / totalSurveyStatusItems) * 100
-            : 0,
-      }));
-
-      return {
-        totalRespondents,
-        completedSurveys,
-        responseRate,
-        bySpecialty: cat(bySpecialtyRows),
-        byState: cat(byStateRows),
-        byPracticeSetting: cat(byPracticeSettingRows),
-        byYearsInPractice: range(byYearsRows, yearsRanges),
-        byMarketDecile: range(byMarketDecileRows, decileRanges),
-        byProduct1Decile: range(byProduct1DecileRows, decileRanges),
-        byPrescribingBehavior: cat(byPrescribingRows),
-        bySurveyStatus,
-        completionOverTime: completionRows.map((r) => ({
-          date: r.date,
-          count: r.count,
-          cumulative: r.cumulative,
-        })),
-      };
-    } catch (error) {
-      logger.error('Error fetching respondent analytics', { diseaseAreaId, error });
-      throw error;
-    }
-  }
-
-  /**
-   * Empty default for getRespondentAnalytics when no campaigns match.
-   * Centralized so the shape stays in lockstep with RespondentAnalytics.
-   */
-  private emptyRespondentAnalytics(): RespondentAnalytics {
-    return {
-      totalRespondents: 0,
-      completedSurveys: 0,
-      responseRate: 0,
-      bySpecialty: [],
-      byState: [],
-      byPracticeSetting: [],
-      byYearsInPractice: [],
-      byMarketDecile: [],
-      byProduct1Decile: [],
-      byPrescribingBehavior: [],
-      bySurveyStatus: [],
-      completionOverTime: [],
-    };
-  }
 
   /**
    * Get filter options for dropdowns.
@@ -1478,7 +1202,7 @@ export class InsightsReportService {
    */
   async getFilterOptions(diseaseAreaId: string) {
     try {
-      const [specialtyRows, stateRows] = await Promise.all([
+      const [specialtyRows, stateRows, coreFocusRows] = await Promise.all([
         prisma.$queryRaw<{ specialty: string }[]>`
           SELECT DISTINCT h."specialty"
           FROM "Hcp" h
@@ -1497,6 +1221,44 @@ export class InsightsReportService {
             AND h."state" IS NOT NULL
           ORDER BY h."state" ASC
         `,
+        // 2026-06-02 — populate Core Focus filter dropdown on Demographics
+        // + Sociometric Leaders tabs. UNION of SINGLE_CHOICE/text answers
+        // and MULTI_CHOICE selected-array elements, scoped to completed
+        // responses in this DA. Matches the byCoreFocus aggregation
+        // semantics so the dropdown's options align with the bar-chart
+        // categories.
+        prisma.$queryRaw<{ value: string }[]>`
+          SELECT DISTINCT value FROM (
+            SELECT COALESCE(
+              NULLIF(sra."answerText", ''),
+              CASE WHEN q."type" = 'SINGLE_CHOICE' THEN sra."answerJson"->>'selected' END
+            ) AS value
+            FROM "SurveyResponseAnswer" sra
+            JOIN "SurveyQuestion" sq ON sq.id = sra."questionId"
+            JOIN "Question" q ON q.id = sq."questionId"
+            JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
+            JOIN "Campaign" c ON c.id = sr."campaignId"
+            WHERE c."diseaseAreaId" = ${diseaseAreaId}
+              AND sr.status = 'COMPLETED'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%core focus%'
+              AND q."type" <> 'MULTI_CHOICE'
+            UNION
+            SELECT jsonb_array_elements_text(sra."answerJson"->'selected') AS value
+            FROM "SurveyResponseAnswer" sra
+            JOIN "SurveyQuestion" sq ON sq.id = sra."questionId"
+            JOIN "Question" q ON q.id = sq."questionId"
+            JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
+            JOIN "Campaign" c ON c.id = sr."campaignId"
+            WHERE c."diseaseAreaId" = ${diseaseAreaId}
+              AND sr.status = 'COMPLETED'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%core focus%'
+              AND q."type" = 'MULTI_CHOICE'
+              AND sra."answerJson" ? 'selected'
+              AND jsonb_typeof(sra."answerJson"->'selected') = 'array'
+          ) merged
+          WHERE value IS NOT NULL AND value <> ''
+          ORDER BY value ASC
+        `,
       ]);
 
       // v1.17.4: state filter whitelist — only emit US 50 + DC.
@@ -1506,10 +1268,12 @@ export class InsightsReportService {
       // Client.region setting if/when we onboard a non-US customer.
       const specialties = specialtyRows.map((r) => r.specialty);
       const states = stateRows.map((r) => r.state).filter((s) => US_STATE_CODES.has(s));
+      const coreFocuses = coreFocusRows.map((r) => r.value);
 
       return {
         specialties,
         states,
+        coreFocuses,
         influencerTypes: ['National Leaders', 'Rising Stars', 'Regional Influencers'],
       };
     } catch (error) {
@@ -1560,14 +1324,49 @@ export class InsightsReportService {
         return this.emptyDemographics();
       }
 
+      // 2026-06-02 dedup rule: a respondent who completed surveys in
+      // multiple campaigns within the same (DA, client) scope counts ONCE,
+      // and we attribute their answers to the MOST RECENT response only.
+      // If they skipped a question in their most recent survey, that
+      // dimension simply doesn't get a count for them — we DO NOT fall
+      // back to an older survey's answer for that question.
+      //
+      // Implementation: a single precompute query picks the dedup-aware
+      // response-id set (with each campaign's own excludeInternalEmails
+      // flag honored — the per-campaign filter that was uniformly applied
+      // pre-2026-06-02, masking 195 valid respondents from non-flag
+      // campaigns). All 14 dimension queries below then gate on `sr.id IN
+      // (set)`. This replaces the prior `internalEmailFilter` (uniform)
+      // with a precomputed list, which automatically encodes both rules.
+      const latestRows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT DISTINCT ON (sr."respondentHcpId") sr.id
+        FROM "SurveyResponse" sr
+        JOIN "Campaign" c ON c.id = sr."campaignId"
+        LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+        WHERE sr."campaignId" IN (${Prisma.join(campaignIds)})
+          AND sr.status = 'COMPLETED'
+          AND (
+            c."excludeInternalEmails" = false
+            OR h.email IS NULL
+            OR h.email NOT LIKE '%@bio-exec.com'
+          )
+        ORDER BY sr."respondentHcpId", sr."completedAt" DESC NULLS LAST
+      `;
+      const latestResponseIds = new Set(latestRows.map((r) => r.id));
+      if (latestResponseIds.size === 0) return this.emptyDemographics();
+
       // If respondent filters are active, compute the filtered response-id
-      // set up-front. Reuses the existing helper so semantics stay aligned
-      // with getLeaderRankings/getSociometricSummary.
-      let filteredResponseIds: Set<string> | null = null;
+      // set and intersect with the dedup-aware latest set. Reuses the
+      // existing helper so semantics stay aligned with getLeaderRankings
+      // and getSociometricSummary.
+      let effectiveResponseIds: Set<string> = latestResponseIds;
       if (hasAnyRespondentFilter(filters)) {
         const ans = await this.loadAnswersForRespondentFilter(campaignIds);
-        filteredResponseIds = await this.computeFilteredResponseIds(filters!, ans);
-        if (filteredResponseIds.size === 0) return this.emptyDemographics();
+        const filtered = await this.computeFilteredResponseIds(filters!, ans);
+        effectiveResponseIds = new Set(
+          [...latestResponseIds].filter((id) => filtered.has(id))
+        );
+        if (effectiveResponseIds.size === 0) return this.emptyDemographics();
       }
 
       // SQL fragment helpers shared across the parallel queries below.
@@ -1582,13 +1381,19 @@ export class InsightsReportService {
       const tcids = hasTopicCampaigns
         ? Prisma.sql`${Prisma.join(topicCampaignIds)}`
         : Prisma.sql``;
-      const internalEmailFilter = excludeInternal
-        ? Prisma.sql`AND (h.email IS NULL OR h.email NOT LIKE '%@bio-exec.com')`
-        : Prisma.sql``;
-      const responseFilter =
-        filteredResponseIds && filteredResponseIds.size > 0
-          ? Prisma.sql`AND sr.id IN (${Prisma.join([...filteredResponseIds])})`
-          : Prisma.sql``;
+      // The dedup-aware response-id set is the single mandatory filter.
+      // It already encodes BOTH (a) per-campaign excludeInternalEmails and
+      // (b) most-recent-per-respondent dedup — so no separate internal-
+      // email filter / dedup logic is needed in the dimension queries.
+      // The legacy `internalEmailFilter` Prisma.sql fragment is gone;
+      // each query just splices `responseFilter` below.
+      const responseFilter = Prisma.sql`AND sr.id IN (${Prisma.join([...effectiveResponseIds])})`;
+      // Empty placeholder kept so existing `${internalEmailFilter}` splice
+      // sites stay in place during the refactor; they're now no-ops.
+      const internalEmailFilter = Prisma.sql``;
+      // Silence unused-var warning when `excludeInternal` is now only used
+      // for documentation of which campaigns have the flag (kept above).
+      void excludeInternal;
 
       // Common WHERE skeleton for every dimension query:
       //   - sr.campaignId in (campaignIds)
@@ -1619,8 +1424,11 @@ export class InsightsReportService {
         CASE WHEN q."type" = 'SINGLE_CHOICE' THEN sra."answerJson"->>'selected' END
       )`;
 
+      // totalRespondents is now a direct property of the dedup set —
+      // one response per respondent, exactly the count of effective IDs.
+      const totalRespondents = effectiveResponseIds.size;
+
       const [
-        totalRow,
         roleRows,
         practiceSettingRows,
         coreFocusRows,
@@ -1634,17 +1442,6 @@ export class InsightsReportService {
         respondentCoreFocusRows,
         respondentMonthlyPatientsRows,
       ] = await Promise.all([
-        // totalRespondents = COUNT(DISTINCT respondentHcpId)
-        prisma.$queryRaw<{ total: number }[]>`
-          SELECT COUNT(DISTINCT sr."respondentHcpId")::int AS total
-          FROM "SurveyResponse" sr
-          LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-          WHERE sr."campaignId" IN (${cids})
-            AND sr.status = 'COMPLETED'
-          ${responseFilter}
-          ${internalEmailFilter}
-        `,
-
         // C1.2 Role / Primary Medical Specialty
         prisma.$queryRaw<{ name: string; count: number }[]>`
           SELECT ${SC} AS name, COUNT(*)::int AS count
@@ -1697,20 +1494,44 @@ export class InsightsReportService {
           ORDER BY count DESC, name ASC
         `,
 
-        // C1.9 Core Focus (per-answer counts for distribution)
+        // C1.9 Core Focus — UNION single-choice + MULTI_CHOICE selected
+        // array elements (jsonb_array_elements_text). Same pattern as
+        // Practice Setting + Topics Discussed. Pre-2026-06-02 this query
+        // used the bare CORE_FOCUS extraction which returned NULL for
+        // MULTI_CHOICE questions, so the Sun Pharma + Dry Eye DA (which
+        // uses MULTI_CHOICE for "What best describes the core focus...?")
+        // returned an empty byCoreFocus. Regression introduced in v1.17.11
+        // (perf pass B); fixed here to mirror byPracticeSetting.
         prisma.$queryRaw<{ name: string; count: number }[]>`
-          SELECT ${CORE_FOCUS} AS name, COUNT(*)::int AS count
-          FROM "SurveyResponseAnswer" sra
-          JOIN "SurveyQuestion" sq ON sq.id = sra."questionId" JOIN "Question" q ON q.id = sq."questionId"
-          JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
-          LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-          WHERE sr."campaignId" IN (${cids})
-            AND sr.status = 'COMPLETED'
-            AND LOWER(sq."questionTextSnapshot") LIKE '%core focus%'
-            AND ${CORE_FOCUS} IS NOT NULL
-          ${responseFilter}
-          ${internalEmailFilter}
-          GROUP BY 1
+          SELECT name, SUM(count)::int AS count FROM (
+            SELECT ${CORE_FOCUS} AS name, 1 AS count
+            FROM "SurveyResponseAnswer" sra
+            JOIN "SurveyQuestion" sq ON sq.id = sra."questionId" JOIN "Question" q ON q.id = sq."questionId"
+            JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
+            LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+            WHERE sr."campaignId" IN (${cids})
+              AND sr.status = 'COMPLETED'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%core focus%'
+              AND q."type" <> 'MULTI_CHOICE'
+              AND ${CORE_FOCUS} IS NOT NULL
+            ${responseFilter}
+            ${internalEmailFilter}
+            UNION ALL
+            SELECT jsonb_array_elements_text(sra."answerJson"->'selected') AS name, 1 AS count
+            FROM "SurveyResponseAnswer" sra
+            JOIN "SurveyQuestion" sq ON sq.id = sra."questionId" JOIN "Question" q ON q.id = sq."questionId"
+            JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
+            LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+            WHERE sr."campaignId" IN (${cids})
+              AND sr.status = 'COMPLETED'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%core focus%'
+              AND q."type" = 'MULTI_CHOICE'
+              AND sra."answerJson" ? 'selected'
+              AND jsonb_typeof(sra."answerJson"->'selected') = 'array'
+            ${responseFilter}
+            ${internalEmailFilter}
+          ) merged
+          GROUP BY name
           ORDER BY count DESC, name ASC
         `,
 
@@ -1915,8 +1736,6 @@ export class InsightsReportService {
           ORDER BY sr."respondentHcpId", sra."id" DESC
         `,
       ]);
-
-      const totalRespondents = totalRow[0]?.total ?? 0;
 
       // Build distributions
       const cat = (rows: { name: string; count: number }[]): DistributionItem[] =>
