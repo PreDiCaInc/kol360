@@ -239,33 +239,15 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
     return data.topicsDiscussed.map((d) => ({ name: d.name, value: d.count }));
   }, [data?.topicsDiscussed]);
 
-  if (isLoading && !data) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
-        Loading demographics data...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center py-12 text-destructive">
-        Error loading demographics data
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
-        No demographics data available
-      </div>
-    );
-  }
-
+  // 2026-06-03: no early returns for isLoading/error/!data. Benchmarking
+  // (leader-rankings.tsx) doesn't have them either — its filter bar is
+  // always mounted, with the loading/empty state handled by its child
+  // table. Same shape here: filter bar always mounted, body region below
+  // swaps between loading / error / no-data / 0-result / charts. Previous
+  // version unmounted the whole tab during refetch, which is what closed
+  // the MultiSelect popover after each pick.
   return (
     <div className="space-y-8">
-      {/* Filter Bar */}
       <div className="bg-muted/50 rounded-lg p-4 print:hidden">
         <div className="flex items-center gap-2 mb-3">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -405,14 +387,22 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
         <ActiveFilterChips filters={activeFilters} />
       </div>
 
-      {/* 2026-06-02 Group F: 0-result state. Filter bar above stays
-          visible so the user can adjust without leaving the tab. Pre-fix:
-          the section header + a wall of empty chart cards made it look
-          broken; combined with the "Error loading demographics data"
-          toast from the error-branch (which DOES NOT fire for 0 results
-          but the customer reported the perception), the page felt dead.
-          Now it's an explicit "no respondents match" state. */}
-      {data.totalRespondents === 0 ? (
+      {/* Body — the `Updating...` chip inside the filter bar above
+          already signals refetch state; the chart area swaps between
+          loading / error / no-data / 0-result / charts here. */}
+      {isLoading && !data ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground">
+          Loading demographics data...
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center py-12 text-destructive">
+          Error loading demographics data
+        </div>
+      ) : !data ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground">
+          No demographics data available
+        </div>
+      ) : data.totalRespondents === 0 ? (
         <div className="rounded-lg border bg-card p-12 text-center">
           <p className="text-base font-medium">No respondents match these filters.</p>
           <p className="text-sm text-muted-foreground mt-2">

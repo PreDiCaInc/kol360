@@ -271,6 +271,33 @@ describe('Insights Report API', () => {
       console.log(`✅ byCoreFocus has ${data.byCoreFocus.length} buckets`);
     });
 
+    it('demographics survives non-numeric answerText in numeric fields (v1.17.16)', async () => {
+      // v1.17.16: NUM SQL fragment now pre-validates the regex-cleaned
+      // string against `^[0-9]+(\.[0-9]+)?$` before casting to numeric.
+      // Prior to the fix, an answerText of ".." (or any garbage that
+      // survives the [^0-9.] strip but isn't a valid number) crashed
+      // /demographics with HTTP 500: invalid input syntax for type
+      // numeric: "..". Customer-reported via the AR+AZ+CA state filter
+      // combo on Sun Pharma + Dry Eye.
+      //
+      // This test is vacuous on test env (no ".." answers seeded), but
+      // it documents the contract and ratchets a state-filter combo
+      // through the same code path. A future regression that re-breaks
+      // numeric extraction on a populated test env would surface here.
+      if (!RESPONDENTS_CLIENT_ID || !RESPONDENTS_DISEASE_AREA_ID) {
+        console.log('⊘ No (client, DA) with completed responses — skipping');
+        return;
+      }
+      const { status } = await client.getInsightsDemographics(
+        RESPONDENTS_DISEASE_AREA_ID,
+        {
+          clientId: RESPONDENTS_CLIENT_ID,
+          stateOfPractices: 'CA,NY,TX,AR,AZ',
+        }
+      );
+      expect(status).toBe(200);
+    });
+
     it('filterOptions.coreFocuses covers every byCoreFocus value', async () => {
       if (!RESPONDENTS_CLIENT_ID || !RESPONDENTS_DISEASE_AREA_ID) {
         console.log('⊘ No (client, DA) with completed responses on this env — skipping');

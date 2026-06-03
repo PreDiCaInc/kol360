@@ -1405,7 +1405,19 @@ export class InsightsReportService {
       // Numeric extraction: mirrors parseNumber() — strip non-digit/dot
       // chars, NULLIF empty, cast to numeric. Used for years / patients
       // questions where the answer is stored as free text.
-      const NUM = Prisma.sql`NULLIF(REGEXP_REPLACE(COALESCE(sra."answerText", ''), '[^0-9.]', '', 'g'), '')::numeric`;
+      // Numeric extraction with safe pre-validation. Pre-2026-06-03 this
+      // did REGEXP_REPLACE + cast, which 500'd when the cleaned text was
+      // a malformed numeric like ".." (e.g., a respondent typed dots into
+      // a "how many patients" field). Now we cast only when the cleaned
+      // text matches a real number shape; otherwise NULL (= ignored by the
+      // bucketing downstream, same as IS NULL filtering).
+      const NUM = Prisma.sql`
+        CASE
+          WHEN REGEXP_REPLACE(COALESCE(sra."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+          THEN REGEXP_REPLACE(COALESCE(sra."answerText", ''), '[^0-9.]', '', 'g')::numeric
+          ELSE NULL
+        END
+      `;
 
       // Single-choice extraction: mirrors extractSingleChoice() — JSON
       // 'selected' for SINGLE_CHOICE, otherwise text. NULL for empty.
