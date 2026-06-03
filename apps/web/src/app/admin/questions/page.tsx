@@ -9,6 +9,7 @@ import {
   useRestoreQuestion,
 } from '@/hooks/use-questions';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -83,6 +84,7 @@ interface Filters {
 }
 
 export default function QuestionsPage() {
+  const { canWrite } = useAuth();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -153,10 +155,12 @@ export default function QuestionsPage() {
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Question Bank</h1>
             <p className="text-muted-foreground mt-1">Manage survey questions and templates</p>
           </div>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Question
-          </Button>
+          {canWrite && (
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Question
+            </Button>
+          )}
         </div>
 
         {/* Stats Summary */}
@@ -333,10 +337,12 @@ export default function QuestionsPage() {
                 ? 'Try adjusting your filters to find more questions.'
                 : 'Create your first question to get started building surveys.'}
             </p>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Question
-            </Button>
+            {canWrite && (
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Question
+              </Button>
+            )}
           </div>
         ) : (
           <>
@@ -408,33 +414,35 @@ export default function QuestionsPage() {
                       {q.createdAt ? formatDate(q.createdAt) : '—'}
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditingQuestion(q.id)}>
-                            <Pencil className="w-4 h-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          {q.status === 'active' ? (
-                            <DropdownMenuItem
-                              onClick={() => handleArchive(q.id)}
-                              className="text-destructive"
-                            >
-                              <Archive className="w-4 h-4 mr-2" />
-                              Archive
+                      {canWrite && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setEditingQuestion(q.id)}>
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Edit
                             </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => handleRestore(q.id)}>
-                              <RotateCcw className="w-4 h-4 mr-2" />
-                              Restore
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            {q.status === 'active' ? (
+                              <DropdownMenuItem
+                                onClick={() => handleArchive(q.id)}
+                                className="text-destructive"
+                              >
+                                <Archive className="w-4 h-4 mr-2" />
+                                Archive
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => handleRestore(q.id)}>
+                                <RotateCcw className="w-4 h-4 mr-2" />
+                                Restore
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -3,7 +3,7 @@
 **Status:** Ready for prod deploy. **No migration.** Reversible (code-only).
 **Tag:** `prod-rel-4.1.11` → commit on `main` (cut after this docs PR merges).
 **Supersedes:** `prod-rel-4.1.10` (v1.17.16).
-**Bundles:** v1.17.17 + v1.17.18 + v1.17.19 + v1.17.20 (admin-UX policy + follow-up + escape-hatch removal + lint CI + client-roles view-only + HCP nomail-placeholder data fix). One-drop release per case-by-case decision.
+**Bundles:** v1.17.17 → v1.17.23 (admin-UX policy + follow-up + escape-hatch removal + lint CI + client-roles view-only + HCP nomail-placeholder data fix + Hcp.email NOT NULL with placeholder default + insights layout density + write-button hide-sweep on the remaining admin pages). One-drop release per case-by-case decision.
 
 ## TL;DR
 
@@ -68,7 +68,36 @@ Applied to prod (2,651 + 1,358 = 4,009 rows now use `nomail@kol360research.com`)
 
 ## Migrations
 
-**None.** All code-only.
+**One migration** — `apps/api/prisma/migrations/20260603_hcp_email_required_with_placeholder/migration.sql`.
+
+App Runner does NOT auto-run Prisma migrations. The prod team must apply this `.sql` file at deploy time. Two equivalent procedures:
+
+```bash
+# Option A — Prisma CLI (recommended; updates _prisma_migrations table cleanly)
+cd apps/api
+DATABASE_URL="postgresql://kol360admin:RDS4Bioexec2025@kol360-db-prod.czkyi4mem2bj.us-east-2.rds.amazonaws.com:5432/kol360" \
+  npx prisma migrate deploy
+
+# Option B — raw psql via tunnel (legacy path; works the same since the migration is idempotent)
+ssh -i kol360-bastion-key.pem -L 5433:kol360-db-prod.czkyi4mem2bj.us-east-2.rds.amazonaws.com:5432 ec2-user@3.142.171.8 -N -o StrictHostKeyChecking=no -f
+PGPASSWORD=RDS4Bioexec2025 psql -h localhost -p 5433 -U kol360admin -d kol360 \
+  -v ON_ERROR_STOP=1 \
+  -f prisma/migrations/20260603_hcp_email_required_with_placeholder/migration.sql
+```
+
+**Migration is idempotent** — `SET DEFAULT` re-runs safely, the defensive `UPDATE ... WHERE email IS NULL` is a no-op (the v1.17.20 `scripts/backfill-hcp-nomail-domain.sql` already cleared every NULL on prod), and `SET NOT NULL` on an already-NOT-NULL column is a no-op. Re-applying after a partial failure is safe.
+
+**Data risk: zero.** The 4,009 prod HCPs that previously had empty/null/`nomail@bio-exec.com` emails were already backfilled via the v1.17.20 SQL script. The migration just locks in the column shape.
+
+**Sequence is forgiving — either order works.** The data is already in the new shape (no NULL emails on prod), all v1.17.21+ code paths send an explicit email (Zod requires it on every API write path, with `null`/empty → placeholder preprocessing in the nomination flows), and the migration only locks in the column shape. The deploy and migrate steps can land in either order without a data-risk window.
+
+**Verify post-migration:**
+```sql
+SELECT column_name, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_name='Hcp' AND column_name='email';
+-- Expect: is_nullable='NO', column_default='nomail@kol360research.com'::text
+```
 
 ## Test environment verification
 

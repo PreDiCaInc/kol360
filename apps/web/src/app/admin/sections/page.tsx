@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useSections, useCreateSection, useDeleteSection } from '@/hooks/use-sections';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -48,6 +49,7 @@ import {
 import { Plus, MoreHorizontal, Eye, Pencil, Trash2, Lock, FolderOpen, MessageSquare, Layers } from 'lucide-react';
 
 export default function SectionsPage() {
+  const { canWrite } = useAuth();
   const { data: sections, isLoading } = useSections();
   const createSection = useCreateSection();
   const deleteSection = useDeleteSection();
@@ -96,10 +98,12 @@ export default function SectionsPage() {
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Section Templates</h1>
             <p className="text-muted-foreground mt-1">Organize questions into reusable sections for survey templates</p>
           </div>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Section
-          </Button>
+          {canWrite && (
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              New Section
+            </Button>
+          )}
         </div>
 
         {/* Stats Summary */}
@@ -160,10 +164,12 @@ export default function SectionsPage() {
             <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
               Create your first section to start organizing questions into reusable groups.
             </p>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Create Section
-            </Button>
+            {canWrite && (
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Section
+              </Button>
+            )}
           </div>
         ) : (
           <Card>
@@ -235,20 +241,24 @@ export default function SectionsPage() {
                                 View Details
                               </Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/admin/sections/${section.id}`}>
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Edit
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => setSectionToDelete({ id: section.id, name: section.name })}
-                              disabled={section.isCore || (section._count?.templateSections ?? 0) > 0}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                            {canWrite && (
+                              <>
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/admin/sections/${section.id}`}>
+                                    <Pencil className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => setSectionToDelete({ id: section.id, name: section.name })}
+                                  disabled={section.isCore || (section._count?.templateSections ?? 0) > 0}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>

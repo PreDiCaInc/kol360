@@ -29,6 +29,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Search, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, BarChart3, ArrowLeft, Upload, ClipboardList } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
+import { useAuth } from '@/lib/auth/auth-provider';
 
 // 8 segment score columns + Survey + Composite (Overview tab)
 const OVERVIEW_SCORE_COLUMNS = [
@@ -102,6 +103,7 @@ interface DiseaseAreaScore {
 }
 
 export default function HcpScoresPage() {
+  const { canWrite } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialTab = searchParams.get('tab') === 'survey' ? 'survey' : 'overview';
@@ -220,10 +222,12 @@ export default function HcpScoresPage() {
               endpoint used hardcoded weights (the bug KOL Analysis was built
               to fix). For per-analysis composite recompute, go to
               /admin/kol-analysis/<id> and click Recalculate. */}
-          <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-            <Upload className="w-4 h-4 mr-2" />
-            Import {activeTab === 'survey' ? 'Survey' : 'Segment'} Scores
-          </Button>
+          {canWrite && (
+            <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+              <Upload className="w-4 h-4 mr-2" />
+              Import {activeTab === 'survey' ? 'Survey' : 'Segment'} Scores
+            </Button>
+          )}
         </div>
       </div>
 

@@ -12,6 +12,7 @@ import {
 } from '@/hooks/use-sections';
 import { useQuestions, useQuestionCategories, useQuestionTags } from '@/hooks/use-questions';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -88,6 +89,7 @@ const typeLabels: Record<string, string> = {
 };
 
 export default function SectionDetailPage() {
+  const { canWrite } = useAuth();
   const params = useParams();
   const router = useRouter();
   const sectionId = params.id as string;
@@ -318,9 +320,11 @@ export default function SectionDetailPage() {
                       disabled={updateSection.isPending}
                     />
                   </div>
-                  <Button variant="outline" onClick={handleStartEdit}>
-                    Edit Details
-                  </Button>
+                  {canWrite && (
+                    <Button variant="outline" onClick={handleStartEdit}>
+                      Edit Details
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -341,10 +345,12 @@ export default function SectionDetailPage() {
                     <Eye className="w-4 h-4 mr-2" />
                     Preview
                   </Button>
-                  <Button size="sm" onClick={() => setShowAddDialog(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Question
-                  </Button>
+                  {canWrite && (
+                    <Button size="sm" onClick={() => setShowAddDialog(true)}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Question
+                    </Button>
+                  )}
                 </div>
               </div>
               <CardDescription>
@@ -396,15 +402,17 @@ export default function SectionDetailPage() {
                           )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          setQuestionToRemove({ id: sq.questionId, text: sq.question.text })
-                        }
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
+                      {canWrite && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setQuestionToRemove({ id: sq.questionId, text: sq.question.text })
+                          }
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
