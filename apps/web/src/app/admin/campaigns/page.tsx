@@ -8,6 +8,7 @@ import {
   useDeleteCampaign,
 } from '@/hooks/use-campaigns';
 import { useImpersonation } from '@/lib/impersonation-context';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { useClients } from '@/hooks/use-clients';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { useSurveyTemplates } from '@/hooks/use-survey-templates';
@@ -70,7 +71,9 @@ const statusColors: Record<CampaignStatus, string> = {
 
 export default function CampaignsPage() {
   const { isImpersonating } = useImpersonation();
-  const canEdit = !isImpersonating;
+  const { canWrite } = useAuth();
+  // v1.17.20: client roles view-only
+  const canEdit = canWrite && !isImpersonating;
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | 'ALL'>('ALL');
   const [clientFilter, setClientFilter] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState(1);

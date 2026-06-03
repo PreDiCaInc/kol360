@@ -43,6 +43,11 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  // v1.17.20: true only for PLATFORM_ADMIN. CLIENT_ADMIN + TEAM_MEMBER
+  // are view-only across the app — wrap any write affordance (button,
+  // form, action) in `{canWrite && ...}` so client users don't see it.
+  // The backend enforces the same rule via gateWritesToAdmins().
+  canWrite: boolean;
   signIn: (email: string, password: string) => Promise<SignInResult>;
   completeNewPassword: (newPassword: string, email: string) => Promise<void>;
   signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
@@ -312,6 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         isAuthenticated: !!user,
+        canWrite: user?.role === 'PLATFORM_ADMIN',
         signIn,
         completeNewPassword,
         signUp,

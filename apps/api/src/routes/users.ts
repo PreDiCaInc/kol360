@@ -177,9 +177,10 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     return user;
   });
 
-  // Invite new user
+  // Invite new user (v1.17.20: PLATFORM_ADMIN only — client roles are
+  // view-only across the app per product decision)
   fastify.post('/invite', {
-    preHandler: requireClientAdmin(),
+    preHandler: requirePlatformAdmin(),
   }, async (request, reply) => {
     const data = createUserSchema.parse(request.body);
 
@@ -231,9 +232,9 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.status(201).send(user);
   });
 
-  // Update user
+  // Update user (v1.17.20: PLATFORM_ADMIN only)
   fastify.put<{ Params: { id: string } }>('/:id', {
-    preHandler: requireClientAdmin(),
+    preHandler: requirePlatformAdmin(),
   }, async (request, reply) => {
     const data = updateUserSchema.parse(request.body);
     const existing = await userService.getById(request.params.id);
@@ -328,9 +329,9 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     return user;
   });
 
-  // Disable user
+  // Disable user (v1.17.20: PLATFORM_ADMIN only)
   fastify.post<{ Params: { id: string } }>('/:id/disable', {
-    preHandler: requireClientAdmin(),
+    preHandler: requirePlatformAdmin(),
   }, async (request, reply) => {
     const existing = await userService.getById(request.params.id);
 
@@ -374,9 +375,9 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     return user;
   });
 
-  // Enable user
+  // Enable user (v1.17.20: PLATFORM_ADMIN only)
   fastify.post<{ Params: { id: string } }>('/:id/enable', {
-    preHandler: requireClientAdmin(),
+    preHandler: requirePlatformAdmin(),
   }, async (request, reply) => {
     const existing = await userService.getById(request.params.id);
 
