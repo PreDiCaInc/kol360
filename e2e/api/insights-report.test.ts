@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
+import { PrismaClient } from '@prisma/client';
 import { ApiClient } from '../api-client';
 import { config } from '../config';
 
@@ -25,6 +26,14 @@ let DRY_EYE_DISEASE_AREA_ID: string;
 // Used by every analysis-backed assertion below.
 let CONFIGURED_DISEASE_AREA_ID: string;
 let CONFIGURED_CLIENT_ID: string;
+// 2026-06-02: separate (clientId, diseaseAreaId) for tests that need
+// COMPLETED SURVEY RESPONSES (not just scores). The Dedup contract block
+// uses this. On test env, "most scores" and "most completed responses"
+// happen to point at different clients; without this split, the dedup
+// invariants would only test vacuous 0==0 cases. DB-direct discovery so
+// the test doesn't depend on a tab/endpoint exposing this lookup.
+let RESPONDENTS_DISEASE_AREA_ID: string | null = null;
+let RESPONDENTS_CLIENT_ID: string | null = null;
 
 describe('Insights Report API', () => {
   let client: ApiClient;
@@ -79,6 +88,40 @@ describe('Insights Report API', () => {
       // No scored analysis on this env — success-path assertions will skip
       // gracefully, but contract assertions (400 on missing clientId) still run.
       console.log('⊘ No scored analysis on this env — success-path tests will skip');
+    }
+
+    // 2026-06-02: separate discovery for the Dedup contract block — find
+    // the (clientId, DA) pair with the most completed responses. Most
+    // scores ≠ most responses on test env. DB-direct because no API
+    // surface today exposes this aggregation.
+    const prisma = new PrismaClient();
+    try {
+      const respondentLeaders = await prisma.$queryRaw<
+        { clientId: string; diseaseAreaId: string; completed: number }[]
+      >`
+        SELECT c."clientId", c."diseaseAreaId", COUNT(*)::int AS completed
+        FROM "SurveyResponse" sr
+        JOIN "Campaign" c ON c.id = sr."campaignId"
+        WHERE sr.status = 'COMPLETED'
+        GROUP BY c."clientId", c."diseaseAreaId"
+        ORDER BY completed DESC
+        LIMIT 1
+      `;
+      if (respondentLeaders.length > 0 && respondentLeaders[0].completed > 0) {
+        RESPONDENTS_CLIENT_ID = respondentLeaders[0].clientId;
+        RESPONDENTS_DISEASE_AREA_ID = respondentLeaders[0].diseaseAreaId;
+        console.log(
+          `✅ Respondents pair (for Dedup contract): clientId=${RESPONDENTS_CLIENT_ID} ` +
+            `diseaseAreaId=${RESPONDENTS_DISEASE_AREA_ID} completed=${respondentLeaders[0].completed}`
+        );
+      } else {
+        console.log('⊘ No (client, DA) with completed responses — Dedup contract tests will skip');
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message.split('\n')[0] : String(e);
+      console.log(`⚠️ Prisma probe failed (${msg}) — Dedup contract tests will skip`);
+    } finally {
+      await prisma.$disconnect();
     }
   });
 
@@ -188,18 +231,21 @@ describe('Insights Report API', () => {
   //     in the filter).
   describe('Dedup contract (2026-06-02 bug bundle)', () => {
     it('summary.totalRespondents == demographics.totalRespondents (dedup-aware)', async () => {
-      if (!CONFIGURED_CLIENT_ID) {
-        console.log('⊘ No scored analysis on this env — skipping');
+      if (!RESPONDENTS_CLIENT_ID || !RESPONDENTS_DISEASE_AREA_ID) {
+        console.log('⊘ No (client, DA) with completed responses on this env — skipping');
         return;
       }
       const [summary, demographics] = await Promise.all([
-        client.getInsightsSummary(CONFIGURED_DISEASE_AREA_ID, CONFIGURED_CLIENT_ID),
-        client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
-          clientId: CONFIGURED_CLIENT_ID,
+        client.getInsightsSummary(RESPONDENTS_DISEASE_AREA_ID, RESPONDENTS_CLIENT_ID),
+        client.getInsightsDemographics(RESPONDENTS_DISEASE_AREA_ID, {
+          clientId: RESPONDENTS_CLIENT_ID,
         }),
       ]);
       expect(summary.status).toBe(200);
       expect(demographics.status).toBe(200);
+      // Guard against the vacuous-pass case — assert there's actually
+      // data, then assert the consistency invariant.
+      expect(summary.data.totalRespondents).toBeGreaterThan(0);
       expect(summary.data.totalRespondents).toBe(demographics.data.totalRespondents);
       console.log(
         `✅ totalRespondents consistent across endpoints: ${summary.data.totalRespondents}`
@@ -207,40 +253,38 @@ describe('Insights Report API', () => {
     });
 
     it('byCoreFocus is non-empty when survey has core-focus questions', async () => {
-      if (!CONFIGURED_CLIENT_ID) {
-        console.log('⊘ No scored analysis on this env — skipping');
+      if (!RESPONDENTS_CLIENT_ID || !RESPONDENTS_DISEASE_AREA_ID) {
+        console.log('⊘ No (client, DA) with completed responses on this env — skipping');
         return;
       }
       const { status, data } = await client.getInsightsDemographics(
-        CONFIGURED_DISEASE_AREA_ID,
-        { clientId: CONFIGURED_CLIENT_ID }
+        RESPONDENTS_DISEASE_AREA_ID,
+        { clientId: RESPONDENTS_CLIENT_ID }
       );
       expect(status).toBe(200);
-      // If there are completed responses at all (totalRespondents > 0),
-      // and the survey templates for this DA include a core-focus question
-      // (every realistic insights-relevant survey does), byCoreFocus must
-      // have entries. An empty array is the regression signal.
-      if (data.totalRespondents > 0) {
-        expect(data.byCoreFocus.length).toBeGreaterThan(0);
-        console.log(`✅ byCoreFocus has ${data.byCoreFocus.length} buckets`);
-      } else {
-        console.log('⊘ totalRespondents=0 — byCoreFocus check vacuous, skipping');
-      }
+      expect(data.totalRespondents).toBeGreaterThan(0);
+      // If there are completed responses and the survey templates for this
+      // DA include a core-focus question (every realistic insights-relevant
+      // survey does), byCoreFocus must have entries. An empty array is
+      // the regression signal that the v1.17.11 MULTI_CHOICE bug fired.
+      expect(data.byCoreFocus.length).toBeGreaterThan(0);
+      console.log(`✅ byCoreFocus has ${data.byCoreFocus.length} buckets`);
     });
 
     it('filterOptions.coreFocuses covers every byCoreFocus value', async () => {
-      if (!CONFIGURED_CLIENT_ID) {
-        console.log('⊘ No scored analysis on this env — skipping');
+      if (!RESPONDENTS_CLIENT_ID || !RESPONDENTS_DISEASE_AREA_ID) {
+        console.log('⊘ No (client, DA) with completed responses on this env — skipping');
         return;
       }
       const [filterOpts, demographics] = await Promise.all([
-        client.getInsightsFilterOptions(CONFIGURED_DISEASE_AREA_ID),
-        client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
-          clientId: CONFIGURED_CLIENT_ID,
+        client.getInsightsFilterOptions(RESPONDENTS_DISEASE_AREA_ID),
+        client.getInsightsDemographics(RESPONDENTS_DISEASE_AREA_ID, {
+          clientId: RESPONDENTS_CLIENT_ID,
         }),
       ]);
       expect(filterOpts.status).toBe(200);
       expect(demographics.status).toBe(200);
+      expect(demographics.data.byCoreFocus.length).toBeGreaterThan(0);
 
       // Every value that appears in byCoreFocus should be selectable in
       // the filter dropdown. (filterOpts.coreFocuses is DA-scoped; can be
