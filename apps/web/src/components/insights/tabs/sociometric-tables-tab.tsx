@@ -26,8 +26,11 @@ const NOMINATION_TYPES: {
   { value: 'BIASED_LEADER', label: 'Biased Leaders', color: 'bg-red-500' },
 ];
 
-// Tab 4 columns: Name, Specialty, Influencer Type, State, Count (no City)
-const COLUMNS: LeaderTableColumn[] = ['name', 'specialty', 'influencerType', 'state', 'count'];
+// Tab 4 columns: Name, Total (=count), Specialty, Influencer Type, State.
+// 2026-06-02 Group D: Total moved from last to first data column (pteam
+// + customer feedback — most important number, was being scrolled off on
+// narrower viewports). Default sort is already 'count' DESC (panel state).
+const COLUMNS: LeaderTableColumn[] = ['name', 'count', 'specialty', 'influencerType', 'state'];
 
 function SociometricPanel({
   diseaseAreaId,
