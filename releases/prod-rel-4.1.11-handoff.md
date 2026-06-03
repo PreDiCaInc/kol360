@@ -3,7 +3,7 @@
 **Status:** Ready for prod deploy. **No migration.** Reversible (code-only).
 **Tag:** `prod-rel-4.1.11` → commit on `main` (cut after this docs PR merges).
 **Supersedes:** `prod-rel-4.1.10` (v1.17.16).
-**Bundles:** v1.17.17 + v1.17.18 + v1.17.19 (admin-UX policy changes + one follow-up + escape-hatch removal & lint CI fix).
+**Bundles:** v1.17.17 + v1.17.18 + v1.17.19 + v1.17.20 (admin-UX policy + follow-up + escape-hatch removal + lint CI + client-roles view-only + HCP nomail-placeholder data fix). One-drop release per case-by-case decision.
 
 ## TL;DR
 
@@ -22,6 +22,18 @@ Three policy/RBAC items + one follow-up against the v1.17.17 deploy.
 *emailDomains escape hatch.* v1.17.17 made `emailDomains` required at the Zod write layer but kept a runtime escape hatch (`if (client.emailDomains.length === 0) return`) so pre-v1.17.17 clients on prod (with empty arrays) wouldn't break on read. Pteam confirmed prod had only 3 affected clients (Sun Pharma, Bausch & Lomb, Sample Pharma Corp); domains supplied (`sunpharma.com`, `bausch.com`, `sampleclient.com`) and the 3 rows backfilled. Test env's 9 clients backfilled in the same change with placeholder domains. Escape hatch removed from `userService.validateEmailForClient` — an empty `emailDomains` array now means strict-allowlist behavior (only `ALWAYS_ALLOWED_DOMAINS` like `bio-exec.com` get through). This shouldn't fire in practice since Zod blocks new empty-array creates and every existing row has a domain; defensive against Prisma-direct / raw-SQL inserts that might recreate an empty state.
 
 *Lint CI fix.* `apps/api/lint` was broken since the API was created — script `eslint src/` with no ESLint config + no `--ext .ts` resolved to "look for .js files in src/", found zero, ESLint errored with "No files matching the pattern 'src/' were found". `apps/web/lint` (`next lint`) was also broken — no `.eslintrc*` meant Next prompted interactively for setup (TTY only; non-TTY = exit 1). CI's `continue-on-error: true` was masking it, but recent runs propagated the exit code anyway. Fix: minimal `.eslintrc.json` in both apps (api: typescript-eslint parser, permissive rules; web: extends `next/core-web-vitals` with `react/no-unescaped-entities` + `@typescript-eslint/no-explicit-any` off to match existing code). One orphan `// eslint-disable-next-line @typescript-eslint/no-explicit-any` comment removed from `question-form-dialog.tsx:144` (the rule isn't loaded so the disable comment itself errored as "rule not found"). Lint now passes locally and in CI.
+
+**Theme 6 — Client roles view-only across the app (v1.17.20).** Per product decision: CLIENT_ADMIN and TEAM_MEMBER are now both **view-only**. Only PLATFORM_ADMIN writes. CLIENT_ADMIN previously had full admin within tenant; demoted to read-only like TEAM_MEMBER.
+
+*Backend.* `gateWritesToAdmins()` (the helper introduced in v1.17.17) now allows only `PLATFORM_ADMIN`. Already applied as a global hook on 8 route files (hcps, campaigns, distribution, questions, sections, survey-templates, dashboards, specialties), so every POST/PUT/PATCH/DELETE on those routes is now platform-admin only. `routes/users.ts` invite + update + disable + enable changed from `requireClientAdmin()` to `requirePlatformAdmin()`. Read routes (list, by-id) stay at `requireClientAdmin()` since the users page itself is admin-only.
+
+*Frontend.* New `canWrite` flag on the auth context (`role === 'PLATFORM_ADMIN'`). Applied to: HCP list + detail (Add/Import/Edit/Aliases/Opt-out/Specialty mgmt all gated), campaigns list (New Campaign button hidden), campaign detail (workflow tabs filtered to `['overview']` only — no setup steps, no Survey Status, no survey-link exposure; all action buttons hidden), users page (Invite User + row dropdown gated). The lower-traffic admin pages (survey-templates / sections / questions / hcps-scores) still show their write buttons to client users — clicking → backend 403 — flagged as a follow-up UX polish.
+
+**Theme 7 — HCP `nomail@bio-exec.com` placeholder backfill (v1.17.20 data fix).** Operators were entering `nomail@bio-exec.com` as a placeholder for HCPs without real emails on CSV imports. That made 2,651 legit HCPs (prod) look like internal Bio-Exec staff to every downstream filter (insights / nominations / exports / KOL analysis), silently excluding them whenever `excludeInternalEmails=true`. Backfilled prod (2,651 rows) + test (1,058 rows) via:
+```sql
+UPDATE "Hcp" SET email = 'nomail@kol360research.com' WHERE email = 'nomail@bio-exec.com';
+```
+The 5 actual @bio-exec.com staff-on-HCP entries (charisza, haranath, jpikor, jboyd variants) keep their emails and stay caught by the filter — those are intentional internal-team test HCPs. Going forward: operators use `nomail@kol360research.com` for missing emails. Already applied to prod; no code deploy needed for the data fix itself. Backfill SQL preserved at `scripts/backfill-hcp-nomail-domain.sql` for audit.
 
 ## What changes for customers (the visible bit)
 
