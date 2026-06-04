@@ -19,6 +19,7 @@ Older releases (prod-rel-3.2 through prod-rel-4.1.1) lived in `docs/releases/` b
 
 | Tag | Version | Headline |
 |---|---|---|
+| [4.1.12](prod-rel-4.1.12-handoff.md) | v1.17.24 → v1.17.28 | Second wave of 2026-06-02 customer fixes: Demographics Practice Setting multi-select + three missing graphs (educational, social media, valuable content, objectivity) + Sociometric/Total-Weighted column reorder + Educational Resources chart layout + sort-comparator sign fix |
 | [4.1.11](prod-rel-4.1.11-handoff.md) | v1.17.17 → v1.17.23 | emailDomains required + auto-approve invitees + TEAM_MEMBER read perms + ZodError→400 + escape hatch removed + lint CI fix + client roles view-only + nomail backfill + Hcp.email required + insights layout density + write-button hide sweep |
 | [4.1.10](prod-rel-4.1.10-handoff.md) | v1.17.12 + v1.17.13 + v1.17.14 + v1.17.15 + v1.17.16 | Consolidated 2026-06-02 customer bug bundle: respondent-counting dedup + per-campaign email filter + byCoreFocus MULTI_CHOICE fix (Demographics + KOL Profile) + filter dropdown population + Biased Leaders nomination type + tab rename + 0-result UI + 3 skeleton dimensions + v1.17.16 follow-ups (NUM-extract crash on `".."`, Demographics filter bar mount fix) |
 | [4.1.9](prod-rel-4.1.9-handoff.md) | v1.17.10 + v1.17.11 | Insights dashboard perf pass A + B (SQL aggregations, narrower fetches, composite index, threshold cache) |
