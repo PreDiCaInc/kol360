@@ -1162,12 +1162,20 @@ export class InsightsReportService {
 
     const validSortFields = ['total', 'discussionLeaders', 'referralLeaders', 'adviceLeaders', 'nationalLeaders', 'risingStars', 'socialLeaders', 'biasedLeaders', 'regional', 'name'];
     const field = validSortFields.includes(sortBy || '') ? sortBy : 'total';
-    const order = sortOrder === 'asc' ? 1 : -1;
+    // v1.17.28: rewritten to use the same `dir + ternary` comparator
+    // shape that getKolExplorer and getLeaderRankings use — one
+    // pattern across all three insights sort paths. The previous
+    // `order * (bVal - aVal)` form had the sign flipped and was
+    // sending `sortOrder='desc'` requests back ascending (Sociometric
+    // Summary Total wasn't ranking leaders highest-first).
+    const dir = sortOrder === 'asc' ? 1 : -1;
     all.sort((a, b) => {
-      if (field === 'name') return order * a.name.localeCompare(b.name);
+      if (field === 'name') {
+        return a.name < b.name ? -dir : a.name > b.name ? dir : 0;
+      }
       const aVal = ((a as Record<string, unknown>)[field!] as number) || 0;
       const bVal = ((b as Record<string, unknown>)[field!] as number) || 0;
-      return order * (bVal - aVal);
+      return aVal < bVal ? -dir : aVal > bVal ? dir : 0;
     });
 
     const total = all.length;
