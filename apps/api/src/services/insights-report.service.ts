@@ -1646,7 +1646,16 @@ export class InsightsReportService {
           ORDER BY decile ASC
         `,
 
-        // C1.10-12 Educational Resources (RANK_ORDER JSON array unrolled)
+        // C1.10-12 Educational Resources (RANK_ORDER JSON array unrolled).
+        // v1.17.24: production answerJson is a plain string array
+        // (`["item1", "item2", ...]`) where array position IS the rank, not
+        // the object-with-rank shape (`[{text, rank}]`) we originally
+        // expected. Handle both: pull `elem->>'text'` if it's an object
+        // (legacy), otherwise treat the element as a raw text node
+        // (`#>>'{}'`) and use the array ordinality as the rank. The 555
+        // prod respondents on Sun Pharma surveys were being silently
+        // dropped pre-fix because `elem->>'text' IS NOT NULL` rejected
+        // every string element.
         prisma.$queryRaw<{ bucket: string; resource: string; rank: number; count: number }[]>`
           SELECT
             CASE
@@ -1656,14 +1665,17 @@ export class InsightsReportService {
               WHEN LOWER(sq."questionTextSnapshot") LIKE '%academic%' THEN 'academic'
               ELSE 'general'
             END AS bucket,
-            elem->>'text' AS resource,
-            (elem->>'rank')::int AS rank,
+            COALESCE(elem->>'text', elem #>> '{}') AS resource,
+            COALESCE(
+              CASE WHEN (elem->>'rank') ~ '^[1-5]$' THEN (elem->>'rank')::int END,
+              ordinality::int
+            ) AS rank,
             COUNT(*)::int AS count
           FROM "SurveyResponseAnswer" sra
           JOIN "SurveyQuestion" sq ON sq.id = sra."questionId" JOIN "Question" q ON q.id = sq."questionId"
           JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
           LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-          CROSS JOIN LATERAL jsonb_array_elements(sra."answerJson") AS elem
+          CROSS JOIN LATERAL jsonb_array_elements(sra."answerJson") WITH ORDINALITY AS t(elem, ordinality)
           WHERE sr."campaignId" IN (${cids})
             AND sr.status = 'COMPLETED'
             AND (LOWER(sq."questionTextSnapshot") LIKE '%educational%'
@@ -1671,8 +1683,11 @@ export class InsightsReportService {
             AND q."type" = 'RANK_ORDER'
             AND sra."answerJson" IS NOT NULL
             AND jsonb_typeof(sra."answerJson") = 'array'
-            AND elem->>'text' IS NOT NULL
-            AND (elem->>'rank') ~ '^[1-5]$'
+            AND COALESCE(elem->>'text', elem #>> '{}') IS NOT NULL
+            AND COALESCE(
+                  CASE WHEN (elem->>'rank') ~ '^[1-5]$' THEN (elem->>'rank')::int END,
+                  ordinality::int
+                ) BETWEEN 1 AND 5
           ${responseFilter}
           ${internalEmailFilter}
           GROUP BY bucket, resource, rank
