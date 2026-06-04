@@ -87,24 +87,31 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
 
   const { data, isLoading, error } = useDemographics(diseaseAreaId, clientId, apiFilters);
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
+  // v1.17.24: a second useDemographics call WITHOUT filters, so the
+  // dropdown options (role / coreFocus / practiceSetting) come from the
+  // unfiltered universe. Mirrors the Benchmarking + Sociometric Summary
+  // tabs which already work this way. Pre-fix, the same `data` was used
+  // for both charts AND options — once you picked one value the API
+  // returned a narrowed `byPracticeSetting`, the options recomputed to
+  // just that one value, and you couldn't pick a second. Customer-
+  // reported as Practice Setting "only allowing for the selection of
+  // one setting" on Demographics specifically.
+  const { data: unfilteredData } = useDemographics(diseaseAreaId, clientId);
 
-  // Extract unique values for dropdowns from unfiltered data (first load)
-  // We use the filter options API for states; for role/coreFocus/practiceSetting,
-  // we derive from the demographics data itself (byRole, byCoreFocus, byPracticeSetting)
   const roleOptions = useMemo(() => {
-    if (!data?.byRole) return [];
-    return data.byRole.map(d => d.name).filter(Boolean).sort();
-  }, [data?.byRole]);
+    if (!unfilteredData?.byRole) return [];
+    return unfilteredData.byRole.map(d => d.name).filter(Boolean).sort();
+  }, [unfilteredData?.byRole]);
 
   const coreFocusOptions = useMemo(() => {
-    if (!data?.byCoreFocus) return [];
-    return data.byCoreFocus.map(d => d.name).filter(Boolean).sort();
-  }, [data?.byCoreFocus]);
+    if (!unfilteredData?.byCoreFocus) return [];
+    return unfilteredData.byCoreFocus.map(d => d.name).filter(Boolean).sort();
+  }, [unfilteredData?.byCoreFocus]);
 
   const practiceSettingOptions = useMemo(() => {
-    if (!data?.byPracticeSetting) return [];
-    return data.byPracticeSetting.map(d => d.name).filter(Boolean).sort();
-  }, [data?.byPracticeSetting]);
+    if (!unfilteredData?.byPracticeSetting) return [];
+    return unfilteredData.byPracticeSetting.map(d => d.name).filter(Boolean).sort();
+  }, [unfilteredData?.byPracticeSetting]);
 
   const stateOptions = useMemo(() => {
     if (filterOptions?.states && filterOptions.states.length > 0) {

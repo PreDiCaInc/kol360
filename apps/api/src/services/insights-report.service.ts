@@ -1646,7 +1646,16 @@ export class InsightsReportService {
           ORDER BY decile ASC
         `,
 
-        // C1.10-12 Educational Resources (RANK_ORDER JSON array unrolled)
+        // C1.10-12 Educational Resources (RANK_ORDER JSON array unrolled).
+        // v1.17.24: production answerJson is a plain string array
+        // (`["item1", "item2", ...]`) where array position IS the rank, not
+        // the object-with-rank shape (`[{text, rank}]`) we originally
+        // expected. Handle both: pull `elem->>'text'` if it's an object
+        // (legacy), otherwise treat the element as a raw text node
+        // (`#>>'{}'`) and use the array ordinality as the rank. The 555
+        // prod respondents on Sun Pharma surveys were being silently
+        // dropped pre-fix because `elem->>'text' IS NOT NULL` rejected
+        // every string element.
         prisma.$queryRaw<{ bucket: string; resource: string; rank: number; count: number }[]>`
           SELECT
             CASE
@@ -1656,14 +1665,17 @@ export class InsightsReportService {
               WHEN LOWER(sq."questionTextSnapshot") LIKE '%academic%' THEN 'academic'
               ELSE 'general'
             END AS bucket,
-            elem->>'text' AS resource,
-            (elem->>'rank')::int AS rank,
+            COALESCE(elem->>'text', elem #>> '{}') AS resource,
+            COALESCE(
+              CASE WHEN (elem->>'rank') ~ '^[1-5]$' THEN (elem->>'rank')::int END,
+              ordinality::int
+            ) AS rank,
             COUNT(*)::int AS count
           FROM "SurveyResponseAnswer" sra
           JOIN "SurveyQuestion" sq ON sq.id = sra."questionId" JOIN "Question" q ON q.id = sq."questionId"
           JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
           LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-          CROSS JOIN LATERAL jsonb_array_elements(sra."answerJson") AS elem
+          CROSS JOIN LATERAL jsonb_array_elements(sra."answerJson") WITH ORDINALITY AS t(elem, ordinality)
           WHERE sr."campaignId" IN (${cids})
             AND sr.status = 'COMPLETED'
             AND (LOWER(sq."questionTextSnapshot") LIKE '%educational%'
@@ -1671,8 +1683,11 @@ export class InsightsReportService {
             AND q."type" = 'RANK_ORDER'
             AND sra."answerJson" IS NOT NULL
             AND jsonb_typeof(sra."answerJson") = 'array'
-            AND elem->>'text' IS NOT NULL
-            AND (elem->>'rank') ~ '^[1-5]$'
+            AND COALESCE(elem->>'text', elem #>> '{}') IS NOT NULL
+            AND COALESCE(
+                  CASE WHEN (elem->>'rank') ~ '^[1-5]$' THEN (elem->>'rank')::int END,
+                  ordinality::int
+                ) BETWEEN 1 AND 5
           ${responseFilter}
           ${internalEmailFilter}
           GROUP BY bucket, resource, rank
@@ -1725,27 +1740,40 @@ export class InsightsReportService {
 
         // B-remainder #1: Social Media Platform Rankings (RANK_ORDER).
         // Customer-quoted question: "Please rank top 5 social media or
-        // digital platforms". Same shape as educationalResources —
-        // CROSS JOIN LATERAL on the RANK_ORDER JSON array.
+        // digital platforms".
+        //
+        // v1.17.24: prod answerJson shape is
+        //   {"texts": {}, "ranked": ["Instagram", "LinkedIn", ...]}
+        // not the [{text, rank}] object array the v1.17.15 skeleton
+        // assumed. The whole `jsonb_array_elements(answerJson)` path
+        // was wrong (answerJson is an object, not an array). 432 prod
+        // respondents' answers were being silently dropped.
+        //
+        // Read from `answerJson->'ranked'` (the actual array) and use
+        // WITH ORDINALITY so array position becomes the rank. Same
+        // pattern as the v1.17.24 educational-resources fix.
         prisma.$queryRaw<{ resource: string; rank: number; count: number }[]>`
           SELECT
-            elem->>'text' AS resource,
-            (elem->>'rank')::int AS rank,
+            elem AS resource,
+            ordinality::int AS rank,
             COUNT(*)::int AS count
           FROM "SurveyResponseAnswer" sra
           JOIN "SurveyQuestion" sq ON sq.id = sra."questionId"
           JOIN "Question" q ON q.id = sq."questionId"
           JOIN "SurveyResponse" sr ON sr.id = sra."responseId"
           LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-          CROSS JOIN LATERAL jsonb_array_elements(sra."answerJson") AS elem
+          CROSS JOIN LATERAL jsonb_array_elements_text(sra."answerJson"->'ranked') WITH ORDINALITY AS t(elem, ordinality)
           WHERE sr."campaignId" IN (${cids})
             AND sr.status = 'COMPLETED'
             AND LOWER(sq."questionTextSnapshot") LIKE '%social media%'
+            AND LOWER(sq."questionTextSnapshot") LIKE '%rank%'
             AND q."type" = 'RANK_ORDER'
             AND sra."answerJson" IS NOT NULL
-            AND jsonb_typeof(sra."answerJson") = 'array'
-            AND elem->>'text' IS NOT NULL
-            AND (elem->>'rank') ~ '^[1-5]$'
+            AND sra."answerJson" ? 'ranked'
+            AND jsonb_typeof(sra."answerJson"->'ranked') = 'array'
+            AND elem IS NOT NULL
+            AND elem <> ''
+            AND ordinality BETWEEN 1 AND 5
           ${responseFilter}
           ${internalEmailFilter}
           GROUP BY resource, rank
@@ -1753,8 +1781,13 @@ export class InsightsReportService {
 
         // B-remainder #2: Valuable Social Media Content (MULTI_CHOICE).
         // Customer-quoted question: "What type of content do you find
-        // most valuable on social media". Same UNION pattern as
-        // byPracticeSetting.
+        // most valuable on social media".
+        //
+        // v1.17.24: tightened keyword to `%type of content%` so we
+        // don't pick up the ranking question ("...1 being the most
+        // valuable...") which ALSO contains both "valuable" and
+        // "social media" but is RANK_ORDER, not the multi-choice
+        // content-type question.
         prisma.$queryRaw<{ name: string; count: number }[]>`
           SELECT name, SUM(count)::int AS count FROM (
             SELECT ${SC} AS name, 1 AS count
@@ -1765,7 +1798,7 @@ export class InsightsReportService {
             LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
             WHERE sr."campaignId" IN (${cids})
               AND sr.status = 'COMPLETED'
-              AND LOWER(sq."questionTextSnapshot") LIKE '%valuable%'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%type of content%'
               AND LOWER(sq."questionTextSnapshot") LIKE '%social media%'
               AND q."type" <> 'MULTI_CHOICE'
               AND ${SC} IS NOT NULL
@@ -1780,7 +1813,7 @@ export class InsightsReportService {
             LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
             WHERE sr."campaignId" IN (${cids})
               AND sr.status = 'COMPLETED'
-              AND LOWER(sq."questionTextSnapshot") LIKE '%valuable%'
+              AND LOWER(sq."questionTextSnapshot") LIKE '%type of content%'
               AND LOWER(sq."questionTextSnapshot") LIKE '%social media%'
               AND q."type" = 'MULTI_CHOICE'
               AND sra."answerJson" ? 'selected'

@@ -771,11 +771,18 @@ export default function CampaignDetailPage() {
                         Hide @bio-exec.com respondents from nominations, scores, and exports
                       </p>
                     </div>
+                    {/* v1.17.24: client roles (CLIENT_ADMIN + TEAM_MEMBER)
+                        see this toggle on the Overview tab — the only campaign
+                        tab they have access to — so it needs explicit
+                        read-only treatment. Toggle still shows the current
+                        state, but the button is disabled and the onClick is a
+                        no-op when !canEdit. PLATFORM_ADMIN flow unchanged. */}
                     <button
                       type="button"
                       role="switch"
                       aria-checked={campaign.excludeInternalEmails ?? false}
                       onClick={async () => {
+                        if (!canEdit) return;
                         try {
                           await updateCampaign.mutateAsync({
                             id: campaignId,
@@ -785,10 +792,10 @@ export default function CampaignDetailPage() {
                           console.error('Failed to toggle exclude internal emails:', error);
                         }
                       }}
-                      disabled={updateCampaign.isPending}
+                      disabled={!canEdit || updateCampaign.isPending}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         campaign.excludeInternalEmails ? 'bg-primary' : 'bg-gray-300'
-                      }`}
+                      } ${!canEdit ? 'cursor-not-allowed opacity-70' : ''}`}
                     >
                       <span
                         className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${

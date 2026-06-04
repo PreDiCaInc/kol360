@@ -30,7 +30,9 @@ const NOMINATION_TYPES: {
 // 2026-06-02 Group D: Total moved from last to first data column (pteam
 // + customer feedback — most important number, was being scrolled off on
 // narrower viewports). Default sort is already 'count' DESC (panel state).
-const COLUMNS: LeaderTableColumn[] = ['name', 'count', 'specialty', 'influencerType', 'state'];
+// v1.17.24: Count moved to actual first column (was second after Leader).
+// Customer ask: "move total nominations to the first column".
+const COLUMNS: LeaderTableColumn[] = ['count', 'name', 'specialty', 'influencerType', 'state'];
 
 function SociometricPanel({
   diseaseAreaId,
@@ -133,7 +135,14 @@ export function SociometricTablesTab({ diseaseAreaId, onKolSelect, clientId }: P
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* v1.17.24: single-column layout so every leader table gets the
+          full viewport width and all 6 columns (Leader / Count /
+          Specialty / Influencer Type / State / Rank) fit without
+          horizontal scroll. Customer-reported: "some people might not
+          realize they have to scroll". The prior lg:grid-cols-2 split
+          forced each table into ~half the page, which overflowed at
+          common laptop widths. */}
+      <div className="grid grid-cols-1 gap-6">
         {NOMINATION_TYPES.map((type) => (
           <SociometricPanel
             key={type.value}
