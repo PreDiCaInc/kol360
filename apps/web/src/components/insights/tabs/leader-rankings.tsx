@@ -47,9 +47,12 @@ const NOMINATION_TYPES: {
   { value: 'BIASED_LEADER', label: 'Biased Leaders', color: 'bg-red-500' },
 ];
 
-// v1.17.24: Count moved to first column (matches the Sociometric Leaders
-// page change for consistency across leader-style tables).
-const COLUMNS: LeaderTableColumn[] = ['count', 'name', 'specialty', 'city', 'state'];
+// v1.17.27: Count back to the LAST column. The v1.17.24 move-to-first
+// was the wrong reading of the customer ask — the rule is "descriptors
+// first, then the count block". With only one count column here, that
+// puts Count at the end, matching how the row reads left-to-right
+// ("Person X has N nominations").
+const COLUMNS: LeaderTableColumn[] = ['name', 'specialty', 'city', 'state', 'count'];
 
 function LeaderRankingPanel({
   diseaseAreaId,

@@ -357,10 +357,15 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
             <thead>
               <tr className="border-b bg-muted/50">
                 <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px]">#</th>
-                {/* v1.17.25: Total moved from last column to right after #
-                    per customer ask (Sociometric Leaders #3 part 1).
-                    Default sortBy='total' sortOrder='desc' was already
-                    correct; only the column position was missed. */}
+                <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <SortableHeader label="Influencer Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <SortableHeader label="City" field="city" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                <SortableHeader label="State" field="state" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                {/* v1.17.26: Total is the FIRST of the count columns
+                    (right before Discussion / Referral / \u2026), not the
+                    first column of the whole table. Default sort still
+                    sortBy='total' sortOrder='desc'. */}
                 <th
                   className={cn(
                     'cursor-pointer select-none px-3 py-2 text-center text-sm font-bold',
@@ -376,11 +381,6 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     </span>
                   </div>
                 </th>
-                <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <SortableHeader label="Influencer Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <SortableHeader label="City" field="city" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <SortableHeader label="State" field="state" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 {NOMINATION_COLUMNS.map((col) => (
                   <th
                     key={col.field}
@@ -421,10 +421,6 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     <td className="px-3 py-2 text-muted-foreground tabular-nums">
                       {(page - 1) * limit + index + 1}
                     </td>
-                    {/* Total moved to second position to match the header reorder */}
-                    <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
-                      {item.total}
-                    </td>
                     <td className="px-3 py-2">
                       <KolNameLink
                         name={item.name}
@@ -444,6 +440,10 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     </td>
                     <td className="px-3 py-2">{toTitleCase(item.city) || '-'}</td>
                     <td className="px-3 py-2">{item.state || '-'}</td>
+                    {/* Total: first of the count columns (matches header). */}
+                    <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
+                      {item.total}
+                    </td>
                     <HeatMapCell value={item.discussionLeaders} maxValue={maxValues.discussionLeaders} />
                     <HeatMapCell value={item.referralLeaders} maxValue={maxValues.referralLeaders} />
                     <HeatMapCell value={item.adviceLeaders} maxValue={maxValues.adviceLeaders} />

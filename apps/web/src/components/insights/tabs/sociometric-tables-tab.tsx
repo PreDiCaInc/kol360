@@ -30,9 +30,10 @@ const NOMINATION_TYPES: {
 // 2026-06-02 Group D: Total moved from last to first data column (pteam
 // + customer feedback — most important number, was being scrolled off on
 // narrower viewports). Default sort is already 'count' DESC (panel state).
-// v1.17.24: Count moved to actual first column (was second after Leader).
-// Customer ask: "move total nominations to the first column".
-const COLUMNS: LeaderTableColumn[] = ['count', 'name', 'specialty', 'influencerType', 'state'];
+// v1.17.27: Count back to the LAST column to match the Benchmarking
+// LeaderTable convention. Descriptors first, count block last; with
+// only one count column the count IS the block, so it lands at the end.
+const COLUMNS: LeaderTableColumn[] = ['name', 'specialty', 'influencerType', 'state', 'count'];
 
 function SociometricPanel({
   diseaseAreaId,

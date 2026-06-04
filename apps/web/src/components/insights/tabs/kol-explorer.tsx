@@ -358,17 +358,17 @@ function ScoreTableView({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px] sticky left-0 bg-muted/50 z-10">#</th>
-              {/* v1.17.25: Total moved from last to first data column per
-                  customer ask (same pattern as Sociometric Leaders). The
-                  default sort is already sortBy='compositeScore'
-                  sortOrder='desc' — highest weighted score first. */}
-              <SortableHeader label="Total" field="compositeScore" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <th className="px-3 py-2 text-left text-sm font-medium">Degree</th>
               <th className="px-3 py-2 text-left text-sm font-medium">City</th>
               <SortableHeader label="State" field="state" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <SortableHeader label="Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+              {/* v1.17.26: Total is the FIRST of the score columns
+                  (right before the per-segment scores), not the first
+                  column of the whole table. Default sort still
+                  sortBy='compositeScore' sortOrder='desc'. */}
+              <SortableHeader label="Total" field="compositeScore" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               {SCORE_COLUMNS.map((col) => (
                 <SortableHeader
                   key={col.key}
@@ -396,10 +396,6 @@ function ScoreTableView({
                   <td className="px-3 py-2 text-muted-foreground tabular-nums sticky left-0 bg-background">
                     {(page - 1) * limit + index + 1}
                   </td>
-                  {/* Total moved to second position to match the header reorder */}
-                  <td className="px-3 py-2 text-right font-mono font-bold bg-muted/30">
-                    {kol.compositeScore?.toFixed(1) ?? '-'}
-                  </td>
                   <td className="px-3 py-2 min-w-[180px]">
                     <KolNameLink name={kol.name} onClick={() => onKolSelect(kol.id)} />
                   </td>
@@ -423,6 +419,10 @@ function ScoreTableView({
                         {kol.influencerType}
                       </Badge>
                     ) : '-'}
+                  </td>
+                  {/* Total: first of the score columns (matches header). */}
+                  <td className="px-3 py-2 text-right font-mono font-bold bg-muted/30">
+                    {kol.compositeScore?.toFixed(1) ?? '-'}
                   </td>
                   {SCORE_COLUMNS.map((col) => (
                     <td key={col.key} className="px-3 py-2 text-right font-mono text-xs">
