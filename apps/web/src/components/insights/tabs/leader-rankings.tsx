@@ -47,7 +47,9 @@ const NOMINATION_TYPES: {
   { value: 'BIASED_LEADER', label: 'Biased Leaders', color: 'bg-red-500' },
 ];
 
-const COLUMNS: LeaderTableColumn[] = ['name', 'specialty', 'city', 'state', 'count'];
+// v1.17.24: Count moved to first column (matches the Sociometric Leaders
+// page change for consistency across leader-style tables).
+const COLUMNS: LeaderTableColumn[] = ['count', 'name', 'specialty', 'city', 'state'];
 
 function LeaderRankingPanel({
   diseaseAreaId,
