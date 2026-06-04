@@ -357,6 +357,25 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
             <thead>
               <tr className="border-b bg-muted/50">
                 <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px]">#</th>
+                {/* v1.17.25: Total moved from last column to right after #
+                    per customer ask (Sociometric Leaders #3 part 1).
+                    Default sortBy='total' sortOrder='desc' was already
+                    correct; only the column position was missed. */}
+                <th
+                  className={cn(
+                    'cursor-pointer select-none px-3 py-2 text-center text-sm font-bold',
+                    'hover:bg-muted/50 transition-colors bg-muted',
+                    sortBy === 'total' && 'ring-1 ring-inset ring-foreground/20'
+                  )}
+                  onClick={() => handleSort('total')}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>Total</span>
+                    <span className={cn('text-xs', sortBy !== 'total' && 'text-muted-foreground/50')}>
+                      {sortBy === 'total' ? (sortOrder === 'asc' ? '\u25B2' : '\u25BC') : '\u25B2'}
+                    </span>
+                  </div>
+                </th>
                 <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 <SortableHeader label="Influencer Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
@@ -381,21 +400,6 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     </div>
                   </th>
                 ))}
-                <th
-                  className={cn(
-                    'cursor-pointer select-none px-3 py-2 text-center text-sm font-bold',
-                    'hover:bg-muted/50 transition-colors bg-muted',
-                    sortBy === 'total' && 'ring-1 ring-inset ring-foreground/20'
-                  )}
-                  onClick={() => handleSort('total')}
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    <span>Total</span>
-                    <span className={cn('text-xs', sortBy !== 'total' && 'text-muted-foreground/50')}>
-                      {sortBy === 'total' ? (sortOrder === 'asc' ? '\u25B2' : '\u25BC') : '\u25B2'}
-                    </span>
-                  </div>
-                </th>
               </tr>
             </thead>
             <tbody>
@@ -416,6 +420,10 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                   <tr key={item.hcpId} className="border-b last:border-b-0 hover:bg-muted/40 transition-colors even:bg-muted/10">
                     <td className="px-3 py-2 text-muted-foreground tabular-nums">
                       {(page - 1) * limit + index + 1}
+                    </td>
+                    {/* Total moved to second position to match the header reorder */}
+                    <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
+                      {item.total}
                     </td>
                     <td className="px-3 py-2">
                       <KolNameLink
@@ -442,9 +450,6 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     <HeatMapCell value={item.nationalLeaders} maxValue={maxValues.nationalLeaders} />
                     <HeatMapCell value={item.risingStars} maxValue={maxValues.risingStars} />
                     <HeatMapCell value={item.socialLeaders} maxValue={maxValues.socialLeaders} />
-                    <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
-                      {item.total}
-                    </td>
                   </tr>
                 ))
               )}

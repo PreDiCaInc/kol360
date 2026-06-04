@@ -358,6 +358,11 @@ function ScoreTableView({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px] sticky left-0 bg-muted/50 z-10">#</th>
+              {/* v1.17.25: Total moved from last to first data column per
+                  customer ask (same pattern as Sociometric Leaders). The
+                  default sort is already sortBy='compositeScore'
+                  sortOrder='desc' — highest weighted score first. */}
+              <SortableHeader label="Total" field="compositeScore" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <th className="px-3 py-2 text-left text-sm font-medium">Degree</th>
@@ -374,7 +379,6 @@ function ScoreTableView({
                   onSort={handleSort}
                 />
               ))}
-              <SortableHeader label="Total" field="compositeScore" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
             </tr>
           </thead>
           <tbody>
@@ -391,6 +395,10 @@ function ScoreTableView({
                 <tr key={kol.id} className="border-b last:border-b-0 hover:bg-muted/40 transition-colors even:bg-muted/10">
                   <td className="px-3 py-2 text-muted-foreground tabular-nums sticky left-0 bg-background">
                     {(page - 1) * limit + index + 1}
+                  </td>
+                  {/* Total moved to second position to match the header reorder */}
+                  <td className="px-3 py-2 text-right font-mono font-bold bg-muted/30">
+                    {kol.compositeScore?.toFixed(1) ?? '-'}
                   </td>
                   <td className="px-3 py-2 min-w-[180px]">
                     <KolNameLink name={kol.name} onClick={() => onKolSelect(kol.id)} />
@@ -421,9 +429,6 @@ function ScoreTableView({
                       {(kol[col.key as keyof KolExplorerItem] as number | null)?.toFixed(1) ?? '-'}
                     </td>
                   ))}
-                  <td className="px-3 py-2 text-right font-mono font-bold bg-muted/30">
-                    {kol.compositeScore?.toFixed(1) ?? '-'}
-                  </td>
                 </tr>
               ))
             )}
