@@ -32,6 +32,7 @@ import { specialtyRoutes } from './routes/specialties';
 import { insightsReportRoutes } from './routes/insights-report';
 import { optOutRoutes } from './routes/opt-outs';
 import { kolAnalysisRoutes } from './routes/kol-analysis';
+import { curationSyncRoutes } from './routes/curation-sync';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -81,6 +82,12 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(clientRoutes, { prefix: '/api/v1/clients' });
   await fastify.register(userRoutes, { prefix: '/api/v1/users' });
   await fastify.register(hcpRoutes, { prefix: '/api/v1/hcps' });
+  // v1.17.29 — curation integration. Registered as a separate plugin
+  // at the same prefix so it doesn't inherit the requireTenantUser
+  // / gateWritesToAdmins hooks the rest of /api/v1/hcps/* uses. Auth
+  // is M2M-only via plugins/m2m-auth.ts; matching route URL is in
+  // plugins/auth.ts M2M_ROUTES so the global user-SPA hook bows out.
+  await fastify.register(curationSyncRoutes, { prefix: '/api/v1/hcps' });
   await fastify.register(questionRoutes, { prefix: '/api/v1/questions' });
   await fastify.register(sectionRoutes, { prefix: '/api/v1/sections' });
   await fastify.register(surveyTemplateRoutes, { prefix: '/api/v1/survey-templates' });

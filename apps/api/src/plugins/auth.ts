@@ -37,8 +37,25 @@ const PUBLIC_ROUTES = [
   '/api/v1/unsubscribe', // Email opt-out
 ];
 
+// v1.17.29 — routes that authenticate with the M2M (client_credentials)
+// Cognito client instead of the user-SPA client. The global user-SPA
+// onRequest hook skips them; each route opts in by adding a
+// `requireM2M({ scope })` preHandler from plugins/m2m-auth.ts.
+//
+// Keep this list small and explicit. Curation integration only.
+const M2M_ROUTES = [
+  '/api/v1/hcps/get-beid',
+];
+
 function isPublicRoute(url: string): boolean {
   return PUBLIC_ROUTES.some(route => url.startsWith(route));
+}
+
+function isM2MRoute(url: string): boolean {
+  // Match exact path (ignoring querystring); be strict so we don't
+  // accidentally bypass user auth on `/api/v1/hcps/get-beid-foo`.
+  const path = url.split('?')[0];
+  return M2M_ROUTES.includes(path);
 }
 
 export const authPlugin = fp(async (fastify) => {
@@ -47,6 +64,14 @@ export const authPlugin = fp(async (fastify) => {
   fastify.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     // Skip auth for public routes
     if (isPublicRoute(request.url)) {
+      return;
+    }
+
+    // M2M routes authenticate via plugins/m2m-auth.ts route-level
+    // preHandler. The global hook bows out here so the M2M verifier
+    // (which expects a token signed by a different Cognito client)
+    // gets to handle the Authorization header.
+    if (isM2MRoute(request.url)) {
       return;
     }
 
