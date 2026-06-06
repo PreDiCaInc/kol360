@@ -17,7 +17,7 @@ const hcpService = new HcpService();
 //
 // Wire spec: kolcuration/spec/dba-ticket-kol360-deploy-sync-endpoints-koltest.md
 // Reply with the build plan: kolcuration/spec/dba-reply-kol360-get-beid-koltest.md
-export const curationSyncRoutes: FastifyPluginAsync = async (fastify) => {
+export const curationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     '/get-beid',
     { preHandler: requireM2M({ scope: 'kol360-api/hcps:write-stub' }) },

@@ -29,4 +29,4 @@ export * from './nomination';
 export * from './dashboard';
 export * from './insights-report';
 export * from './insights2';
-export * from './curation-sync';
+export * from './curation';
