@@ -22,6 +22,33 @@ Records #2 and #3 are the cert-validation challenge. They can stay forever — A
 
 TTL: 300 (5 minutes) is fine; matches the convention for the existing koltest records.
 
+### ⚠️ GoDaddy Host-field gotcha (don't repeat the 2026-06-05 mistake)
+
+bio-exec.com is registered at GoDaddy (nameservers `ns49.domaincontrol.com` + `ns50.domaincontrol.com`). The GoDaddy DNS UI **auto-appends the zone name** to whatever's in the "Host" / "Name" field. So entering the full FQDN there results in a doubled-domain typo:
+
+| What you type in the GoDaddy Host field | Where the record actually lands |
+|---|---|
+| `api-test.bio-exec.com` ❌ | `api-test.bio-exec.com.bio-exec.com` (won't resolve, won't validate) |
+| `api-test` ✅ | `api-test.bio-exec.com` (correct) |
+
+For this domain that means entering the bare subdomain segments only:
+
+| Record purpose | What goes in GoDaddy's Host field |
+|---|---|
+| Routing CNAME | `api-test` |
+| ACM validation #1 | `_ab12803afd8926ba5828bbf24e88e309.api-test` |
+| ACM validation #2 | `_fa30b103bb3e67530e6340c06743d153.9ro4a6tk4h130ivj7n1wi2six9weu3v.api-test` |
+
+The **Value** field on all three takes the full target as documented in the table above (`mpcu4inmtj.us-east-2.awsapprunner.com.` for routing, the two `…acm-validations.aws.` targets for the validation pair). Values get a trailing dot, names don't.
+
+How to spot the typo when troubleshooting: query the authoritative nameserver directly with the **doubled** form. If a value comes back at the doubled name, the records are physically present but at the wrong location:
+
+```bash
+dig +short @ns49.domaincontrol.com api-test.bio-exec.com.bio-exec.com CNAME
+# If this returns mpcu4inmtj.us-east-2.awsapprunner.com — wrong location, fix the Host field.
+# If empty, the record wasn't added at all.
+```
+
 ---
 
 ## Verification timeline
