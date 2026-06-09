@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { LogOut, ChevronDown, Eye } from 'lucide-react';
 import { Breadcrumb } from './breadcrumb';
+import { ClientBadge } from './client-badge';
 
 export function Header() {
   const { user, signOut } = useAuth();
@@ -71,7 +72,13 @@ export function Header() {
         </div>
 
         {/* Right side actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* v1.17.30 — Brand badge for current client context. Hides
+              on PLATFORM_ADMIN with no impersonation; shows
+              "Viewing as X" prefix during impersonation; shows
+              tenant client for TEAM_MEMBER / CLIENT_ADMIN. */}
+          <ClientBadge />
+
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

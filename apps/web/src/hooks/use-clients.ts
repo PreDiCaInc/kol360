@@ -65,6 +65,19 @@ export function useUpdateClient() {
   });
 }
 
+// v1.17.30 — GET /api/v1/clients/me. Returns the calling user's Client
+// row, or null for PLATFORM_ADMIN (no tenant) / a deleted Client. The
+// useCurrentClient() helper below combines this with the impersonation
+// context to give the badge a single source of truth.
+export function useClientMe(enabled = true) {
+  return useQuery({
+    queryKey: ['clients', 'me'],
+    queryFn: () => apiClient.get<Client | null>('/api/v1/clients/me', undefined, { skipImpersonation: true }),
+    enabled,
+    staleTime: 5 * 60_000, // 5 min — client name/logo/color don't change often
+  });
+}
+
 export function useDeleteClient() {
   const queryClient = useQueryClient();
 
