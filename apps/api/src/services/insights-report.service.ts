@@ -248,18 +248,29 @@ export class InsightsReportService {
     }
 
     if (filters.coreFocuses && filters.coreFocuses.length > 0) {
+      // v1.17.30 — Core Focus is a MULTI_CHOICE question; selections land in
+      // answerJson.selected[]. Single-choice fallback kept for the
+      // theoretical case where a campaign authored Core Focus as
+      // SINGLE_CHOICE — display side (byCoreFocus chart, getFilterOptions
+      // dropdown) accepts both shapes so the filter path mirrors that.
+      // Bug fixed 2026-06-09 per docs/findings/core-focus-filter-broken-2026-06-09.md.
       const accept = new Set(filters.coreFocuses);
       const matching = new Set<string>();
       for (const a of answers) {
         const qt = a.question.questionTextSnapshot.toLowerCase();
-        if (qt.includes('core focus')) {
-          const value =
-            a.answerText ||
-            this.extractSingleChoice(
-              a.answerJson as Record<string, unknown> | null,
-              a.answerText,
-              a.question.question.type
-            );
+        if (!qt.includes('core focus')) continue;
+        const questionType = a.question.question.type;
+        if (questionType === 'MULTI_CHOICE' && a.answerJson) {
+          const selected = (a.answerJson as { selected?: string[] }).selected;
+          if (Array.isArray(selected) && selected.some((s) => accept.has(s))) {
+            matching.add(a.response.id);
+          }
+        } else {
+          const value = this.extractSingleChoice(
+            a.answerJson as Record<string, unknown> | null,
+            a.answerText,
+            questionType
+          );
           if (value && accept.has(value)) matching.add(a.response.id);
         }
       }
