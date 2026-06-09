@@ -8,6 +8,7 @@ import { loggingPlugin } from './plugins/logging';
 import { errorHandlerPlugin } from './plugins/error-handler';
 import { healthRoutes } from './routes/health';
 import { clientRoutes } from './routes/clients';
+import { clientMeRoutes } from './routes/client-me';
 import { userRoutes } from './routes/users';
 import { hcpRoutes } from './routes/hcps';
 import { questionRoutes } from './routes/questions';
@@ -79,6 +80,12 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(healthRoutes, { prefix: '/health' });
 
   // API v1 routes
+  // v1.17.30 — /me endpoint for tenant users (TEAM_MEMBER/CLIENT_ADMIN)
+  // to fetch their own client. Registered BEFORE clientRoutes so the
+  // /me literal path matches before /:id in the main plugin. Has its
+  // own requireTenantUser preHandler; doesn't inherit the
+  // requirePlatformAdmin gate from clientRoutes.
+  await fastify.register(clientMeRoutes, { prefix: '/api/v1/clients' });
   await fastify.register(clientRoutes, { prefix: '/api/v1/clients' });
   await fastify.register(userRoutes, { prefix: '/api/v1/users' });
   await fastify.register(hcpRoutes, { prefix: '/api/v1/hcps' });

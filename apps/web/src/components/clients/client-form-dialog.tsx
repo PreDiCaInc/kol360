@@ -163,6 +163,28 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
 
             <FormField
               control={form.control}
+              name="logoUrl"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Logo URL</FormLabel>
+                  <FormControl>
+                    <Input
+                      value={field.value ?? ''}
+                      onChange={(e) => field.onChange(e.target.value || null)}
+                      placeholder="https://cdn.example.com/logos/acme.png"
+                    />
+                  </FormControl>
+                  <p className="text-sm text-muted-foreground">
+                    Public URL to a hosted logo image (square works best).
+                    Falls back to a tinted initials avatar if blank.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="primaryColor"
               render={({ field }) => (
                 <FormItem>

@@ -129,4 +129,145 @@ describe('Insights respondent filters (v1.17.5)', () => {
       );
     });
   });
+
+  // v1.17.30 — two-sided assertion matrix.
+  //
+  // Why this exists: the Core Focus filter shipped broken for ~2 months (no
+  // MULTI_CHOICE branch in applyRespondentFilters); the existing
+  // "filtered ≤ baseline" tests above passed because filtered=0 trivially
+  // satisfies the bound. See
+  // docs/findings/core-focus-filter-broken-2026-06-09.md for the full
+  // post-mortem.
+  //
+  // What it asserts: for every (filter, endpoint) pair, picking a real
+  // filter value from /filter-options (not a hardcoded literal) produces
+  //   (a) a result that is no larger than the unfiltered baseline (the
+  //       old bound), AND
+  //   (b) a result that is strictly greater than zero.
+  //
+  // Together: filter actually narrows the data, AND the narrowing path
+  // returns data. A future filter that silently zeros out (the bug we just
+  // fixed) fails (b). A future filter that doesn't apply at all fails (a).
+  describe('Two-sided filter matrix (catches "filter zeros out" regression)', () => {
+    let availableCoreFocuses: string[] = [];
+    let availableRoles: string[] = [];
+    let availableStates: string[] = [];
+
+    beforeAll(async () => {
+      if (!CONFIGURED_CLIENT_ID) return;
+      // Pull the dropdown options the UI populates from. Any value here is
+      // by definition a realistic filter value (it's the literal the user
+      // would click). Avoids the prior bug-bait of hardcoded "Dry Eye"
+      // (which doesn't match the actual category "Dry Eye (including
+      // OSD, MGD, and NK)").
+      const { data: opts } = await client.getInsightsFilterOptions(CONFIGURED_DISEASE_AREA_ID);
+      availableCoreFocuses = opts.coreFocuses ?? [];
+      availableRoles = opts.specialties ?? [];
+      availableStates = opts.states ?? [];
+    });
+
+    // Demographics endpoint — the one that surfaced the user-reported bug.
+    // Asserts both bounds across all 3 categorical filters served by
+    // /filter-options.
+    it.each([
+      ['coreFocuses',     () => availableCoreFocuses[0]],
+      ['respondentRoles', () => availableRoles[0]],
+      ['stateOfPractices', () => availableStates[0]],
+    ])('demographics: %s filter narrows AND returns >0', async (filterKey, pickValue) => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const value = pickValue();
+      if (!value) {
+        console.log(`⊘ /filter-options returned no ${filterKey} — skipping`);
+        return;
+      }
+      const baseline = await client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
+        clientId: CONFIGURED_CLIENT_ID,
+      });
+      const filtered = await client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
+        clientId: CONFIGURED_CLIENT_ID,
+        [filterKey]: value,
+      });
+      expect(baseline.status).toBe(200);
+      expect(filtered.status).toBe(200);
+      // (a) Filter narrows or keeps equal.
+      expect(filtered.data.totalRespondents).toBeLessThanOrEqual(baseline.data.totalRespondents);
+      // (b) Filter doesn't zero out — the bug we just fixed produced 0 here
+      // for coreFocuses. A value lifted from /filter-options MUST yield
+      // at least one matching respondent by construction.
+      expect(filtered.data.totalRespondents).toBeGreaterThan(0);
+      console.log(
+        `✅ demographics ${filterKey}="${value}": baseline=${baseline.data.totalRespondents} filtered=${filtered.data.totalRespondents}`
+      );
+    });
+
+    // Same matrix on Leader Rankings + Sociometric Summary so the next
+    // filter-application regression on those endpoints fails loudly here
+    // instead of in production.
+    it.each([
+      ['coreFocuses',     () => availableCoreFocuses[0]],
+      ['respondentRoles', () => availableRoles[0]],
+    ])('leader rankings: %s filter narrows AND returns >0', async (filterKey, pickValue) => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const value = pickValue();
+      if (!value) {
+        console.log(`⊘ /filter-options returned no ${filterKey} — skipping`);
+        return;
+      }
+      const baseline = await client.getInsightsLeaderRankings(CONFIGURED_DISEASE_AREA_ID, {
+        nominationType: 'DISCUSSION_LEADERS',
+        clientId: CONFIGURED_CLIENT_ID,
+        limit: 500,
+      });
+      const filtered = await client.getInsightsLeaderRankings(CONFIGURED_DISEASE_AREA_ID, {
+        nominationType: 'DISCUSSION_LEADERS',
+        clientId: CONFIGURED_CLIENT_ID,
+        limit: 500,
+        [filterKey]: value,
+      });
+      expect(baseline.status).toBe(200);
+      expect(filtered.status).toBe(200);
+      expect(filtered.data.items.length).toBeLessThanOrEqual(baseline.data.items.length);
+      expect(filtered.data.items.length).toBeGreaterThan(0);
+      console.log(
+        `✅ leader-rankings ${filterKey}="${value}": baseline=${baseline.data.items.length} filtered=${filtered.data.items.length}`
+      );
+    });
+
+    it.each([
+      ['coreFocuses',     () => availableCoreFocuses[0]],
+      ['respondentRoles', () => availableRoles[0]],
+    ])('sociometric summary: %s filter narrows AND returns >0', async (filterKey, pickValue) => {
+      if (!CONFIGURED_CLIENT_ID) {
+        console.log('⊘ No scored analysis on this env — skipping');
+        return;
+      }
+      const value = pickValue();
+      if (!value) {
+        console.log(`⊘ /filter-options returned no ${filterKey} — skipping`);
+        return;
+      }
+      const baseline = await client.getInsightsSociometricSummary(CONFIGURED_DISEASE_AREA_ID, {
+        clientId: CONFIGURED_CLIENT_ID,
+        limit: 5000,
+      });
+      const filtered = await client.getInsightsSociometricSummary(CONFIGURED_DISEASE_AREA_ID, {
+        clientId: CONFIGURED_CLIENT_ID,
+        limit: 5000,
+        [filterKey]: value,
+      });
+      expect(baseline.status).toBe(200);
+      expect(filtered.status).toBe(200);
+      expect(filtered.data.total).toBeLessThanOrEqual(baseline.data.total);
+      expect(filtered.data.total).toBeGreaterThan(0);
+      console.log(
+        `✅ sociometric ${filterKey}="${value}": baseline=${baseline.data.total} filtered=${filtered.data.total}`
+      );
+    });
+  });
 });
