@@ -48,15 +48,48 @@ case "$ENV_NAME" in
     ;;
 esac
 
-BASTION_IP="3.142.171.8"
+# v1.17.31: env-var-ize bastion host + DB password so the script is
+# safe-to-ship across the PreDiCaInc → Bio-Exec mirror without manual
+# stripping. Background: docs/findings/tunnel-script-cred-hardening-2026-06-09.md.
+#
+# Both can be overridden by env. Defaults below preserve the dev
+# experience (no extra setup) but require an AWS lookup for the
+# bastion IP if not exported. Devs typically `export PGPASSWORD=...`
+# once in their shell rc (it's the standard psql env var).
+#
+# To override: `export BASTION_IP=...` and `export PGPASSWORD=...`
+# in your shell before running, or pass inline:
+#   BASTION_IP=x.x.x.x PGPASSWORD=secret scripts/tunnel-up.sh
+BASTION_IP="${BASTION_IP:-}"
 BASTION_USER="ec2-user"
-KEY_PATH="$(cd "$(dirname "$0")/.." && pwd)/kol360-bastion-key.pem"
+KEY_PATH="${KOL360_BASTION_KEY:-$(cd "$(dirname "$0")/.." && pwd)/kol360-bastion-key.pem}"
 BASTION_SG="sg-023bbc371eb51c2e2"
-AWS_PROFILE="koluser"
-AWS_REGION="us-east-2"
+AWS_PROFILE="${AWS_PROFILE:-koluser}"
+AWS_REGION="${AWS_REGION:-us-east-2}"
 DB_USER="kol360admin"
-DB_PASSWORD="RDS4Bioexec2025"
 DB_NAME="kol360"
+
+# Resolve bastion IP from EC2 if not in env. Cached for the run.
+if [ -z "$BASTION_IP" ]; then
+  BASTION_IP=$(aws ec2 describe-instances \
+    --instance-ids i-092c65a198078b35f \
+    --region "$AWS_REGION" --profile "$AWS_PROFILE" \
+    --query 'Reservations[0].Instances[0].PublicIpAddress' \
+    --output text 2>/dev/null)
+  if [ -z "$BASTION_IP" ] || [ "$BASTION_IP" = "None" ]; then
+    printf "\033[31m[tunnel-up]\033[0m couldn't resolve bastion IP — set BASTION_IP env var\n" >&2
+    exit 6
+  fi
+fi
+
+# DB password from env (PGPASSWORD is the standard psql env var, so a
+# single export covers both this script and direct psql sessions).
+DB_PASSWORD="${PGPASSWORD:-}"
+if [ -z "$DB_PASSWORD" ]; then
+  printf "\033[31m[tunnel-up]\033[0m PGPASSWORD not set — export it first\n" >&2
+  printf "  See docs/team-notes/cdteam-aws-access-handoff.md for the value\n" >&2
+  exit 7
+fi
 
 log()  { printf "\033[36m[tunnel-up]\033[0m %s\n" "$*"; }
 warn() { printf "\033[33m[tunnel-up]\033[0m %s\n" "$*" >&2; }

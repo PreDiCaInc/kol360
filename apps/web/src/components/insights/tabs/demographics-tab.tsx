@@ -67,15 +67,18 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
   const debouncedFilters = useDebounce(filters, 500);
 
   // Build the API filter object (only include defined values).
-  // v1.17.4: arrays serialize as comma-separated strings.
+  // v1.17.31: arrays pass through as arrays — the hook + URLSearchParams
+  // append one repeated query param per value. Previously joined as CSV
+  // which shredded values containing commas (e.g. "Dry Eye (including
+  // OSD, MGD, and NK)"). See docs/findings/splitcsv-comma-bug-2026-06-09.md.
   const apiFilters = useMemo(() => {
-    const result: Record<string, string | number | undefined> = {};
-    const csv = (arr?: string[]): string | undefined =>
-      arr && arr.length > 0 ? arr.join(',') : undefined;
-    if (csv(debouncedFilters.respondentRoles)) result.respondentRoles = csv(debouncedFilters.respondentRoles);
-    if (csv(debouncedFilters.coreFocuses)) result.coreFocuses = csv(debouncedFilters.coreFocuses);
-    if (csv(debouncedFilters.stateOfPractices)) result.stateOfPractices = csv(debouncedFilters.stateOfPractices);
-    if (csv(debouncedFilters.practiceSettings)) result.practiceSettings = csv(debouncedFilters.practiceSettings);
+    const result: Record<string, string[] | number | undefined> = {};
+    const arr = (a?: string[]): string[] | undefined =>
+      a && a.length > 0 ? a : undefined;
+    if (arr(debouncedFilters.respondentRoles)) result.respondentRoles = arr(debouncedFilters.respondentRoles);
+    if (arr(debouncedFilters.coreFocuses)) result.coreFocuses = arr(debouncedFilters.coreFocuses);
+    if (arr(debouncedFilters.stateOfPractices)) result.stateOfPractices = arr(debouncedFilters.stateOfPractices);
+    if (arr(debouncedFilters.practiceSettings)) result.practiceSettings = arr(debouncedFilters.practiceSettings);
     if (debouncedFilters.yearsMin !== undefined) result.yearsMin = debouncedFilters.yearsMin;
     if (debouncedFilters.yearsMax !== undefined) result.yearsMax = debouncedFilters.yearsMax;
     if (debouncedFilters.monthlyPatientsMin !== undefined) result.monthlyPatientsMin = debouncedFilters.monthlyPatientsMin;

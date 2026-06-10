@@ -25,12 +25,21 @@ export async function api<T>(
 ): Promise<T> {
   const { params, responseType = 'json', skipImpersonation, ...init } = options;
 
-  // Build URL with query params
+  // Build URL with query params.
+  // v1.17.31: arrays serialize as repeated query params
+  // (`?k=A&k=B`) instead of `String([A, B])` which produced CSV
+  // (`?k=A,B`) and shredded any value containing a comma. See
+  // docs/findings/splitcsv-comma-bug-2026-06-09.md.
   let url = `${API_BASE}${endpoint}`;
   if (params) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
+      if (value === undefined || value === null) return;
+      if (Array.isArray(value)) {
+        value.forEach((v) => {
+          if (v !== undefined && v !== null) searchParams.append(key, String(v));
+        });
+      } else {
         searchParams.append(key, String(value));
       }
     });

@@ -82,16 +82,17 @@ function LeaderRankingPanel({
   const [sortBy, setSortBy] = useState('count');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Build API options with filters. v1.17.4: arrays serialize as
-  // comma-separated `specialties` / `states` (matches KOL Explorer pattern).
-  // v1.17.5: respondent filters merge in via the shared serializer.
+  // Build API options with filters. v1.17.31: arrays serialize as
+  // REPEATED query params (`?specialties=A&specialties=B`), not CSV.
+  // CSV silently shredded any value containing a comma. See
+  // docs/findings/splitcsv-comma-bug-2026-06-09.md.
   const apiOptions = useMemo(() => {
-    const opts: Record<string, string | number | undefined> = { page, limit };
+    const opts: Record<string, string[] | number | undefined> = { page, limit };
     if (filters.specialties && filters.specialties.length > 0) {
-      opts.specialties = filters.specialties.join(',');
+      opts.specialties = filters.specialties;
     }
     if (filters.states && filters.states.length > 0) {
-      opts.states = filters.states.join(',');
+      opts.states = filters.states;
     }
     Object.assign(opts, respondentFiltersToApiParams(respondentFilters));
     return opts;

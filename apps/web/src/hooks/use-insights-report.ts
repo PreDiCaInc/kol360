@@ -44,6 +44,21 @@ interface FilterOptions {
   influencerTypes: string[];
 }
 
+// v1.17.31: append a (key, value) pair to URLSearchParams. Arrays
+// serialize as REPEATED params (`?k=A&k=B`) instead of CSV
+// (`?k=A,B`) — CSV silently broke any value containing a comma.
+// Background: docs/findings/splitcsv-comma-bug-2026-06-09.md.
+function appendParam(params: URLSearchParams, key: string, value: unknown): void {
+  if (value === undefined || value === null || value === '') return;
+  if (Array.isArray(value)) {
+    value.forEach((v) => {
+      if (v !== undefined && v !== null && v !== '') params.append(key, String(v));
+    });
+    return;
+  }
+  params.append(key, String(value));
+}
+
 /**
  * Get summary stats for a disease area.
  * Analysis-backed: backend requires clientId (returns 400 otherwise). Hook
@@ -77,11 +92,7 @@ export function useKolExplorer(
   // Build query params from filters
   const params = new URLSearchParams();
   if (clientId) params.append('clientId', clientId);
-  Object.entries(filters).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      params.append(key, String(value));
-    }
-  });
+  Object.entries(filters).forEach(([key, value]) => appendParam(params, key, value));
 
   return useQuery({
     queryKey: ['kol-explorer', diseaseAreaId, filters, clientId],
@@ -107,11 +118,7 @@ export function useLeaderRankings(
   const params = new URLSearchParams();
   params.append('nominationType', nominationType);
   if (clientId) params.append('clientId', clientId);
-  Object.entries(options).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      params.append(key, String(value));
-    }
-  });
+  Object.entries(options).forEach(([key, value]) => appendParam(params, key, value));
 
   return useQuery({
     queryKey: ['leader-rankings', diseaseAreaId, nominationType, options, clientId],
@@ -155,11 +162,7 @@ export function useSociometricSummary(
 ) {
   const params = new URLSearchParams();
   if (clientId) params.append('clientId', clientId);
-  Object.entries(filters).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      params.append(key, String(value));
-    }
-  });
+  Object.entries(filters).forEach(([key, value]) => appendParam(params, key, value));
 
   return useQuery({
     queryKey: ['sociometric-summary', diseaseAreaId, filters, clientId],
@@ -175,13 +178,15 @@ export function useSociometricSummary(
 /**
  * Get demographics data (aggregated from survey response answers)
  */
-export function useDemographics(diseaseAreaId: string, clientId?: string, filters?: Record<string, string | number | undefined>) {
+export function useDemographics(
+  diseaseAreaId: string,
+  clientId?: string,
+  filters?: Record<string, string | string[] | number | undefined>
+) {
   const params = new URLSearchParams();
   if (clientId) params.append('clientId', clientId);
   if (filters) {
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') params.append(key, String(value));
-    });
+    Object.entries(filters).forEach(([key, value]) => appendParam(params, key, value));
   }
   const qs = params.toString();
 

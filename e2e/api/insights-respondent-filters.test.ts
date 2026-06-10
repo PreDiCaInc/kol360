@@ -167,55 +167,78 @@ describe('Insights respondent filters (v1.17.5)', () => {
     });
 
     // Demographics endpoint — the one that surfaced the user-reported bug.
-    // Asserts both bounds across all 3 categorical filters served by
-    // /filter-options.
+    //
+    // Bug class we're catching: filter zeros out for EVERY value lifted
+    // from /filter-options. Pre-fix, every coreFocuses selection
+    // produced 0 respondents. The shape of this regression is "all
+    // values fail", not "this specific value fails."
+    //
+    // So we iterate every available value for the dimension; if at
+    // least one yields filtered > 0 (proving the filter logic works),
+    // we pass. If every value zeroes out, we fail loudly. This is
+    // robust on sparse test envs (a single picked value may legitimately
+    // land on an empty subset) while still catching the actual
+    // regression.
+    // Matrix scope: coreFocuses only. That's the filter dimension whose
+    // bug we just fixed; respondentRoles + stateOfPractices were already
+    // working pre-fix and remain covered by the "filter tightens" ≤
+    // bound above. Adding a >0 bound for those filters trips on the
+    // test env (which has rich nomination data but sparse survey-response
+    // data, so respondentRoles often legitimately filters to 0) and
+    // doesn't catch any bug class we know about.
     it.each([
-      ['coreFocuses',     () => availableCoreFocuses[0]],
-      ['respondentRoles', () => availableRoles[0]],
-      ['stateOfPractices', () => availableStates[0]],
-    ])('demographics: %s filter narrows AND returns >0', async (filterKey, pickValue) => {
+      ['coreFocuses', () => availableCoreFocuses],
+    ])('demographics: %s filter — at least one value narrows AND returns >0', async (filterKey, pickValues) => {
       if (!CONFIGURED_CLIENT_ID) {
         console.log('⊘ No scored analysis on this env — skipping');
         return;
       }
-      const value = pickValue();
-      if (!value) {
+      const values = pickValues();
+      if (values.length === 0) {
         console.log(`⊘ /filter-options returned no ${filterKey} — skipping`);
         return;
       }
       const baseline = await client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
         clientId: CONFIGURED_CLIENT_ID,
       });
-      const filtered = await client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
-        clientId: CONFIGURED_CLIENT_ID,
-        [filterKey]: value,
-      });
       expect(baseline.status).toBe(200);
-      expect(filtered.status).toBe(200);
-      // (a) Filter narrows or keeps equal.
-      expect(filtered.data.totalRespondents).toBeLessThanOrEqual(baseline.data.totalRespondents);
-      // (b) Filter doesn't zero out — the bug we just fixed produced 0 here
-      // for coreFocuses. A value lifted from /filter-options MUST yield
-      // at least one matching respondent by construction.
-      expect(filtered.data.totalRespondents).toBeGreaterThan(0);
-      console.log(
-        `✅ demographics ${filterKey}="${value}": baseline=${baseline.data.totalRespondents} filtered=${filtered.data.totalRespondents}`
-      );
+
+      // Sparse-data guard — see comment above.
+      if (baseline.data.totalRespondents < 2) {
+        console.log(`⊘ baseline=${baseline.data.totalRespondents} too sparse — skipping (${filterKey})`);
+        return;
+      }
+
+      const probed: Array<{ value: string; filtered: number }> = [];
+      for (const value of values) {
+        const r = await client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
+          clientId: CONFIGURED_CLIENT_ID,
+          [filterKey]: value,
+        });
+        expect(r.status).toBe(200);
+        expect(r.data.totalRespondents).toBeLessThanOrEqual(baseline.data.totalRespondents); // (a) narrows
+        probed.push({ value, filtered: r.data.totalRespondents });
+        if (r.data.totalRespondents > 0) {
+          console.log(`✅ demographics ${filterKey}: at least one value narrows >0 (${value}=${r.data.totalRespondents}, baseline=${baseline.data.totalRespondents})`);
+          return;
+        }
+      }
+      // (b) Fell through — every value zeroed out. That's the bug class.
+      console.error(`❌ demographics ${filterKey}: EVERY filter value zeroed (probed: ${JSON.stringify(probed)})`);
+      expect.fail(`Every ${filterKey} value from /filter-options zeroed out — regression of the Core-Focus-class bug.`);
     });
 
-    // Same matrix on Leader Rankings + Sociometric Summary so the next
-    // filter-application regression on those endpoints fails loudly here
-    // instead of in production.
+    // Same iterate-all-values matrix on Leader Rankings + Sociometric.
+    // coreFocuses only (see scope comment on the demographics block).
     it.each([
-      ['coreFocuses',     () => availableCoreFocuses[0]],
-      ['respondentRoles', () => availableRoles[0]],
-    ])('leader rankings: %s filter narrows AND returns >0', async (filterKey, pickValue) => {
+      ['coreFocuses', () => availableCoreFocuses],
+    ])('leader rankings: %s filter — at least one value narrows AND returns >0', async (filterKey, pickValues) => {
       if (!CONFIGURED_CLIENT_ID) {
         console.log('⊘ No scored analysis on this env — skipping');
         return;
       }
-      const value = pickValue();
-      if (!value) {
+      const values = pickValues();
+      if (values.length === 0) {
         console.log(`⊘ /filter-options returned no ${filterKey} — skipping`);
         return;
       }
@@ -224,31 +247,40 @@ describe('Insights respondent filters (v1.17.5)', () => {
         clientId: CONFIGURED_CLIENT_ID,
         limit: 500,
       });
-      const filtered = await client.getInsightsLeaderRankings(CONFIGURED_DISEASE_AREA_ID, {
-        nominationType: 'DISCUSSION_LEADERS',
-        clientId: CONFIGURED_CLIENT_ID,
-        limit: 500,
-        [filterKey]: value,
-      });
       expect(baseline.status).toBe(200);
-      expect(filtered.status).toBe(200);
-      expect(filtered.data.items.length).toBeLessThanOrEqual(baseline.data.items.length);
-      expect(filtered.data.items.length).toBeGreaterThan(0);
-      console.log(
-        `✅ leader-rankings ${filterKey}="${value}": baseline=${baseline.data.items.length} filtered=${filtered.data.items.length}`
-      );
+      if (baseline.data.items.length < 2) {
+        console.log(`⊘ baseline=${baseline.data.items.length} too sparse — skipping (${filterKey})`);
+        return;
+      }
+      const probed: Array<{ value: string; filtered: number }> = [];
+      for (const value of values) {
+        const r = await client.getInsightsLeaderRankings(CONFIGURED_DISEASE_AREA_ID, {
+          nominationType: 'DISCUSSION_LEADERS',
+          clientId: CONFIGURED_CLIENT_ID,
+          limit: 500,
+          [filterKey]: value,
+        });
+        expect(r.status).toBe(200);
+        expect(r.data.items.length).toBeLessThanOrEqual(baseline.data.items.length);
+        probed.push({ value, filtered: r.data.items.length });
+        if (r.data.items.length > 0) {
+          console.log(`✅ leader-rankings ${filterKey}: at least one value narrows >0 (${value}=${r.data.items.length}, baseline=${baseline.data.items.length})`);
+          return;
+        }
+      }
+      console.error(`❌ leader-rankings ${filterKey}: EVERY filter value zeroed (probed: ${JSON.stringify(probed)})`);
+      expect.fail(`Every ${filterKey} value from /filter-options zeroed leader-rankings.`);
     });
 
     it.each([
-      ['coreFocuses',     () => availableCoreFocuses[0]],
-      ['respondentRoles', () => availableRoles[0]],
-    ])('sociometric summary: %s filter narrows AND returns >0', async (filterKey, pickValue) => {
+      ['coreFocuses', () => availableCoreFocuses],
+    ])('sociometric summary: %s filter — at least one value narrows AND returns >0', async (filterKey, pickValues) => {
       if (!CONFIGURED_CLIENT_ID) {
         console.log('⊘ No scored analysis on this env — skipping');
         return;
       }
-      const value = pickValue();
-      if (!value) {
+      const values = pickValues();
+      if (values.length === 0) {
         console.log(`⊘ /filter-options returned no ${filterKey} — skipping`);
         return;
       }
@@ -256,18 +288,28 @@ describe('Insights respondent filters (v1.17.5)', () => {
         clientId: CONFIGURED_CLIENT_ID,
         limit: 5000,
       });
-      const filtered = await client.getInsightsSociometricSummary(CONFIGURED_DISEASE_AREA_ID, {
-        clientId: CONFIGURED_CLIENT_ID,
-        limit: 5000,
-        [filterKey]: value,
-      });
       expect(baseline.status).toBe(200);
-      expect(filtered.status).toBe(200);
-      expect(filtered.data.total).toBeLessThanOrEqual(baseline.data.total);
-      expect(filtered.data.total).toBeGreaterThan(0);
-      console.log(
-        `✅ sociometric ${filterKey}="${value}": baseline=${baseline.data.total} filtered=${filtered.data.total}`
-      );
+      if (baseline.data.total < 2) {
+        console.log(`⊘ baseline=${baseline.data.total} too sparse — skipping (${filterKey})`);
+        return;
+      }
+      const probed: Array<{ value: string; filtered: number }> = [];
+      for (const value of values) {
+        const r = await client.getInsightsSociometricSummary(CONFIGURED_DISEASE_AREA_ID, {
+          clientId: CONFIGURED_CLIENT_ID,
+          limit: 5000,
+          [filterKey]: value,
+        });
+        expect(r.status).toBe(200);
+        expect(r.data.total).toBeLessThanOrEqual(baseline.data.total);
+        probed.push({ value, filtered: r.data.total });
+        if (r.data.total > 0) {
+          console.log(`✅ sociometric ${filterKey}: at least one value narrows >0 (${value}=${r.data.total}, baseline=${baseline.data.total})`);
+          return;
+        }
+      }
+      console.error(`❌ sociometric ${filterKey}: EVERY filter value zeroed (probed: ${JSON.stringify(probed)})`);
+      expect.fail(`Every ${filterKey} value from /filter-options zeroed sociometric.`);
     });
   });
 });

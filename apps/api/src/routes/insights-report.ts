@@ -29,32 +29,12 @@ async function requireClientId<T>(reply: FastifyReply, fn: () => Promise<T>): Pr
   }
 }
 
-/**
- * v1.17.5: parse respondent filters from query string. Used by
- * /demographics, /leader-rankings, /sociometric-summary. Categorical
- * filters are comma-separated; range filters are min/max numerics.
- * Accepts both the new plural names and the legacy singular fallbacks
- * so an older client tab doesn't break mid-deploy.
- */
-function parseRespondentFilters(q: Record<string, string>) {
-  const splitCsv = (v: string | undefined): string[] | undefined => {
-    if (!v) return undefined;
-    const parts = v.split(',').map((s) => s.trim()).filter(Boolean);
-    return parts.length > 0 ? parts : undefined;
-  };
-  return {
-    respondentRoles: splitCsv(q.respondentRoles) ?? splitCsv(q.respondentRole),
-    coreFocuses: splitCsv(q.coreFocuses) ?? splitCsv(q.coreFocus),
-    stateOfPractices: splitCsv(q.stateOfPractices) ?? splitCsv(q.stateOfPractice),
-    practiceSettings: splitCsv(q.practiceSettings) ?? splitCsv(q.practiceSetting),
-    yearsMin: q.yearsMin ? Number(q.yearsMin) : undefined,
-    yearsMax: q.yearsMax ? Number(q.yearsMax) : undefined,
-    monthlyPatientsMin: q.monthlyPatientsMin ? Number(q.monthlyPatientsMin) : undefined,
-    monthlyPatientsMax: q.monthlyPatientsMax ? Number(q.monthlyPatientsMax) : undefined,
-    dedPatientsMin: q.dedPatientsMin ? Number(q.dedPatientsMin) : undefined,
-    dedPatientsMax: q.dedPatientsMax ? Number(q.dedPatientsMax) : undefined,
-  };
-}
+// v1.17.5: parse respondent filters from query string. Used by
+// /demographics, /leader-rankings, /sociometric-summary.
+// v1.17.31: extracted to lib/respondent-filters.ts with unit tests
+// (catches the comma-shred bug class — see
+// docs/findings/splitcsv-comma-bug-2026-06-09.md).
+import { parseRespondentFilters } from '../lib/respondent-filters';
 
 export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
   // List disease areas accessible to the current user, with campaign/KOL counts
