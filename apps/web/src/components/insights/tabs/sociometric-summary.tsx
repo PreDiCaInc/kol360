@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { apiClient } from '@/lib/api';
+import type { SociometricSummaryResponse } from '@kol360/shared';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -35,19 +37,23 @@ interface Props {
 
 type SortField = 'name' | 'specialty' | 'influencerType' | 'city' | 'state' |
   'discussionLeaders' | 'referralLeaders' | 'adviceLeaders' | 'nationalLeaders' |
-  'risingStars' | 'socialLeaders' | 'total';
+  'risingStars' | 'socialLeaders' | 'biasedLeaders' | 'total';
 
+// v1.17.32: column order aligned with Leader Rankings + Sociometric
+// Tables tabs (National-first), plus biasedLeaders added — was being
+// returned by the API but never displayed in the matrix.
 const NOMINATION_COLUMNS: {
   field: SortField;
   label: string;
   headerClass: string;
 }[] = [
-  { field: 'discussionLeaders', label: 'Discussion', headerClass: 'bg-blue-200 dark:bg-blue-800 font-bold' },
-  { field: 'referralLeaders', label: 'Referral', headerClass: 'bg-green-200 dark:bg-green-800 font-bold' },
-  { field: 'adviceLeaders', label: 'Advice', headerClass: 'bg-purple-200 dark:bg-purple-800 font-bold' },
   { field: 'nationalLeaders', label: 'National', headerClass: 'bg-yellow-200 dark:bg-yellow-800 font-bold' },
+  { field: 'discussionLeaders', label: 'Discussion', headerClass: 'bg-blue-200 dark:bg-blue-800 font-bold' },
+  { field: 'adviceLeaders', label: 'Advice', headerClass: 'bg-purple-200 dark:bg-purple-800 font-bold' },
   { field: 'risingStars', label: 'Rising Star', headerClass: 'bg-pink-200 dark:bg-pink-800 font-bold' },
+  { field: 'referralLeaders', label: 'Referral', headerClass: 'bg-green-200 dark:bg-green-800 font-bold' },
   { field: 'socialLeaders', label: 'Social', headerClass: 'bg-cyan-200 dark:bg-cyan-800 font-bold' },
+  { field: 'biasedLeaders', label: 'Biased', headerClass: 'bg-red-200 dark:bg-red-800 font-bold' },
 ];
 
 export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: Props) {
@@ -217,30 +223,49 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     setPage(1);
   }, []);
 
-  // Export ALL: fetch with limit=5000 then export
-  const handleExportAll = useCallback(() => {
+  // v1.17.32: Export the FULL list (was: only the current page). Re-fetches
+  // with limit=5000 on click, applying every current filter (specialty/state/
+  // influencer/respondent/search), then builds the export from that.
+  // Column order mirrors the visible matrix: descriptors → Total → National →
+  // Discussion → Advice → Rising Star → Referral → Social → Biased. NPI added.
+  const handleExportAll = useCallback(async () => {
     if (!data?.items.length) return;
 
-    // For export-all, we use the current data (which may be paginated)
-    // The export will include whatever is currently loaded
-    const items = data.items;
+    // Build the same URL the visible query uses, with limit raised to 5000.
+    const params = new URLSearchParams();
+    if (clientId) params.append('clientId', clientId);
+    Object.entries({ ...apiFilters, limit: 5000, page: 1 }).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      if (Array.isArray(value)) {
+        value.forEach((v) => params.append(key, String(v)));
+      } else {
+        params.append(key, String(value));
+      }
+    });
+    const fullData = await apiClient.get<SociometricSummaryResponse>(
+      `/api/v1/insights/${diseaseAreaId}/sociometric-summary?${params.toString()}`
+    );
+    const items = fullData?.items ?? [];
+    if (items.length === 0) return;
 
-    const headers = ['Rank', 'Name', 'Specialty', 'Influencer Type', 'City', 'State',
-      'Discussion', 'Referral', 'Advice', 'National', 'Rising Star', 'Social', 'Total'];
+    const headers = ['Rank', 'NPI', 'Name', 'Specialty', 'Influencer Type', 'City', 'State',
+      'Total', 'National', 'Discussion', 'Advice', 'Rising Star', 'Referral', 'Social', 'Biased'];
     const rows = items.map((item, index) => [
-      (page - 1) * limit + index + 1,
+      index + 1,
+      (item as { npi?: string | null }).npi ?? '',
       item.name,
       item.specialty,
       item.influencerType,
       toTitleCase(item.city),
       item.state,
-      item.discussionLeaders,
-      item.referralLeaders,
-      item.adviceLeaders,
-      item.nationalLeaders,
-      item.risingStars,
-      item.socialLeaders,
       item.total,
+      item.nationalLeaders,
+      item.discussionLeaders,
+      item.adviceLeaders,
+      item.risingStars,
+      item.referralLeaders,
+      item.socialLeaders,
+      (item as { biasedLeaders?: number }).biasedLeaders ?? 0,
     ]);
 
     exportExcel({
@@ -249,7 +274,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
       rows,
       sheetName: 'Sociometric Leaders',
     });
-  }, [data, page, limit, exportExcel]);
+  }, [data, apiFilters, clientId, diseaseAreaId, exportExcel]);
 
   const items = data?.items || [];
 
@@ -261,6 +286,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     nationalLeaders: items.length > 0 ? Math.max(...items.map((i) => i.nationalLeaders)) : 1,
     risingStars: items.length > 0 ? Math.max(...items.map((i) => i.risingStars)) : 1,
     socialLeaders: items.length > 0 ? Math.max(...items.map((i) => i.socialLeaders)) : 1,
+    biasedLeaders: items.length > 0 ? Math.max(...items.map((i) => (i as { biasedLeaders?: number }).biasedLeaders ?? 0)) : 1,
     total: items.length > 0 ? Math.max(...items.map((i) => i.total)) : 1,
   };
 
@@ -407,13 +433,13 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={13} className="h-24 text-center text-muted-foreground">
+                  <td colSpan={14} className="h-24 text-center text-muted-foreground">
                     Loading...
                   </td>
                 </tr>
               ) : !items.length ? (
                 <tr>
-                  <td colSpan={13} className="h-24 text-center text-muted-foreground">
+                  <td colSpan={14} className="h-24 text-center text-muted-foreground">
                     No data available
                   </td>
                 </tr>
@@ -446,12 +472,19 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
                       {item.total}
                     </td>
-                    <HeatMapCell value={item.discussionLeaders} maxValue={maxValues.discussionLeaders} />
-                    <HeatMapCell value={item.referralLeaders} maxValue={maxValues.referralLeaders} />
-                    <HeatMapCell value={item.adviceLeaders} maxValue={maxValues.adviceLeaders} />
+                    {/* v1.17.32: column order National → Discussion → Advice
+                        → Rising Star → Referral → Social → Biased, mirrors
+                        NOMINATION_COLUMNS above + the rest of Insights. */}
                     <HeatMapCell value={item.nationalLeaders} maxValue={maxValues.nationalLeaders} />
+                    <HeatMapCell value={item.discussionLeaders} maxValue={maxValues.discussionLeaders} />
+                    <HeatMapCell value={item.adviceLeaders} maxValue={maxValues.adviceLeaders} />
                     <HeatMapCell value={item.risingStars} maxValue={maxValues.risingStars} />
+                    <HeatMapCell value={item.referralLeaders} maxValue={maxValues.referralLeaders} />
                     <HeatMapCell value={item.socialLeaders} maxValue={maxValues.socialLeaders} />
+                    <HeatMapCell
+                      value={(item as { biasedLeaders?: number }).biasedLeaders ?? 0}
+                      maxValue={maxValues.biasedLeaders}
+                    />
                   </tr>
                 ))
               )}

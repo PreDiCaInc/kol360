@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { useLeaderRankings } from '@/hooks/use-insights-report';
 import { LeaderTable } from '@/components/insights/tables/leader-table';
+import type { LeaderTableItem } from '@/components/insights/tables/leader-table';
+import { apiClient } from '@/lib/api';
+import type { LeaderRankingsResponse } from '@kol360/shared';
 import type { NominationType } from '@kol360/shared';
 import type { LeaderTableColumn } from '@/components/insights/tables/leader-table';
 
@@ -101,6 +104,31 @@ function SociometricPanel({
 
   const maxCount = items.length > 0 ? Math.max(...items.map((i) => i.count)) : 1;
 
+  // v1.17.32: export the FULL list by re-fetching with limit=5000.
+  // Same client/clientId scope as the visible query; the LeaderTable
+  // component handles the NPI column and the rank renumber.
+  const getAllItemsForExport = async (): Promise<LeaderTableItem[]> => {
+    const params = new URLSearchParams();
+    params.append('nominationType', nominationType);
+    if (clientId) params.append('clientId', clientId);
+    params.append('limit', '5000');
+    params.append('page', '1');
+    const full = await apiClient.get<LeaderRankingsResponse>(
+      `/api/v1/insights/${diseaseAreaId}/leader-rankings?${params.toString()}`
+    );
+    return (full?.items ?? []).map((it) => ({
+      rank: it.rank,
+      name: it.name,
+      hcpId: it.hcpId,
+      npi: (it as { npi?: string | null }).npi ?? null,
+      specialty: it.specialty,
+      influencerType: it.influencerType,
+      state: it.state,
+      city: (it as { city?: string | null }).city ?? null,
+      count: it.count,
+    }));
+  };
+
   return (
     <LeaderTable
       title={label}
@@ -122,6 +150,7 @@ function SociometricPanel({
         else console.log('KOL clicked:', hcpId);
       }}
       maxCount={maxCount}
+      getAllItemsForExport={getAllItemsForExport}
     />
   );
 }

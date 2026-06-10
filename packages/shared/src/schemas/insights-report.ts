@@ -140,6 +140,7 @@ export type InsightsSummary = z.infer<typeof insightsSummarySchema>;
 // KOL Explorer item
 export const kolExplorerItemSchema = z.object({
   id: z.string(),
+  npi: z.string().nullable().optional(), // v1.17.32: surfaced for the full-list export
   name: z.string(),
   firstName: z.string(),
   lastName: z.string(),
@@ -178,6 +179,7 @@ export type KolExplorerResponse = z.infer<typeof kolExplorerResponseSchema>;
 export const leaderRankingItemSchema = z.object({
   rank: z.number(),
   hcpId: z.string(),
+  npi: z.string().nullable().optional(), // v1.17.32: surfaced for the full-list export
   name: z.string(),
   degree: z.string().nullable(),
   specialty: z.string().nullable(),
@@ -249,6 +251,7 @@ export type KolProfile = z.infer<typeof kolProfileSchema>;
 export const sociometricSummaryItemSchema = z.object({
   rank: z.number(),
   hcpId: z.string(),
+  npi: z.string().nullable().optional(), // v1.17.32: surfaced for the full-list export
   name: z.string(),
   specialty: z.string().nullable(),
   city: z.string().nullable(),

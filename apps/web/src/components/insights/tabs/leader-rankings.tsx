@@ -3,6 +3,9 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useLeaderRankings, useInsightsFilterOptions, useDemographics } from '@/hooks/use-insights-report';
 import { LeaderTable } from '@/components/insights/tables/leader-table';
+import type { LeaderTableItem } from '@/components/insights/tables/leader-table';
+import { apiClient } from '@/lib/api';
+import type { LeaderRankingsResponse } from '@kol360/shared';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -153,6 +156,36 @@ function LeaderRankingPanel({
 
   const maxCount = items.length > 0 ? Math.max(...items.map((i) => i.count)) : 1;
 
+  // v1.17.32: export the FULL list by re-fetching with limit=5000.
+  // Reuses every active filter (specialties/states/respondentFilters);
+  // the LeaderTable component adds the NPI column and renumbers ranks.
+  const getAllItemsForExport = async (): Promise<LeaderTableItem[]> => {
+    const params = new URLSearchParams();
+    params.append('nominationType', nominationType);
+    if (clientId) params.append('clientId', clientId);
+    Object.entries({ ...apiOptions, limit: 5000, page: 1 }).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      if (Array.isArray(value)) {
+        value.forEach((v) => params.append(key, String(v)));
+      } else {
+        params.append(key, String(value));
+      }
+    });
+    const full = await apiClient.get<LeaderRankingsResponse>(
+      `/api/v1/insights/${diseaseAreaId}/leader-rankings?${params.toString()}`
+    );
+    return (full?.items ?? []).map((it) => ({
+      rank: it.rank,
+      name: it.name,
+      hcpId: it.hcpId,
+      npi: (it as { npi?: string | null }).npi ?? null,
+      specialty: it.specialty,
+      city: it.city,
+      state: it.state,
+      count: it.count,
+    }));
+  };
+
   return (
     <div className="space-y-2">
       {/* KOL name search for this panel */}
@@ -185,6 +218,7 @@ function LeaderRankingPanel({
           else console.log('KOL clicked:', hcpId);
         }}
         maxCount={maxCount}
+        getAllItemsForExport={getAllItemsForExport}
       />
     </div>
   );

@@ -22,6 +22,7 @@ export interface LeaderTableItem {
   rank: number;
   name: string;
   hcpId: string;
+  npi?: string | null; // v1.17.32: surfaced for the full-list export
   specialty: string | null;
   city?: string | null;
   state?: string | null;
@@ -49,6 +50,11 @@ export interface LeaderTableProps {
   onKolClick: (hcpId: string) => void;
   maxCount: number;
   exportFilename?: string;
+  // v1.17.32: when provided, the export button fetches the FULL list via
+  // this callback (parent owns the API call + the current filter
+  // context). Without it, falls back to exporting the currently-visible
+  // page (legacy behaviour).
+  getAllItemsForExport?: () => Promise<LeaderTableItem[]>;
 }
 
 const COLUMN_CONFIG: Record<LeaderTableColumn, { label: string; sortField: string }> = {
@@ -78,15 +84,27 @@ export function LeaderTable({
   onKolClick,
   maxCount,
   exportFilename,
+  getAllItemsForExport,
 }: LeaderTableProps) {
   const { status: excelExportStatus, exportExcel } = useExcelExport();
 
-  const handleExport = useCallback(() => {
+  // v1.17.32: export the FULL list via getAllItemsForExport when the
+  // parent supplies it. NPI included in the export columns.
+  const handleExport = useCallback(async () => {
     if (!items.length) return;
+    const sourceItems: LeaderTableItem[] = getAllItemsForExport
+      ? await getAllItemsForExport()
+      : items;
+    if (sourceItems.length === 0) return;
 
-    const headers = ['Rank', ...columns.map((c) => COLUMN_CONFIG[c].label)];
-    const rows = items.map((item) => {
-      const row: (string | number | null | undefined)[] = [item.rank];
+    const headers = ['Rank', 'NPI', ...columns.map((c) => COLUMN_CONFIG[c].label)];
+    const rows = sourceItems.map((item, index) => {
+      const row: (string | number | null | undefined)[] = [
+        // Re-number when exporting the full list so the rank column is
+        // contiguous; otherwise preserve the item's own rank.
+        getAllItemsForExport ? index + 1 : item.rank,
+        item.npi ?? '',
+      ];
       columns.forEach((col) => {
         if (col === 'count') row.push(item.count);
         else if (col === 'name') row.push(item.name);
@@ -104,7 +122,7 @@ export function LeaderTable({
       rows,
       sheetName: title.substring(0, 31),
     });
-  }, [items, columns, title, exportFilename, exportExcel]);
+  }, [items, columns, title, exportFilename, exportExcel, getAllItemsForExport]);
 
   const startRow = (page - 1) * limit + 1;
   const endRow = Math.min(page * limit, total);
