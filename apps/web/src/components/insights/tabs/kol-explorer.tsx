@@ -37,7 +37,8 @@ import { BarDistributionChart } from '@/components/insights/charts/bar-distribut
 import { useKolExplorer, useKolProfile, useInsightsFilterOptions, useKolNominationMetadata } from '@/hooks/use-insights-report';
 import { useExcelExport } from '@/lib/excel-export';
 import { toTitleCase } from '@/lib/utils';
-import type { InsightsFilterInput, KolExplorerItem, NominationType } from '@kol360/shared';
+import type { InsightsFilterInput, KolExplorerItem, KolExplorerResponse, NominationType } from '@kol360/shared';
+import { apiClient } from '@/lib/api';
 import {
   ActiveFilter,
   ClearFiltersButton,
@@ -244,16 +245,34 @@ function ScoreTableView({
   const page = filters.page || 1;
   const limit = filters.limit || 25;
 
-  // Export
-  const handleExportExcel = useCallback(() => {
+  // v1.17.32: Export the FULL list (was: only the current page). Re-fetches
+  // with limit=5000 on click, applying every current filter; NPI added.
+  const handleExportExcel = useCallback(async () => {
     if (!data?.items.length) return;
+    const params = new URLSearchParams();
+    if (clientId) params.append('clientId', clientId);
+    Object.entries({ ...apiFilters, limit: 5000, page: 1 }).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      if (Array.isArray(value)) {
+        value.forEach((v) => params.append(key, String(v)));
+      } else {
+        params.append(key, String(value));
+      }
+    });
+    const fullData = await apiClient.get<KolExplorerResponse>(
+      `/api/v1/insights/${diseaseAreaId}/kol-explorer?${params.toString()}`
+    );
+    const items = fullData?.items ?? [];
+    if (items.length === 0) return;
+
     const headers = [
-      'Rank', 'Name', 'Specialty', 'Degree', 'City', 'State', 'Influencer Type',
+      'Rank', 'NPI', 'Name', 'Specialty', 'Degree', 'City', 'State', 'Influencer Type',
       'Publications', 'Trade Pubs', 'Org Leadership', 'Org Awards', 'Clinical Trials',
       'Conference', 'Social Media', 'Media/Podcasts', 'Survey', 'Total Weighted Score',
     ];
-    const rows = data.items.map((kol: KolExplorerItem, index: number) => [
-      (page - 1) * limit + index + 1,
+    const rows = items.map((kol: KolExplorerItem, index: number) => [
+      index + 1,
+      (kol as { npi?: string | null }).npi ?? '',
       kol.name,
       kol.specialty,
       kol.degree,
@@ -272,7 +291,7 @@ function ScoreTableView({
       kol.compositeScore?.toFixed(1),
     ]);
     exportExcel({ filename: 'kol-scores', headers, rows, sheetName: 'KOL Scores' });
-  }, [data?.items, page, limit, exportExcel]);
+  }, [data?.items, apiFilters, clientId, diseaseAreaId, exportExcel]);
 
   const startRow = (page - 1) * limit + 1;
   const endRow = data ? Math.min(page * limit, data.total) : 0;

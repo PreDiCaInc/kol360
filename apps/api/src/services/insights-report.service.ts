@@ -659,6 +659,7 @@ export class InsightsReportService {
 
         rows.push({
           id: hcp.id,
+          npi: hcp.npi, // v1.17.32: surfaced for the full-list export
           name: `${hcp.firstName} ${hcp.lastName}`,
           firstName: hcp.firstName,
           lastName: hcp.lastName,
@@ -789,6 +790,7 @@ export class InsightsReportService {
     else if (state) hcpWhere.state = state;
 
     // Perf pass #6 (Leader Rankings): narrow to the 6 fields consumed below.
+    // v1.17.32: also npi (surfaced for the full-list export).
     const hcps = await prisma.hcp.findMany({
       where: hcpWhere,
       select: {
@@ -798,6 +800,7 @@ export class InsightsReportService {
         specialty: true,
         city: true,
         state: true,
+        npi: true,
         specialties: {
           where: { isPrimary: true },
           include: { specialty: true },
@@ -818,6 +821,7 @@ export class InsightsReportService {
       rankedItems.push({
         rank,
         hcpId: hcp.id,
+        npi: hcp.npi, // v1.17.32: surfaced for the full-list export
         name: `${hcp.firstName} ${hcp.lastName}`,
         // v1.15.31: see same comment above — match both shapes for safety.
         degree: primarySpecialty?.includes('Ophthalmolog') ? 'MD' : 'OD',
@@ -1092,6 +1096,7 @@ export class InsightsReportService {
         specialty: true,
         city: true,
         state: true,
+        npi: true, // v1.17.32: surfaced for the full-list export
         specialties: {
           where: { isPrimary: true },
           include: { specialty: true },
@@ -1151,6 +1156,7 @@ export class InsightsReportService {
       all.push({
         rank: 0, // assigned after global sort
         hcpId: hcp.id,
+        npi: hcp.npi, // v1.17.32: surfaced for the full-list export
         name: `${hcp.firstName} ${hcp.lastName}`,
         specialty: primarySpecialty,
         city: hcp.city,
