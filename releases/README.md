@@ -19,6 +19,7 @@ Older releases (prod-rel-3.2 through prod-rel-4.1.1) lived in `docs/releases/` b
 
 | Tag | Version | Headline |
 |---|---|---|
+| [4.1.14](prod-rel-4.1.14-handoff.md) | v1.17.31 | P1 hotfix for the comma-shred filter bug surfaced during 4.1.13 soak (Dry Eye and other comma-containing values silently zeroed) + tunnel-up.sh credential hardening |
 | [4.1.13](prod-rel-4.1.13-handoff.md) | v1.17.30 | P1 Core Focus filter fix (MULTI_CHOICE branch was missing — every selection zeroed dashboards) + first slice of client branding (header brand badge, `/clients/me`, `logoUrl` form input, 4px brand stripe, CSS-var theming) |
 | [4.1.12](prod-rel-4.1.12-handoff.md) | v1.17.24 → v1.17.28 | Second wave of 2026-06-02 customer fixes: Demographics Practice Setting multi-select + three missing graphs (educational, social media, valuable content, objectivity) + Sociometric/Total-Weighted column reorder + Educational Resources chart layout + sort-comparator sign fix |
 | [4.1.11](prod-rel-4.1.11-handoff.md) | v1.17.17 → v1.17.23 | emailDomains required + auto-approve invitees + TEAM_MEMBER read perms + ZodError→400 + escape hatch removed + lint CI fix + client roles view-only + nomail backfill + Hcp.email required + insights layout density + write-button hide sweep |
