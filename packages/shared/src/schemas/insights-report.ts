@@ -54,10 +54,20 @@ export const insightsFilterSchema = z.object({
   compositeScoreMin: z.coerce.number().min(0).max(100).optional(),
   compositeScoreMax: z.coerce.number().min(0).max(100).optional(),
 
-  // Categorical filters - support both single string and comma-separated for arrays
-  influencerTypes: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
-  specialties: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
-  states: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
+  // Categorical filters. v1.17.31: accept EITHER repeated query params
+  // (arrive as string[]) OR a single string (legacy CSV — wrap in
+  // single-element array without splitting on comma, since comma-split
+  // shreds values like "Dry Eye (including OSD, MGD, and NK)"). See
+  // docs/findings/splitcsv-comma-bug-2026-06-09.md.
+  influencerTypes: z.union([z.string(), z.array(z.string())]).optional()
+    .transform(v => v === undefined ? undefined : (Array.isArray(v) ? v : [v]).map(s => s.trim()).filter(Boolean))
+    .transform(v => v && v.length > 0 ? v : undefined),
+  specialties: z.union([z.string(), z.array(z.string())]).optional()
+    .transform(v => v === undefined ? undefined : (Array.isArray(v) ? v : [v]).map(s => s.trim()).filter(Boolean))
+    .transform(v => v && v.length > 0 ? v : undefined),
+  states: z.union([z.string(), z.array(z.string())]).optional()
+    .transform(v => v === undefined ? undefined : (Array.isArray(v) ? v : [v]).map(s => s.trim()).filter(Boolean))
+    .transform(v => v && v.length > 0 ? v : undefined),
   // Keep single values for backwards compatibility
   influencerType: z.enum(INFLUENCER_TYPES).optional(),
   specialty: z.string().optional(),
@@ -85,9 +95,14 @@ export const leaderRankingQuerySchema = z.object({
   // Single value filters (backwards compat)
   state: z.string().optional(),
   specialty: z.string().optional(),
-  // Multi-value filters (comma-separated, transformed to arrays)
-  states: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
-  specialties: z.string().optional().transform(v => v ? v.split(',').filter(Boolean) : undefined),
+  // Multi-value filters. v1.17.31: same comma-bug fix as
+  // insightsFilterSchema — accept array or single string, no comma split.
+  states: z.union([z.string(), z.array(z.string())]).optional()
+    .transform(v => v === undefined ? undefined : (Array.isArray(v) ? v : [v]).map(s => s.trim()).filter(Boolean))
+    .transform(v => v && v.length > 0 ? v : undefined),
+  specialties: z.union([z.string(), z.array(z.string())]).optional()
+    .transform(v => v === undefined ? undefined : (Array.isArray(v) ? v : [v]).map(s => s.trim()).filter(Boolean))
+    .transform(v => v && v.length > 0 ? v : undefined),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(5000).default(100),
 });

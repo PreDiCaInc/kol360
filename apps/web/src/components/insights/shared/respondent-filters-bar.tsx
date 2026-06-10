@@ -213,14 +213,17 @@ function RangeInput({
 
 export function respondentFiltersToApiParams(
   f: RespondentFiltersState
-): Record<string, string | number | undefined> {
-  const csv = (arr?: string[]): string | undefined =>
-    arr && arr.length > 0 ? arr.join(',') : undefined;
-  const out: Record<string, string | number | undefined> = {};
-  if (csv(f.respondentRoles)) out.respondentRoles = csv(f.respondentRoles);
-  if (csv(f.coreFocuses)) out.coreFocuses = csv(f.coreFocuses);
-  if (csv(f.stateOfPractices)) out.stateOfPractices = csv(f.stateOfPractices);
-  if (csv(f.practiceSettings)) out.practiceSettings = csv(f.practiceSettings);
+): Record<string, string[] | number | undefined> {
+  // v1.17.31: arrays pass through as arrays (hook serializes as
+  // repeated query params, not CSV). See
+  // docs/findings/splitcsv-comma-bug-2026-06-09.md.
+  const arr = (a?: string[]): string[] | undefined =>
+    a && a.length > 0 ? a : undefined;
+  const out: Record<string, string[] | number | undefined> = {};
+  if (arr(f.respondentRoles)) out.respondentRoles = arr(f.respondentRoles);
+  if (arr(f.coreFocuses)) out.coreFocuses = arr(f.coreFocuses);
+  if (arr(f.stateOfPractices)) out.stateOfPractices = arr(f.stateOfPractices);
+  if (arr(f.practiceSettings)) out.practiceSettings = arr(f.practiceSettings);
   if (f.yearsMin !== undefined) out.yearsMin = f.yearsMin;
   if (f.yearsMax !== undefined) out.yearsMax = f.yearsMax;
   if (f.monthlyPatientsMin !== undefined) out.monthlyPatientsMin = f.monthlyPatientsMin;

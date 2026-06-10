@@ -126,11 +126,13 @@ function ScoreTableView({
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
 
+  // v1.17.31: arrays pass through as arrays — hook serializes as repeated
+  // query params (not CSV). See docs/findings/splitcsv-comma-bug-2026-06-09.md.
   const apiFilters = useMemo(() => ({
     ...filters,
-    specialties: selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined,
-    states: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
-    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes.join(',') : undefined,
+    specialties: selectedSpecialties.length > 0 ? selectedSpecialties : undefined,
+    states: selectedStates.length > 0 ? selectedStates : undefined,
+    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes : undefined,
   }), [filters, selectedSpecialties, selectedStates, selectedInfluencerTypes]);
 
   const { data, isLoading } = useKolExplorer(diseaseAreaId, apiFilters, clientId);

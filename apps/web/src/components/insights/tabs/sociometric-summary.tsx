@@ -81,15 +81,17 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
   );
 
   // Build API filters. Respondent filters merge into the same query string.
-  const apiFilters: Partial<InsightsFilterInput> & Record<string, string | number | undefined> = {
+  // v1.17.31: arrays pass through as arrays — hook serializes as repeated
+  // query params. See docs/findings/splitcsv-comma-bug-2026-06-09.md.
+  const apiFilters: Partial<InsightsFilterInput> & Record<string, string | string[] | number | undefined> = {
     page,
     limit,
     sortBy,
     sortOrder,
     search: search || undefined,
-    specialties: selectedSpecialties.length > 0 ? selectedSpecialties.join(',') : undefined,
-    states: selectedStates.length > 0 ? selectedStates.join(',') : undefined,
-    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes.join(',') : undefined,
+    specialties: selectedSpecialties.length > 0 ? selectedSpecialties : undefined,
+    states: selectedStates.length > 0 ? selectedStates : undefined,
+    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes : undefined,
     ...respondentFiltersToApiParams(respondentFilters),
   };
 
