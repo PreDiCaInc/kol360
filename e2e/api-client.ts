@@ -1060,6 +1060,10 @@ export class ApiClient {
     specialty?: string;
     state?: string;
     influencerType?: string;
+    // v1.17.33: plural array shape (frontend convention since v1.17.31).
+    specialties?: string | string[];
+    states?: string | string[];
+    influencerTypes?: string | string[];
     clientId?: string;
     page?: number;
     limit?: number;
@@ -1069,6 +1073,14 @@ export class ApiClient {
     if (params?.specialty) query.set('specialty', params.specialty);
     if (params?.state) query.set('state', params.state);
     if (params?.influencerType) query.set('influencerType', params.influencerType);
+    // v1.17.33: arrays serialize as repeated query params (?k=A&k=B).
+    const appendPlural = (key: string, v: string | string[] | undefined) => {
+      if (v === undefined) return;
+      (Array.isArray(v) ? v : [v]).forEach((x) => query.append(key, x));
+    };
+    appendPlural('specialties', params?.specialties);
+    appendPlural('states', params?.states);
+    appendPlural('influencerTypes', params?.influencerTypes);
     if (params?.clientId) query.set('clientId', params.clientId);
     if (params?.page) query.set('page', params.page.toString());
     if (params?.limit) query.set('limit', params.limit.toString());
@@ -1080,6 +1092,11 @@ export class ApiClient {
     search?: string;
     specialty?: string;
     state?: string;
+    // v1.17.33: plural KOL-side filters (the gap fixed by the
+    // sociometric-state-filter ticket).
+    specialties?: string | string[];
+    states?: string | string[];
+    influencerTypes?: string | string[];
     clientId?: string;
     page?: number;
     limit?: number;
@@ -1093,6 +1110,13 @@ export class ApiClient {
     if (params?.search) query.set('search', params.search);
     if (params?.specialty) query.set('specialty', params.specialty);
     if (params?.state) query.set('state', params.state);
+    const appendPlural = (key: string, v: string | string[] | undefined) => {
+      if (v === undefined) return;
+      (Array.isArray(v) ? v : [v]).forEach((x) => query.append(key, x));
+    };
+    appendPlural('specialties', params?.specialties);
+    appendPlural('states', params?.states);
+    appendPlural('influencerTypes', params?.influencerTypes);
     if (params?.clientId) query.set('clientId', params.clientId);
     if (params?.page) query.set('page', params.page.toString());
     if (params?.limit) query.set('limit', params.limit.toString());

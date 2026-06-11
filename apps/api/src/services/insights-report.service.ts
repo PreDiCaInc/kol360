@@ -1042,7 +1042,28 @@ export class InsightsReportService {
     respondentFilters?: RespondentFilters
   ): Promise<SociometricSummaryResponse> {
     try {
-    const { page, limit, search, specialty, state, sortBy, sortOrder } = filters;
+    // v1.17.33: also pull the plural array filters + influencerTypes.
+    // Pre-fix only specialty/state were destructured, so the plural shape
+    // the frontend sends (specialties=… states=… influencerTypes=…) was
+    // silently dropped — see
+    // docs/findings/sociometric-state-filter-broken-2026-06-11.md.
+    const {
+      page, limit, search,
+      specialty, specialties,
+      state, states,
+      influencerType, influencerTypes,
+      sortBy, sortOrder,
+    } = filters;
+
+    // v1.17.33: post-fetch filter set for the computed influencer-type
+    // classification (mirrors getKolExplorer:596-600). Accepts plural
+    // shape from the frontend, with singular legacy fallback.
+    const influencerTypeFilter =
+      influencerTypes && influencerTypes.length > 0
+        ? influencerTypes
+        : influencerType
+          ? [influencerType]
+          : null;
 
     const empty: SociometricSummaryResponse = {
       items: [], total: 0, page, limit, totalPages: 0,
@@ -1082,13 +1103,21 @@ export class InsightsReportService {
 
     const searchLc = search?.toLowerCase();
     const thresholds = await this.getInfluencerThresholds();
+
+    // v1.17.33: dual-shape where-clause (mirrors getLeaderRankings:784-790).
+    // Plural arrays from the frontend get the `{ in: [...] }` shape;
+    // singular legacy params fall through to equality.
+    const hcpWhere: Record<string, unknown> = {
+      id: { in: baseHcpIds },
+    };
+    if (specialties && specialties.length > 0) hcpWhere.specialty = { in: specialties };
+    else if (specialty) hcpWhere.specialty = specialty;
+    if (states && states.length > 0) hcpWhere.state = { in: states };
+    else if (state) hcpWhere.state = state;
+
     // Perf pass #6 (Sociometric Summary): narrow to the 6 fields consumed below.
     const hcps = await prisma.hcp.findMany({
-      where: {
-        id: { in: baseHcpIds },
-        ...(specialty ? { specialty } : {}),
-        ...(state ? { state } : {}),
-      },
+      where: hcpWhere,
       select: {
         id: true,
         firstName: true,
@@ -1153,6 +1182,20 @@ export class InsightsReportService {
       // Skip HCPs with zero filtered nominations (only possible under
       // respondent filtering — pre-aggregated path includes everyone).
       if (filteredPerType && total === 0) continue;
+
+      // v1.17.33: influencerType post-filter (the third KOL-side
+      // dimension fixed by this change). The classification can only
+      // be computed after we have the HCP's compositeScore/scoreSurvey
+      // + the analysis thresholds, so it has to be a post-fetch filter
+      // (no equivalent Prisma where-clause).
+      const influencerTypeVal = this.determineInfluencerType({
+        compositeScore: a?.compositeScore ?? null,
+        scoreSurvey: a?.scoreSurvey ?? null,
+      }, thresholds);
+      if (influencerTypeFilter && !influencerTypeFilter.includes(influencerTypeVal)) {
+        continue;
+      }
+
       all.push({
         rank: 0, // assigned after global sort
         hcpId: hcp.id,
@@ -1161,10 +1204,7 @@ export class InsightsReportService {
         specialty: primarySpecialty,
         city: hcp.city,
         state: hcp.state,
-        influencerType: this.determineInfluencerType({
-          compositeScore: a?.compositeScore ?? null,
-          scoreSurvey: a?.scoreSurvey ?? null,
-        }, thresholds),
+        influencerType: influencerTypeVal,
         discussionLeaders,
         referralLeaders,
         adviceLeaders,
