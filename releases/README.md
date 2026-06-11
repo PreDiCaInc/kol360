@@ -19,6 +19,7 @@ Older releases (prod-rel-3.2 through prod-rel-4.1.1) lived in `docs/releases/` b
 
 | Tag | Version | Headline |
 |---|---|---|
+| [4.1.16](prod-rel-4.1.16-handoff.md) | v1.17.33 | P1 customer fix: Sociometric Summary KOL-side filters (KOL State / Specialty / Influencer Type) were silently ignored — destructure read only the singular shape. Single-method fix + new e2e structural-check matrix that catches this bug class going forward |
 | [4.1.15](prod-rel-4.1.15-handoff.md) | v1.17.32 | Insights polish: Sociometric Summary matrix column reorder + Biased column added + every Insights "Export to Excel" button now exports the FULL filtered list (was: current page only) with an NPI column |
 | [4.1.14](prod-rel-4.1.14-handoff.md) | v1.17.31 | P1 hotfix for the comma-shred filter bug surfaced during 4.1.13 soak (Dry Eye and other comma-containing values silently zeroed) + tunnel-up.sh credential hardening |
 | [4.1.13](prod-rel-4.1.13-handoff.md) | v1.17.30 | P1 Core Focus filter fix (MULTI_CHOICE branch was missing — every selection zeroed dashboards) + first slice of client branding (header brand badge, `/clients/me`, `logoUrl` form input, 4px brand stripe, CSS-var theming) |

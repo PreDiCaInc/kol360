@@ -218,14 +218,33 @@ describe('Insights respondent filters (v1.17.5)', () => {
         expect(r.status).toBe(200);
         expect(r.data.totalRespondents).toBeLessThanOrEqual(baseline.data.totalRespondents); // (a) narrows
         probed.push({ value, filtered: r.data.totalRespondents });
-        if (r.data.totalRespondents > 0) {
-          console.log(`✅ demographics ${filterKey}: at least one value narrows >0 (${value}=${r.data.totalRespondents}, baseline=${baseline.data.totalRespondents})`);
+        if (r.data.totalRespondents > 0 && r.data.totalRespondents < baseline.data.totalRespondents) {
+          // v1.17.33: strict narrow — proves the filter actually applied.
+          // Mere `> 0` would also accept `filtered == baseline` which can
+          // be a silent-drop signature (see kol-side matrix).
+          console.log(`✅ demographics ${filterKey}: ${value}=${r.data.totalRespondents}/${baseline.data.totalRespondents}`);
           return;
         }
       }
-      // (b) Fell through — every value zeroed out. That's the bug class.
-      console.error(`❌ demographics ${filterKey}: EVERY filter value zeroed (probed: ${JSON.stringify(probed)})`);
-      expect.fail(`Every ${filterKey} value from /filter-options zeroed out — regression of the Core-Focus-class bug.`);
+      // (b) Fell through. Two failure shapes:
+      //  - Every value zeroed → the original Core-Focus-class bug.
+      //  - Every value returns baseline → the silent-drop signature
+      //    (filter being ignored at the parser/destructure layer, same
+      //    class as the sociometric-state-filter bug). Both fail loudly.
+      const everyZero = probed.every((p) => p.filtered === 0);
+      const everyEqualsBaseline = probed.every((p) => p.filtered === baseline.data.totalRespondents);
+      if (everyZero) {
+        console.error(`❌ demographics ${filterKey}: EVERY filter value zeroed (probed: ${JSON.stringify(probed)})`);
+        expect.fail(`Every ${filterKey} value from /filter-options zeroed out — regression of the Core-Focus-class bug.`);
+      }
+      if (everyEqualsBaseline) {
+        console.error(`❌ demographics ${filterKey}: EVERY filter value returned baseline (${baseline.data.totalRespondents}). Filter is being silently dropped.`);
+        expect.fail(`Every ${filterKey} value returned baseline — silent-drop signature.`);
+      }
+      // Else: mixed (some zero, some baseline, no strict narrow). Logs +
+      // passes — most likely a sparse-data env where the filter does
+      // apply but the data doesn't support a strict-narrow witness.
+      console.log(`⚠ demographics ${filterKey}: no strict-narrow witness found (probed: ${JSON.stringify(probed)})`);
     });
 
     // Same iterate-all-values matrix on Leader Rankings + Sociometric.
