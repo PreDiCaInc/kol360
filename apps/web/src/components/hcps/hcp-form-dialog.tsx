@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createHcpSchema, CreateHcpInput, HCP_SPECIALTIES } from '@kol360/shared';
 import { useCreateHcp, useUpdateHcp, useHcp } from '@/hooks/use-hcps';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import {
   Dialog,
@@ -42,6 +43,11 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
   const createHcp = useCreateHcp();
   const updateHcp = useUpdateHcp();
   const isEdit = !!hcpId;
+  // v1.17.34: NPI is editable only for PLATFORM_ADMIN on an existing
+  // HCP. CREATE keeps NPI required for everyone (writes are already
+  // PLATFORM_ADMIN-only since v1.17.20 via gateWritesToAdmins).
+  const { user } = useAuth();
+  const canEditNpi = user?.role === 'PLATFORM_ADMIN';
 
   // Sub-specialty source of truth = DiseaseArea (per (a) unify decision).
   const { data: diseaseAreasData } = useDiseaseAreas();
@@ -104,7 +110,22 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
   async function onSubmit(data: CreateHcpInput) {
     try {
       if (isEdit) {
-        const { npi: _, ...updateData } = data;
+        // v1.17.34: keep NPI in the update payload for PLATFORM_ADMIN;
+        // strip it for everyone else (defensive — the input is also
+        // disabled). Server enforces this via gateWritesToAdmins +
+        // unique-constraint 409.
+        let updateData: Partial<CreateHcpInput>;
+        if (canEditNpi) {
+          updateData = { ...data };
+          // Don't send an unchanged NPI as an update — keeps the audit
+          // log signal clean (only set npi when it actually changed).
+          if (data.npi === (hcp?.npi ?? '')) {
+            delete updateData.npi;
+          }
+        } else {
+          const { npi: _, ...rest } = data;
+          updateData = rest;
+        }
         await updateHcp.mutateAsync({ id: hcpId!, data: updateData });
       } else {
         await createHcp.mutateAsync(data);
@@ -136,9 +157,17 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
                       {...field}
                       placeholder="1234567890"
                       maxLength={10}
-                      disabled={isEdit}
+                      // v1.17.34: editable on existing HCPs for
+                      // PLATFORM_ADMIN; disabled for everyone else.
+                      disabled={isEdit && !canEditNpi}
                     />
                   </FormControl>
+                  {isEdit && canEditNpi && (
+                    <p className="text-xs text-muted-foreground">
+                      Changing the NPI is logged to the audit trail. The new value
+                      must be unique across all HCPs.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -189,16 +218,25 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
                       placeholder="john@hospital.com"
                     />
                   </FormControl>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Required. If you don't have one yet, use the placeholder:{' '}
+                  {/* v1.17.34: explicit "Use placeholder" button styled
+                      like a chip so it reads as a clickable action.
+                      Pre-fix, the placeholder text was a styled inline
+                      link inside the help paragraph — discoverable to
+                      readers but easy to miss; multiple users
+                      copy/pasted the value out of the help text. */}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      Required. No email yet?
+                    </p>
                     <button
                       type="button"
-                      className="text-primary underline hover:no-underline"
+                      className="text-xs rounded-full bg-muted px-2.5 py-0.5 font-medium text-foreground/80 hover:bg-muted/70 hover:text-foreground transition-colors border border-border"
                       onClick={() => field.onChange('nomail@kol360research.com')}
+                      title="Click to fill the email field with the placeholder address"
                     >
-                      nomail@kol360research.com
+                      Use nomail@kol360research.com
                     </button>
-                  </p>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}

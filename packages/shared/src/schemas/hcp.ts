@@ -67,7 +67,13 @@ export const createNominatedHcpSchema = z.object({
   state: z.string().length(2).optional().nullable(),
 });
 
-export const updateHcpSchema = createHcpSchema.partial().omit({ npi: true }).extend({
+// v1.17.34: npi is now editable (was: omitted from updates entirely).
+// Frontend gates the input behind PLATFORM_ADMIN role; the API route
+// will reject a non-PLATFORM_ADMIN that tries to set it via the
+// gateWritesToAdmins preHandler (already covers all writes since
+// v1.17.20). Backend route surfaces a clean 409 when the new value
+// collides with the Hcp.npi @unique constraint.
+export const updateHcpSchema = createHcpSchema.partial().extend({
   isSurveyTaker: z.boolean().optional(),
   isNominated: z.boolean().optional(),
 });

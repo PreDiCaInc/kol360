@@ -7,6 +7,7 @@ import { nominationService } from '../services/nomination.service';
 import {
   nominationListQuerySchema,
   matchNominationSchema,
+  rematchNominationSchema,
   createHcpFromNominationSchema,
   updateNominationRawNameSchema,
   excludeNominationSchema,
@@ -200,6 +201,50 @@ export const nominationRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to match nomination';
       return reply.status(400).send({ message });
+    }
+  });
+
+  // v1.17.34: Re-point an already-matched nomination to a different HCP
+  // (PLATFORM_ADMIN only). Distinct from /match so the audit row carries
+  // 'nomination.rematched' + the OLD matched HCP id.
+  fastify.post<{
+    Params: z.infer<typeof nominationIdParamSchema>;
+    Body: z.infer<typeof rematchNominationSchema>;
+  }>('/:id/nominations/:nid/rematch', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
+    if (request.user.role !== 'PLATFORM_ADMIN') {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Only platform administrators can re-point nominations',
+        statusCode: 403,
+      });
+    }
+
+    const { id: campaignId, nid: nominationId } = nominationIdParamSchema.parse(request.params);
+    const hasAccess = await verifyCampaignAccess(campaignId, request.user, reply);
+    if (!hasAccess) return;
+
+    const { newHcpId, addAlias, reason } = rematchNominationSchema.parse(request.body);
+
+    try {
+      const result = await nominationService.rematchToHcp(
+        nominationId,
+        newHcpId,
+        addAlias,
+        request.user.sub,
+        reason
+      );
+      return result;
+    } catch (error) {
+      const err = error as Error & { status?: number };
+      const status = err.status ?? 400;
+      return reply.status(status).send({
+        error: status === 404 ? 'Not Found' : status === 409 ? 'Conflict' : 'Bad Request',
+        message: err.message || 'Failed to rematch nomination',
+        statusCode: status,
+      });
     }
   });
 

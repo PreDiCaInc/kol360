@@ -19,6 +19,7 @@ Older releases (prod-rel-3.2 through prod-rel-4.1.1) lived in `docs/releases/` b
 
 | Tag | Version | Headline |
 |---|---|---|
+| [4.1.17](prod-rel-4.1.17-handoff.md) | v1.17.34 | HCP admin-page polish + nomination rematch: full-name search fix ("Paul Karpecki" returned 0 rows), NPI editable for PLATFORM_ADMIN with audit trail + 409 on collision, email-placeholder converted to a clickable chip, and a new "Change match" affordance on matched nominations (PLATFORM_ADMIN) that re-points the match via POST `/nominations/:nid/rematch` with full audit trail (`nomination.rematched`) |
 | [4.1.16](prod-rel-4.1.16-handoff.md) | v1.17.33 | P1 customer fix: Sociometric Summary KOL-side filters (KOL State / Specialty / Influencer Type) were silently ignored — destructure read only the singular shape. Single-method fix + new e2e structural-check matrix that catches this bug class going forward |
 | [4.1.15](prod-rel-4.1.15-handoff.md) | v1.17.32 | Insights polish: Sociometric Summary matrix column reorder + Biased column added + every Insights "Export to Excel" button now exports the FULL filtered list (was: current page only) with an NPI column |
 | [4.1.14](prod-rel-4.1.14-handoff.md) | v1.17.31 | P1 hotfix for the comma-shred filter bug surfaced during 4.1.13 soak (Dry Eye and other comma-containing values silently zeroed) + tunnel-up.sh credential hardening |

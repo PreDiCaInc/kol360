@@ -11,7 +11,7 @@ const hcpServiceInstance = new HcpService();
  */
 async function auditNomination(
   cognitoSub: string,
-  action: 'nomination.matched' | 'nomination.excluded' | 'nomination.raw_name_updated',
+  action: 'nomination.matched' | 'nomination.rematched' | 'nomination.excluded' | 'nomination.raw_name_updated',
   entityId: string,
   oldValues: Record<string, unknown> | undefined,
   newValues: Record<string, unknown>
@@ -611,6 +611,132 @@ export class NominationService {
       source: isManual ? 'manual' : 'auto',
       aliasAdded: addAlias,
     });
+
+    return updated;
+  }
+
+  // v1.17.34: re-point an already-matched nomination to a different HCP.
+  // Distinct from matchToHcp so the audit row says 'nomination.rematched'
+  // and captures the OLD matched HCP id explicitly — makes "who moved
+  // which nomination off which HCP and when" a single-SELECT in the
+  // audit table.
+  //
+  // Failure shapes the route surfaces:
+  //  - 404: nomination doesn't exist
+  //  - 409: nomination was never matched (use /match instead) or
+  //         newHcpId equals the current matchedHcpId (no-op)
+  //  - 404: newHcp doesn't exist
+  async rematchToHcp(
+    nominationId: string,
+    newHcpId: string,
+    addAlias: boolean,
+    rematchedBy: string,
+    reason?: string
+  ) {
+    const nomination = await prisma.nomination.findUnique({
+      where: { id: nominationId },
+      include: {
+        response: { select: { campaignId: true } },
+      },
+    });
+    if (!nomination) {
+      const err = new Error('Nomination not found') as Error & { status?: number };
+      err.status = 404;
+      throw err;
+    }
+    if (!nomination.matchedHcpId) {
+      const err = new Error(
+        'Nomination has no current match — use /match instead'
+      ) as Error & { status?: number };
+      err.status = 409;
+      throw err;
+    }
+    if (nomination.matchedHcpId === newHcpId) {
+      const err = new Error(
+        'Nomination is already matched to that HCP'
+      ) as Error & { status?: number };
+      err.status = 409;
+      throw err;
+    }
+    const newHcp = await prisma.hcp.findUnique({
+      where: { id: newHcpId },
+      select: { id: true, firstName: true, lastName: true, npi: true },
+    });
+    if (!newHcp) {
+      const err = new Error('Target HCP not found') as Error & { status?: number };
+      err.status = 404;
+      throw err;
+    }
+
+    const oldHcpId = nomination.matchedHcpId;
+
+    // Mirror matchToHcp's alias handling, but only when explicitly
+    // requested — rematch usually doesn't want the raw name promoted to
+    // a new alias because the prior match likely already aliased it.
+    if (addAlias) {
+      const normalizedAlias = normalizeApostrophes(nomination.rawNameEntered.trim());
+      const existing = await prisma.hcpAlias.findFirst({
+        where: {
+          hcpId: newHcpId,
+          aliasName: { equals: normalizedAlias, mode: 'insensitive' },
+        },
+      });
+      if (!existing) {
+        await prisma.hcpAlias.create({
+          data: { hcpId: newHcpId, aliasName: normalizedAlias, createdBy: rematchedBy },
+        });
+      }
+    }
+
+    // Ensure the new HCP carries isNominated.
+    await prisma.hcp.update({
+      where: { id: newHcpId },
+      data: { isNominated: true },
+    });
+
+    // Update the nomination. Manual rematch by a PLATFORM_ADMIN is
+    // always confident → MATCHED + matchType='exact' + confidence=100.
+    const updated = await prisma.nomination.update({
+      where: { id: nominationId },
+      data: {
+        matchedHcpId: newHcpId,
+        matchStatus: 'MATCHED',
+        matchType: 'exact',
+        matchConfidence: 100,
+        matchedBy: rematchedBy,
+        matchedAt: new Date(),
+      },
+      include: {
+        matchedHcp: { select: { id: true, npi: true, firstName: true, lastName: true } },
+      },
+    });
+
+    await auditNomination(
+      rematchedBy,
+      'nomination.rematched',
+      nominationId,
+      {
+        matchedHcpId: oldHcpId,
+        matchStatus: nomination.matchStatus,
+        matchType: nomination.matchType,
+        matchConfidence: nomination.matchConfidence,
+      },
+      {
+        matchedHcpId: newHcpId,
+        matchStatus: 'MATCHED',
+        matchType: 'exact',
+        matchConfidence: 100,
+        rawNameEntered: nomination.rawNameEntered,
+        source: 'manual',
+        aliasAdded: addAlias,
+        reason: reason ?? null,
+      }
+    );
+
+    // The OLD HCP's isNominated flag may need to flip to false if this
+    // was the last nomination pointing at them. Avoid an expensive
+    // recompute here — leave as a TODO for a scheduled job. Score
+    // recompute happens out-of-band via the existing analysis recalc.
 
     return updated;
   }

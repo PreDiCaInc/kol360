@@ -625,6 +625,19 @@ export class ApiClient {
     );
   }
 
+  // v1.17.34: re-point an already-matched nomination to a different HCP.
+  async rematchNomination(
+    campaignId: string,
+    nominationId: string,
+    data: { newHcpId: string; addAlias?: boolean; reason?: string }
+  ) {
+    return this.request<Nomination & { matchStatus?: string; matchType?: string; matchConfidence?: number }>(
+      'POST',
+      `/api/v1/campaigns/${campaignId}/nominations/${nominationId}/rematch`,
+      data
+    );
+  }
+
   async getNominationSuggestions(
     campaignId: string,
     nominationId: string,

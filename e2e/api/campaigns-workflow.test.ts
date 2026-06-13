@@ -248,4 +248,85 @@ describe.skipIf(skipIfNoAuth)('HCP Search E2E', () => {
     expect(data.firstName).toBe(TEST_IDS.HCP_1.firstName);
     expect(data.lastName).toBe(TEST_IDS.HCP_1.lastName);
   });
+
+  // v1.17.34: pre-fix, searching the full name "Alice TestDoctor" returned
+  // zero rows because the OR clauses ran the entire query string against
+  // firstName / lastName separately, and neither field contains the full
+  // string. Fix splits multi-token queries on whitespace and pairs the
+  // tokens across firstName + lastName in both orderings.
+  describe('Full-name search (v1.17.34 fix)', () => {
+    it('finds HCP by "FirstName LastName" full-name query', async () => {
+      const fullName = `${TEST_IDS.HCP_1.firstName} ${TEST_IDS.HCP_1.lastName}`;
+      const { status, data } = await api.listHcps({ search: fullName });
+      expect(status).toBe(200);
+      const found = data.items.find((h) => h.npi === TEST_IDS.HCP_1.npi);
+      expect(found, `full-name search "${fullName}" should find HCP_1`).toBeTruthy();
+    });
+
+    it('finds HCP by "LastName FirstName" reversed query', async () => {
+      const reversed = `${TEST_IDS.HCP_1.lastName} ${TEST_IDS.HCP_1.firstName}`;
+      const { status, data } = await api.listHcps({ search: reversed });
+      expect(status).toBe(200);
+      const found = data.items.find((h) => h.npi === TEST_IDS.HCP_1.npi);
+      expect(found, `reversed search "${reversed}" should find HCP_1`).toBeTruthy();
+    });
+
+    it('still finds HCP by single-token first name (regression check)', async () => {
+      const { status, data } = await api.listHcps({ search: TEST_IDS.HCP_1.firstName });
+      expect(status).toBe(200);
+      const found = data.items.find((h) => h.npi === TEST_IDS.HCP_1.npi);
+      expect(found).toBeTruthy();
+    });
+
+    it('still finds HCP by single-token last name (regression check)', async () => {
+      const { status, data } = await api.listHcps({ search: TEST_IDS.HCP_1.lastName });
+      expect(status).toBe(200);
+      const found = data.items.find((h) => h.npi === TEST_IDS.HCP_1.npi);
+      expect(found).toBeTruthy();
+    });
+  });
+
+  // v1.17.34: NPI is editable for PLATFORM_ADMIN on an existing HCP.
+  // Pre-fix, updateHcpSchema explicitly .omit({ npi: true }) so any
+  // attempt to set NPI on update was silently stripped. Now the schema
+  // accepts it; the frontend gates the input behind PLATFORM_ADMIN
+  // role; the API surfaces a clean 409 on Hcp.npi @unique collisions.
+  describe('NPI editable for PLATFORM_ADMIN (v1.17.34)', () => {
+    it('PLATFORM_ADMIN can update an HCP\'s NPI to a new unique value', async () => {
+      // Use HCP_3 to avoid disturbing the HCPs other tests rely on.
+      const originalNpi = TEST_IDS.HCP_3.npi;
+      const newNpi = `999${Date.now() % 1_000_000_0}`.slice(0, 10); // 10-digit, fresh per run
+      try {
+        const upd = await api.updateHcp(TEST_IDS.HCP_3.id, { npi: newNpi });
+        expect(upd.status).toBe(200);
+        expect(upd.data.npi).toBe(newNpi);
+        // Verify via getHcp to confirm persistence.
+        const get = await api.getHcp(TEST_IDS.HCP_3.id);
+        expect(get.data.npi).toBe(newNpi);
+      } finally {
+        // Restore so subsequent tests don't drift the fixture.
+        await api.updateHcp(TEST_IDS.HCP_3.id, { npi: originalNpi });
+      }
+    });
+
+    it('updating to a NPI already taken by another HCP returns 409', async () => {
+      // Try to set HCP_3's NPI to HCP_1's NPI.
+      const { status, data } = await api.updateHcp(TEST_IDS.HCP_3.id, {
+        npi: TEST_IDS.HCP_1.npi,
+      });
+      expect(status).toBe(409);
+      // Body shape: { error, message, statusCode }
+      expect(data.statusCode).toBe(409);
+      expect(String(data.message ?? '')).toMatch(/NPI/i);
+    });
+
+    it('updating to the SAME NPI is a no-op (no audit noise)', async () => {
+      // Sending the existing NPI shouldn't error and shouldn't conflict.
+      const { status, data } = await api.updateHcp(TEST_IDS.HCP_3.id, {
+        npi: TEST_IDS.HCP_3.npi,
+      });
+      expect(status).toBe(200);
+      expect(data.npi).toBe(TEST_IDS.HCP_3.npi);
+    });
+  });
 });
