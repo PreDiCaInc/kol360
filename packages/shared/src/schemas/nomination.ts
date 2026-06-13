@@ -30,6 +30,19 @@ export const matchNominationSchema = z.object({
 
 export type MatchNominationInput = z.infer<typeof matchNominationSchema>;
 
+// v1.17.34: re-point an already-matched nomination to a different HCP.
+// Separate schema from matchNominationSchema so the API surface (and
+// audit action) cleanly distinguishes first-match from a re-point.
+// Caller usually does NOT want to add an alias on a rematch (the prior
+// match already produced one if appropriate), so the default flips.
+export const rematchNominationSchema = z.object({
+  newHcpId: z.string().cuid(),
+  addAlias: z.boolean().default(false),
+  reason: z.string().max(500).optional(),
+});
+
+export type RematchNominationInput = z.infer<typeof rematchNominationSchema>;
+
 // Schema for creating new HCP from nomination.
 //
 // specialty: hcpSpecialtySchema (canonical 2-value enum) — NOT a loose

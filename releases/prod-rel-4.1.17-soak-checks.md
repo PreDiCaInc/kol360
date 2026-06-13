@@ -8,6 +8,8 @@ Tag at the v1.17.34 merge commit on `main`. Three HCP admin-page polish items �
 2. **`updateHcpSchema`** — no longer omits `npi`.
 3. **PUT `/hcps/:id`** — catches Prisma `P2002` on `Hcp.npi` and returns 409; new `hcp.npi_changed` audit action.
 4. **HCP form dialog** — NPI input gated on PLATFORM_ADMIN; email placeholder converted to chip button.
+5. **`NominationService.rematchToHcp` + POST `/campaigns/:id/nominations/:nid/rematch`** — re-point an already-matched nomination; PLATFORM_ADMIN-only; emits `nomination.rematched` audit action with old + new HCP id.
+6. **Nominations page (matched row)** — new "Change match" chip button + MatchNominationDialog `mode='rematch'` reuse.
 
 ---
 
@@ -56,7 +58,28 @@ Log in as a CLIENT_ADMIN (any tenant with one). Admin → HCPs → Edit any HCP:
 - NPI field is **disabled** (greyed out). No edit affordance shown.
 - Per gateWritesToAdmins (v1.17.20), CLIENT_ADMIN can't write any HCP fields anyway; this is a defense-in-depth surface check.
 
-### A5. Email "Use placeholder" chip
+### A5. Nomination rematch — Change Match flow lands on the new HCP
+
+Log in as PLATFORM_ADMIN → Admin → Campaigns → pick an active campaign with MATCHED nominations → Nominations tab → filter to MATCHED:
+
+- Each MATCHED row shows the matched HCP name + a chip button **"Change match"** next to it (chip is absent for CLIENT_ADMIN / TEAM_MEMBER).
+- Click "Change match" → existing match dialog opens with title **"Change Match"** and a sub-line: *"Currently matched to {HCP name} ({NPI}). Pick a different HCP …"*. Exclude + Create-New-HCP buttons are hidden.
+- Pick a different suggestion → click **"Save New Match"** → toast/success → dialog closes → row updates to show the new matched HCP.
+- Picking the same HCP → save button is disabled.
+
+API check:
+```bash
+TOK=...
+CAMP=<active-campaign-id>; NOM=<matched-nomination-id>; HCP=<target-hcp-id>
+curl -s -X POST -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+  "https://ik6dmnn2ra.us-east-2.awsapprunner.com/api/v1/campaigns/$CAMP/nominations/$NOM/rematch" \
+  -d "{\"newHcpId\":\"$HCP\"}" | jq '{ matchStatus, matchedHcpId }'
+# Expected: { "matchStatus": "MATCHED", "matchedHcpId": "<HCP>" }
+```
+
+Same-HCP collision: re-run the same curl → 409.
+
+### A6. Email "Use placeholder" chip
 
 Log in as PLATFORM_ADMIN → Admin → HCPs → Add HCP → focus the Email field:
 - Below the input, visible: `Required. No email yet?` followed by a chip button **"Use nomail@kol360research.com"**.
@@ -108,7 +131,7 @@ In the edit dialog, click Save without changing the NPI:
 
 ### B5. Email chip UI on small viewports
 
-A5 with a narrowed browser window (~768px). Chip should:
+A6 with a narrowed browser window (~768px). Chip should:
 - Wrap below the "No email yet?" text if needed.
 - Remain clickable / readable.
 - Not overflow the dialog.

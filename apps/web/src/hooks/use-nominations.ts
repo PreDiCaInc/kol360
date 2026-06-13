@@ -185,6 +185,38 @@ export function useMatchNomination() {
   });
 }
 
+// v1.17.34: re-point an already-matched nomination to a different HCP.
+// Distinct from useMatchNomination so the audit row says
+// 'nomination.rematched' on the server side.
+export function useRematchNomination() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      nominationId,
+      newHcpId,
+      addAlias,
+      reason,
+    }: {
+      campaignId: string;
+      nominationId: string;
+      newHcpId: string;
+      addAlias?: boolean;
+      reason?: string;
+    }) =>
+      apiClient.post(`/api/v1/campaigns/${campaignId}/nominations/${nominationId}/rematch`, {
+        newHcpId,
+        addAlias: addAlias ?? false,
+        ...(reason ? { reason } : {}),
+      }),
+    onSuccess: (_, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: ['campaigns', campaignId, 'nominations'] });
+      queryClient.invalidateQueries({ queryKey: ['hcps'] });
+    },
+  });
+}
+
 export function useCreateHcpFromNomination() {
   const queryClient = useQueryClient();
 

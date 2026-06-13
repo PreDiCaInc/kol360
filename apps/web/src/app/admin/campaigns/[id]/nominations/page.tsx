@@ -15,8 +15,10 @@ import {
   useBulkAutoMatch,
   useBulkExcludeNominations,
   useUpdateNominationRawName,
+  useRematchNomination,
   type TopSuggestion,
 } from '@/hooks/use-nominations';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { useCampaign, useCloseCampaign } from '@/hooks/use-campaigns';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { HCP_SPECIALTIES } from '@kol360/shared';
@@ -140,6 +142,10 @@ export default function NominationsPage() {
     return () => clearTimeout(handle);
   }, [searchQuery]);
   const [selectedNominationId, setSelectedNominationId] = useState<string | null>(null);
+  // v1.17.34: rematch mode for the MatchNominationDialog. Same dialog,
+  // different audit action + endpoint. Set when a PLATFORM_ADMIN clicks
+  // "Change Match" on a MATCHED row.
+  const [rematchNominationId, setRematchNominationId] = useState<string | null>(null);
   const [showCreateHcpDialog, setShowCreateHcpDialog] = useState(false);
   const [nominationForNewHcp, setNominationForNewHcp] = useState<string | null>(null);
   const [editNominationId, setEditNominationId] = useState<string | null>(null);
@@ -177,6 +183,10 @@ export default function NominationsPage() {
   // Bulk-accept flow state
   const bulkAccept = useBulkAcceptNominations();
   const matchNomination = useMatchNomination();
+  // v1.17.34: PLATFORM_ADMIN can re-point matched nominations via the
+  // "Change Match" affordance on each MATCHED row.
+  const { user } = useAuth();
+  const canRematch = user?.role === 'PLATFORM_ADMIN';
   // When non-null, the low-confidence confirmation modal is open and these
   // are the ids waiting to be accepted (high-conf + low-conf together).
   const [bulkAcceptPending, setBulkAcceptPending] = useState<{
@@ -817,12 +827,27 @@ export default function NominationsPage() {
                         </TableCell>
                         <TableCell>
                           {nomination.matchedHcp ? (
-                            <span>
-                              {nomination.matchedHcp.firstName} {nomination.matchedHcp.lastName}
-                              <span className="text-xs text-muted-foreground ml-1">
-                                ({nomination.matchedHcp.npi})
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>
+                                {nomination.matchedHcp.firstName} {nomination.matchedHcp.lastName}
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  ({nomination.matchedHcp.npi})
+                                </span>
                               </span>
-                            </span>
+                              {/* v1.17.34: PLATFORM_ADMIN can re-point a
+                                  wrongly-matched nomination to a different
+                                  HCP without going through psql. */}
+                              {canRematch && nomination.matchStatus === 'MATCHED' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRematchNominationId(nomination.id)}
+                                  className="text-xs rounded-full border border-border bg-muted/60 px-2 py-0.5 font-medium text-foreground/80 hover:bg-muted hover:text-foreground transition-colors"
+                                  title="Change which HCP this nomination is matched to"
+                                >
+                                  Change match
+                                </button>
+                              )}
+                            </div>
                           ) : nomination.matchStatus === 'EXCLUDED' && nomination.excludeReason ? (
                             <span className="text-sm text-muted-foreground italic">
                               {nomination.excludeReason}
@@ -962,6 +987,19 @@ export default function NominationsPage() {
               setNominationForNewHcp(nominationId);
               setShowCreateHcpDialog(true);
             }}
+          />
+        )}
+
+        {/* v1.17.34: Rematch Dialog — same component, mode='rematch'
+            switches the endpoint + button label and surfaces the prior
+            match prominently. */}
+        {rematchNominationId && (
+          <MatchNominationDialog
+            campaignId={campaignId}
+            nominationId={rematchNominationId}
+            nomination={nominations?.items.find((n) => n.id === rematchNominationId)}
+            onClose={() => setRematchNominationId(null)}
+            mode="rematch"
           />
         )}
 
@@ -1262,6 +1300,14 @@ interface MatchNominationDialogProps {
    * closes this dialog and opens CreateHcpDialog with the rawName pre-filled.
    */
   onCreateNewHcp?: (nominationId: string) => void;
+  /**
+   * v1.17.34: when set to 'rematch', the dialog calls the
+   * /rematch endpoint instead of /match. Same suggestion UI; the
+   * submit action emits a different audit row server-side
+   * (nomination.rematched). Hides the Exclude action (rematch is
+   * scoped to re-pointing an already-matched nomination).
+   */
+  mode?: 'match' | 'rematch';
 }
 
 function MatchNominationDialog({
@@ -1270,10 +1316,13 @@ function MatchNominationDialog({
   nomination,
   onClose,
   onCreateNewHcp,
+  mode = 'match',
 }: MatchNominationDialogProps) {
   const { data: suggestions, isLoading } = useNominationSuggestions(campaignId, nominationId);
   const matchNomination = useMatchNomination();
+  const rematchNomination = useRematchNomination();
   const excludeNomination = useExcludeNomination();
+  const isRematchMode = mode === 'rematch';
 
   const isReviewMode = nomination?.matchStatus === 'REVIEW_NEEDED';
   const currentMatchedHcpId = nomination?.matchedHcp?.id || null;
@@ -1300,14 +1349,31 @@ function MatchNominationDialog({
 
       // Never add alias if it's already a name match
       const shouldAddAlias = !isNameMatch && addAlias;
-      await matchNomination.mutateAsync({
-        campaignId,
-        nominationId,
-        hcpId: selectedHcpId,
-        addAlias: shouldAddAlias,
-        matchType,
-        matchConfidence,
-      });
+
+      if (isRematchMode) {
+        // v1.17.34: hit /rematch so the server emits a
+        // 'nomination.rematched' audit row + captures the OLD HCP.
+        // No-op guard: same HCP isn't a rematch.
+        if (selectedHcpId === currentMatchedHcpId) {
+          onClose();
+          return;
+        }
+        await rematchNomination.mutateAsync({
+          campaignId,
+          nominationId,
+          newHcpId: selectedHcpId,
+          addAlias: shouldAddAlias,
+        });
+      } else {
+        await matchNomination.mutateAsync({
+          campaignId,
+          nominationId,
+          hcpId: selectedHcpId,
+          addAlias: shouldAddAlias,
+          matchType,
+          matchConfidence,
+        });
+      }
       onClose();
     } catch (error) {
       console.error('Failed to match:', error);
@@ -1390,7 +1456,19 @@ function MatchNominationDialog({
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>{isReviewMode ? 'Review Match' : 'Match Nomination'}</DialogTitle>
+          <DialogTitle>
+            {isRematchMode ? 'Change Match' : isReviewMode ? 'Review Match' : 'Match Nomination'}
+          </DialogTitle>
+          {isRematchMode && nomination?.matchedHcp && (
+            <p className="text-xs text-muted-foreground">
+              Currently matched to{' '}
+              <span className="font-medium text-foreground">
+                {nomination.matchedHcp.firstName} {nomination.matchedHcp.lastName}
+              </span>{' '}
+              ({nomination.matchedHcp.npi}). Pick a different HCP from the suggestions below.
+              The change is logged to the audit trail.
+            </p>
+          )}
           <DialogDescription>
             "{nomination?.rawNameEntered}" - nominated by{' '}
             {nomination?.nominatorHcp.firstName} {nomination?.nominatorHcp.lastName}
@@ -1512,14 +1590,19 @@ function MatchNominationDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={() => setShowExcludeConfirm(true)}
-          >
-            <Ban className="w-4 h-4 mr-2" />
-            Exclude
-          </Button>
-          {onCreateNewHcp && (
+          {/* v1.17.34: Exclude + Create-New-HCP are first-match flows.
+              Rematch is a re-point of an already-matched nomination;
+              the user should choose a different existing HCP. */}
+          {!isRematchMode && (
+            <Button
+              variant="destructive"
+              onClick={() => setShowExcludeConfirm(true)}
+            >
+              <Ban className="w-4 h-4 mr-2" />
+              Exclude
+            </Button>
+          )}
+          {!isRematchMode && onCreateNewHcp && (
             <Button
               variant="outline"
               onClick={() => onCreateNewHcp(nominationId)}
@@ -1531,14 +1614,19 @@ function MatchNominationDialog({
           )}
           <Button
             onClick={handleMatch}
-            disabled={!selectedHcpId || matchNomination.isPending}
+            disabled={
+              !selectedHcpId ||
+              matchNomination.isPending ||
+              rematchNomination.isPending ||
+              (isRematchMode && selectedHcpId === currentMatchedHcpId)
+            }
           >
-            {matchNomination.isPending ? (
+            {(isRematchMode ? rematchNomination.isPending : matchNomination.isPending) ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <CheckCircle2 className="w-4 h-4 mr-2" />
             )}
-            {isReviewMode ? 'Confirm Match' : 'Match'}
+            {isRematchMode ? 'Save New Match' : isReviewMode ? 'Confirm Match' : 'Match'}
           </Button>
         </DialogFooter>
       </DialogContent>

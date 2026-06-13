@@ -133,14 +133,17 @@ describe('HCP Schemas', () => {
       expect(result).toEqual({ firstName: 'Jane' });
     });
 
-    it('should not allow NPI updates', () => {
+    it('should allow NPI updates (v1.17.34 — gated to PLATFORM_ADMIN at the route + UI layer)', () => {
       const result = updateHcpSchema.parse({
         npi: '0987654321',
         firstName: 'Jane',
       });
-      // NPI should be omitted
-      expect(result).not.toHaveProperty('npi');
+      expect(result.npi).toBe('0987654321');
       expect(result.firstName).toBe('Jane');
+    });
+
+    it('rejects a malformed NPI on update (npiSchema regex still enforced)', () => {
+      expect(() => updateHcpSchema.parse({ npi: '123' })).toThrow();
     });
 
     it('should accept empty object', () => {

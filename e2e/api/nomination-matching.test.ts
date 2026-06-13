@@ -241,4 +241,145 @@ describe('Nomination Matching (v1.15.14)', () => {
       expect(status).toBe(400);
     });
   });
+
+  // v1.17.34: re-point an already-matched nomination to a different HCP.
+  // Distinct from the /match endpoint — emits 'nomination.rematched' on
+  // the server and captures the OLD matched HCP id in the audit row.
+  describe('Rematch (v1.17.34)', () => {
+    it('re-points a MATCHED nomination to a different HCP + restores', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(
+        (c) => c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
+      );
+      if (!testCampaign) {
+        console.log('⊘ No active test campaign — skipping');
+        return;
+      }
+
+      const { data: matched } = await client.listNominations(testCampaign.id, {
+        status: 'MATCHED',
+        limit: 1,
+      });
+      const target = matched.items[0];
+      if (!target?.matchedHcp?.id) {
+        console.log('⊘ No MATCHED nomination available — skipping');
+        return;
+      }
+      const originalHcpId = target.matchedHcp.id;
+
+      // Pick any other HCP on the platform that isn't the current match.
+      const { data: hcpList } = await client.listHcps({ limit: 25 });
+      const alternative = hcpList.items.find((h) => h.id !== originalHcpId);
+      if (!alternative) {
+        console.log('⊘ No alternative HCP available — skipping');
+        return;
+      }
+
+      try {
+        const { status, data: rematched } = await client.rematchNomination(
+          testCampaign.id,
+          target.id,
+          { newHcpId: alternative.id, reason: 'e2e rematch test' }
+        );
+        expect(status).toBe(200);
+        // Match status should land as MATCHED (rematch by an admin is
+        // always confident).
+        expect(rematched.matchStatus).toBe('MATCHED');
+        // The matchedHcp on the response should be the new HCP. The shape
+        // varies between v1.x.x; the matchedHcpId field is the canonical
+        // post-fix indicator.
+        const newMatchedId =
+          (rematched as { matchedHcpId?: string; matchedHcp?: { id?: string } })
+            .matchedHcpId ??
+          (rematched as { matchedHcp?: { id?: string } }).matchedHcp?.id;
+        expect(newMatchedId).toBe(alternative.id);
+      } finally {
+        // Restore to keep subsequent runs deterministic.
+        await client.rematchNomination(testCampaign.id, target.id, {
+          newHcpId: originalHcpId,
+          reason: 'e2e rematch restore',
+        });
+      }
+    });
+
+    it('rejects rematch to the same HCP with 409 (no-op)', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(
+        (c) => c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
+      );
+      if (!testCampaign) {
+        console.log('⊘ No active test campaign — skipping');
+        return;
+      }
+      const { data: matched } = await client.listNominations(testCampaign.id, {
+        status: 'MATCHED',
+        limit: 1,
+      });
+      const target = matched.items[0];
+      if (!target?.matchedHcp?.id) {
+        console.log('⊘ No MATCHED nomination available — skipping');
+        return;
+      }
+      const { status } = await client.rematchNomination(testCampaign.id, target.id, {
+        newHcpId: target.matchedHcp.id,
+      });
+      expect(status).toBe(409);
+    });
+
+    it('rejects rematch to a non-existent HCP with 404', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(
+        (c) => c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
+      );
+      if (!testCampaign) {
+        console.log('⊘ No active test campaign — skipping');
+        return;
+      }
+      const { data: matched } = await client.listNominations(testCampaign.id, {
+        status: 'MATCHED',
+        limit: 1,
+      });
+      const target = matched.items[0];
+      if (!target) {
+        console.log('⊘ No MATCHED nomination available — skipping');
+        return;
+      }
+      // Fake-but-cuid-shaped id (Zod accepts the shape; service returns 404).
+      const fakeId = 'cmpyzzzzzzzzzzzzzzzzzzzzzz';
+      const { status } = await client.rematchNomination(testCampaign.id, target.id, {
+        newHcpId: fakeId,
+      });
+      expect(status).toBe(404);
+    });
+
+    it('rejects rematch on an UNMATCHED nomination with 409', async () => {
+      const { data: campaigns } = await client.listCampaigns();
+      const testCampaign = campaigns.items.find(
+        (c) => c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
+      );
+      if (!testCampaign) {
+        console.log('⊘ No active test campaign — skipping');
+        return;
+      }
+      const { data: unmatched } = await client.listNominations(testCampaign.id, {
+        status: 'UNMATCHED',
+        limit: 1,
+      });
+      const target = unmatched.items[0];
+      if (!target) {
+        console.log('⊘ No UNMATCHED nomination available — skipping');
+        return;
+      }
+      const { data: hcpList } = await client.listHcps({ limit: 1 });
+      const anyHcp = hcpList.items[0];
+      if (!anyHcp) {
+        console.log('⊘ No HCPs to use as target — skipping');
+        return;
+      }
+      const { status } = await client.rematchNomination(testCampaign.id, target.id, {
+        newHcpId: anyHcp.id,
+      });
+      expect(status).toBe(409);
+    });
+  });
 });
