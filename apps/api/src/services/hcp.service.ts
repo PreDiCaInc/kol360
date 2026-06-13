@@ -55,14 +55,45 @@ export class HcpService {
     }
 
     if (query) {
-      where.OR = [
+      // v1.17.34: full-name search. The previous OR-clauses ran the entire
+      // query string against firstName / lastName separately, so "Paul
+      // Karpecki" matched neither (firstName="Paul", lastName="Karpecki"
+      // — neither contains the full string). When the query splits on
+      // whitespace into 2+ tokens, build AND-pairs across firstName +
+      // lastName in both orderings so the same-order ("Paul Karpecki")
+      // and reversed ("Karpecki, Paul") forms both match. Single-token
+      // queries keep the original behaviour exactly. Same shape as the
+      // Insights side (insights-report.service.ts:613-616), just at
+      // the DB layer instead of in-memory.
+      const tokens = query.trim().split(/\s+/).filter(Boolean);
+      const orClauses: Record<string, unknown>[] = [
         { npi: { contains: query } },
-        { beId: { contains: query, mode: "insensitive" } },
+        { beId: { contains: query, mode: 'insensitive' } },
         { firstName: { contains: query, mode: 'insensitive' } },
         { lastName: { contains: query, mode: 'insensitive' } },
         { email: { contains: query, mode: 'insensitive' } },
         { aliases: { some: { aliasName: { contains: query, mode: 'insensitive' } } } },
       ];
+      if (tokens.length >= 2) {
+        // Pair-up first and last tokens so "Paul Karpecki" matches
+        // firstName=Paul + lastName=Karpecki. Both orderings so a
+        // last-first phrase ("Karpecki Paul") also matches.
+        const first = tokens[0];
+        const last = tokens[tokens.length - 1];
+        orClauses.push({
+          AND: [
+            { firstName: { contains: first, mode: 'insensitive' } },
+            { lastName: { contains: last, mode: 'insensitive' } },
+          ],
+        });
+        orClauses.push({
+          AND: [
+            { firstName: { contains: last, mode: 'insensitive' } },
+            { lastName: { contains: first, mode: 'insensitive' } },
+          ],
+        });
+      }
+      where.OR = orClauses;
     }
     // Support filtering by specialty (check both legacy field and new relation)
     if (specialty) {

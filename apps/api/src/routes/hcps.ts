@@ -143,14 +143,46 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    const hcp = await hcpService.update(request.params.id, data);
+    // v1.17.34: NPI changes are significant — track the before/after
+    // explicitly so the hcp.updated audit row captures the canonical
+    // identifier change. (NPI is editable only for PLATFORM_ADMIN; the
+    // gateWritesToAdmins preHandler already enforces that.)
+    const isNpiChange =
+      data.npi !== undefined && data.npi !== null && data.npi !== existing.npi;
 
-    // Audit log
+    let hcp;
+    try {
+      hcp = await hcpService.update(request.params.id, data);
+    } catch (err: unknown) {
+      // Prisma unique-violation on Hcp.npi — surface as 409 instead of
+      // letting the generic error handler return 500/503.
+      const prismaErr = err as { code?: string; meta?: { target?: string[] | string } };
+      const target = Array.isArray(prismaErr?.meta?.target)
+        ? prismaErr.meta!.target!.join(',')
+        : prismaErr?.meta?.target ?? '';
+      if (prismaErr?.code === 'P2002' && target.includes('npi')) {
+        return reply.status(409).send({
+          error: 'Conflict',
+          message: `Another HCP already exists with NPI ${data.npi}`,
+          statusCode: 409,
+        });
+      }
+      throw err;
+    }
+
+    // Audit log. Capture the NPI before/after on the audit row when it
+    // changed, so a future audit query "who changed which NPI when" is
+    // a single SELECT.
+    const oldValues: Record<string, string | null | undefined> = {
+      firstName: existing.firstName,
+      lastName: existing.lastName,
+    };
+    if (isNpiChange) oldValues.npi = existing.npi;
     await createAuditLog(request.user!.sub, {
-      action: 'hcp.updated',
+      action: isNpiChange ? 'hcp.npi_changed' : 'hcp.updated',
       entityType: 'Hcp',
       entityId: hcp.id,
-      oldValues: { firstName: existing.firstName, lastName: existing.lastName },
+      oldValues,
       newValues: data,
     });
 
