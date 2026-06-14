@@ -33,6 +33,27 @@ async function getSystemUserId(): Promise<string | null> {
 }
 
 /**
+ * v1.17.39 — resolves a Cognito sub to the AuditLog.userId FK value
+ * (User.id). Falls back to the system user when no User row exists for
+ * the sub. Returns null only when neither resolution succeeds (i.e.
+ * system user is also missing — a misconfigured DB).
+ *
+ * Use this when a caller needs to emit many audit rows via
+ * prisma.auditLog.createMany() and can't pay per-row resolution cost.
+ * createAuditLog() does the same resolution for the single-row path.
+ */
+export async function resolveUserIdForAudit(
+  cognitoSub: string
+): Promise<string | null> {
+  const user = await prisma.user.findFirst({
+    where: { cognitoSub },
+    select: { id: true },
+  });
+  if (user) return user.id;
+  return getSystemUserId();
+}
+
+/**
  * Creates an audit log entry with the correct user ID.
  * Looks up the User.id from the Cognito sub (UUID) since AuditLog.userId
  * has a foreign key relationship to the User table which uses cuid IDs.

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
 import { CreateHcpInput, UpdateHcpInput, normalizeHcpSpecialty } from '@kol360/shared';
+import { resolveUserIdForAudit } from '../lib/audit';
 
 // v1.17.2: the local normalizeSpecialty() that used to live here mapped CSV
 // inputs to credential-form (MD/DO/OD) — a different output domain than the
@@ -659,15 +660,30 @@ export class HcpService {
         });
       }
       if (auditRows.length > 0) {
-        await prisma.auditLog.createMany({
-          data: auditRows.map(r => ({
-            userId,
-            action: r.action,
-            entityType: 'Hcp',
-            entityId: r.entityId,
-            newValues: r.metadata as Prisma.InputJsonValue,
-          })),
-        });
+        // v1.17.39 — auditLog.userId is FK→User.id, not cognitoSub.
+        // Resolve once for the batch (cheap), pass the User.id into
+        // every row. Falls back to system user when no User row exists
+        // for the actor sub. If neither resolves (misconfigured DB) we
+        // log a warning and skip the per-row insert — the batch-summary
+        // audit row in the route still lands via createAuditLog.
+        const auditUserId = await resolveUserIdForAudit(userId);
+        if (auditUserId) {
+          await prisma.auditLog.createMany({
+            data: auditRows.map(r => ({
+              userId: auditUserId,
+              action: r.action,
+              entityType: 'Hcp',
+              entityId: r.entityId,
+              newValues: r.metadata as Prisma.InputJsonValue,
+            })),
+          });
+        } else {
+          console.warn(
+            `[hcp.service] Cannot emit per-row import audit: no User for ` +
+            `cognitoSub ${userId} and system user missing. Batch ${result.batchId} ` +
+            `had ${auditRows.length} rows that would have been logged.`
+          );
+        }
       }
 
       if (importId) {
