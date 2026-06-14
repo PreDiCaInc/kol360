@@ -1,6 +1,20 @@
 import { prisma } from '../lib/prisma';
 import { NominationType, Prisma } from '@prisma/client';
-import { DEFAULT_ANALYSIS_WEIGHTS, type AnalysisWeights } from '@kol360/shared';
+import {
+  DEFAULT_ANALYSIS_WEIGHTS,
+  type AnalysisWeights,
+  SURVEY_INCLUDED_NOMINATION_TYPES,
+} from '@kol360/shared';
+
+// v1.17.40 — types that contribute to scoreSurvey. Shared with the
+// frontend tooltip via @kol360/shared/score-methodology so the formula
+// and the in-product explainer are anchored to the same list.
+// Matches Sun Pharma's published "Total Sociometric Weighted Score"
+// methodology — see
+// docs/findings/score-survey-formula-match-customer-2026-06-14.md.
+const SURVEY_INCLUDED_TYPES: ReadonlySet<NominationType> = new Set(
+  SURVEY_INCLUDED_NOMINATION_TYPES as readonly NominationType[]
+);
 
 // NominationType enum → HcpAnalysisScore field names (8 types).
 const NOMINATION_TYPE_FIELDS: Record<NominationType, { score: string; count: string }> = {
@@ -215,11 +229,33 @@ export class KolAnalysisService {
         if (next > (maxPerType.get(t) || 0)) maxPerType.set(t, next);
       }
 
+      // v1.17.40 — scoreSurvey switched from "avg of per-type-normalized
+      // scores across all 7 types" to "sum of nominations across the 4
+      // counted types ÷ max-such-sum × 100". Matches Sun Pharma's
+      // published formula to the 2nd decimal across 2,301 HCPs. Per-type
+      // score columns (scoreNationalLeader, etc.) keep their existing
+      // max-normalized formula — the Sociometric Summary matrix display
+      // is unchanged. Only the aggregate scoreSurvey value changes.
+      //
+      // Pass 1: per-HCP sum across the counted types, and the global
+      // max-such-sum (the leaderboard anchor).
+      const surveyTypeSumByHcp = new Map<string, number>();
+      let maxSurveyTypeSum = 0;
+      for (const [hcpId, typeCounts] of hcpTypeCount) {
+        let surveySum = 0;
+        for (const [t, count] of typeCounts) {
+          if (SURVEY_INCLUDED_TYPES.has(t)) surveySum += count;
+        }
+        surveyTypeSumByHcp.set(hcpId, surveySum);
+        if (surveySum > maxSurveyTypeSum) maxSurveyTypeSum = surveySum;
+      }
+
+      // Pass 2: write rows. Per-type fields keep max-per-type
+      // normalization; scoreSurvey uses the new sum-and-normalize.
       scoreRows = [];
       for (const [hcpId, typeCounts] of hcpTypeCount) {
         hcpIds.add(hcpId);
         const row: Record<string, unknown> = { hcpId };
-        const typeScores: number[] = [];
         let total = 0;
         for (const t of typesInPool) {
           const count = typeCounts.get(t) || 0;
@@ -227,19 +263,12 @@ export class KolAnalysisService {
           const f = NOMINATION_TYPE_FIELDS[t];
           row[f.count] = count;
           total += count;
-          if (count > 0) {
-            const s = (count / maxCount) * 100;
-            row[f.score] = s;
-            typeScores.push(s);
-          } else {
-            row[f.score] = null;
-          }
+          row[f.score] = count > 0 ? (count / maxCount) * 100 : null;
         }
         row.nominationCount = total;
+        const surveySum = surveyTypeSumByHcp.get(hcpId) || 0;
         row.scoreSurvey =
-          typeScores.length > 0
-            ? typeScores.reduce((a, b) => a + b, 0) / typeScores.length
-            : null;
+          maxSurveyTypeSum > 0 ? (surveySum / maxSurveyTypeSum) * 100 : null;
         scoreRows.push(row);
       }
     } else {
