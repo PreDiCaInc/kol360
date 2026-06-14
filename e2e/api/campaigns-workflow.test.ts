@@ -295,7 +295,12 @@ describe.skipIf(skipIfNoAuth)('HCP Search E2E', () => {
     it('PLATFORM_ADMIN can update an HCP\'s NPI to a new unique value', async () => {
       // Use HCP_3 to avoid disturbing the HCPs other tests rely on.
       const originalNpi = TEST_IDS.HCP_3.npi;
-      const newNpi = `999${Date.now() % 1_000_000_0}`.slice(0, 10); // 10-digit, fresh per run
+      // v1.17.41 — left-pad the 7-digit modulus so the result is ALWAYS
+      // 10 chars. Pre-fix `Date.now() % 10_000_000` could return a value
+      // < 1_000_000 (~10% of every 2.77-hour rollover cycle), giving
+      // "999" + 6 digits = 9-char NPI and a Zod 400. The test passed by
+      // luck on prior CI runs that happened to fall in the 90% window.
+      const newNpi = `999${(Date.now() % 10_000_000).toString().padStart(7, '0')}`;
       try {
         const upd = await api.updateHcp(TEST_IDS.HCP_3.id, { npi: newNpi });
         expect(upd.status).toBe(200);

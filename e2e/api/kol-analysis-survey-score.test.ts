@@ -39,10 +39,19 @@ describe.skipIf(skipIfNoAuth)('scoreSurvey formula (v1.17.40)', () => {
 
   it('after recalc, the top-survey HCP has scoreSurvey ≈ 100 and a positive count in at least one counted type', async () => {
     const { data: list } = await client.listKolAnalyses();
-    const target = list.items
+    // v1.17.41 — pick the LAST scored analysis (smallest non-zero
+    // score-count), not the first. kol-analysis.test.ts also picks the
+    // top-scored analysis for its own recalc test, and when vitest runs
+    // both files in parallel the recalcs race on the same target →
+    // calcStatus briefly 'running' under the other file's read. Picking a
+    // different analysis kills the race deterministically.
+    const scoredAnalyses = list.items
       .slice()
-      .sort((a, b) => b._count.scores - a._count.scores)[0];
-    if (!target || target._count.scores === 0) {
+      .filter((a) => a._count.scores > 0)
+      .sort((a, b) => b._count.scores - a._count.scores);
+    const target =
+      scoredAnalyses[scoredAnalyses.length - 1] ?? scoredAnalyses[0];
+    if (!target) {
       console.log('⊘ No scored analysis on this env — skipping');
       return;
     }
@@ -109,10 +118,19 @@ describe.skipIf(skipIfNoAuth)('scoreSurvey formula (v1.17.40)', () => {
     // payload (the per-type display columns keep their max-normalized score
     // formula — only the aggregate scoreSurvey switched).
     const { data: list } = await client.listKolAnalyses();
-    const target = list.items
+    // v1.17.41 — pick the LAST scored analysis (smallest non-zero
+    // score-count), not the first. kol-analysis.test.ts also picks the
+    // top-scored analysis for its own recalc test, and when vitest runs
+    // both files in parallel the recalcs race on the same target →
+    // calcStatus briefly 'running' under the other file's read. Picking a
+    // different analysis kills the race deterministically.
+    const scoredAnalyses = list.items
       .slice()
-      .sort((a, b) => b._count.scores - a._count.scores)[0];
-    if (!target || target._count.scores === 0) {
+      .filter((a) => a._count.scores > 0)
+      .sort((a, b) => b._count.scores - a._count.scores);
+    const target =
+      scoredAnalyses[scoredAnalyses.length - 1] ?? scoredAnalyses[0];
+    if (!target) {
       console.log('⊘ No scored analysis on this env — skipping');
       return;
     }
