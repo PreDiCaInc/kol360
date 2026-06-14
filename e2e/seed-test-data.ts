@@ -280,6 +280,168 @@ async function seedTestData() {
   });
   console.log(`  ✓ Linked section to survey template`);
 
+  // ============================================================
+  // 11. v1.17.41 — STABLE FIXTURE CAMPAIGN for read-side tests
+  // ============================================================
+  //
+  // This block creates a fixed-ID ACTIVE campaign with a pre-seeded
+  // nomination question, completed survey response, and 4 sample
+  // nominations (2 MATCHED, 2 UNMATCHED) so nomination-matching +
+  // ucpm-backfill tests can use a deterministic fixture instead of
+  // scraping the volatile E2E_TEST_CAMPAIGN_* pool. The
+  // E2E_STABLE_FIXTURE_ prefix is NOT touched by full-workflow or
+  // the cleanup script — this fixture persists across runs.
+  console.log('\nCreating STABLE fixture campaign for read-side tests...');
+  const stable = TEST_IDS.STABLE_FIXTURE;
+
+  const stableCampaign = await prisma.campaign.upsert({
+    where: { id: stable.CAMPAIGN_ID },
+    update: {
+      name: stable.CAMPAIGN_NAME,
+      status: 'ACTIVE',
+      surveyTemplateId: TEST_IDS.SURVEY_TEMPLATE_ID,
+    },
+    create: {
+      id: stable.CAMPAIGN_ID,
+      name: stable.CAMPAIGN_NAME,
+      clientId: TEST_IDS.CLIENT_ID,
+      diseaseAreaId: TEST_IDS.DISEASE_AREA_ID,
+      surveyTemplateId: TEST_IDS.SURVEY_TEMPLATE_ID,
+      status: 'ACTIVE',
+      description: 'STABLE fixture campaign — DO NOT DELETE. Powers read-side e2e.',
+      createdBy: TEST_IDS.USER_ID,
+    },
+  });
+  console.log(`  ✓ Stable Campaign: ${stableCampaign.name} (${stableCampaign.id})`);
+
+  // Nomination-type Question + per-campaign SurveyQuestion
+  const stableNominationQuestion = await prisma.question.upsert({
+    where: { id: stable.NOMINATION_QUESTION_ID },
+    update: { text: 'E2E Stable Nomination Question — who would you nominate?' },
+    create: {
+      id: stable.NOMINATION_QUESTION_ID,
+      text: 'E2E Stable Nomination Question — who would you nominate?',
+      // MULTI_TEXT is the QuestionType for nomination questions in
+      // production (confirmed against test DB: all 99 in-use nomination
+      // SurveyQuestions point to MULTI_TEXT Questions). The
+      // SurveyQuestion.nominationType field is the discriminator.
+      type: 'MULTI_TEXT',
+      isRequired: false,
+      options: [],
+      tags: ['e2e-test', 'e2e-stable'],
+      status: 'active',
+    },
+  });
+  console.log(`  ✓ Stable Nomination Question: ${stableNominationQuestion.id}`);
+
+  await prisma.surveyQuestion.upsert({
+    where: { id: stable.SURVEY_QUESTION_ID },
+    update: {
+      questionTextSnapshot: stableNominationQuestion.text,
+      sortOrder: 100,
+    },
+    create: {
+      id: stable.SURVEY_QUESTION_ID,
+      campaignId: stable.CAMPAIGN_ID,
+      questionId: stableNominationQuestion.id,
+      sectionName: 'E2E Stable Section',
+      sortOrder: 100,
+      isRequired: false,
+      questionTextSnapshot: stableNominationQuestion.text,
+      nominationType: 'NATIONAL_LEADER',
+    },
+  });
+
+  // CampaignHcp assignments (all 3 test HCPs)
+  for (const h of testHcps) {
+    await prisma.campaignHcp.upsert({
+      where: {
+        campaignId_hcpId: { campaignId: stable.CAMPAIGN_ID, hcpId: h.id },
+      },
+      update: {},
+      create: { campaignId: stable.CAMPAIGN_ID, hcpId: h.id },
+    });
+  }
+  console.log(`  ✓ Assigned ${testHcps.length} stable HCPs to fixture campaign`);
+
+  // HCP_1's completed survey response (the nominator)
+  await prisma.surveyResponse.upsert({
+    where: { id: stable.SURVEY_RESPONSE_ID },
+    update: { status: 'COMPLETED' },
+    create: {
+      id: stable.SURVEY_RESPONSE_ID,
+      campaignId: stable.CAMPAIGN_ID,
+      respondentHcpId: TEST_IDS.HCP_1.id,
+      surveyToken: stable.SURVEY_TOKEN,
+      status: 'COMPLETED',
+      startedAt: new Date('2026-01-01T00:00:00Z'),
+      completedAt: new Date('2026-01-01T00:15:00Z'),
+    },
+  });
+
+  // 2 MATCHED nominations: HCP_1 nominated HCP_2 + HCP_3
+  await prisma.nomination.upsert({
+    where: { id: stable.MATCHED_NOMINATION_1_ID },
+    update: { matchStatus: 'MATCHED', matchedHcpId: TEST_IDS.HCP_2.id },
+    create: {
+      id: stable.MATCHED_NOMINATION_1_ID,
+      responseId: stable.SURVEY_RESPONSE_ID,
+      questionId: stable.SURVEY_QUESTION_ID,
+      nominatorHcpId: TEST_IDS.HCP_1.id,
+      rawNameEntered: 'E2E Test HCP2',
+      matchedHcpId: TEST_IDS.HCP_2.id,
+      matchStatus: 'MATCHED',
+      matchedBy: TEST_IDS.USER_ID,
+      matchedAt: new Date('2026-01-01T00:30:00Z'),
+      matchConfidence: 100,
+      matchType: 'manual',
+    },
+  });
+  await prisma.nomination.upsert({
+    where: { id: stable.MATCHED_NOMINATION_2_ID },
+    update: { matchStatus: 'MATCHED', matchedHcpId: TEST_IDS.HCP_3.id },
+    create: {
+      id: stable.MATCHED_NOMINATION_2_ID,
+      responseId: stable.SURVEY_RESPONSE_ID,
+      questionId: stable.SURVEY_QUESTION_ID,
+      nominatorHcpId: TEST_IDS.HCP_1.id,
+      rawNameEntered: 'Carol TestSpecialist',
+      matchedHcpId: TEST_IDS.HCP_3.id,
+      matchStatus: 'MATCHED',
+      matchedBy: TEST_IDS.USER_ID,
+      matchedAt: new Date('2026-01-01T00:30:00Z'),
+      matchConfidence: 95,
+      matchType: 'manual',
+    },
+  });
+
+  // 2 UNMATCHED nominations (rawNameEntered only; no matchedHcpId)
+  await prisma.nomination.upsert({
+    where: { id: stable.UNMATCHED_NOMINATION_1_ID },
+    update: { matchStatus: 'UNMATCHED', matchedHcpId: null },
+    create: {
+      id: stable.UNMATCHED_NOMINATION_1_ID,
+      responseId: stable.SURVEY_RESPONSE_ID,
+      questionId: stable.SURVEY_QUESTION_ID,
+      nominatorHcpId: TEST_IDS.HCP_1.id,
+      rawNameEntered: 'Dr. Unknown Specialist',
+      matchStatus: 'UNMATCHED',
+    },
+  });
+  await prisma.nomination.upsert({
+    where: { id: stable.UNMATCHED_NOMINATION_2_ID },
+    update: { matchStatus: 'UNMATCHED', matchedHcpId: null },
+    create: {
+      id: stable.UNMATCHED_NOMINATION_2_ID,
+      responseId: stable.SURVEY_RESPONSE_ID,
+      questionId: stable.SURVEY_QUESTION_ID,
+      nominatorHcpId: TEST_IDS.HCP_1.id,
+      rawNameEntered: 'Dr. Anonymous Expert',
+      matchStatus: 'UNMATCHED',
+    },
+  });
+  console.log(`  ✓ Seeded 4 stable nominations (2 MATCHED + 2 UNMATCHED)`);
+
   console.log('\n✅ E2E test data seeded successfully!');
   console.log('\nTest data summary:');
   console.log(`  - Client ID: ${TEST_IDS.CLIENT_ID}`);
@@ -287,6 +449,8 @@ async function seedTestData() {
   console.log(`  - HCP IDs: ${testHcps.map((h) => h.id).join(', ')}`);
   console.log(`  - User ID: ${TEST_IDS.USER_ID}`);
   console.log(`  - Survey Template ID: ${TEST_IDS.SURVEY_TEMPLATE_ID}`);
+  console.log(`  - STABLE Campaign ID: ${stable.CAMPAIGN_ID}`);
+  console.log(`  - STABLE Nominations: 2 MATCHED + 2 UNMATCHED`);
 }
 
 async function main() {

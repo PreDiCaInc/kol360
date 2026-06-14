@@ -25,6 +25,13 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ApiClient } from '../api-client';
 import { config } from '../config';
+import { TEST_IDS } from '../fixtures';
+
+// v1.17.41 strategic refactor: stable fixture campaign for read-side
+// tests. Avoids the listCampaigns-scrape race against
+// full-workflow.test.ts (which creates AND deletes E2E_TEST_CAMPAIGN_*
+// during the same run).
+const STABLE_CAMPAIGN_ID = TEST_IDS.STABLE_FIXTURE.CAMPAIGN_ID;
 
 // US 50 + DC — mirrors apps/api/src/services/insights-report.service.ts.
 // If the backend constant changes, this test needs to follow.
@@ -104,14 +111,9 @@ describe('ucpm backfill — v1.17.4 through v1.17.6 backend changes', () => {
       // Find any nomination on test env — we just need an existing ID
       // for the endpoint to attach to. The previewRawName overrides the
       // saved name for the search.
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find((c) =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No non-DRAFT test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { data: nominations } = await client.listNominations(testCampaign.id, { limit: 1 });
       const nom = nominations.items[0];
       if (!nom) {
@@ -127,14 +129,9 @@ describe('ucpm backfill — v1.17.4 through v1.17.6 backend changes', () => {
     });
 
     it('preview suggestions differ from saved-name suggestions when names differ', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find((c) =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No non-DRAFT test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { data: nominations } = await client.listNominations(testCampaign.id, { limit: 1 });
       const nom = nominations.items[0];
       if (!nom) {
@@ -169,14 +166,9 @@ describe('ucpm backfill — v1.17.4 through v1.17.6 backend changes', () => {
       // This test verifies the rename succeeds end-to-end (i.e. the audit
       // code didn't introduce a regression). Audit-log inspection requires
       // either a query endpoint or DB access — deferred.
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find((c) =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No non-DRAFT test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { data: nominations } = await client.listNominations(testCampaign.id, {
         status: 'UNMATCHED',
         limit: 1,
@@ -209,21 +201,13 @@ describe('ucpm backfill — v1.17.4 through v1.17.6 backend changes', () => {
       // scope. This smoke verifies the endpoint still returns the
       // expected shape (no regression from the campaign-lookup added in
       // the fix).
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find((c) =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_')
-      );
-      if (!testCampaign) {
-        console.log('⊘ No test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race. The defensive 404-skip below is kept as a
+      // belt-and-suspenders safety net.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { status, data } = await client.getNominationStats(testCampaign.id);
-      // v1.17.41 — defensive: full-workflow.test.ts deletes its own
-      // E2E_TEST_CAMPAIGN_<timestamp> at the end of each step. If we
-      // picked that campaign and it's already been cleaned up, the
-      // endpoint returns 404. Treat as a fixture-race and skip.
       if (status === 404) {
-        console.log('⊘ Picked campaign was deleted by a concurrent test — skipping');
+        console.log('⊘ Stable fixture missing — has pnpm e2e:seed been run?');
         return;
       }
       expect(status).toBe(200);

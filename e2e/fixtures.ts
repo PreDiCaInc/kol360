@@ -77,6 +77,36 @@ export const TEST_IDS = {
   // Campaign prefix (campaigns are created dynamically)
   CAMPAIGN_PREFIX: 'E2E_TEST_CAMPAIGN_',
 
+  // v1.17.41 — STABLE fixture campaign for read-side tests.
+  //
+  // Background: nomination-matching, ucpm-backfill, and ucpm-backfill-deep
+  // tests used to scrape `E2E_TEST_CAMPAIGN_*` campaigns via listCampaigns,
+  // racing with full-workflow.test.ts which creates AND deletes its own
+  // such campaigns during the same run. Stress-testing the suite 3x
+  // surfaced ~6 distinct flake patterns from this race class.
+  //
+  // The stable campaign uses a DIFFERENT prefix (`E2E_STABLE_FIXTURE_`)
+  // so it is NOT touched by:
+  //   - full-workflow.test.ts (which only creates/deletes E2E_TEST_CAMPAIGN_*)
+  //   - cleanup-test-data.ts (filter uses CAMPAIGN_PREFIX)
+  // Seeded once via `pnpm e2e:seed`; persists across runs; never deleted
+  // by the suite. Tests look up by fixed CUID rather than scraping.
+  STABLE_FIXTURE: {
+    CAMPAIGN_ID: 'cme2e0stable0camp00001',
+    CAMPAIGN_NAME: 'E2E_STABLE_FIXTURE_CAMPAIGN',
+    NOMINATION_QUESTION_ID: 'cme2e0stable0quest0001',
+    SURVEY_QUESTION_ID: 'cme2e0stable0srvquest1',
+    // Two nominations pre-seeded MATCHED (matchedHcpId set to HCP_2 / HCP_3)
+    MATCHED_NOMINATION_1_ID: 'cme2e0stable0nommatch1',
+    MATCHED_NOMINATION_2_ID: 'cme2e0stable0nommatch2',
+    // Two nominations pre-seeded UNMATCHED (rawNameEntered only)
+    UNMATCHED_NOMINATION_1_ID: 'cme2e0stable0nomunmat1',
+    UNMATCHED_NOMINATION_2_ID: 'cme2e0stable0nomunmat2',
+    // The HCP_1 response that holds all 4 nominations (HCP_1 is the nominator)
+    SURVEY_RESPONSE_ID: 'cme2e0stable0resp00001',
+    SURVEY_TOKEN: 'e2e-stable-token-fixed-01',
+  },
+
   // HCP for import test (with segmentation data).
   // v1.15.32: specialty flipped from 'Oncology' to 'Optometry' (canonical).
   // The old value was out-of-domain and accumulated as test pollution on prod

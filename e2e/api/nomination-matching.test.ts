@@ -17,6 +17,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { ApiClient } from '../api-client';
 import { config } from '../config';
+import { TEST_IDS } from '../fixtures';
+
+// v1.17.41 strategic refactor: stable fixture campaign for read-side tests.
+// Previously these tests scraped `E2E_TEST_CAMPAIGN_*` via listCampaigns and
+// raced with full-workflow.test.ts deleting its own such campaigns mid-run.
+// The stable fixture lives at a fixed CUID (seeded once via `pnpm e2e:seed`)
+// with a different name prefix (`E2E_STABLE_FIXTURE_`) that no test
+// touches, so reads here are deterministic.
+const STABLE_CAMPAIGN_ID = TEST_IDS.STABLE_FIXTURE.CAMPAIGN_ID;
 
 describe('Nomination Matching (v1.15.14)', () => {
   let client: ApiClient;
@@ -53,14 +62,9 @@ describe('Nomination Matching (v1.15.14)', () => {
     // skip if no candidate row is available — the assertion still proves
     // the behavior when it runs.
     it('should mark a manual match as MATCHED even at partial confidence', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(c =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No active test campaign with nominations — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
 
       const { data: nominations } = await client.listNominations(testCampaign.id, {
         status: 'UNMATCHED',
@@ -96,14 +100,9 @@ describe('Nomination Matching (v1.15.14)', () => {
 
   describe('Batch top-suggestions (v1.15.29)', () => {
     it('returns a topSuggestion (or null) for each requested id', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(c =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No active test campaign with nominations — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { data: nominations } = await client.listNominations(testCampaign.id, {
         limit: 10,
       });
@@ -159,14 +158,9 @@ describe('Nomination Matching (v1.15.14)', () => {
 
   describe('Bulk-accept top suggestions (v1.15.29)', () => {
     it('accepts top suggestions and returns per-row counts', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(c =>
-        c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No active test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { data: nominations } = await client.listNominations(testCampaign.id, {
         status: 'UNMATCHED',
         limit: 3,
@@ -283,14 +277,9 @@ describe('Nomination Matching (v1.15.14)', () => {
   // the server and captures the OLD matched HCP id in the audit row.
   describe('Rematch (v1.17.34)', () => {
     it('re-points a MATCHED nomination to a different HCP + restores', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(
-        (c) => c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No active test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
 
       const { data: matched } = await client.listNominations(testCampaign.id, {
         status: 'MATCHED',
@@ -341,14 +330,9 @@ describe('Nomination Matching (v1.15.14)', () => {
     });
 
     it('rejects rematch to the same HCP with 409 (no-op)', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(
-        (c) => c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No active test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { data: matched } = await client.listNominations(testCampaign.id, {
         status: 'MATCHED',
         limit: 1,
@@ -369,14 +353,9 @@ describe('Nomination Matching (v1.15.14)', () => {
     });
 
     it('rejects rematch to a non-existent HCP with 404', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(
-        (c) => c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No active test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { data: matched } = await client.listNominations(testCampaign.id, {
         status: 'MATCHED',
         limit: 1,
@@ -396,14 +375,9 @@ describe('Nomination Matching (v1.15.14)', () => {
     });
 
     it('rejects rematch on an UNMATCHED nomination with 409', async () => {
-      const { data: campaigns } = await client.listCampaigns();
-      const testCampaign = campaigns.items.find(
-        (c) => c.name.startsWith('E2E_TEST_CAMPAIGN_') && c.status !== 'DRAFT'
-      );
-      if (!testCampaign) {
-        console.log('⊘ No active test campaign — skipping');
-        return;
-      }
+      // v1.17.41 — stable fixture campaign (seeded by pnpm e2e:seed).
+      // No scrape, no race.
+      const testCampaign = { id: STABLE_CAMPAIGN_ID };
       const { data: unmatched } = await client.listNominations(testCampaign.id, {
         status: 'UNMATCHED',
         limit: 1,
