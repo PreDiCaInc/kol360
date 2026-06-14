@@ -230,9 +230,12 @@ describe('KolAnalysisService.recalculateAnalysis — pooled normalization', () =
   // v1.17.40 — new formula: scoreSurvey is the sum of nominations
   // across the 4 counted types (NATIONAL_LEADER, DISCUSSION_LEADERS,
   // ADVICE_LEADERS, RISING_STAR), normalized so the top HCP = 100.
-  // Excluded types (REFERRAL_LEADERS, SOCIAL_LEADER, BIASED_LEADER,
-  // REGIONAL_LEADER) contribute to per-type display columns but NOT to
-  // the aggregate scoreSurvey. Matches the Sun Pharma reference file.
+  // Excluded types in active use (REFERRAL_LEADERS, SOCIAL_LEADER,
+  // BIASED_LEADER) contribute to per-type display columns but NOT to
+  // the aggregate scoreSurvey. (REGIONAL_LEADER exists as a reserved
+  // enum value but no in-use surveys; it would also be excluded if it
+  // ever appears, since the formula gates on inclusion.) Matches the
+  // Sun Pharma reference file.
   describe('scoreSurvey — v1.17.40 sum-and-normalize over 4 counted types', () => {
     function weightsSurveyOnly() {
       return {
