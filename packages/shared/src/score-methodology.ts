@@ -30,12 +30,20 @@ export const SURVEY_INCLUDED_NOMINATION_TYPES = [
  * Nomination types that DO NOT contribute to scoreSurvey. The customer's
  * analytics intentionally drops these; an HCP whose nominations land
  * entirely in these categories will have scoreSurvey=0.
+ *
+ * NOTE: only types that are actually used in production surveys are
+ * listed here so the tooltip names match the questions a customer
+ * actually sees. REGIONAL_LEADER is a reserved enum value (added
+ * v1.17.34) with zero in-use questions today — it would still be
+ * excluded by the formula if a survey ever uses it (the formula gates
+ * on inclusion in SURVEY_INCLUDED_NOMINATION_TYPES, not exclusion),
+ * but it's not listed in the customer-facing explainer to avoid
+ * confusion.
  */
 export const SURVEY_EXCLUDED_NOMINATION_TYPES = [
   'REFERRAL_LEADERS',
   'SOCIAL_LEADER',
   'BIASED_LEADER',
-  'REGIONAL_LEADER',
 ] as const;
 
 const NOMINATION_TYPE_LABELS: Record<string, string> = {
