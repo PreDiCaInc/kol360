@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { ScoreFiltersGrid } from '../score-range-filter';
 import { SortableHeader } from '@/components/insights/shared/sortable-header';
+import { ScoreTooltip } from '@/components/insights/score-tooltip';
 import { KolNameLink } from '@/components/insights/shared/kol-name-link';
 import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
 import { MetricBadge } from '@/components/insights/shared/metric-badge';
@@ -379,7 +380,17 @@ function ScoreTableView({
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px] sticky left-0 bg-muted/50 z-10">#</th>
-              <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+              {/* v1.17.40 — sticky Name column so horizontal scroll
+                  leaves the name visible next to the # row indicator.
+                  left-[50px] mirrors the # column width above. */}
+              <SortableHeader
+                label="Name"
+                field="name"
+                currentSort={sortBy}
+                currentOrder={sortOrder}
+                onSort={handleSort}
+                className="sticky left-[50px] bg-muted/50 z-10"
+              />
               <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <th className="px-3 py-2 text-left text-sm font-medium">Degree</th>
               <th className="px-3 py-2 text-left text-sm font-medium">City</th>
@@ -389,7 +400,14 @@ function ScoreTableView({
                   (right before the per-segment scores), not the first
                   column of the whole table. Default sort still
                   sortBy='compositeScore' sortOrder='desc'. */}
-              <SortableHeader label="Total" field="compositeScore" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+              <SortableHeader
+                label="Total"
+                field="compositeScore"
+                currentSort={sortBy}
+                currentOrder={sortOrder}
+                onSort={handleSort}
+                headerExtra={<ScoreTooltip type="composite" />}
+              />
               {SCORE_COLUMNS.map((col) => (
                 <SortableHeader
                   key={col.key}
@@ -398,6 +416,9 @@ function ScoreTableView({
                   currentSort={sortBy}
                   currentOrder={sortOrder}
                   onSort={handleSort}
+                  headerExtra={
+                    col.key === 'scoreSurvey' ? <ScoreTooltip type="survey" /> : undefined
+                  }
                 />
               ))}
             </tr>
@@ -417,7 +438,9 @@ function ScoreTableView({
                   <td className="px-3 py-2 text-muted-foreground tabular-nums sticky left-0 bg-background">
                     {(page - 1) * limit + index + 1}
                   </td>
-                  <td className="px-3 py-2 min-w-[180px]">
+                  {/* v1.17.40 — sticky Name cell. left-[50px] matches
+                      the # column width above. */}
+                  <td className="px-3 py-2 min-w-[180px] sticky left-[50px] bg-background">
                     <KolNameLink name={kol.name} onClick={() => onKolSelect(kol.id)} />
                   </td>
                   <td className="px-3 py-2">{kol.specialty || '-'}</td>
@@ -714,7 +737,12 @@ function ProfileView({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/20 rounded-xl">
             <MetricBadge label="Influencer Type" value={profile.influencerType || 'Unknown'} color="bg-blue-600" />
             <MetricBadge label="Specialty" value={profile.specialty || 'Unknown'} color="bg-emerald-600" />
-            <MetricBadge label="Total Weighted Score" value={profile.scores.compositeScore?.toFixed(1) ?? 'N/A'} color="bg-amber-600" />
+            <MetricBadge
+              label="Total Weighted Score"
+              value={profile.scores.compositeScore?.toFixed(1) ?? 'N/A'}
+              color="bg-amber-600"
+              labelExtra={<ScoreTooltip type="composite" />}
+            />
             <MetricBadge label="State" value={profile.state || 'Unknown'} color="bg-purple-600" />
           </div>
 

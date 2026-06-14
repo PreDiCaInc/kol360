@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { apiClient } from '@/lib/api';
+import { ScoreTooltip } from '@/components/insights/score-tooltip';
 import type { SociometricSummaryResponse } from '@kol360/shared';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -422,6 +423,9 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                   >
                     <div className="flex items-center justify-center gap-1">
                       <span>{col.label}</span>
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <ScoreTooltip type="category" />
+                      </span>
                       <span className={cn('text-xs', sortBy !== col.field && 'text-muted-foreground/50')}>
                         {sortBy === col.field ? (sortOrder === 'asc' ? '\u25B2' : '\u25BC') : '\u25B2'}
                       </span>
