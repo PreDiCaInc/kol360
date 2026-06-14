@@ -34,6 +34,7 @@ import { insightsReportRoutes } from './routes/insights-report';
 import { optOutRoutes } from './routes/opt-outs';
 import { kolAnalysisRoutes } from './routes/kol-analysis';
 import { curationRoutes } from './routes/curation';
+import { sesEventRoutes } from './routes/ses-events';
 
 export function buildApp() {
   const fastify = Fastify({
@@ -95,6 +96,11 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   // is M2M-only via plugins/m2m-auth.ts; matching route URL is in
   // plugins/auth.ts M2M_ROUTES so the global user-SPA hook bows out.
   await fastify.register(curationRoutes, { prefix: '/api/v1/hcps' });
+  // v1.17.37 — SES SNS webhook for delivery / bounce / complaint
+  // events. Unauthenticated route; auth via TopicArn check inside
+  // the handler + in-account SNS topic policy. Listed in
+  // plugins/auth.ts PUBLIC_ROUTES.
+  await fastify.register(sesEventRoutes, { prefix: '/api/v1/internal' });
   await fastify.register(questionRoutes, { prefix: '/api/v1/questions' });
   await fastify.register(sectionRoutes, { prefix: '/api/v1/sections' });
   await fastify.register(surveyTemplateRoutes, { prefix: '/api/v1/survey-templates' });

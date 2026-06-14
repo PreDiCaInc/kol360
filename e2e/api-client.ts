@@ -374,6 +374,8 @@ export class ApiClient {
       updated: number;
       merged: number;
       errors: Array<{ row: number; error: string }>;
+      // v1.17.35: HcpImportBatch back-pointer for audit/troubleshooting.
+      batchId?: string;
     };
     try {
       data = await response.json();

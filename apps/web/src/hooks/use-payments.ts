@@ -45,13 +45,15 @@ interface PaymentStats {
 
 export function usePayments(
   campaignId: string,
-  params?: { status?: string; page?: number; limit?: number }
+  params?: { status?: string; query?: string; page?: number; limit?: number }
 ) {
   return useQuery<PaymentListResponse>({
     queryKey: ['payments', campaignId, params],
     queryFn: async () => {
       const searchParams = new URLSearchParams();
       if (params?.status) searchParams.set('status', params.status);
+      // v1.17.35: HCP name / NPI / email filter.
+      if (params?.query) searchParams.set('query', params.query);
       if (params?.page) searchParams.set('page', params.page.toString());
       if (params?.limit) searchParams.set('limit', params.limit.toString());
 

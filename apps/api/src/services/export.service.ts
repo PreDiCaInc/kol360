@@ -332,6 +332,35 @@ export class ExportService {
       throw new Error('No pending payments to export');
     }
 
+    // v1.17.38 — for each HCP in this export, look up the latest
+    // hcp.survey_email_mismatch audit row (if any). When present and
+    // the Hcp.email hasn't been updated since the audit was emitted
+    // (the most recent value in newValues.email still differs from
+    // current Hcp.email), surface the survey-provided value in a new
+    // column. Admin reviews and decides whether to update Hcp.email
+    // before issuing payment. Background:
+    // docs/findings/survey-email-not-propagated-to-hcp-2026-06-13.md.
+    const hcpIds = payments.map((p) => p.hcpId);
+    const mismatchRows = await prisma.auditLog.findMany({
+      where: {
+        action: 'hcp.survey_email_mismatch',
+        entityType: 'Hcp',
+        entityId: { in: hcpIds },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { entityId: true, newValues: true, createdAt: true },
+    });
+    // First row per HCP (already DESC ordered).
+    const mismatchByHcpId = new Map<string, { surveyEmail: string; auditedAt: Date } | null>();
+    for (const row of mismatchRows) {
+      if (mismatchByHcpId.has(row.entityId)) continue;
+      const newVals = (row.newValues ?? {}) as { email?: string };
+      mismatchByHcpId.set(row.entityId, {
+        surveyEmail: newVals.email ?? '',
+        auditedAt: row.createdAt,
+      });
+    }
+
     // Create export batch
     const exportBatch = await prisma.paymentExportBatch.create({
       data: {
@@ -475,6 +504,27 @@ export class ExportService {
       throw new Error('No exported payments to re-export');
     }
 
+    // v1.17.38 — same mismatch surface in the re-export path.
+    const hcpIds = payments.map((p) => p.hcpId);
+    const mismatchRows = await prisma.auditLog.findMany({
+      where: {
+        action: 'hcp.survey_email_mismatch',
+        entityType: 'Hcp',
+        entityId: { in: hcpIds },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { entityId: true, newValues: true, createdAt: true },
+    });
+    const mismatchByHcpId = new Map<string, { surveyEmail: string; auditedAt: Date } | null>();
+    for (const row of mismatchRows) {
+      if (mismatchByHcpId.has(row.entityId)) continue;
+      const newVals = (row.newValues ?? {}) as { email?: string };
+      mismatchByHcpId.set(row.entityId, {
+        surveyEmail: newVals.email ?? '',
+        auditedAt: row.createdAt,
+      });
+    }
+
     // Create workbook (no status change, just regenerate the file)
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'KOL360';
@@ -488,6 +538,7 @@ export class ExportService {
       'First Name',
       'Last Name',
       'Email',
+      'Survey-Provided Email (review)',
       'Survey Completion Date',
       'Payment Amount',
       'Currency',
@@ -504,12 +555,18 @@ export class ExportService {
     };
 
     for (const payment of payments) {
+      const mismatch = mismatchByHcpId.get(payment.hcpId);
+      const current = (payment.hcp.email ?? '').trim().toLowerCase();
+      const surveyVal = (mismatch?.surveyEmail ?? '').trim().toLowerCase();
+      const stillMismatched = !!mismatch && surveyVal && surveyVal !== current;
+
       const row = [
         payment.id,
         payment.hcp.npi,
         payment.hcp.firstName,
         payment.hcp.lastName,
         payment.hcp.email || '',
+        stillMismatched ? mismatch.surveyEmail : '',
         payment.response.completedAt?.toISOString().split('T')[0] || '',
         Number(payment.amount).toFixed(2),
         payment.currency,
@@ -715,9 +772,9 @@ export class ExportService {
    */
   async listPayments(
     campaignId: string,
-    params: { status?: PaymentStatus; page: number; limit: number }
+    params: { status?: PaymentStatus; query?: string; page: number; limit: number }
   ) {
-    const { status, page, limit } = params;
+    const { status, query, page, limit } = params;
 
     // Check if campaign excludes internal emails
     const campaign = await prisma.campaign.findUnique({
@@ -728,8 +785,48 @@ export class ExportService {
 
     const where: Record<string, unknown> = { campaignId };
     if (status) where.status = status;
+
+    // v1.17.35: filter by HCP name / NPI / email. Mirrors the
+    // multi-token pattern from HcpService.search (v1.17.34) so a
+    // search for "Paul Karpecki" matches firstName=Paul +
+    // lastName=Karpecki even though no single Hcp column contains
+    // the whole string. Falls back to standard single-token OR for
+    // 1-token queries.
+    const hcpConditions: Record<string, unknown>[] = [];
     if (excludeInternal) {
-      where.hcp = { email: { not: { endsWith: '@bio-exec.com' } } };
+      hcpConditions.push({ email: { not: { endsWith: '@bio-exec.com' } } });
+    }
+    const q = query?.trim();
+    if (q) {
+      const tokens = q.split(/\s+/).filter(Boolean);
+      const orClauses: Record<string, unknown>[] = [
+        { npi: { contains: q } },
+        { firstName: { contains: q, mode: 'insensitive' } },
+        { lastName: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+      ];
+      if (tokens.length >= 2) {
+        const first = tokens[0];
+        const last = tokens[tokens.length - 1];
+        orClauses.push({
+          AND: [
+            { firstName: { contains: first, mode: 'insensitive' } },
+            { lastName: { contains: last, mode: 'insensitive' } },
+          ],
+        });
+        orClauses.push({
+          AND: [
+            { firstName: { contains: last, mode: 'insensitive' } },
+            { lastName: { contains: first, mode: 'insensitive' } },
+          ],
+        });
+      }
+      hcpConditions.push({ OR: orClauses });
+    }
+    if (hcpConditions.length === 1) {
+      where.hcp = hcpConditions[0];
+    } else if (hcpConditions.length > 1) {
+      where.hcp = { AND: hcpConditions };
     }
 
     const [total, items] = await Promise.all([

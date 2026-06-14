@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { HcpService } from './hcp.service';
 
 const hcpServiceInstance = new HcpService();
@@ -569,7 +570,17 @@ export class DistributionService {
       addedToCampaign: 0,
       skipped: 0,
       errors: [] as { row: number; error: string }[],
+      /** v1.17.35: HcpImportBatch.id linked to every CREATE in this batch
+       * (and persisted via Hcp.importBatchId). Surfaces to the route so
+       * the audit summary row carries the batch id. */
+      batchId: undefined as string | undefined,
     };
+
+    // v1.17.35: track row IDs explicitly so the batch + per-row audit
+    // can be reconstructed after the loop (hcp-row-level-audit-gap
+    // ticket).
+    const createdHcpIds: string[] = [];
+    const updatedHcpIds: string[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -670,6 +681,27 @@ export class DistributionService {
           );
 
           if (hasChanges) {
+            // v1.17.35: emit dedicated email_changed / specialty_changed
+            // rows in addition to the generic hcp.updated row so audit
+            // queries on field churn are single-SELECT.
+            if (oldValues.email !== newValues.email) {
+              await createAuditLog(userId, {
+                action: 'hcp.email_changed',
+                entityType: 'Hcp',
+                entityId: hcp.id,
+                oldValues: { firstName: oldValues.firstName, lastName: oldValues.lastName, email: oldValues.email },
+                newValues: { email: newValues.email, _source: 'campaign-import', _campaignId: campaignId },
+              });
+            }
+            if (oldValues.specialty !== newValues.specialty) {
+              await createAuditLog(userId, {
+                action: 'hcp.specialty_changed',
+                entityType: 'Hcp',
+                entityId: hcp.id,
+                oldValues: { firstName: oldValues.firstName, lastName: oldValues.lastName, specialty: oldValues.specialty },
+                newValues: { specialty: newValues.specialty, _source: 'campaign-import', _campaignId: campaignId },
+              });
+            }
             await createAuditLog(userId, {
               action: 'hcp.updated',
               entityType: 'Hcp',
@@ -678,7 +710,7 @@ export class DistributionService {
               newValues: { ...newValues, _source: 'campaign-import', _campaignId: campaignId },
             });
           }
-
+          updatedHcpIds.push(hcp.id);
           result.hcpsExisting++;
         } else {
           // Create new HCP atomically (beId generation + creation in single transaction)
@@ -691,6 +723,16 @@ export class DistributionService {
             // typed column and stay in the legacy subSpecialty if present.
             specialty: normalizeHcpSpecialty(hcpData.specialty),
           }, userId);
+          createdHcpIds.push(hcp.id);
+          // v1.17.35: dedicated hcp.created row per CREATE so audit
+          // queries can answer "where did this person first appear?"
+          // without joining HcpImportBatch.createdHcpIds[].
+          await createAuditLog(userId, {
+            action: 'hcp.created',
+            entityType: 'Hcp',
+            entityId: hcp.id,
+            newValues: { _source: 'campaign-import', _campaignId: campaignId, fileName: filename },
+          });
           result.hcpsCreated++;
         }
 
@@ -721,6 +763,32 @@ export class DistributionService {
       } catch (error) {
         result.errors.push({ row: i + 2, error: error instanceof Error ? error.message : 'Unknown error' });
       }
+    }
+
+    // v1.17.35: persist HcpImportBatch + stamp the created rows with
+    // importBatchId. Single row + a single bulk updateMany regardless
+    // of fleet size.
+    const batch = await prisma.hcpImportBatch.create({
+      data: {
+        campaignId,
+        importedBy: userId,
+        fileName: filename,
+        recordsTotal: rows.length,
+        recordsCreated: result.hcpsCreated,
+        recordsUpdated: result.hcpsExisting,
+        recordsSkipped: result.skipped,
+        recordsErrored: result.errors.length,
+        createdHcpIds,
+        updatedHcpIds,
+        errorRows: result.errors.length > 0 ? (result.errors as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+      },
+    });
+    result.batchId = batch.id;
+    if (createdHcpIds.length > 0) {
+      await prisma.hcp.updateMany({
+        where: { id: { in: createdHcpIds } },
+        data: { importBatchId: batch.id },
+      });
     }
 
     return result;

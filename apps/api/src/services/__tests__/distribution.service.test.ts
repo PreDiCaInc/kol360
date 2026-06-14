@@ -39,6 +39,13 @@ vi.mock('../../lib/prisma', () => ({
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    // v1.17.35: importHcpsFromFile now writes a HcpImportBatch row at
+    // the end of every run (including all-errors runs) per the
+    // hcp-row-level-audit-gap-2026-06-13.md ticket.
+    hcpImportBatch: {
+      create: vi.fn().mockResolvedValue({ id: 'batch-mock-id' }),
     },
   },
 }));

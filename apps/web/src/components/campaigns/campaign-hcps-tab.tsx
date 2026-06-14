@@ -12,6 +12,8 @@ import {
   useEmailProgress,
 } from '@/hooks/use-distribution';
 import { useHcps } from '@/hooks/use-hcps';
+import { isPlaceholderEmail } from '@kol360/shared';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -75,6 +77,18 @@ interface CampaignHcpsTabProps {
 export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabProps) {
   const { isImpersonating } = useImpersonation();
   const { data: campaignHcps, isLoading: hcpsLoading } = useCampaignHcps(campaignId);
+
+  // v1.17.36: pre-flight placeholder count for the Send Invitations
+  // confirm dialog. Only counts HCPs that would actually be eligible
+  // for an invitation (emailSentAt null — i.e. matches the
+  // sendBulkInvitations server-side filter). See
+  // docs/findings/bulk-send-accepts-placeholder-emails-2026-06-13.md.
+  const placeholderCount = useMemo(() => {
+    if (!campaignHcps) return 0;
+    return campaignHcps.filter(
+      (ch) => !ch.emailSentAt && isPlaceholderEmail(ch.hcp.email)
+    ).length;
+  }, [campaignHcps]);
   const { data: stats } = useDistributionStats(campaignId);
   const [searchQuery, setSearchQuery] = useState('');
   const { data: allHcps } = useHcps({ query: searchQuery, limit: 100 });
@@ -85,7 +99,7 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
   const [hcpToRemove, setHcpToRemove] = useState<{ id: string; name: string } | null>(null);
   const [showSendConfirm, setShowSendConfirm] = useState<'invitations' | 'reminders' | null>(null);
   const [sendProgressId, setSendProgressId] = useState<string | null>(null);
-  const [sendResult, setSendResult] = useState<{ sent: number; failed?: number; skipped?: number; skippedCompleted?: number; skippedRecentlyReminded?: number; skippedMaxReminders?: number; skippedNoEmail?: number; skippedOptedOut?: number; skippedRecentlySurveyed?: number; errors: Array<{ email: string; error: string }> } | null>(null);
+  const [sendResult, setSendResult] = useState<{ sent: number; failed?: number; skipped?: number; skippedCompleted?: number; skippedRecentlyReminded?: number; skippedMaxReminders?: number; skippedNoEmail?: number; /* v1.17.36 */ skippedPlaceholder?: number; skippedOptedOut?: number; skippedRecentlySurveyed?: number; errors: Array<{ email: string; error: string }> } | null>(null);
 
   const assignHcps = useAssignHcps();
   const removeHcp = useRemoveHcp();
@@ -414,9 +428,30 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
             </AlertDialogTitle>
             <AlertDialogDescription>
               {showSendConfirm === 'invitations'
-                ? `This will send survey invitation emails to ${stats?.notInvited || 0} HCPs who haven't been invited yet.`
+                ? `This will send survey invitation emails to ${
+                    Math.max(0, (stats?.notInvited || 0) - placeholderCount)
+                  } HCPs who haven't been invited yet.`
                 : 'This will send reminder emails to HCPs who have been invited but haven\'t completed the survey.'}
             </AlertDialogDescription>
+            {/* v1.17.36: pre-flight placeholder warning. Pre-fix, the
+                customer launched a campaign without knowing some
+                addresses were placeholders; 269 invitations across the
+                two ACTIVE Sun Pharma 2026 campaigns went into the void
+                this way. Now they see the count BEFORE confirming. */}
+            {showSendConfirm === 'invitations' && placeholderCount > 0 && (
+              <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-900 dark:text-amber-100">
+                <p className="font-medium mb-1">
+                  ⚠ {placeholderCount} HCP{placeholderCount === 1 ? '' : 's'} ha{placeholderCount === 1 ? 's' : 've'} a placeholder email
+                  (<code className="text-xs">nomail@…</code>) and will NOT be invited.
+                </p>
+                <p className="text-xs opacity-90">
+                  To include them, update their email on the HCPs tab first.
+                  Continuing will send to {Math.max(0, (stats?.notInvited || 0) - placeholderCount)} recipient{
+                    Math.max(0, (stats?.notInvited || 0) - placeholderCount) === 1 ? '' : 's'
+                  }.
+                </p>
+              </div>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -546,6 +581,16 @@ export function CampaignHcpsTab({ campaignId, campaignStatus }: CampaignHcpsTabP
                   )}
                   {(sendResult?.skippedNoEmail ?? 0) > 0 && (
                     <li>{sendResult?.skippedNoEmail} have no email address</li>
+                  )}
+                  {/* v1.17.36: placeholder bucket distinct from no-email.
+                      Customer-actionable signal — these HCPs need a real
+                      email before the next campaign cycle. See
+                      docs/findings/bulk-send-accepts-placeholder-emails-2026-06-13.md. */}
+                  {(sendResult?.skippedPlaceholder ?? 0) > 0 && (
+                    <li>
+                      {sendResult?.skippedPlaceholder} have a placeholder email
+                      (<code className="text-xs">nomail@…</code>) — update before next send
+                    </li>
                   )}
                   {(sendResult?.skippedOptedOut ?? 0) > 0 && (
                     <li>{sendResult?.skippedOptedOut} opted out</li>

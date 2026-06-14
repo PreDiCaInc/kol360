@@ -143,12 +143,22 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // v1.17.34: NPI changes are significant — track the before/after
-    // explicitly so the hcp.updated audit row captures the canonical
-    // identifier change. (NPI is editable only for PLATFORM_ADMIN; the
-    // gateWritesToAdmins preHandler already enforces that.)
+    // v1.17.34: NPI changes were singled out into hcp.npi_changed so
+    // audit queries could surface canonical-identifier churn in a
+    // single SELECT.
+    // v1.17.35: extend the same dedicated-action pattern to email +
+    // specialty — the next two fields most often investigated when a
+    // customer asks "how did this row get changed?". Each emits its
+    // OWN audit row in addition to (and instead of) the generic
+    // hcp.updated.
     const isNpiChange =
       data.npi !== undefined && data.npi !== null && data.npi !== existing.npi;
+    const isEmailChange =
+      data.email !== undefined && data.email !== null && data.email !== existing.email;
+    const isSpecialtyChange =
+      data.specialty !== undefined &&
+      data.specialty !== null &&
+      data.specialty !== existing.specialty;
 
     let hcp;
     try {
@@ -170,21 +180,55 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       throw err;
     }
 
-    // Audit log. Capture the NPI before/after on the audit row when it
-    // changed, so a future audit query "who changed which NPI when" is
-    // a single SELECT.
-    const oldValues: Record<string, string | null | undefined> = {
-      firstName: existing.firstName,
-      lastName: existing.lastName,
-    };
-    if (isNpiChange) oldValues.npi = existing.npi;
-    await createAuditLog(request.user!.sub, {
-      action: isNpiChange ? 'hcp.npi_changed' : 'hcp.updated',
-      entityType: 'Hcp',
+    // v1.17.35: emit one audit row per dedicated change (npi / email /
+    // specialty). When none of those changed but the row was touched
+    // (firstName, lastName, city, state, etc.), fall through to the
+    // generic hcp.updated row. The result: an audit query like
+    //   SELECT * FROM "AuditLog"
+    //   WHERE "entityType"='Hcp' AND action='hcp.email_changed'
+    //   ORDER BY "createdAt" DESC LIMIT 50
+    // surfaces every email churn across the platform in <1ms.
+    const baseEntity = {
+      entityType: 'Hcp' as const,
       entityId: hcp.id,
-      oldValues,
-      newValues: data,
-    });
+    };
+    if (isNpiChange) {
+      await createAuditLog(request.user!.sub, {
+        ...baseEntity,
+        action: 'hcp.npi_changed',
+        oldValues: { firstName: existing.firstName, lastName: existing.lastName, npi: existing.npi },
+        newValues: { npi: data.npi },
+      });
+    }
+    if (isEmailChange) {
+      await createAuditLog(request.user!.sub, {
+        ...baseEntity,
+        action: 'hcp.email_changed',
+        oldValues: { firstName: existing.firstName, lastName: existing.lastName, email: existing.email },
+        newValues: { email: data.email },
+      });
+    }
+    if (isSpecialtyChange) {
+      await createAuditLog(request.user!.sub, {
+        ...baseEntity,
+        action: 'hcp.specialty_changed',
+        oldValues: { firstName: existing.firstName, lastName: existing.lastName, specialty: existing.specialty },
+        newValues: { specialty: data.specialty },
+      });
+    }
+    // Always emit a base hcp.updated row when at least one dedicated
+    // change fired OR the row was touched by a non-dedicated field.
+    // (The route only reaches here if the update body parsed
+    // successfully, so we know SOMETHING in the payload was intended
+    // as an update.)
+    if (!isNpiChange && !isEmailChange && !isSpecialtyChange) {
+      await createAuditLog(request.user!.sub, {
+        ...baseEntity,
+        action: 'hcp.updated',
+        oldValues: { firstName: existing.firstName, lastName: existing.lastName },
+        newValues: data,
+      });
+    }
 
     return hcp;
   });
@@ -226,12 +270,23 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     const buffer = await file.toBuffer();
     const result = await hcpService.importFromFile(buffer, request.user!.sub, file.filename, importId);
 
-    // Audit log
+    // v1.17.35: the batch-summary audit row now points at the new
+    // HcpImportBatch.id, and per-row 'hcp.created' / 'hcp.updated' rows
+    // are already emitted from the service. The summary row is kept
+    // for back-compat with dashboards that filter on
+    // action='hcp.bulk_import'.
     await createAuditLog(request.user!.sub, {
       action: 'hcp.bulk_import',
       entityType: 'Hcp',
-      entityId: 'bulk',
-      newValues: { created: result.created, updated: result.updated, errors: result.errors.length },
+      entityId: result.batchId ?? 'bulk',
+      newValues: {
+        batchId: result.batchId,
+        fileName: file.filename,
+        recordsTotal: result.total,
+        created: result.created,
+        updated: result.updated + result.merged,
+        errors: result.errors.length,
+      },
     });
 
     return result;

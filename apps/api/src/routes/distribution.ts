@@ -477,11 +477,17 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
           request.user!.sub
         );
 
+        // v1.17.35: summary row carries the new batchId pointer + the
+        // fileName so the audit-log query "where did this campaign get
+        // populated from" is one SELECT. Per-row hcp.created /
+        // hcp.updated rows are emitted from the service.
         await createAuditLog(request.user!.sub, {
           action: 'campaign.hcps_imported',
           entityType: 'Campaign',
           entityId: campaignId,
           newValues: {
+            batchId: result.batchId,
+            fileName: file.filename,
             hcpsCreated: result.hcpsCreated,
             hcpsExisting: result.hcpsExisting,
             addedToCampaign: result.addedToCampaign,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -13,6 +13,7 @@ import {
 import { useCampaign } from '@/hooks/use-campaigns';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -57,6 +58,8 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Search,
+  X,
 } from 'lucide-react';
 
 // Payment status configuration
@@ -81,6 +84,17 @@ export default function CampaignPaymentsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  // v1.17.35: HCP search. Debounced 300ms so each keystroke doesn't
+  // refetch. Resets pagination on every change.
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  useEffect(() => {
+    const handle = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [searchInput]);
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
   const [page, setPage] = useState(1);
   const [showImportResult, setShowImportResult] = useState<{
     processed: number;
@@ -91,6 +105,7 @@ export default function CampaignPaymentsPage() {
   const { data: campaign } = useCampaign(campaignId);
   const { data: payments, isLoading } = usePayments(campaignId, {
     status: statusFilter !== 'all' ? statusFilter : undefined,
+    query: searchQuery || undefined,
     page,
     limit: 20,
   });
@@ -98,6 +113,15 @@ export default function CampaignPaymentsPage() {
   const exportPayments = useExportPayments();
   const reExportPayments = useReExportPayments();
   const importStatus = useImportPaymentStatus();
+
+  // v1.17.38: pre-flight hint when the visible payment rows include
+  // HCPs whose email is a known placeholder (nomail@…). The export
+  // also surfaces survey-provided email mismatches in a dedicated
+  // column — see export.service.ts exportPayments. Together these
+  // address docs/findings/survey-email-not-propagated-to-hcp-2026-06-13.md.
+  const placeholderPaymentCount = (payments?.items ?? []).filter((p) =>
+    /^nomail@/i.test(p.hcp?.email ?? '')
+  ).length;
 
   const handleExport = async () => {
     try {
@@ -209,6 +233,26 @@ export default function CampaignPaymentsPage() {
           </div>
         </div>
 
+        {/* v1.17.38: pre-flight banner for placeholder addresses on
+            payment rows visible in the current page. The export
+            includes a "Survey-Provided Email (review)" column that
+            surfaces survey-answer mismatches; this banner just gives
+            the admin a heads-up before they hit Export. */}
+        {placeholderPaymentCount > 0 && (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+            <p className="font-medium">
+              ⚠ {placeholderPaymentCount} of the payment{placeholderPaymentCount === 1 ? '' : 's'} on this page
+              ha{placeholderPaymentCount === 1 ? 's' : 've'} a placeholder email
+              (<code className="text-xs">nomail@…</code>).
+            </p>
+            <p className="text-xs mt-1 opacity-90">
+              The export Excel includes a <strong>Survey-Provided Email (review)</strong> column showing
+              the value the respondent typed in the survey when it differs. Review those before issuing
+              checks.
+            </p>
+          </div>
+        )}
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>
@@ -282,26 +326,50 @@ export default function CampaignPaymentsPage() {
         {/* Payments Table */}
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-start gap-4 flex-wrap">
               <div>
                 <CardTitle>Payment Records</CardTitle>
                 <CardDescription>
                   Track honorarium payments for survey respondents
                 </CardDescription>
               </div>
-              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  {Object.entries(PAYMENT_STATUS_CONFIG).map(([key, config]) => (
-                    <SelectItem key={key} value={key}>
-                      {config.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* v1.17.35: HCP search. Multi-token full-name supported
+                    (e.g. "Paul Karpecki" matches first+last across the
+                    Hcp relation). Also matches NPI and email. */}
+                <div className="relative w-72">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    placeholder="Search by HCP name, NPI, or email"
+                    className="pl-8 pr-8"
+                  />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchInput('')}
+                      className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+                      title="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Filter by status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    {Object.entries(PAYMENT_STATUS_CONFIG).map(([key, config]) => (
+                      <SelectItem key={key} value={key}>
+                        {config.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
