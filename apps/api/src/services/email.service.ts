@@ -2,6 +2,7 @@ import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { importProgressStore } from './import-progress.service';
+import { isPlaceholderEmail } from '@kol360/shared';
 
 const ses = new SESClient({
   region: process.env.AWS_REGION || 'us-east-2',
@@ -52,6 +53,11 @@ interface BulkSendResult {
   failed: number;
   skipped: number;
   skippedNoEmail?: number;
+  /** v1.17.36: placeholder addresses (nomail@*) — distinct from
+   * skippedNoEmail. Surfaces in the admin UI so the customer can see
+   * how many of their HCPs need a real email on file before the next
+   * campaign cycle. See bulk-send-accepts-placeholder-emails-2026-06-13.md. */
+  skippedPlaceholder?: number;
   skippedOptedOut?: number;
   skippedRecentlySurveyed?: number;
   skippedCompleted?: number;
@@ -172,6 +178,14 @@ export class EmailService {
       customSubject,
       customBody,
     } = params;
+
+    // v1.17.36: placeholder-aware gate. Mirrors the bulk-send change.
+    // Single-send paths can also be hit directly (admin "resend
+    // invitation" button) and need the same protection.
+    if (isPlaceholderEmail(email)) {
+      logger.info('Skipping email - placeholder address', { email, hcpId });
+      throw new Error('Recipient has placeholder email — not sending');
+    }
 
     // Check opt-out status
     const optOut = await prisma.optOut.findFirst({
@@ -328,6 +342,13 @@ ${unsubscribeUrl}
       customSubject,
       customBody,
     } = params;
+
+    // v1.17.36: placeholder-aware gate for the single-reminder path
+    // (used by admin "resend reminder" button).
+    if (isPlaceholderEmail(email)) {
+      logger.info('Skipping reminder - placeholder address', { email, hcpId });
+      throw new Error('Recipient has placeholder email — not sending');
+    }
 
     // Check opt-out status
     const optOut = await prisma.optOut.findFirst({
@@ -591,15 +612,31 @@ ${unsubscribeUrl}
         const campaignHcp = uninvitedHcps[i];
         const { hcp, surveyToken } = campaignHcp;
 
-        // Check: No email
-        if (!hcp.email) {
+        // v1.17.36: placeholder-aware skip. Pre-fix this was bare
+        // `if (!hcp.email)` which only blocked NULLs. Operators have
+        // historically typed `nomail@bio-exec.com` or
+        // `nomail@kol360research.com` when no real address was on
+        // file; those passed the NULL check, went to SES, got 250 OK,
+        // and the platform marked emailSentAt — 269 confirmed
+        // bounces across the two ACTIVE Sun Pharma 2026 campaigns
+        // happened this way. See
+        // docs/findings/bulk-send-accepts-placeholder-emails-2026-06-13.md.
+        if (isPlaceholderEmail(hcp.email)) {
           result.skipped++;
-          result.skippedNoEmail = (result.skippedNoEmail || 0) + 1;
-          result.errors.push({ email: 'N/A', error: `HCP ${hcp.firstName} ${hcp.lastName} has no email` });
+          if (!hcp.email) {
+            result.skippedNoEmail = (result.skippedNoEmail || 0) + 1;
+            result.errors.push({ email: 'N/A', error: `HCP ${hcp.firstName} ${hcp.lastName} has no email` });
+          } else {
+            result.skippedPlaceholder = (result.skippedPlaceholder || 0) + 1;
+            result.errors.push({
+              email: hcp.email,
+              error: `HCP ${hcp.firstName} ${hcp.lastName} has placeholder email — not sending`,
+            });
+          }
           if (progressId) {
             importProgressStore.update(progressId, {
               processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
-              currentItem: `Skipped: ${hcp.firstName} ${hcp.lastName} (no email)`,
+              currentItem: `Skipped: ${hcp.firstName} ${hcp.lastName} (${hcp.email ? 'placeholder' : 'no email'})`,
             });
           }
           continue;
@@ -890,12 +927,18 @@ ${unsubscribeUrl}
           continue;
         }
 
-        if (!hcp.email) {
+        // v1.17.36: same placeholder-aware skip in the reminder loop.
+        if (isPlaceholderEmail(hcp.email)) {
           result.skipped++;
+          if (!hcp.email) {
+            result.skippedNoEmail = (result.skippedNoEmail || 0) + 1;
+          } else {
+            result.skippedPlaceholder = (result.skippedPlaceholder || 0) + 1;
+          }
           if (progressId) {
             importProgressStore.update(progressId, {
               processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
-              currentItem: `Skipped: ${hcp.firstName} ${hcp.lastName} (no email)`,
+              currentItem: `Skipped: ${hcp.firstName} ${hcp.lastName} (${hcp.email ? 'placeholder' : 'no email'})`,
             });
           }
           continue;
