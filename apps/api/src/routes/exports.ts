@@ -143,10 +143,11 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // List payments
+  // List payments. v1.17.35: optional `query` for HCP name / NPI / email
+  // (multi-token full-name search supported, same shape as HcpService.search).
   fastify.get<{
     Params: z.infer<typeof campaignIdSchema>;
-    Querystring: { status?: string; page?: string; limit?: string };
+    Querystring: { status?: string; query?: string; page?: string; limit?: string };
   }>(
     '/:id/payments',
     { preHandler: requireClientAdmin() },
@@ -159,10 +160,11 @@ export const exportRoutes: FastifyPluginAsync = async (fastify) => {
         if (campaign.clientId !== request.user!.tenantId) return reply.status(403).send({ error: 'Forbidden', message: 'Cannot access campaigns from other tenants', statusCode: 403 });
       }
 
-      const { status, page = '1', limit = '20' } = request.query;
+      const { status, query, page = '1', limit = '20' } = request.query;
 
       return exportService.listPayments(campaignId, {
         status: status as PaymentStatus | undefined,
+        query: query?.trim() || undefined,
         page: parseInt(page, 10),
         limit: parseInt(limit, 10),
       });

@@ -715,9 +715,9 @@ export class ExportService {
    */
   async listPayments(
     campaignId: string,
-    params: { status?: PaymentStatus; page: number; limit: number }
+    params: { status?: PaymentStatus; query?: string; page: number; limit: number }
   ) {
-    const { status, page, limit } = params;
+    const { status, query, page, limit } = params;
 
     // Check if campaign excludes internal emails
     const campaign = await prisma.campaign.findUnique({
@@ -728,8 +728,48 @@ export class ExportService {
 
     const where: Record<string, unknown> = { campaignId };
     if (status) where.status = status;
+
+    // v1.17.35: filter by HCP name / NPI / email. Mirrors the
+    // multi-token pattern from HcpService.search (v1.17.34) so a
+    // search for "Paul Karpecki" matches firstName=Paul +
+    // lastName=Karpecki even though no single Hcp column contains
+    // the whole string. Falls back to standard single-token OR for
+    // 1-token queries.
+    const hcpConditions: Record<string, unknown>[] = [];
     if (excludeInternal) {
-      where.hcp = { email: { not: { endsWith: '@bio-exec.com' } } };
+      hcpConditions.push({ email: { not: { endsWith: '@bio-exec.com' } } });
+    }
+    const q = query?.trim();
+    if (q) {
+      const tokens = q.split(/\s+/).filter(Boolean);
+      const orClauses: Record<string, unknown>[] = [
+        { npi: { contains: q } },
+        { firstName: { contains: q, mode: 'insensitive' } },
+        { lastName: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+      ];
+      if (tokens.length >= 2) {
+        const first = tokens[0];
+        const last = tokens[tokens.length - 1];
+        orClauses.push({
+          AND: [
+            { firstName: { contains: first, mode: 'insensitive' } },
+            { lastName: { contains: last, mode: 'insensitive' } },
+          ],
+        });
+        orClauses.push({
+          AND: [
+            { firstName: { contains: last, mode: 'insensitive' } },
+            { lastName: { contains: first, mode: 'insensitive' } },
+          ],
+        });
+      }
+      hcpConditions.push({ OR: orClauses });
+    }
+    if (hcpConditions.length === 1) {
+      where.hcp = hcpConditions[0];
+    } else if (hcpConditions.length > 1) {
+      where.hcp = { AND: hcpConditions };
     }
 
     const [total, items] = await Promise.all([
