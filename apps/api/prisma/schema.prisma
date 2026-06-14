@@ -210,6 +210,11 @@ model Hcp {
   optOuts             OptOut[]
   analysisScores      HcpAnalysisScore[]
   diseaseAreas        HcpDiseaseArea[]
+  // v1.17.35 — link each row back to the bulk-import batch that created
+  // it (when applicable). Null for HCPs created via single-create UI,
+  // backfill scripts, or pre-v1.17.35 imports.
+  importBatchId       String?
+  importBatch         HcpImportBatch?         @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
 
   @@index([beId])
   @@index([npi])
@@ -218,6 +223,40 @@ model Hcp {
   @@index([state])
   @@index([isSurveyTaker])
   @@index([isNominated])
+  @@index([importBatchId])
+}
+
+// v1.17.35 — per-batch record for bulk HCP imports. Mirrors the
+// ScoreImportBatch / PaymentImportBatch pattern. Lets "which CSV did
+// this person come from?" be one join: SELECT b.fileName FROM Hcp h
+// JOIN HcpImportBatch b ON h.importBatchId = b.id WHERE h.id = ?.
+//
+// createdHcpIds / updatedHcpIds are denormalized for fast lookup; the
+// canonical relationship is Hcp.importBatchId → HcpImportBatch.id for
+// CREATEs. Updates don't set importBatchId (would clobber the
+// originating-batch pointer), so they live as the explicit list.
+//
+// errorRows captures rejected rows from the same CSV alongside the
+// successful ones so the full import outcome is reconstructible.
+model HcpImportBatch {
+  id              String   @id @default(cuid())
+  campaignId      String?  // null for /hcps/bulk; set for /campaigns/:id/import-hcps
+  importedBy      String   // cognito sub
+  fileName        String
+  recordsTotal    Int
+  recordsCreated  Int
+  recordsUpdated  Int
+  recordsSkipped  Int      @default(0)
+  recordsErrored  Int      @default(0)
+  createdHcpIds   String[] @default([])
+  updatedHcpIds   String[] @default([])
+  errorRows       Json?    // [{ row: 4, error: "...", rawData: {...} }, ...]
+  importedAt      DateTime @default(now())
+
+  hcps Hcp[]
+
+  @@index([campaignId])
+  @@index([importedAt])
 }
 
 model HcpAlias {
