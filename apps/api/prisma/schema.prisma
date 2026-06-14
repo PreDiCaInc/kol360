@@ -259,6 +259,59 @@ model HcpImportBatch {
   @@index([importedAt])
 }
 
+// v1.17.37 — every outbound email gets one row at send-time
+// (status='SENT', acceptedAt=now() once SES returns 250 OK), then
+// gets updated by the SES SNS handler when the bounce / complaint /
+// delivery event arrives downstream.
+//
+// Background: docs/findings/no-ses-delivery-logging-2026-06-13.md.
+//
+// Pre-v1.17.37 the platform had ZERO record of post-acceptance
+// outcomes. `CampaignHcp.emailSentAt` was set on SES 250 OK and
+// nothing tracked what happened next. The customer-visible
+// "invitations sent" stat overstated delivery; reminder eligibility
+// kept retrying bounced addresses. This table is the canonical
+// truth from v1.17.37 on.
+//
+// status enum (string for forward-compat — new event types from
+// SES don't require a schema migration):
+//   'SENT'          — SES accepted, no SNS event back yet
+//   'DELIVERED'     — SES Delivery event received
+//   'BOUNCED_HARD'  — Bounce with bounceType=Permanent
+//   'BOUNCED_SOFT'  — Bounce with bounceType=Transient
+//   'COMPLAINED'    — Complaint event received
+//   'SUPPRESSED'    — Reject due to suppression list
+//   'DELAYED'       — DeliveryDelay (extends DELIVERED on success)
+//   'RENDERING_FAILED' — RenderingFailure (template issue)
+//
+// toEmail is snapshotted at send time so future Hcp.email edits
+// don't rewrite history.
+model EmailDeliveryEvent {
+  id              String   @id @default(cuid())
+  campaignId      String
+  hcpId           String
+  campaignHcpId   String?  // FK relation to CampaignHcp when applicable
+  messageType     String   // 'invitation' | 'reminder' | 'opt_out_confirm' | etc.
+  sesMessageId    String   @unique  // SES MessageId returned on accept
+  toEmail         String   // snapshot of the address SES received
+  fromEmail       String
+  subject         String
+  status          String   // see enum comment above
+  statusReason    String?  // bounce diagnostic / suppression reason
+  acceptedAt      DateTime // SES 250 OK time
+  deliveredAt     DateTime?
+  bouncedAt       DateTime?
+  complainedAt    DateTime?
+  rawEvent        Json?    // full SES event payload for diagnostics
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([campaignId, status])
+  @@index([hcpId])
+  @@index([toEmail])
+  @@index([acceptedAt])
+}
+
 model HcpAlias {
   id        String   @id @default(cuid())
   hcpId     String

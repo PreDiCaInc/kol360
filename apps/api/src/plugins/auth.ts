@@ -35,6 +35,11 @@ const PUBLIC_ROUTES = [
   '/api/v1/auth/login',
   '/api/v1/survey/take', // Public survey taking
   '/api/v1/unsubscribe', // Email opt-out
+  // v1.17.37 — SES SNS webhook. Authenticated via TopicArn check
+  // inside the handler + in-account SNS topic policy. SNS doesn't
+  // carry bearer tokens; this route is reachable from AWS SES → SNS
+  // infrastructure only.
+  '/api/v1/internal/ses-event',
 ];
 
 // v1.17.29 — routes that authenticate with the M2M (client_credentials)

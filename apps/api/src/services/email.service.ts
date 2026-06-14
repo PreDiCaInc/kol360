@@ -10,6 +10,15 @@ const ses = new SESClient({
 
 const FROM_EMAIL = process.env.SES_FROM_EMAIL || 'research@bio-exec.com';
 const FROM_NAME = process.env.SES_FROM_NAME || 'BioExec KOL Research';
+// v1.17.37 — SES configuration set that publishes send / bounce /
+// complaint / delivery events to the kol360-ses-events SNS topic. The
+// AWS-side wiring (config set + event destination + topic policy) was
+// provisioned on 2026-06-13 per
+// releases/runbook-ses-delivery-events.md. Without this attribute on
+// each SendEmailCommand, the config set has no effect; with it, every
+// outbound message gets a published event the SNS handler turns into
+// EmailDeliveryEvent rows.
+const SES_CONFIGURATION_SET = process.env.SES_CONFIGURATION_SET || 'kol360-default';
 const MOCK_MODE = process.env.EMAIL_MOCK_MODE === 'true';
 const SEND_EXTERNAL_EMAIL = process.env.SEND_EXTERNAL_EMAIL === 'true';
 const ALLOWED_EMAIL_DOMAIN = 'bio-exec.com';
@@ -63,6 +72,10 @@ interface BulkSendResult {
   skippedCompleted?: number;
   skippedRecentlyReminded?: number;
   skippedMaxReminders?: number;
+  /** v1.17.37: HCPs whose prior message hard-bounced or complained.
+   * Skipped in reminder loop so we don't retry bad addresses. See
+   * no-ses-delivery-logging-2026-06-13.md. */
+  skippedBounced?: number;
   errors: Array<{ email: string; error: string }>;
 }
 
@@ -113,6 +126,10 @@ export class EmailService {
             },
           },
         },
+        // v1.17.37: attaches the kol360-default configuration set so
+        // SES publishes Send / Bounce / Complaint / Delivery events to
+        // the SNS topic.
+        ConfigurationSetName: SES_CONFIGURATION_SET,
       });
 
       const response = await ses.send(command);
@@ -312,17 +329,82 @@ ${unsubscribeUrl}
       textBody,
     });
 
+    const acceptedAt = new Date();
+
     // Update CampaignHcp record
+    // NOTE: emailSentAt is set when SES returns 250 OK on send-request,
+    // NOT when the message is delivered. The semantic gap was the
+    // root of the 269 "sent" invitations on placeholder addresses
+    // (docs/findings/no-ses-delivery-logging-2026-06-13.md). The
+    // canonical truth from v1.17.37 on is the EmailDeliveryEvent row
+    // below — its status field updates as SES SNS events arrive.
     await prisma.campaignHcp.update({
       where: {
         campaignId_hcpId: { campaignId, hcpId },
       },
       data: {
-        emailSentAt: new Date(),
+        emailSentAt: acceptedAt,
       },
     });
 
+    // v1.17.37: per-message delivery tracking. Skip when MOCK_MODE
+    // (no real SES messageId; the mock prefix is the sentinel).
+    if (result.messageId && !result.messageId.startsWith('mock-') && !result.messageId.startsWith('blocked-')) {
+      await this.recordDeliveryEvent({
+        campaignId,
+        hcpId,
+        messageType: 'invitation',
+        sesMessageId: result.messageId,
+        toEmail: email,
+        subject,
+        acceptedAt,
+      });
+    }
+
     return result;
+  }
+
+  /**
+   * v1.17.37 — persist a per-message row at send-time. The SNS handler
+   * route (POST /api/v1/internal/ses-event) updates these rows as
+   * bounce/complaint/delivery events arrive.
+   *
+   * Non-blocking: best-effort. If the insert fails (DB blip, missing
+   * row schema in test envs without migrations applied), log and
+   * continue — the send already succeeded; we don't want to fail the
+   * user's invitation over an observability insert.
+   */
+  private async recordDeliveryEvent(params: {
+    campaignId: string;
+    hcpId: string;
+    campaignHcpId?: string;
+    messageType: 'invitation' | 'reminder' | 'opt_out_confirm';
+    sesMessageId: string;
+    toEmail: string;
+    subject: string;
+    acceptedAt: Date;
+  }): Promise<void> {
+    try {
+      await prisma.emailDeliveryEvent.create({
+        data: {
+          campaignId: params.campaignId,
+          hcpId: params.hcpId,
+          campaignHcpId: params.campaignHcpId,
+          messageType: params.messageType,
+          sesMessageId: params.sesMessageId,
+          toEmail: params.toEmail,
+          fromEmail: FROM_EMAIL,
+          subject: params.subject,
+          status: 'SENT',
+          acceptedAt: params.acceptedAt,
+        },
+      });
+    } catch (err) {
+      logger.warn('Failed to record EmailDeliveryEvent', {
+        sesMessageId: params.sesMessageId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -491,6 +573,8 @@ ${unsubscribeUrl}
       textBody,
     });
 
+    const acceptedAt = new Date();
+
     // Update CampaignHcp record
     await prisma.campaignHcp.update({
       where: {
@@ -498,9 +582,23 @@ ${unsubscribeUrl}
       },
       data: {
         reminderCount: { increment: 1 },
-        lastReminderAt: new Date(),
+        lastReminderAt: acceptedAt,
       },
     });
+
+    // v1.17.37: per-message delivery tracking (same pattern as
+    // sendSurveyInvitation).
+    if (result.messageId && !result.messageId.startsWith('mock-') && !result.messageId.startsWith('blocked-')) {
+      await this.recordDeliveryEvent({
+        campaignId,
+        hcpId,
+        messageType: 'reminder',
+        sesMessageId: result.messageId,
+        toEmail: email,
+        subject,
+        acceptedAt,
+      });
+    }
 
     return result;
   }
@@ -875,8 +973,28 @@ ${unsubscribeUrl}
       skippedCompleted: 0,
       skippedRecentlyReminded: 0,
       skippedMaxReminders: 0,
+      /** v1.17.37: new bucket — HCPs whose prior invitation hard-bounced
+       * or generated a complaint. Reminders are pointless and harm SES
+       * reputation. See no-ses-delivery-logging-2026-06-13.md. */
+      skippedBounced: 0,
       errors: [],
     };
+
+    // v1.17.37: pre-load the HCPs whose latest EmailDeliveryEvent for
+    // this campaign was a hard-bounce / complaint, so we can skip them
+    // in the per-row loop without an N+1 query.
+    const bouncedHcpIds = new Set<string>(
+      (
+        await prisma.emailDeliveryEvent.findMany({
+          where: {
+            campaignId,
+            status: { in: ['BOUNCED_HARD', 'COMPLAINED', 'SUPPRESSED'] },
+          },
+          select: { hcpId: true },
+          distinct: ['hcpId'],
+        })
+      ).map((e: { hcpId: string }) => e.hcpId)
+    );
 
     // Start progress tracking if progressId provided
     if (progressId) {
@@ -896,6 +1014,23 @@ ${unsubscribeUrl}
             importProgressStore.update(progressId, {
               processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
               currentItem: `Skipped: ${hcp.email || hcp.firstName} (completed)`,
+            });
+          }
+          continue;
+        }
+
+        // v1.17.37: prior hard-bounce / complaint → no reminder.
+        // Reminders to a known-bad address waste effort and hurt SES
+        // reputation. Reset path: clear the prior bounce by editing
+        // the Hcp.email + manually clearing the EmailDeliveryEvent
+        // status (out of scope for the auto-loop).
+        if (bouncedHcpIds.has(hcp.id)) {
+          result.skipped++;
+          result.skippedBounced = (result.skippedBounced ?? 0) + 1;
+          if (progressId) {
+            importProgressStore.update(progressId, {
+              processed: i + 1, created: result.sent, updated: result.skipped, errors: result.failed,
+              currentItem: `Skipped: ${hcp.email || hcp.firstName} (prior bounce)`,
             });
           }
           continue;
