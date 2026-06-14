@@ -114,6 +114,15 @@ export default function CampaignPaymentsPage() {
   const reExportPayments = useReExportPayments();
   const importStatus = useImportPaymentStatus();
 
+  // v1.17.38: pre-flight hint when the visible payment rows include
+  // HCPs whose email is a known placeholder (nomail@…). The export
+  // also surfaces survey-provided email mismatches in a dedicated
+  // column — see export.service.ts exportPayments. Together these
+  // address docs/findings/survey-email-not-propagated-to-hcp-2026-06-13.md.
+  const placeholderPaymentCount = (payments?.items ?? []).filter((p) =>
+    /^nomail@/i.test(p.hcp?.email ?? '')
+  ).length;
+
   const handleExport = async () => {
     try {
       await exportPayments.mutateAsync(campaignId);
@@ -223,6 +232,26 @@ export default function CampaignPaymentsPage() {
             </Button>
           </div>
         </div>
+
+        {/* v1.17.38: pre-flight banner for placeholder addresses on
+            payment rows visible in the current page. The export
+            includes a "Survey-Provided Email (review)" column that
+            surfaces survey-answer mismatches; this banner just gives
+            the admin a heads-up before they hit Export. */}
+        {placeholderPaymentCount > 0 && (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+            <p className="font-medium">
+              ⚠ {placeholderPaymentCount} of the payment{placeholderPaymentCount === 1 ? '' : 's'} on this page
+              ha{placeholderPaymentCount === 1 ? 's' : 've'} a placeholder email
+              (<code className="text-xs">nomail@…</code>).
+            </p>
+            <p className="text-xs mt-1 opacity-90">
+              The export Excel includes a <strong>Survey-Provided Email (review)</strong> column showing
+              the value the respondent typed in the survey when it differs. Review those before issuing
+              checks.
+            </p>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

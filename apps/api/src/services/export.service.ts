@@ -332,6 +332,35 @@ export class ExportService {
       throw new Error('No pending payments to export');
     }
 
+    // v1.17.38 — for each HCP in this export, look up the latest
+    // hcp.survey_email_mismatch audit row (if any). When present and
+    // the Hcp.email hasn't been updated since the audit was emitted
+    // (the most recent value in newValues.email still differs from
+    // current Hcp.email), surface the survey-provided value in a new
+    // column. Admin reviews and decides whether to update Hcp.email
+    // before issuing payment. Background:
+    // docs/findings/survey-email-not-propagated-to-hcp-2026-06-13.md.
+    const hcpIds = payments.map((p) => p.hcpId);
+    const mismatchRows = await prisma.auditLog.findMany({
+      where: {
+        action: 'hcp.survey_email_mismatch',
+        entityType: 'Hcp',
+        entityId: { in: hcpIds },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { entityId: true, newValues: true, createdAt: true },
+    });
+    // First row per HCP (already DESC ordered).
+    const mismatchByHcpId = new Map<string, { surveyEmail: string; auditedAt: Date } | null>();
+    for (const row of mismatchRows) {
+      if (mismatchByHcpId.has(row.entityId)) continue;
+      const newVals = (row.newValues ?? {}) as { email?: string };
+      mismatchByHcpId.set(row.entityId, {
+        surveyEmail: newVals.email ?? '',
+        auditedAt: row.createdAt,
+      });
+    }
+
     // Create export batch
     const exportBatch = await prisma.paymentExportBatch.create({
       data: {
@@ -475,6 +504,27 @@ export class ExportService {
       throw new Error('No exported payments to re-export');
     }
 
+    // v1.17.38 — same mismatch surface in the re-export path.
+    const hcpIds = payments.map((p) => p.hcpId);
+    const mismatchRows = await prisma.auditLog.findMany({
+      where: {
+        action: 'hcp.survey_email_mismatch',
+        entityType: 'Hcp',
+        entityId: { in: hcpIds },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { entityId: true, newValues: true, createdAt: true },
+    });
+    const mismatchByHcpId = new Map<string, { surveyEmail: string; auditedAt: Date } | null>();
+    for (const row of mismatchRows) {
+      if (mismatchByHcpId.has(row.entityId)) continue;
+      const newVals = (row.newValues ?? {}) as { email?: string };
+      mismatchByHcpId.set(row.entityId, {
+        surveyEmail: newVals.email ?? '',
+        auditedAt: row.createdAt,
+      });
+    }
+
     // Create workbook (no status change, just regenerate the file)
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'KOL360';
@@ -488,6 +538,7 @@ export class ExportService {
       'First Name',
       'Last Name',
       'Email',
+      'Survey-Provided Email (review)',
       'Survey Completion Date',
       'Payment Amount',
       'Currency',
@@ -504,12 +555,18 @@ export class ExportService {
     };
 
     for (const payment of payments) {
+      const mismatch = mismatchByHcpId.get(payment.hcpId);
+      const current = (payment.hcp.email ?? '').trim().toLowerCase();
+      const surveyVal = (mismatch?.surveyEmail ?? '').trim().toLowerCase();
+      const stillMismatched = !!mismatch && surveyVal && surveyVal !== current;
+
       const row = [
         payment.id,
         payment.hcp.npi,
         payment.hcp.firstName,
         payment.hcp.lastName,
         payment.hcp.email || '',
+        stillMismatched ? mismatch.surveyEmail : '',
         payment.response.completedAt?.toISOString().split('T')[0] || '',
         Number(payment.amount).toFixed(2),
         payment.currency,

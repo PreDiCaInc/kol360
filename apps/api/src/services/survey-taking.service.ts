@@ -1,5 +1,8 @@
 import { prisma } from '../lib/prisma';
 import { PrismaPromise } from '@prisma/client';
+import { isPlaceholderEmail } from '@kol360/shared';
+import { createAuditLog } from '../lib/audit';
+import { logger } from '../lib/logger';
 
 interface SurveyQuestion {
   id: string;
@@ -333,6 +336,27 @@ export class SurveyTakingService {
       },
     });
 
+    // v1.17.38 — SURFACE (don't auto-update) survey-provided "Email
+    // address:" answers that differ from Hcp.email. Pre-fix the
+    // answer was stored in SurveyResponseAnswer and never re-read by
+    // any production flow — payment-export then sent honorarium checks
+    // to placeholders while real addresses sat buried in the survey
+    // answers. See
+    // docs/findings/survey-email-not-propagated-to-hcp-2026-06-13.md.
+    //
+    // Behavior:
+    //   - If survey-provided email matches Hcp.email exactly (case-
+    //     insensitive after trim): no action.
+    //   - If survey-provided email differs AND parses as plausible:
+    //     emit a 'hcp.survey_email_mismatch' audit row capturing both
+    //     values. Surfaces in audit queries + the payment-export
+    //     "Survey-Provided Email" column for admin review. Hcp.email
+    //     is NOT mutated — admin decides whether to update.
+    //   - If survey-provided email is empty / not plausible: skipped.
+    //
+    // No backfill of historical responses per pteam's call.
+    await this.detectSurveyEmailMismatch(response.id);
+
     // Create nominations from MULTI_TEXT answers
     const nominations: Array<{
       responseId: string;
@@ -378,6 +402,86 @@ export class SurveyTakingService {
     }
 
     return { submitted: true };
+  }
+
+  /**
+   * v1.17.38 — surface (don't auto-update) survey-provided email
+   * addresses that differ from the HCP's current email. Emits a
+   * 'hcp.survey_email_mismatch' audit row when a discrepancy is
+   * detected; otherwise no-ops.
+   *
+   * The audit row is the durable record:
+   *   - oldValues.email = Hcp.email at submit time
+   *   - newValues.email = survey-provided "Email address:" answer
+   *   - newValues.responseId / campaignId for trace-back
+   * Admins can query AuditLog WHERE action='hcp.survey_email_mismatch'
+   * to find unresolved cases. Payment-export annotates each line with
+   * the survey-provided value when an unresolved mismatch exists.
+   *
+   * Non-blocking: any error here logs but doesn't break the submit
+   * flow — the survey's already saved by the time we get here.
+   */
+  private async detectSurveyEmailMismatch(responseId: string): Promise<void> {
+    try {
+      const response = await prisma.surveyResponse.findUnique({
+        where: { id: responseId },
+        select: {
+          campaignId: true,
+          respondentHcpId: true,
+          respondentHcp: { select: { id: true, email: true } },
+          answers: {
+            include: { question: { include: { question: true } } },
+          },
+        },
+      });
+      if (!response?.respondentHcp) return;
+
+      // Locate the "Email address:" answer. Match the question text
+      // case-insensitively + tolerantly so minor edits ("Email
+      // Address:" / "Email address" / "Your email:") still hit.
+      const emailAnswer = response.answers.find((a) => {
+        const text = (a.question?.question?.text ?? '').trim().toLowerCase();
+        return /^email( address)?:?$/i.test(text);
+      });
+      const rawSurveyEmail = (emailAnswer?.answerText ?? '').trim();
+      if (!rawSurveyEmail) return;
+
+      // Plausibility check — basic shape. Don't surface
+      // "johndoe@gmial" typos as mismatches; the discrepancy noise
+      // would drown out the real signal.
+      const plausibleEmailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+      if (!plausibleEmailRe.test(rawSurveyEmail)) return;
+
+      const surveyEmail = rawSurveyEmail.toLowerCase();
+      const currentEmail = (response.respondentHcp.email ?? '').trim().toLowerCase();
+
+      // Same → no action. (Case-insensitive after trim.)
+      if (surveyEmail === currentEmail) return;
+
+      // Skip when the survey-provided email is itself a placeholder
+      // (the respondent literally typed nomail@…). Not actionable.
+      if (isPlaceholderEmail(surveyEmail)) return;
+
+      // Different + plausible → surface via audit row.
+      await createAuditLog('system:survey_submission', {
+        action: 'hcp.survey_email_mismatch',
+        entityType: 'Hcp',
+        entityId: response.respondentHcp.id,
+        oldValues: { email: response.respondentHcp.email },
+        newValues: {
+          email: rawSurveyEmail,
+          responseId,
+          campaignId: response.campaignId,
+        },
+      });
+    } catch (err) {
+      // Best-effort — don't fail the survey submit over a detection
+      // bookkeeping issue.
+      logger.warn('Failed to detect survey email mismatch', {
+        responseId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   async unsubscribe(
