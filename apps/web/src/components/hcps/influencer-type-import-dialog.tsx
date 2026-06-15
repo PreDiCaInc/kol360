@@ -19,6 +19,11 @@ import {
 } from '@/components/ui/select';
 import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Download } from 'lucide-react';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
+import {
+  useInfluencerTypePreview,
+  useInfluencerTypeImport,
+  type InfluencerTypeImportResult,
+} from '@/hooks/use-hcps';
 
 // v1.17.42 — data-team-managed influencer-type classification import.
 // CSV format: NPI,InfluencerType. The 3 canonical values are
@@ -36,48 +41,24 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-interface ImportResult {
-  totalRows: number;
-  matched: number;
-  unmatchedNpi: number;
-  unmatchedDiseaseArea: number;
-  invalidType: number;
-  countsByType: Record<string, number>;
-  errorRows: Array<{ row: number; npi: string; rawType: string; reason: string }>;
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-
-async function postFile(
-  endpoint: string,
-  file: File,
-  diseaseAreaId: string,
-  authToken: string | null,
-): Promise<ImportResult> {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('diseaseAreaId', diseaseAreaId);
-  const res = await fetch(`${API_URL}/api/v1/hcps/influencer-types/${endpoint}`, {
-    method: 'POST',
-    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-    body: formData,
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error((data as { message?: string }).message ?? `HTTP ${res.status}`);
-  }
-  return data as ImportResult;
-}
+// v1.17.43 — auth is now via useInfluencerTypePreview / useInfluencerTypeImport
+// hooks (mutationFn awaits the live Cognito getToken). The previous
+// 4.1.22 dialog rolled its own authToken() that read from localStorage
+// keys ('id_token' / 'access_token') the app doesn't actually use, so
+// the Authorization header was always dropped and the backend rejected
+// with 'Missing or invalid authorization header'.
 
 export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
   const [diseaseAreaId, setDiseaseAreaId] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<ImportResult | null>(null);
-  const [final, setFinal] = useState<ImportResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<InfluencerTypeImportResult | null>(null);
+  const [final, setFinal] = useState<InfluencerTypeImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: diseaseAreas } = useDiseaseAreas();
+  const previewMutation = useInfluencerTypePreview();
+  const importMutation = useInfluencerTypeImport();
+  const busy = previewMutation.isPending || importMutation.isPending;
 
   const selectedDiseaseAreaName =
     diseaseAreas?.items?.find((d) => d.id === diseaseAreaId)?.name ?? '';
@@ -92,40 +73,31 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
     }
   };
 
-  function authToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    try {
-      return localStorage.getItem('id_token') ?? localStorage.getItem('access_token');
-    } catch {
-      return null;
-    }
-  }
-
   const handlePreview = async () => {
     if (!selectedFile || !diseaseAreaId) return;
-    setBusy(true);
     setError(null);
     try {
-      const result = await postFile('preview', selectedFile, diseaseAreaId, authToken());
+      const result = await previewMutation.mutateAsync({
+        file: selectedFile,
+        diseaseAreaId,
+      });
       setPreview(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Preview failed');
-    } finally {
-      setBusy(false);
     }
   };
 
   const handleImport = async () => {
     if (!selectedFile || !diseaseAreaId) return;
-    setBusy(true);
     setError(null);
     try {
-      const result = await postFile('import', selectedFile, diseaseAreaId, authToken());
+      const result = await importMutation.mutateAsync({
+        file: selectedFile,
+        diseaseAreaId,
+      });
       setFinal(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed');
-    } finally {
-      setBusy(false);
     }
   };
 

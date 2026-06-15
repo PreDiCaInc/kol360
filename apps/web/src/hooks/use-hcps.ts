@@ -402,3 +402,57 @@ async function getToken(): Promise<string> {
   }
   throw new Error('No auth token available');
 }
+
+// v1.17.43 — influencer-type classification import (preview + apply).
+// Mirrors useImportHcps's auth pattern (await getToken() against the
+// live Cognito session, not a hand-rolled localStorage probe). The
+// hand-rolled approach in InfluencerTypeImportDialog v1.17.42 read
+// from localStorage 'id_token' / 'access_token' keys the app doesn't
+// actually use, so the Authorization header was always dropped and
+// the backend rejected with 'Missing or invalid authorization header'.
+
+export interface InfluencerTypeImportResult {
+  totalRows: number;
+  matched: number;
+  unmatchedNpi: number;
+  unmatchedDiseaseArea: number;
+  invalidType: number;
+  countsByType: Record<string, number>;
+  errorRows: Array<{ row: number; npi: string; rawType: string; reason: string }>;
+}
+
+async function postInfluencerTypeFile(
+  endpoint: 'preview' | 'import',
+  args: { file: File; diseaseAreaId: string },
+): Promise<InfluencerTypeImportResult> {
+  const formData = new FormData();
+  formData.append('file', args.file);
+  formData.append('diseaseAreaId', args.diseaseAreaId);
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/hcps/influencer-types/${endpoint}`,
+    {
+      method: 'POST',
+      body: formData,
+      headers: { Authorization: `Bearer ${await getToken()}` },
+    },
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error((data as { message?: string }).message || `Import ${endpoint} failed`);
+  }
+  return data as InfluencerTypeImportResult;
+}
+
+export function useInfluencerTypePreview() {
+  return useMutation({
+    mutationFn: (args: { file: File; diseaseAreaId: string }) =>
+      postInfluencerTypeFile('preview', args),
+  });
+}
+
+export function useInfluencerTypeImport() {
+  return useMutation({
+    mutationFn: (args: { file: File; diseaseAreaId: string }) =>
+      postInfluencerTypeFile('import', args),
+  });
+}
