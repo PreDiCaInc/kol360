@@ -547,7 +547,7 @@ export class ApiClient {
 
   // ==================== HCPs ====================
 
-  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; diseaseAreaIds?: string[]; optOutStatus?: 'any' | 'global' | 'campaign' | 'none'; page?: number; limit?: number }) {
+  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; diseaseAreaIds?: string[]; optOutStatus?: 'any' | 'global' | 'campaign' | 'none'; page?: number; limit?: number; sortBy?: 'name' | 'npi' | 'state' | 'specialty'; sortOrder?: 'asc' | 'desc' }) {
     const queryParams = new URLSearchParams();
     // Support both 'query' and 'search' as aliases for the search parameter
     const searchTerm = params?.query || params?.search;
@@ -562,6 +562,9 @@ export class ApiClient {
     if (params?.optOutStatus) queryParams.set('optOutStatus', params.optOutStatus);
     if (params?.page) queryParams.set('page', params.page.toString());
     if (params?.limit) queryParams.set('limit', params.limit.toString());
+    // v1.17.45 — sort params for the View Scores facelift.
+    if (params?.sortBy) queryParams.set('sortBy', params.sortBy);
+    if (params?.sortOrder) queryParams.set('sortOrder', params.sortOrder);
     const queryStr = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return this.request<{ items: Hcp[]; pagination: Pagination }>('GET', `/api/v1/hcps${queryStr}`);
   }
