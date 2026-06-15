@@ -127,6 +127,23 @@ async function seedTestData() {
         isPrimary: true,
       },
     });
+
+    // v1.17.42 — link HCP to the test disease area so the
+    // influencer-type import tests can target this (HCP, DA) pair.
+    await prisma.hcpDiseaseArea.upsert({
+      where: {
+        hcpId_diseaseAreaId: {
+          hcpId: hcp.id,
+          diseaseAreaId: TEST_IDS.DISEASE_AREA_ID,
+        },
+      },
+      update: {},
+      create: {
+        hcpId: hcp.id,
+        diseaseAreaId: TEST_IDS.DISEASE_AREA_ID,
+        isPrimary: true,
+      },
+    });
   }
 
   // 5. Create test user (linked to test client)
