@@ -100,12 +100,20 @@ model HcpDiseaseArea {
   diseaseAreaId String
   isPrimary     Boolean     @default(false)
   createdAt     DateTime    @default(now())
+  // v1.17.42 — data-team-managed classification per (HCP, disease area).
+  // Replaces the computed determineInfluencerType() output: when set,
+  // this value is authoritative; when null the column reads empty in
+  // the UI (no algorithmic fallback). Imported via CSV in the HCP
+  // admin section. Allowed values today: 'National Leaders',
+  // 'Rising Stars', 'Regional Influencers'.
+  influencerType String?
   hcp           Hcp         @relation(fields: [hcpId], references: [id], onDelete: Cascade)
   diseaseArea   DiseaseArea @relation(fields: [diseaseAreaId], references: [id], onDelete: Cascade)
 
   @@unique([hcpId, diseaseAreaId])
   @@index([hcpId])
   @@index([diseaseAreaId])
+  @@index([diseaseAreaId, influencerType])
 }
 
 model HcpSpecialty {

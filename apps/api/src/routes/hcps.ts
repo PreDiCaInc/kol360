@@ -5,6 +5,7 @@ import { HcpService } from '../services/hcp.service';
 // score-calculation.service removed in Phase 3 PR A — see /admin/kol-analysis.
 import { importProgressStore } from '../services/import-progress.service';
 import { createAuditLog } from '../lib/audit';
+import { influencerTypeImportService } from '../services/influencer-type-import.service';
 import multipart from '@fastify/multipart';
 
 const hcpService = new HcpService();
@@ -532,4 +533,67 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
   // Composite scores now live on HcpAnalysisScore per-(client, DA) with
   // per-analysis weights; recompute via the Recalculate button on the
   // /admin/kol-analysis/<id> page (or auto on included-campaign publish).
+
+  // v1.17.42 — data-team-managed influencer-type classification import.
+  // Preview returns the summary + per-row resolution so the UI can
+  // render the confirmation dialog. Import applies the writes.
+  // Both expect `diseaseAreaId` as a form field alongside the file.
+
+  async function readImportInputs(request: import('fastify').FastifyRequest) {
+    const parts = request.parts();
+    let fileBuffer: Buffer | null = null;
+    let fileName: string | null = null;
+    let diseaseAreaId: string | null = null;
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        fileBuffer = await part.toBuffer();
+        fileName = part.filename;
+      } else if (part.fieldname === 'diseaseAreaId') {
+        diseaseAreaId = String(part.value ?? '');
+      }
+    }
+    return { fileBuffer, fileName, diseaseAreaId };
+  }
+
+  fastify.post('/influencer-types/preview', async (request, reply) => {
+    const { fileBuffer, fileName, diseaseAreaId } = await readImportInputs(request);
+    if (!fileBuffer || !fileName) {
+      return reply.status(400).send({ error: 'Bad Request', message: 'No file uploaded', statusCode: 400 });
+    }
+    if (!diseaseAreaId) {
+      return reply.status(400).send({ error: 'Bad Request', message: 'diseaseAreaId is required', statusCode: 400 });
+    }
+    try {
+      return await influencerTypeImportService.preview({
+        buffer: fileBuffer,
+        filename: fileName,
+        diseaseAreaId,
+        actorCognitoSub: request.user!.sub,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Preview failed';
+      return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
+    }
+  });
+
+  fastify.post('/influencer-types/import', async (request, reply) => {
+    const { fileBuffer, fileName, diseaseAreaId } = await readImportInputs(request);
+    if (!fileBuffer || !fileName) {
+      return reply.status(400).send({ error: 'Bad Request', message: 'No file uploaded', statusCode: 400 });
+    }
+    if (!diseaseAreaId) {
+      return reply.status(400).send({ error: 'Bad Request', message: 'diseaseAreaId is required', statusCode: 400 });
+    }
+    try {
+      return await influencerTypeImportService.import({
+        buffer: fileBuffer,
+        filename: fileName,
+        diseaseAreaId,
+        actorCognitoSub: request.user!.sub,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Import failed';
+      return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });
+    }
+  });
 };

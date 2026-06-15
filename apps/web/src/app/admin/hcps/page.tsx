@@ -28,6 +28,7 @@ import {
 import { HcpImportDialog } from '@/components/hcps/hcp-import-dialog';
 import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
+import { InfluencerTypeImportDialog } from '@/components/hcps/influencer-type-import-dialog';
 import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -65,6 +66,7 @@ export default function HcpsPage() {
   const canEdit = canWrite && !isImpersonating;
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAliasImportDialog, setShowAliasImportDialog] = useState(false);
+  const [showInfluencerImportDialog, setShowInfluencerImportDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<{
@@ -180,6 +182,10 @@ export default function HcpsPage() {
               <Button variant="outline" onClick={() => setShowAliasImportDialog(true)}>
                 <Users className="w-4 h-4 mr-2" />
                 Import Aliases
+              </Button>
+              <Button variant="outline" onClick={() => setShowInfluencerImportDialog(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Import Influencer Types
               </Button>
               <Button onClick={() => setShowCreateDialog(true)}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -508,6 +514,7 @@ export default function HcpsPage() {
 
       <HcpImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
       <AliasImportDialog open={showAliasImportDialog} onOpenChange={setShowAliasImportDialog} />
+      <InfluencerTypeImportDialog open={showInfluencerImportDialog} onOpenChange={setShowInfluencerImportDialog} />
       <HcpFormDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
     </div>
   );
