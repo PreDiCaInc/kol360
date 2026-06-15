@@ -32,6 +32,7 @@ import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import
 import { useAuth } from '@/lib/auth/auth-provider';
 import { ColumnSelector } from '@/components/insights/column-selector';
 import { useColumnVisibility } from '@/hooks/use-column-visibility';
+import { cn } from '@/lib/utils';
 
 // 8 segment score columns + Survey + Composite (Overview tab)
 const OVERVIEW_SCORE_COLUMNS = [
@@ -128,7 +129,21 @@ export default function HcpScoresPage() {
     specialty?: string;
     state?: string;
     page: number;
-  }>({ page: 1 });
+    // v1.17.45 — server-side sort for Name / NPI / State / Specialty
+    // (the simple Hcp-table columns). Score-column sort would need a
+    // separate JOIN path on HcpDiseaseAreaScore — flagged as follow-up.
+    sortBy?: 'name' | 'npi' | 'state' | 'specialty';
+    sortOrder?: 'asc' | 'desc';
+  }>({ page: 1, sortBy: 'name', sortOrder: 'asc' });
+
+  const handleSort = (field: string) => {
+    setFilters((prev) => {
+      if (prev.sortBy !== field) {
+        return { ...prev, sortBy: field as 'name' | 'npi' | 'state' | 'specialty', sortOrder: 'asc', page: 1 };
+      }
+      return { ...prev, sortOrder: prev.sortOrder === 'asc' ? 'desc' : 'asc', page: 1 };
+    });
+  };
 
   // v1.17.45 — per-tab column visibility (localStorage-backed). Same
   // hook + UX as the Insights tables. Defaults to "everything visible";
@@ -430,12 +445,56 @@ export default function HcpScoresPage() {
               <TableHeader>
                 <TableRow>
                   {/* v1.17.45 — sticky NPI + Name anchors (mirrors the
-                      Insights tables). bg-card so per-row striping
-                      doesn't bleed through during horizontal scroll. */}
-                  <TableHead className="whitespace-nowrap sticky left-0 bg-card z-10 w-[120px]">NPI</TableHead>
-                  <TableHead className="whitespace-nowrap sticky left-[120px] bg-card z-10">Name</TableHead>
-                  <TableHead className="whitespace-nowrap">Specialty</TableHead>
-                  <TableHead className="whitespace-nowrap">Location</TableHead>
+                      Insights tables) + click-to-sort on the simple
+                      columns. Sort state lives in `filters` and round-
+                      trips through the /hcps endpoint (sortBy/sortOrder
+                      added in v1.17.45). Score-column sort needs a
+                      different code path (HcpDiseaseAreaScore JOIN); not
+                      in this commit. */}
+                  <TableHead
+                    className="whitespace-nowrap sticky left-0 bg-card z-10 w-[120px] cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('npi')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      NPI
+                      <span className={cn('text-xs', filters.sortBy !== 'npi' && 'text-muted-foreground/40')}>
+                        {filters.sortBy === 'npi' ? (filters.sortOrder === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </span>
+                  </TableHead>
+                  <TableHead
+                    className="whitespace-nowrap sticky left-[120px] bg-card z-10 cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('name')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Name
+                      <span className={cn('text-xs', filters.sortBy !== 'name' && 'text-muted-foreground/40')}>
+                        {filters.sortBy === 'name' ? (filters.sortOrder === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </span>
+                  </TableHead>
+                  <TableHead
+                    className="whitespace-nowrap cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('specialty')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Specialty
+                      <span className={cn('text-xs', filters.sortBy !== 'specialty' && 'text-muted-foreground/40')}>
+                        {filters.sortBy === 'specialty' ? (filters.sortOrder === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </span>
+                  </TableHead>
+                  <TableHead
+                    className="whitespace-nowrap cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('state')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Location
+                      <span className={cn('text-xs', filters.sortBy !== 'state' && 'text-muted-foreground/40')}>
+                        {filters.sortBy === 'state' ? (filters.sortOrder === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </span>
+                  </TableHead>
                   {/* v1.17.45 — score columns filtered by visibility */}
                   {activeTab === 'overview' ? (
                     OVERVIEW_SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => (

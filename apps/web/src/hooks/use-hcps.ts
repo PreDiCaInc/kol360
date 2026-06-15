@@ -123,6 +123,11 @@ interface HcpsQuery {
   optOutStatus?: 'any' | 'global' | 'campaign' | 'none';
   page?: number;
   limit?: number;
+  // v1.17.45 — sortable simple Hcp-table columns. Score-column sort
+  // would need a separate endpoint join + raw-SQL (see Insights
+  // getKolExplorer pattern).
+  sortBy?: 'name' | 'npi' | 'state' | 'specialty';
+  sortOrder?: 'asc' | 'desc';
 }
 
 interface ImportResult {

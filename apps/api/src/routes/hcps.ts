@@ -28,7 +28,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Search HCPs
   fastify.get('/', async (request, reply) => {
-    const { query, specialty, state, diseaseAreaIds, optOutStatus, page, limit } = request.query as {
+    const { query, specialty, state, diseaseAreaIds, optOutStatus, page, limit, sortBy, sortOrder } = request.query as {
       query?: string;
       specialty?: string;
       state?: string;
@@ -36,6 +36,8 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       optOutStatus?: string;
       page?: string;
       limit?: string;
+      sortBy?: string;
+      sortOrder?: string;
     };
 
     // CLIENT_ADMIN can only see HCPs assigned to their campaigns
@@ -68,6 +70,14 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       diseaseAreaIds: normalizedDaIds,
       hcpIds,
       optOutStatus: optOutStatus as 'any' | 'global' | 'campaign' | 'active' | 'none' | undefined,
+      // v1.17.45 — narrow to the 4 supported sort keys; anything else
+      // ignored (falls back to default last-name-then-first sort).
+      sortBy: (['name', 'npi', 'state', 'specialty'] as const).includes(
+        sortBy as 'name' | 'npi' | 'state' | 'specialty',
+      )
+        ? (sortBy as 'name' | 'npi' | 'state' | 'specialty')
+        : undefined,
+      sortOrder: sortOrder === 'desc' ? 'desc' : sortOrder === 'asc' ? 'asc' : undefined,
       page: parseInt(page || '1', 10),
       limit: parseInt(limit || '50', 10),
     });
