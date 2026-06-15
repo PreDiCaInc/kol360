@@ -26,6 +26,31 @@ import {
 import { ScoreFiltersGrid } from '../score-range-filter';
 import { SortableHeader } from '@/components/insights/shared/sortable-header';
 import { ScoreTooltip } from '@/components/insights/score-tooltip';
+import { ColumnSelector } from '@/components/insights/column-selector';
+import { useColumnVisibility } from '@/hooks/use-column-visibility';
+
+// v1.17.41 — column-visibility selector for the Weighted Score tab.
+// Sticky # + Name are anchors and stay always visible. Defaults
+// hide Degree + City (per pteam's polish request); user selections
+// persist via localStorage under `insights.kol-explorer.columns`.
+const KOL_EXPLORER_COLUMN_OPTIONS = [
+  { key: 'specialty', label: 'Specialty' },
+  { key: 'degree', label: 'Degree' },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'State' },
+  { key: 'influencerType', label: 'Type' },
+  { key: 'compositeScore', label: 'Total' },
+  { key: 'scorePublications', label: 'Publications' },
+  { key: 'scoreTradePubs', label: 'Trade Pubs' },
+  { key: 'scoreOrgLeadership', label: 'Org Lead' },
+  { key: 'scoreOrgAwards', label: 'Awards' },
+  { key: 'scoreClinicalTrials', label: 'Trials' },
+  { key: 'scoreConference', label: 'Conf' },
+  { key: 'scoreSocialMedia', label: 'Social Media' },
+  { key: 'scoreMediaPodcasts', label: 'Media' },
+  { key: 'scoreSurvey', label: 'Survey' },
+] as const;
+const KOL_EXPLORER_DEFAULT_HIDDEN = ['degree', 'city'];
 import { KolNameLink } from '@/components/insights/shared/kol-name-link';
 import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
 import { MetricBadge } from '@/components/insights/shared/metric-badge';
@@ -125,6 +150,14 @@ function ScoreTableView({
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedInfluencerTypes, setSelectedInfluencerTypes] = useState<string[]>([]);
   const [showScoreFilters, setShowScoreFilters] = useState(false);
+
+  // v1.17.41 — per-table column visibility (localStorage-backed).
+  // Sticky # + Name aren't in the options list — they're always shown.
+  const columnVisibility = useColumnVisibility(
+    'insights.kol-explorer.columns',
+    KOL_EXPLORER_DEFAULT_HIDDEN
+  );
+  const isVisible = columnVisibility.isVisible;
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
 
@@ -374,6 +407,16 @@ function ScoreTableView({
         )}
       </div>
 
+      {/* v1.17.41 — column-visibility selector. Sits above the table
+          on the right so it doesn't compete with the score-filter
+          toggle. */}
+      <div className="flex justify-end">
+        <ColumnSelector
+          columns={[...KOL_EXPLORER_COLUMN_OPTIONS]}
+          visibility={columnVisibility}
+        />
+      </div>
+
       {/* Results Table */}
       <div className="rounded-md border overflow-x-auto">
         <table className="w-full text-sm min-w-[1600px]">
@@ -393,24 +436,36 @@ function ScoreTableView({
                 onSort={handleSort}
                 className="sticky left-[50px] bg-muted z-10"
               />
-              <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-              <th className="px-3 py-2 text-left text-sm font-medium">Degree</th>
-              <th className="px-3 py-2 text-left text-sm font-medium">City</th>
-              <SortableHeader label="State" field="state" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-              <SortableHeader label="Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+              {isVisible('specialty') && (
+                <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+              )}
+              {isVisible('degree') && (
+                <th className="px-3 py-2 text-left text-sm font-medium">Degree</th>
+              )}
+              {isVisible('city') && (
+                <th className="px-3 py-2 text-left text-sm font-medium">City</th>
+              )}
+              {isVisible('state') && (
+                <SortableHeader label="State" field="state" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+              )}
+              {isVisible('influencerType') && (
+                <SortableHeader label="Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+              )}
               {/* v1.17.26: Total is the FIRST of the score columns
                   (right before the per-segment scores), not the first
                   column of the whole table. Default sort still
                   sortBy='compositeScore' sortOrder='desc'. */}
-              <SortableHeader
-                label="Total"
-                field="compositeScore"
-                currentSort={sortBy}
-                currentOrder={sortOrder}
-                onSort={handleSort}
-                headerExtra={<ScoreTooltip type="composite" />}
-              />
-              {SCORE_COLUMNS.map((col) => (
+              {isVisible('compositeScore') && (
+                <SortableHeader
+                  label="Total"
+                  field="compositeScore"
+                  currentSort={sortBy}
+                  currentOrder={sortOrder}
+                  onSort={handleSort}
+                  headerExtra={<ScoreTooltip type="composite" />}
+                />
+              )}
+              {SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => (
                 <SortableHeader
                   key={col.key}
                   label={col.label}
@@ -428,11 +483,11 @@ function ScoreTableView({
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={17} className="h-32 text-center text-muted-foreground">Loading...</td>
+                <td colSpan={25} className="h-32 text-center text-muted-foreground">Loading...</td>
               </tr>
             ) : !data?.items.length ? (
               <tr>
-                <td colSpan={17} className="h-32 text-center text-muted-foreground">No KOLs found</td>
+                <td colSpan={25} className="h-32 text-center text-muted-foreground">No KOLs found</td>
               </tr>
             ) : (
               data.items.map((kol, index) => (
@@ -445,32 +500,44 @@ function ScoreTableView({
                   <td className="px-3 py-2 min-w-[180px] sticky left-[50px] bg-background">
                     <KolNameLink name={kol.name} onClick={() => onKolSelect(kol.id)} />
                   </td>
-                  <td className="px-3 py-2">{kol.specialty || '-'}</td>
-                  <td className="px-3 py-2 text-center">
-                    {kol.degree ? (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">{kol.degree}</Badge>
-                    ) : '-'}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{toTitleCase(kol.city) || '-'}</td>
-                  <td className="px-3 py-2">{kol.state || '-'}</td>
-                  <td className="px-3 py-2">
-                    {kol.influencerType ? (
-                      <Badge
-                        variant={
-                          kol.influencerType === 'National Leaders' ? 'default' :
-                          kol.influencerType === 'Rising Stars' ? 'secondary' : 'outline'
-                        }
-                        className="whitespace-nowrap text-[10px]"
-                      >
-                        {kol.influencerType}
-                      </Badge>
-                    ) : '-'}
-                  </td>
+                  {isVisible('specialty') && (
+                    <td className="px-3 py-2">{kol.specialty || '-'}</td>
+                  )}
+                  {isVisible('degree') && (
+                    <td className="px-3 py-2 text-center">
+                      {kol.degree ? (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">{kol.degree}</Badge>
+                      ) : '-'}
+                    </td>
+                  )}
+                  {isVisible('city') && (
+                    <td className="px-3 py-2 whitespace-nowrap">{toTitleCase(kol.city) || '-'}</td>
+                  )}
+                  {isVisible('state') && (
+                    <td className="px-3 py-2">{kol.state || '-'}</td>
+                  )}
+                  {isVisible('influencerType') && (
+                    <td className="px-3 py-2">
+                      {kol.influencerType ? (
+                        <Badge
+                          variant={
+                            kol.influencerType === 'National Leaders' ? 'default' :
+                            kol.influencerType === 'Rising Stars' ? 'secondary' : 'outline'
+                          }
+                          className="whitespace-nowrap text-[10px]"
+                        >
+                          {kol.influencerType}
+                        </Badge>
+                      ) : '-'}
+                    </td>
+                  )}
                   {/* Total: first of the score columns (matches header). */}
-                  <td className="px-3 py-2 text-right font-mono font-bold bg-muted/30">
-                    {kol.compositeScore?.toFixed(1) ?? '-'}
-                  </td>
-                  {SCORE_COLUMNS.map((col) => (
+                  {isVisible('compositeScore') && (
+                    <td className="px-3 py-2 text-right font-mono font-bold bg-muted/30">
+                      {kol.compositeScore?.toFixed(1) ?? '-'}
+                    </td>
+                  )}
+                  {SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => (
                     <td key={col.key} className="px-3 py-2 text-right font-mono text-xs">
                       {(kol[col.key as keyof KolExplorerItem] as number | null)?.toFixed(1) ?? '-'}
                     </td>
