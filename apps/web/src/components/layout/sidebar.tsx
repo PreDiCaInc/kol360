@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
 import { useCurrentClient } from '@/hooks/use-current-client';
+import { UserMenu } from '@/components/layout/user-menu';
 import { useSidebarContext } from './sidebar-context';
 import {
   LayoutDashboard,
@@ -391,12 +392,17 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Collapse Toggle */}
-      <div className="absolute bottom-0 left-0 right-0 border-t border-[hsl(var(--sidebar-border))] p-3">
+      {/* v1.17.45 — bottom cluster: user menu (above) + collapse toggle.
+          User profile lifted out of the header into the sidebar bottom
+          per the modern SaaS pattern (Linear / Notion / Slack / Vercel).
+          For client users with the restricted nav, this gives the
+          sidebar two anchors instead of one floating Insights link. */}
+      <div className="absolute bottom-0 left-0 right-0 border-t border-[hsl(var(--sidebar-border))] py-2 px-2 space-y-1">
+        <UserMenu collapsed={collapsed} />
         <button
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            'group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm',
+            'group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm',
             'text-[hsl(var(--sidebar-foreground))]/50 hover:text-[hsl(var(--sidebar-foreground))]',
             'hover:bg-[hsl(var(--sidebar-accent))] transition-all duration-200',
             collapsed && 'justify-center px-2'
