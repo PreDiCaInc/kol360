@@ -343,6 +343,13 @@ function ScoreTableView({
         <div className="flex items-center gap-2">
           {/* v1.17.3: Clear filters surfaced for the first time on this tab. */}
           <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAllFilters} />
+          {/* v1.17.45 — column selector moved up here next to Export
+              (was: its own row above the table). Saves vertical space
+              and groups all the table-action buttons together. */}
+          <ColumnSelector
+            columns={[...KOL_EXPLORER_COLUMN_OPTIONS]}
+            visibility={columnVisibility}
+          />
           <Button
             variant="outline"
             size="default"
@@ -405,16 +412,6 @@ function ScoreTableView({
         {showScoreFilters && (
           <ScoreFiltersGrid filters={filters} onChange={handleScoreFilterChange} />
         )}
-      </div>
-
-      {/* v1.17.41 — column-visibility selector. Sits above the table
-          on the right so it doesn't compete with the score-filter
-          toggle. */}
-      <div className="flex justify-end">
-        <ColumnSelector
-          columns={[...KOL_EXPLORER_COLUMN_OPTIONS]}
-          visibility={columnVisibility}
-        />
       </div>
 
       {/* Results Table */}

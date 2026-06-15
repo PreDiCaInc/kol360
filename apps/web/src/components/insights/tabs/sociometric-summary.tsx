@@ -340,6 +340,13 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
           <div className="flex items-center gap-2">
             {/* v1.17.3: Clear filters surfaced for the first time on this tab. */}
             <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAllFilters} />
+            {/* v1.17.45 — column selector moved up here next to Export
+                (was: its own row above the table). Saves vertical space
+                and groups all the table-action buttons together. */}
+            <ColumnSelector
+              columns={[...SOCIOMETRIC_COLUMN_OPTIONS]}
+              visibility={columnVisibility}
+            />
             <Button
               variant="outline"
               size="default"
@@ -411,14 +418,6 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
         />
 
         <ActiveFilterChips filters={activeFilters} />
-
-        {/* v1.17.41 — column-visibility selector */}
-        <div className="flex justify-end">
-          <ColumnSelector
-            columns={[...SOCIOMETRIC_COLUMN_OPTIONS]}
-            visibility={columnVisibility}
-          />
-        </div>
 
         {/* Table */}
         <div className="rounded-md border overflow-x-auto">
