@@ -942,6 +942,7 @@ export class InsightsReportService {
         nominatorHcp: {
           select: {
             id: true,
+            npi: true,
             firstName: true,
             lastName: true,
             specialty: true,
@@ -973,13 +974,15 @@ export class InsightsReportService {
 
     const primarySpecialty = hcp.specialties[0]?.specialty?.name || hcp.specialty;
 
-    // Build nominators list
+    // Build nominators list. v1.17.45 — npi surfaced for the
+    // Nominators table on the KOL Profile view.
     const nominators: NominatorItem[] = nominations
       .filter((n) => n.nominatorHcp)
       .map((n) => {
         const nomHcp = n.nominatorHcp!;
         return {
           id: nomHcp.id,
+          npi: nomHcp.npi,
           name: `${nomHcp.firstName} ${nomHcp.lastName}`,
           specialty: nomHcp.specialty,
           state: nomHcp.state,
