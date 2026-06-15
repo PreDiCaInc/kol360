@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
+import { useViewAs } from '@/lib/view-as-context';
 import { useClientMe } from '@/hooks/use-clients';
 
 // v1.17.30 — single source of truth for "which client am I currently
@@ -27,6 +28,7 @@ export interface CurrentClient {
 export function useCurrentClient(): { data: CurrentClient | null; isLoading: boolean } {
   const { user } = useAuth();
   const { isImpersonating, clientId, clientName, logoUrl, primaryColor } = useImpersonation();
+  const { client: viewAsClient } = useViewAs();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
 
   // PLATFORM_ADMIN never needs /clients/me — they either have an
@@ -46,6 +48,21 @@ export function useCurrentClient(): { data: CurrentClient | null; isLoading: boo
   }
 
   if (isPlatformAdmin) {
+    // v1.17.41 — view-as is a display-only override (set by Insights
+    // when a PLATFORM_ADMIN picks a client in the dropdown). Returning
+    // it here lights up the sidebar logo, brand stripe, and theme
+    // without flipping impersonation.
+    if (viewAsClient) {
+      return {
+        data: {
+          id: viewAsClient.id,
+          name: viewAsClient.name,
+          logoUrl: viewAsClient.logoUrl,
+          primaryColor: viewAsClient.primaryColor ?? '#0066CC',
+        },
+        isLoading: false,
+      };
+    }
     return { data: null, isLoading: false };
   }
 

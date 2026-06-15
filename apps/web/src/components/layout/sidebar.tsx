@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
+import { useCurrentClient } from '@/hooks/use-current-client';
 import { useSidebarContext } from './sidebar-context';
 import {
   LayoutDashboard,
@@ -314,7 +315,13 @@ function NavItemComponent({
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const { isImpersonating, clientName: impersonatedClientName, logoUrl, primaryColor } = useImpersonation();
+  const { isImpersonating } = useImpersonation();
+  // v1.17.41 — logo + brand colors via useCurrentClient so the
+  // Insights view-as override (PLATFORM_ADMIN picked a client) lights
+  // up the sidebar branding without flipping impersonation. Nav role
+  // (platform-admin vs client-admin) stays on isImpersonating —
+  // view-as is display-only.
+  const { data: currentClient } = useCurrentClient();
   const { collapsed, setCollapsed } = useSidebarContext();
 
   // When impersonating, show client admin navigation instead of platform admin
@@ -343,13 +350,13 @@ export function Sidebar() {
         collapsed ? 'justify-center px-2' : 'px-5'
       )}>
         <Link href="/admin" className="flex items-center gap-3">
-          {isImpersonating ? (
-            // Client branding when impersonating
+          {currentClient ? (
+            // Client branding when impersonating OR view-as set
             <>
-              {logoUrl ? (
+              {currentClient.logoUrl ? (
                 <Image
-                  src={logoUrl}
-                  alt={impersonatedClientName || 'Client'}
+                  src={currentClient.logoUrl}
+                  alt={currentClient.name}
                   width={collapsed ? 40 : 36}
                   height={collapsed ? 40 : 36}
                   className={cn('rounded-lg object-contain', collapsed ? 'h-10 w-10' : 'h-9 w-9')}
@@ -357,16 +364,16 @@ export function Sidebar() {
               ) : (
                 <div
                   className="flex h-10 w-10 items-center justify-center rounded-xl shadow-lg"
-                  style={{ backgroundColor: primaryColor || '#0066CC' }}
+                  style={{ backgroundColor: currentClient.primaryColor || '#0066CC' }}
                 >
                   <span className="text-sm font-bold text-white">
-                    {impersonatedClientName?.substring(0, 2).toUpperCase() || 'CL'}
+                    {currentClient.name.substring(0, 2).toUpperCase()}
                   </span>
                 </div>
               )}
               {!collapsed && (
                 <span className="text-sm font-semibold text-[hsl(var(--sidebar-foreground))] truncate">
-                  {impersonatedClientName}
+                  {currentClient.name}
                 </span>
               )}
             </>

@@ -7,6 +7,7 @@ import { Footer } from '@/components/layout/footer';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { SidebarContext } from '@/components/layout/sidebar-context';
 import { ImpersonationProvider, useImpersonation } from '@/lib/impersonation-context';
+import { ViewAsProvider } from '@/lib/view-as-context';
 import { ClientThemeProvider } from '@/components/layout/client-theme-provider';
 import { useCurrentClient } from '@/hooks/use-current-client';
 import { cn } from '@/lib/utils';
@@ -99,12 +100,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <RequireAuth>
       <ImpersonationProvider>
-        {/* v1.17.30 — sets --brand-primary CSS vars on documentElement
-            so the brand stripe + future themed accents pick up the
-            current client's color without prop-drilling. */}
-        <ClientThemeProvider>
-          <AdminLayoutContent>{children}</AdminLayoutContent>
-        </ClientThemeProvider>
+        {/* v1.17.41 — view-as lets Insights surface client branding
+            when a PLATFORM_ADMIN selects a client in the dropdown,
+            without flipping impersonation (which would change API
+            headers). useCurrentClient reads view-as as a fallback. */}
+        <ViewAsProvider>
+          {/* v1.17.30 — sets --brand-primary CSS vars on documentElement
+              so the brand stripe + future themed accents pick up the
+              current client's color without prop-drilling. */}
+          <ClientThemeProvider>
+            <AdminLayoutContent>{children}</AdminLayoutContent>
+          </ClientThemeProvider>
+        </ViewAsProvider>
       </ImpersonationProvider>
     </RequireAuth>
   );

@@ -17,6 +17,7 @@ import {
 import { useInsightsSummary, useDashboardDiseaseAreas } from '@/hooks/use-insights-report';
 import { useClients } from '@/hooks/use-clients';
 import { useAuth } from '@/lib/auth/auth-provider';
+import { useViewAs } from '@/lib/view-as-context';
 
 // Tab components
 import { IntroductionTab } from '@/components/insights/tabs/introduction-tab';
@@ -60,6 +61,31 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
   // Fetch clients for PLATFORM_ADMIN client selector
   const { data: clientsData } = useClients();
   const clients = clientsData?.items || [];
+
+  // v1.17.41 — when a PLATFORM_ADMIN picks a client in Insights, surface
+  // that client's branding (logo, primaryColor) in the sidebar + brand
+  // stripe via the view-as context. Display-only — no impersonation, no
+  // API-header change, perms unchanged. Cleared when this dashboard
+  // unmounts (the platform admin is back in BioExec-default context).
+  const { setViewAs } = useViewAs();
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    if (!selectedClientId) {
+      setViewAs(null);
+      return;
+    }
+    const selected = clients.find((c) => c.id === selectedClientId);
+    if (!selected) return;
+    setViewAs({
+      id: selected.id,
+      name: selected.name,
+      logoUrl: selected.logoUrl ?? null,
+      primaryColor: selected.primaryColor ?? null,
+    });
+  }, [isPlatformAdmin, selectedClientId, clients, setViewAs]);
+  useEffect(() => {
+    return () => setViewAs(null);
+  }, [setViewAs]);
 
   // Fetch disease areas for selector (scoped to user's access)
   const { data: diseaseAreasData } = useDashboardDiseaseAreas();
