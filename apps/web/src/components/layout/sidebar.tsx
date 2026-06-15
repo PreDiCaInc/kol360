@@ -177,6 +177,7 @@ function NavItemComponent({
   // Auto-expand if child is active
   const [isExpanded, setIsExpanded] = useState(hasActiveChild || false);
   const Icon = item.icon;
+  const { setCollapsed } = useSidebarContext();
 
   // Update expansion state when active child changes
   useEffect(() => {
@@ -190,7 +191,19 @@ function NavItemComponent({
     return (
       <li>
         <button
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={() => {
+            // v1.17.41 — when the sidebar is collapsed the children list is
+            // hidden regardless of isExpanded (see the `&& !collapsed` gate
+            // below), so a click here used to do nothing visible. Now: if
+            // collapsed, expand the sidebar AND open the section in one
+            // shot so the user lands on the children directly.
+            if (collapsed) {
+              setCollapsed(false);
+              setIsExpanded(true);
+            } else {
+              setIsExpanded(!isExpanded);
+            }
+          }}
           className={cn(
             'group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
             'hover:bg-[hsl(var(--sidebar-accent))]',
