@@ -294,8 +294,12 @@ export const sociometricSummaryResponseSchema = z.object({
 export type SociometricSummaryResponse = z.infer<typeof sociometricSummaryResponseSchema>;
 
 // Nominator item (who nominated a specific KOL)
+// v1.17.45 — npi added so the Nominators table on the KOL Profile
+// view can show NPI alongside name (pteam request, for HCP lookup
+// from the profile context).
 export const nominatorItemSchema = z.object({
   id: z.string(),
+  npi: z.string().nullable(),
   name: z.string(),
   specialty: z.string().nullable(),
   state: z.string().nullable(),

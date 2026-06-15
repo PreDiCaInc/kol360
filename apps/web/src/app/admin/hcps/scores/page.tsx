@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 // useRecalculateDiseaseAreaComposites removed in Phase 3 PR A — it backed a
@@ -30,6 +30,9 @@ import { Search, ChevronLeft, ChevronRight, AlertTriangle, RefreshCw, BarChart3,
 import { Card, CardContent } from '@/components/ui/card';
 import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
 import { useAuth } from '@/lib/auth/auth-provider';
+import { ColumnSelector } from '@/components/insights/column-selector';
+import { useColumnVisibility } from '@/hooks/use-column-visibility';
+import { cn } from '@/lib/utils';
 
 // 8 segment score columns + Survey + Composite (Overview tab)
 const OVERVIEW_SCORE_COLUMNS = [
@@ -103,10 +106,19 @@ interface DiseaseAreaScore {
 }
 
 export default function HcpScoresPage() {
-  const { canWrite } = useAuth();
+  const { user, canWrite } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialTab = searchParams.get('tab') === 'survey' ? 'survey' : 'overview';
+
+  // v1.17.45 — PLATFORM_ADMIN-only. Data-team tool for raw-data
+  // verification across clients; CLIENT_ADMIN's analytics surface is
+  // Insights. Direct-URL nav redirects.
+  useEffect(() => {
+    if (user && user.role !== 'PLATFORM_ADMIN') {
+      router.replace('/admin/hcps');
+    }
+  }, [user, router]);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'survey'>(initialTab);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -117,7 +129,41 @@ export default function HcpScoresPage() {
     specialty?: string;
     state?: string;
     page: number;
-  }>({ page: 1 });
+    // v1.17.45 — server-side sort for Name / NPI / State / Specialty
+    // (the simple Hcp-table columns). Score-column sort would need a
+    // separate JOIN path on HcpDiseaseAreaScore — flagged as follow-up.
+    sortBy?: 'name' | 'npi' | 'state' | 'specialty';
+    sortOrder?: 'asc' | 'desc';
+  }>({ page: 1, sortBy: 'name', sortOrder: 'asc' });
+
+  const handleSort = (field: string) => {
+    setFilters((prev) => {
+      if (prev.sortBy !== field) {
+        return { ...prev, sortBy: field as 'name' | 'npi' | 'state' | 'specialty', sortOrder: 'asc', page: 1 };
+      }
+      return { ...prev, sortOrder: prev.sortOrder === 'asc' ? 'desc' : 'asc', page: 1 };
+    });
+  };
+
+  // v1.17.45 — per-tab column visibility (localStorage-backed). Same
+  // hook + UX as the Insights tables. Defaults to "everything visible";
+  // user can hide whichever score columns they're not interested in.
+  // 'npi' + 'name' aren't selectable — sticky anchors.
+  const overviewColumnVisibility = useColumnVisibility(
+    'hcp-scores.overview.columns',
+    [],
+  );
+  const surveyColumnVisibility = useColumnVisibility(
+    'hcp-scores.survey.columns',
+    [],
+  );
+  const activeColumnVisibility =
+    activeTab === 'overview' ? overviewColumnVisibility : surveyColumnVisibility;
+  const isVisible = activeColumnVisibility.isVisible;
+  const columnOptions =
+    activeTab === 'overview'
+      ? OVERVIEW_SCORE_COLUMNS.map((c) => ({ key: c.key, label: c.label }))
+      : SURVEY_SCORE_COLUMNS.map((c) => ({ key: c.key, label: c.label }));
 
   const { data, isLoading, isError, error, refetch } = useHcps({
     ...filters,
@@ -222,6 +268,8 @@ export default function HcpScoresPage() {
               endpoint used hardcoded weights (the bug KOL Analysis was built
               to fix). For per-analysis composite recompute, go to
               /admin/kol-analysis/<id> and click Recalculate. */}
+          {/* v1.17.45 — column selector matches the Insights tables */}
+          <ColumnSelector columns={columnOptions} visibility={activeColumnVisibility} />
           {canWrite && (
             <Button variant="outline" onClick={() => setShowImportDialog(true)}>
               <Upload className="w-4 h-4 mr-2" />
@@ -396,25 +444,72 @@ export default function HcpScoresPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="whitespace-nowrap sticky left-0 bg-card z-10">NPI</TableHead>
-                  <TableHead className="whitespace-nowrap">Name</TableHead>
-                  <TableHead className="whitespace-nowrap">Specialty</TableHead>
-                  <TableHead className="whitespace-nowrap">Location</TableHead>
-                  {/* Score columns based on active tab */}
+                  {/* v1.17.45 — sticky NPI + Name anchors (mirrors the
+                      Insights tables) + click-to-sort on the simple
+                      columns. Sort state lives in `filters` and round-
+                      trips through the /hcps endpoint (sortBy/sortOrder
+                      added in v1.17.45). Score-column sort needs a
+                      different code path (HcpDiseaseAreaScore JOIN); not
+                      in this commit. */}
+                  <TableHead
+                    className="whitespace-nowrap sticky left-0 bg-card z-10 w-[120px] cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('npi')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      NPI
+                      <span className={cn('text-xs', filters.sortBy !== 'npi' && 'text-muted-foreground/40')}>
+                        {filters.sortBy === 'npi' ? (filters.sortOrder === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </span>
+                  </TableHead>
+                  <TableHead
+                    className="whitespace-nowrap sticky left-[120px] bg-card z-10 cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('name')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Name
+                      <span className={cn('text-xs', filters.sortBy !== 'name' && 'text-muted-foreground/40')}>
+                        {filters.sortBy === 'name' ? (filters.sortOrder === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </span>
+                  </TableHead>
+                  <TableHead
+                    className="whitespace-nowrap cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('specialty')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Specialty
+                      <span className={cn('text-xs', filters.sortBy !== 'specialty' && 'text-muted-foreground/40')}>
+                        {filters.sortBy === 'specialty' ? (filters.sortOrder === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </span>
+                  </TableHead>
+                  <TableHead
+                    className="whitespace-nowrap cursor-pointer select-none hover:bg-muted/50 transition-colors"
+                    onClick={() => handleSort('state')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Location
+                      <span className={cn('text-xs', filters.sortBy !== 'state' && 'text-muted-foreground/40')}>
+                        {filters.sortBy === 'state' ? (filters.sortOrder === 'asc' ? '▲' : '▼') : '▲'}
+                      </span>
+                    </span>
+                  </TableHead>
+                  {/* v1.17.45 — score columns filtered by visibility */}
                   {activeTab === 'overview' ? (
-                    OVERVIEW_SCORE_COLUMNS.map((col) => (
+                    OVERVIEW_SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => (
                       <TableHead
                         key={col.key}
-                        className="text-center whitespace-nowrap min-w-[80px]"
+                        className="text-center whitespace-nowrap px-2"
                       >
                         {col.label}
                       </TableHead>
                     ))
                   ) : (
-                    SURVEY_SCORE_COLUMNS.map((col) => (
+                    SURVEY_SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => (
                       <TableHead
                         key={col.key}
-                        className="text-center whitespace-nowrap min-w-[100px]"
+                        className="text-center whitespace-nowrap px-2"
                       >
                         {col.label}
                       </TableHead>
@@ -425,8 +520,11 @@ export default function HcpScoresPage() {
               <TableBody>
                 {hcps.map((hcp) => (
                   <TableRow key={hcp.id}>
-                    <TableCell className="font-mono text-muted-foreground sticky left-0 bg-card">{hcp.npi}</TableCell>
-                    <TableCell>
+                    {/* v1.17.45 — sticky NPI + Name cells. bg-card on the
+                        cell so horizontal scroll content doesn't bleed
+                        through. left offset on Name matches the NPI width. */}
+                    <TableCell className="font-mono text-muted-foreground sticky left-0 bg-card w-[120px]">{hcp.npi}</TableCell>
+                    <TableCell className="sticky left-[120px] bg-card whitespace-nowrap">
                       <Link
                         href={`/admin/hcps/${hcp.id}`}
                         className="font-medium text-primary hover:text-primary/80 transition-colors"
@@ -460,15 +558,15 @@ export default function HcpScoresPage() {
                         ? `${hcp.city}, ${hcp.state}`
                         : hcp.state || '—'}
                     </TableCell>
-                    {/* Score values based on active tab */}
+                    {/* v1.17.45 — score values filtered by visibility */}
                     {activeTab === 'overview' ? (
-                      OVERVIEW_SCORE_COLUMNS.map((col) => {
+                      OVERVIEW_SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => {
                         const scoreStr = getOverviewScoreValue(hcp.diseaseAreaScores as DiseaseAreaScore[] | undefined, col.key);
                         const hasScore = scoreStr !== '—';
                         return (
                           <TableCell
                             key={col.key}
-                            className={`text-center ${hasScore ? 'font-medium' : 'text-muted-foreground'}`}
+                            className={`text-center px-2 ${hasScore ? 'font-medium' : 'text-muted-foreground'}`}
                           >
                             {hasScore ? (
                               <span className={`inline-flex items-center justify-center min-w-[40px] px-2 py-0.5 rounded ${
@@ -487,7 +585,7 @@ export default function HcpScoresPage() {
                         );
                       })
                     ) : (
-                      SURVEY_SCORE_COLUMNS.map((col) => {
+                      SURVEY_SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => {
                         const { score, count } = getSurveyScoreValue(
                           hcp.diseaseAreaScores as DiseaseAreaScore[] | undefined,
                           col.key,
@@ -497,7 +595,7 @@ export default function HcpScoresPage() {
                         return (
                           <TableCell
                             key={col.key}
-                            className={`text-center ${hasScore ? 'font-medium' : 'text-muted-foreground'}`}
+                            className={`text-center px-2 ${hasScore ? 'font-medium' : 'text-muted-foreground'}`}
                           >
                             {hasScore ? (
                               <div className="flex flex-col items-center">

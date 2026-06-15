@@ -28,6 +28,8 @@ import { SortableHeader } from '@/components/insights/shared/sortable-header';
 import { ScoreTooltip } from '@/components/insights/score-tooltip';
 import { ColumnSelector } from '@/components/insights/column-selector';
 import { useColumnVisibility } from '@/hooks/use-column-visibility';
+import { useAuth } from '@/lib/auth/auth-provider';
+import { useImpersonation } from '@/lib/impersonation-context';
 
 // v1.17.41 — column-visibility selector for the Weighted Score tab.
 // Sticky # + Name are anchors and stay always visible. Defaults
@@ -343,6 +345,13 @@ function ScoreTableView({
         <div className="flex items-center gap-2">
           {/* v1.17.3: Clear filters surfaced for the first time on this tab. */}
           <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAllFilters} />
+          {/* v1.17.45 — column selector moved up here next to Export
+              (was: its own row above the table). Saves vertical space
+              and groups all the table-action buttons together. */}
+          <ColumnSelector
+            columns={[...KOL_EXPLORER_COLUMN_OPTIONS]}
+            visibility={columnVisibility}
+          />
           <Button
             variant="outline"
             size="default"
@@ -405,16 +414,6 @@ function ScoreTableView({
         {showScoreFilters && (
           <ScoreFiltersGrid filters={filters} onChange={handleScoreFilterChange} />
         )}
-      </div>
-
-      {/* v1.17.41 — column-visibility selector. Sits above the table
-          on the right so it doesn't compete with the score-filter
-          toggle. */}
-      <div className="flex justify-end">
-        <ColumnSelector
-          columns={[...KOL_EXPLORER_COLUMN_OPTIONS]}
-          visibility={columnVisibility}
-        />
       </div>
 
       {/* Results Table */}
@@ -602,8 +601,16 @@ function ProfileView({
   clientId?: string;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  // v1.17.45 — Campaign column on the Nominators table renders only
+  // for PLATFORM_ADMIN. Client users (incl. impersonation) don't see
+  // it; pteam decided campaign-participation visibility is admin-only.
+  const { user } = useAuth();
+  const { isImpersonating } = useImpersonation();
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN' && !isImpersonating;
   const [showAllNominators, setShowAllNominators] = useState(false);
-  const [nominatorSortField, setNominatorSortField] = useState<'name' | 'specialty' | 'state' | 'nominationType' | 'campaignName'>('name');
+  // v1.17.45 — extended with 'npi'; campaignName stays sortable but
+  // the column only renders for PLATFORM_ADMIN per pteam request.
+  const [nominatorSortField, setNominatorSortField] = useState<'name' | 'npi' | 'specialty' | 'state' | 'nominationType' | 'campaignName'>('name');
   const [nominatorSortOrder, setNominatorSortOrder] = useState<'asc' | 'desc'>('asc');
   const [stateSortField, setStateSortField] = useState<'name' | 'count'>('count');
   const [stateSortOrder, setStateSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -909,16 +916,25 @@ function ProfileView({
                     <thead className="sticky top-0 bg-background">
                       <tr className="border-b">
                         <SortableHeader label="Name" field="name" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
+                        {/* v1.17.45 — NPI column added per pteam request */}
+                        <SortableHeader label="NPI" field="npi" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         <SortableHeader label="Specialty" field="specialty" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         <SortableHeader label="State" field="state" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         <SortableHeader label="Nomination Type" field="nominationType" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
-                        <SortableHeader label="Campaign" field="campaignName" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
+                        {/* v1.17.45 — Campaign column hidden for client
+                            users (CLIENT_ADMIN + impersonation). pteam:
+                            campaign-participation visibility is
+                            PLATFORM_ADMIN-only. */}
+                        {isPlatformAdmin && (
+                          <SortableHeader label="Campaign" field="campaignName" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
+                        )}
                       </tr>
                     </thead>
                     <tbody>
                       {displayedNominators.map((nominator, index) => (
                         <tr key={`${nominator.id}-${index}`} className="border-b last:border-b-0 hover:bg-muted/30">
                           <td className="px-3 py-2 font-medium">{nominator.name}</td>
+                          <td className="px-3 py-2 font-mono text-xs tabular-nums">{nominator.npi || '-'}</td>
                           <td className="px-3 py-2">{nominator.specialty || '-'}</td>
                           <td className="px-3 py-2">{nominator.state || '-'}</td>
                           <td className="px-3 py-2">
@@ -932,7 +948,9 @@ function ProfileView({
                               {NOMINATION_TYPE_LABELS[nominator.nominationType] || nominator.nominationType}
                             </Badge>
                           </td>
-                          <td className="px-3 py-2 text-muted-foreground">{nominator.campaignName}</td>
+                          {isPlatformAdmin && (
+                            <td className="px-3 py-2 text-muted-foreground">{nominator.campaignName}</td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

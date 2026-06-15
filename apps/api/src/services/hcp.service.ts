@@ -23,6 +23,13 @@ interface SearchParams {
   diseaseAreaIds?: string[]; // Multi-select sub-specialty filter (via HcpDiseaseArea)
   hcpIds?: string[]; // Filter to specific HCP IDs (for tenant scoping)
   optOutStatus?: 'any' | 'global' | 'campaign' | 'active' | 'none'; // 'any' = any active opt-out, 'global' = global only, 'campaign' = campaign-scope only, 'none' = no opt-out, 'active' alias for 'any'
+  // v1.17.45 — sortable simple columns for View Scores facelift.
+  // Only Hcp-table fields supported here; score-column sort requires
+  // a JOIN on HcpDiseaseAreaScore filtered to a specific disease area
+  // (raw-SQL approach used by insights-report.service.ts:getKolExplorer).
+  // Tracked as a follow-up.
+  sortBy?: 'name' | 'npi' | 'state' | 'specialty';
+  sortOrder?: 'asc' | 'desc';
   page: number;
   limit: number;
 }
@@ -42,7 +49,7 @@ export class HcpService {
   }
 
   async search(params: SearchParams) {
-    const { query, specialty, state, diseaseAreaIds, hcpIds, optOutStatus, page, limit } = params;
+    const { query, specialty, state, diseaseAreaIds, hcpIds, optOutStatus, page, limit, sortBy, sortOrder } = params;
 
     const where: Record<string, unknown> = {};
 
@@ -176,7 +183,24 @@ export class HcpService {
         },
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+        // v1.17.45 — sortBy maps to Hcp-table columns. Falls back to
+        // last-name-then-first when not specified (the original
+        // default).
+        orderBy: (() => {
+          const dir = sortOrder === 'desc' ? 'desc' : 'asc';
+          switch (sortBy) {
+            case 'npi':
+              return [{ npi: dir }] as const;
+            case 'state':
+              return [{ state: dir }, { lastName: 'asc' }] as const;
+            case 'specialty':
+              return [{ specialty: dir }, { lastName: 'asc' }] as const;
+            case 'name':
+              return [{ lastName: dir }, { firstName: dir }] as const;
+            default:
+              return [{ lastName: 'asc' }, { firstName: 'asc' }] as const;
+          }
+        })(),
       }),
     ]);
 

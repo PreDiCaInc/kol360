@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
 import { useCurrentClient } from '@/hooks/use-current-client';
+import { UserMenu } from '@/components/layout/user-menu';
 import { useSidebarContext } from './sidebar-context';
 import {
   LayoutDashboard,
@@ -113,43 +114,18 @@ const platformAdminNavigation: NavItem[] = [
   },
 ];
 
-// Navigation structure for Client Admin
+// Navigation structure for Client Admin.
+// v1.17.45 — pteam: 'for the client users — the left nav should not
+// have anything other than the view insights'. CLIENT_ADMIN is now
+// purely a consumer of curated insights; HCP / Campaign / User
+// management is PLATFORM_ADMIN territory. The sidebar also defaults
+// to collapsed for client users so the insights view gets max
+// horizontal real estate.
 const clientAdminNavigation: NavItem[] = [
   {
-    title: 'Dashboard',
-    href: '/admin',
-    icon: LayoutDashboard,
-  },
-  {
-    title: 'HCPs',
-    href: '/admin/hcps',
-    icon: Stethoscope,
-  },
-  {
-    title: 'Campaigns',
-    href: '/admin/campaigns',
-    icon: Megaphone,
-  },
-  {
-    // v1.17.3: CLIENT_ADMIN sees the View child only — analysis configuration
-    // is platform-admin territory. Keeping the same KOL Insights parent for
-    // consistency with the platform-admin sidebar.
     title: 'KOL Insights',
+    href: '/admin/dashboards',
     icon: BarChart3,
-    collapsible: true,
-    children: [
-      {
-        title: 'View',
-        href: '/admin/dashboards',
-        icon: BarChart3,
-      },
-    ],
-  },
-  {
-    title: 'Users',
-    href: '/admin/users',
-    icon: Users,
-    roles: ['CLIENT_ADMIN'],
   },
 ];
 
@@ -416,12 +392,17 @@ export function Sidebar() {
         </ul>
       </nav>
 
-      {/* Collapse Toggle */}
-      <div className="absolute bottom-0 left-0 right-0 border-t border-[hsl(var(--sidebar-border))] p-3">
+      {/* v1.17.45 — bottom cluster: user menu (above) + collapse toggle.
+          User profile lifted out of the header into the sidebar bottom
+          per the modern SaaS pattern (Linear / Notion / Slack / Vercel).
+          For client users with the restricted nav, this gives the
+          sidebar two anchors instead of one floating Insights link. */}
+      <div className="absolute bottom-0 left-0 right-0 border-t border-[hsl(var(--sidebar-border))] py-2 px-2 space-y-1">
+        <UserMenu collapsed={collapsed} />
         <button
           onClick={() => setCollapsed(!collapsed)}
           className={cn(
-            'group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm',
+            'group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm',
             'text-[hsl(var(--sidebar-foreground))]/50 hover:text-[hsl(var(--sidebar-foreground))]',
             'hover:bg-[hsl(var(--sidebar-accent))] transition-all duration-200',
             collapsed && 'justify-center px-2'

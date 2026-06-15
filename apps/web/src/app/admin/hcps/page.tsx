@@ -29,6 +29,7 @@ import { HcpImportDialog } from '@/components/hcps/hcp-import-dialog';
 import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
 import { InfluencerTypeImportDialog } from '@/components/hcps/influencer-type-import-dialog';
+import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
 import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -60,13 +61,19 @@ function formatSpecialty(specialty: string | null): string {
 
 export default function HcpsPage() {
   const { isImpersonating } = useImpersonation();
-  const { canWrite } = useAuth();
+  const { user, canWrite } = useAuth();
   // v1.17.20: canEdit gates write affordances. Only PLATFORM_ADMIN
   // writes; impersonating-as-client also drops to view-only.
   const canEdit = canWrite && !isImpersonating;
+  // v1.17.45 — View Scores button is PLATFORM_ADMIN-only. It's a raw-
+  // data + cross-client tool used by the data team to verify imports;
+  // CLIENT_ADMIN's analytics surface is Insights. Removing the button
+  // here gets rid of the dual-surface confusion vector.
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN' && !isImpersonating;
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAliasImportDialog, setShowAliasImportDialog] = useState(false);
   const [showInfluencerImportDialog, setShowInfluencerImportDialog] = useState(false);
+  const [showSegmentScoreImportDialog, setShowSegmentScoreImportDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<{
@@ -163,12 +170,19 @@ export default function HcpsPage() {
           <p className="text-muted-foreground mt-1">Healthcare professional records and management</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/admin/hcps/scores">
-            <Button variant="outline">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              View Scores
-            </Button>
-          </Link>
+          {/* v1.17.45 — View Scores is PLATFORM_ADMIN-only (data-team
+              raw-data + cross-client view). CLIENT_ADMIN's analytics
+              surface is Insights — this button used to confuse them
+              because the two surfaces show overlapping data with
+              slightly different semantics. */}
+          {isPlatformAdmin && (
+            <Link href="/admin/hcps/scores">
+              <Button variant="outline">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                View Scores
+              </Button>
+            </Link>
+          )}
           <Button variant="outline" onClick={handleExport} disabled={hcps.length === 0}>
             <Download className="w-4 h-4 mr-2" />
             Export
@@ -180,12 +194,21 @@ export default function HcpsPage() {
                 Import HCPs
               </Button>
               <Button variant="outline" onClick={() => setShowAliasImportDialog(true)}>
-                <Users className="w-4 h-4 mr-2" />
+                {/* v1.17.45 — Upload icon (was: Users) — consistency with
+                    the other Import buttons. */}
+                <Upload className="w-4 h-4 mr-2" />
                 Import Aliases
               </Button>
               <Button variant="outline" onClick={() => setShowInfluencerImportDialog(true)}>
                 <Upload className="w-4 h-4 mr-2" />
                 Import Influencer Types
+              </Button>
+              {/* v1.17.45 — surfaced on the HCP admin page (was: only
+                  reachable from /admin/hcps/scores). Dialog defaults to
+                  scoreType='segment'. */}
+              <Button variant="outline" onClick={() => setShowSegmentScoreImportDialog(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Import Segment Scores
               </Button>
               <Button onClick={() => setShowCreateDialog(true)}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -515,6 +538,10 @@ export default function HcpsPage() {
       <HcpImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
       <AliasImportDialog open={showAliasImportDialog} onOpenChange={setShowAliasImportDialog} />
       <InfluencerTypeImportDialog open={showInfluencerImportDialog} onOpenChange={setShowInfluencerImportDialog} />
+      <SegmentScoreImportDialog
+        open={showSegmentScoreImportDialog}
+        onOpenChange={setShowSegmentScoreImportDialog}
+      />
       <HcpFormDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
     </div>
   );
