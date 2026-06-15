@@ -61,10 +61,15 @@ function formatSpecialty(specialty: string | null): string {
 
 export default function HcpsPage() {
   const { isImpersonating } = useImpersonation();
-  const { canWrite } = useAuth();
+  const { user, canWrite } = useAuth();
   // v1.17.20: canEdit gates write affordances. Only PLATFORM_ADMIN
   // writes; impersonating-as-client also drops to view-only.
   const canEdit = canWrite && !isImpersonating;
+  // v1.17.45 — View Scores button is PLATFORM_ADMIN-only. It's a raw-
+  // data + cross-client tool used by the data team to verify imports;
+  // CLIENT_ADMIN's analytics surface is Insights. Removing the button
+  // here gets rid of the dual-surface confusion vector.
+  const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN' && !isImpersonating;
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAliasImportDialog, setShowAliasImportDialog] = useState(false);
   const [showInfluencerImportDialog, setShowInfluencerImportDialog] = useState(false);
@@ -165,12 +170,19 @@ export default function HcpsPage() {
           <p className="text-muted-foreground mt-1">Healthcare professional records and management</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/admin/hcps/scores">
-            <Button variant="outline">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              View Scores
-            </Button>
-          </Link>
+          {/* v1.17.45 — View Scores is PLATFORM_ADMIN-only (data-team
+              raw-data + cross-client view). CLIENT_ADMIN's analytics
+              surface is Insights — this button used to confuse them
+              because the two surfaces show overlapping data with
+              slightly different semantics. */}
+          {isPlatformAdmin && (
+            <Link href="/admin/hcps/scores">
+              <Button variant="outline">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                View Scores
+              </Button>
+            </Link>
+          )}
           <Button variant="outline" onClick={handleExport} disabled={hcps.length === 0}>
             <Download className="w-4 h-4 mr-2" />
             Export
