@@ -17,8 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Download } from 'lucide-react';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
+import {
+  useInfluencerTypePreview,
+  useInfluencerTypeImport,
+  type InfluencerTypeImportResult,
+} from '@/hooks/use-hcps';
 
 // v1.17.42 — data-team-managed influencer-type classification import.
 // CSV format: NPI,InfluencerType. The 3 canonical values are
@@ -36,48 +41,24 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-interface ImportResult {
-  totalRows: number;
-  matched: number;
-  unmatchedNpi: number;
-  unmatchedDiseaseArea: number;
-  invalidType: number;
-  countsByType: Record<string, number>;
-  errorRows: Array<{ row: number; npi: string; rawType: string; reason: string }>;
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-
-async function postFile(
-  endpoint: string,
-  file: File,
-  diseaseAreaId: string,
-  authToken: string | null,
-): Promise<ImportResult> {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('diseaseAreaId', diseaseAreaId);
-  const res = await fetch(`${API_URL}/api/v1/hcps/influencer-types/${endpoint}`, {
-    method: 'POST',
-    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-    body: formData,
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error((data as { message?: string }).message ?? `HTTP ${res.status}`);
-  }
-  return data as ImportResult;
-}
+// v1.17.43 — auth is now via useInfluencerTypePreview / useInfluencerTypeImport
+// hooks (mutationFn awaits the live Cognito getToken). The previous
+// 4.1.22 dialog rolled its own authToken() that read from localStorage
+// keys ('id_token' / 'access_token') the app doesn't actually use, so
+// the Authorization header was always dropped and the backend rejected
+// with 'Missing or invalid authorization header'.
 
 export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
   const [diseaseAreaId, setDiseaseAreaId] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<ImportResult | null>(null);
-  const [final, setFinal] = useState<ImportResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<InfluencerTypeImportResult | null>(null);
+  const [final, setFinal] = useState<InfluencerTypeImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: diseaseAreas } = useDiseaseAreas();
+  const previewMutation = useInfluencerTypePreview();
+  const importMutation = useInfluencerTypeImport();
+  const busy = previewMutation.isPending || importMutation.isPending;
 
   const selectedDiseaseAreaName =
     diseaseAreas?.items?.find((d) => d.id === diseaseAreaId)?.name ?? '';
@@ -92,40 +73,31 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
     }
   };
 
-  function authToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    try {
-      return localStorage.getItem('id_token') ?? localStorage.getItem('access_token');
-    } catch {
-      return null;
-    }
-  }
-
   const handlePreview = async () => {
     if (!selectedFile || !diseaseAreaId) return;
-    setBusy(true);
     setError(null);
     try {
-      const result = await postFile('preview', selectedFile, diseaseAreaId, authToken());
+      const result = await previewMutation.mutateAsync({
+        file: selectedFile,
+        diseaseAreaId,
+      });
       setPreview(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Preview failed');
-    } finally {
-      setBusy(false);
     }
   };
 
   const handleImport = async () => {
     if (!selectedFile || !diseaseAreaId) return;
-    setBusy(true);
     setError(null);
     try {
-      const result = await postFile('import', selectedFile, diseaseAreaId, authToken());
+      const result = await importMutation.mutateAsync({
+        file: selectedFile,
+        diseaseAreaId,
+      });
       setFinal(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed');
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -138,15 +110,37 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
     onOpenChange(false);
   };
 
+  // v1.17.43 — mirror the HcpImportDialog pattern: provide a
+  // template so the data team doesn't have to guess the column shape.
+  const handleDownloadTemplate = () => {
+    const headers = ['NPI', 'InfluencerType'];
+    const sampleRows = [
+      ['1234567890', 'National Leaders'],
+      ['0987654321', 'Rising Stars'],
+      ['1112223333', 'Regional Influencers'],
+    ];
+    const csv = [
+      headers.join(','),
+      ...sampleRows.map((r) => r.join(',')),
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'influencer-types-template.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Import Influencer Type Classifications</DialogTitle>
           <DialogDescription>
-            Upload a CSV (NPI,InfluencerType) and pick the disease area the
-            classifications apply to. Allowed types: National Leaders,
-            Rising Stars, Regional Influencers.
+            Upload a CSV / XLSX / XLS file with NPI + InfluencerType
+            columns and pick the disease area the classifications apply
+            to. Allowed types: National Leaders, Rising Stars,
+            Regional Influencers.
           </DialogDescription>
         </DialogHeader>
 
@@ -171,7 +165,19 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
 
             {/* File picker */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">CSV File</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">File (CSV, XLSX, or XLS)</label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDownloadTemplate}
+                  className="h-7 gap-1.5 text-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Template
+                </Button>
+              </div>
               <div
                 className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-colors"
                 onClick={() => !preview && fileInputRef.current?.click()}
@@ -180,7 +186,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
-                  accept=".csv"
+                  accept=".xlsx,.xls,.csv"
                   className="hidden"
                   disabled={!!preview}
                 />
@@ -197,7 +203,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
                 ) : (
                   <div className="flex flex-col items-center gap-1">
                     <Upload className="w-7 h-7 text-muted-foreground" />
-                    <p className="text-sm">Click to choose a CSV</p>
+                    <p className="text-sm">Click to choose a file</p>
                   </div>
                 )}
               </div>
@@ -220,7 +226,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
                 </h4>
                 <ul className="text-sm space-y-1 mt-2">
                   <li className="flex justify-between">
-                    <span className="text-muted-foreground">Total rows in CSV:</span>
+                    <span className="text-muted-foreground">Total rows in file:</span>
                     <span className="font-mono tabular-nums">{preview.totalRows}</span>
                   </li>
                   <li className="flex justify-between">

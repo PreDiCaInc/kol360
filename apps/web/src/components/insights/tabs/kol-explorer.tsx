@@ -419,7 +419,10 @@ function ScoreTableView({
 
       {/* Results Table */}
       <div className="rounded-md border overflow-x-auto">
-        <table className="w-full text-sm min-w-[1600px]">
+        {/* v1.17.41 — dropped hardcoded min-w-[1600px]: it forced the
+            table to stay 1600px wide even when the column selector
+            hid columns, defeating the point. Now sizes to content. */}
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
               {/* bg-muted (no /50) — opaque so columns scrolling under the
@@ -463,8 +466,13 @@ function ScoreTableView({
                   currentOrder={sortOrder}
                   onSort={handleSort}
                   headerExtra={<ScoreTooltip type="composite" />}
+                  className="px-2 text-center"
                 />
               )}
+              {/* v1.17.41 — tighter padding (px-2 vs px-3) on score
+                  column headers + center-align so 9 narrow numeric
+                  columns fit on a standard 13" laptop without
+                  horizontal scroll when noise cols are hidden. */}
               {SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => (
                 <SortableHeader
                   key={col.key}
@@ -476,6 +484,7 @@ function ScoreTableView({
                   headerExtra={
                     col.key === 'scoreSurvey' ? <ScoreTooltip type="survey" /> : undefined
                   }
+                  className="px-2 text-center"
                 />
               ))}
             </tr>
@@ -496,8 +505,10 @@ function ScoreTableView({
                     {(page - 1) * limit + index + 1}
                   </td>
                   {/* v1.17.40 — sticky Name cell. left-[50px] matches
-                      the # column width above. */}
-                  <td className="px-3 py-2 min-w-[180px] sticky left-[50px] bg-background">
+                      the # column width above. v1.17.41 — dropped
+                      min-w-[180px] so the table can shrink when other
+                      cols are hidden via the column selector. */}
+                  <td className="px-3 py-2 sticky left-[50px] bg-background whitespace-nowrap">
                     <KolNameLink name={kol.name} onClick={() => onKolSelect(kol.id)} />
                   </td>
                   {isVisible('specialty') && (
@@ -531,14 +542,16 @@ function ScoreTableView({
                       ) : '-'}
                     </td>
                   )}
-                  {/* Total: first of the score columns (matches header). */}
+                  {/* Total: first of the score columns (matches header).
+                      v1.17.41 — px-2 + center-align to match the tighter
+                      headers. */}
                   {isVisible('compositeScore') && (
-                    <td className="px-3 py-2 text-right font-mono font-bold bg-muted/30">
+                    <td className="px-2 py-2 text-center font-mono font-bold bg-muted/30 tabular-nums">
                       {kol.compositeScore?.toFixed(1) ?? '-'}
                     </td>
                   )}
                   {SCORE_COLUMNS.filter((col) => isVisible(col.key)).map((col) => (
-                    <td key={col.key} className="px-3 py-2 text-right font-mono text-xs">
+                    <td key={col.key} className="px-2 py-2 text-center font-mono text-xs tabular-nums">
                       {(kol[col.key as keyof KolExplorerItem] as number | null)?.toFixed(1) ?? '-'}
                     </td>
                   ))}
