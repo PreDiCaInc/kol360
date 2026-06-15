@@ -457,7 +457,10 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                 {isVisible('total') && (
                   <th
                     className={cn(
-                      'cursor-pointer select-none px-3 py-2 text-center text-sm font-bold',
+                      // v1.17.41 — px-2 (tighter) so 7 category cols fit
+                      // alongside Name / Specialty / etc. without horizontal
+                      // scroll when noise cols are hidden via the selector.
+                      'cursor-pointer select-none px-2 py-2 text-center text-sm font-bold',
                       'hover:bg-muted/50 transition-colors bg-muted',
                       sortBy === 'total' && 'ring-1 ring-inset ring-foreground/20'
                     )}
@@ -475,7 +478,9 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                   <th
                     key={col.field}
                     className={cn(
-                      'cursor-pointer select-none px-3 py-2 text-center text-sm font-medium',
+                      // v1.17.41 — px-2 (tighter) matches the Total
+                      // column + lets the 7 category cols breathe.
+                      'cursor-pointer select-none px-2 py-2 text-center text-sm font-medium',
                       'hover:bg-muted/50 transition-colors',
                       col.headerClass,
                       sortBy === col.field && 'ring-1 ring-inset ring-foreground/20'
@@ -517,7 +522,9 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     <td className="px-3 py-2 text-muted-foreground tabular-nums sticky left-0 bg-background">
                       {(page - 1) * limit + index + 1}
                     </td>
-                    <td className="px-3 py-2 sticky left-[50px] bg-background min-w-[180px]">
+                    {/* v1.17.41 — dropped min-w-[180px] so the table
+                        can shrink when other cols are hidden. */}
+                    <td className="px-3 py-2 sticky left-[50px] bg-background whitespace-nowrap">
                       <KolNameLink
                         name={item.name}
                         onClick={() => {
@@ -544,9 +551,10 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     {isVisible('state') && (
                       <td className="px-3 py-2">{item.state || '-'}</td>
                     )}
-                    {/* Total: first of the count columns (matches header). */}
+                    {/* Total: first of the count columns (matches header).
+                        v1.17.41 — px-2 to match the tighter header. */}
                     {isVisible('total') && (
-                      <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
+                      <td className="px-2 py-2 text-center tabular-nums font-bold bg-muted/30">
                         {item.total}
                       </td>
                     )}
