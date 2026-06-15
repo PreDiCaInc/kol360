@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
@@ -10,6 +10,7 @@ import { ImpersonationProvider, useImpersonation } from '@/lib/impersonation-con
 import { ViewAsProvider } from '@/lib/view-as-context';
 import { ClientThemeProvider } from '@/components/layout/client-theme-provider';
 import { useCurrentClient } from '@/hooks/use-current-client';
+import { useAuth } from '@/lib/auth/auth-provider';
 import { cn } from '@/lib/utils';
 import { Eye, X } from 'lucide-react';
 
@@ -62,6 +63,21 @@ function BrandStripe() {
 
 function AdminLayoutContent({ children }: AdminLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const { user } = useAuth();
+  const { isImpersonating } = useImpersonation();
+
+  // v1.17.45 — default the sidebar to collapsed for client users.
+  // pteam: 'maybe have a collapsed nav bar with insights view
+  // selected'. Their nav is just one item (KOL Insights) anyway —
+  // collapsed gives Insights max horizontal real estate.
+  // Triggers on role load + on impersonation flip. The user can
+  // still expand manually via the toggle.
+  useEffect(() => {
+    if (!user) return;
+    const isClientView =
+      user.role === 'CLIENT_ADMIN' || user.role === 'TEAM_MEMBER' || isImpersonating;
+    if (isClientView) setCollapsed(true);
+  }, [user, isImpersonating]);
 
   return (
     <SidebarContext.Provider value={{ collapsed, setCollapsed }}>

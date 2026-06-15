@@ -113,43 +113,18 @@ const platformAdminNavigation: NavItem[] = [
   },
 ];
 
-// Navigation structure for Client Admin
+// Navigation structure for Client Admin.
+// v1.17.45 — pteam: 'for the client users — the left nav should not
+// have anything other than the view insights'. CLIENT_ADMIN is now
+// purely a consumer of curated insights; HCP / Campaign / User
+// management is PLATFORM_ADMIN territory. The sidebar also defaults
+// to collapsed for client users so the insights view gets max
+// horizontal real estate.
 const clientAdminNavigation: NavItem[] = [
   {
-    title: 'Dashboard',
-    href: '/admin',
-    icon: LayoutDashboard,
-  },
-  {
-    title: 'HCPs',
-    href: '/admin/hcps',
-    icon: Stethoscope,
-  },
-  {
-    title: 'Campaigns',
-    href: '/admin/campaigns',
-    icon: Megaphone,
-  },
-  {
-    // v1.17.3: CLIENT_ADMIN sees the View child only — analysis configuration
-    // is platform-admin territory. Keeping the same KOL Insights parent for
-    // consistency with the platform-admin sidebar.
     title: 'KOL Insights',
+    href: '/admin/dashboards',
     icon: BarChart3,
-    collapsible: true,
-    children: [
-      {
-        title: 'View',
-        href: '/admin/dashboards',
-        icon: BarChart3,
-      },
-    ],
-  },
-  {
-    title: 'Users',
-    href: '/admin/users',
-    icon: Users,
-    roles: ['CLIENT_ADMIN'],
   },
 ];
 
