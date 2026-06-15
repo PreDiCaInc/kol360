@@ -385,8 +385,19 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px]">#</th>
-                <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                {/* v1.17.41 — sticky # + Name columns so horizontal scroll
+                    leaves the HCP identity visible. Opaque bg-muted on the
+                    sticky cells (not /50) so the per-category columns
+                    don't bleed through visually as they scroll behind. */}
+                <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px] sticky left-0 bg-muted z-10">#</th>
+                <SortableHeader
+                  label="Name"
+                  field="name"
+                  currentSort={sortBy}
+                  currentOrder={sortOrder}
+                  onSort={handleSort}
+                  className="sticky left-[50px] bg-muted z-10"
+                />
                 <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 <SortableHeader label="Influencer Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                 <SortableHeader label="City" field="city" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
@@ -450,10 +461,13 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
               ) : (
                 items.map((item, index) => (
                   <tr key={item.hcpId} className="border-b last:border-b-0 hover:bg-muted/40 transition-colors even:bg-muted/10">
-                    <td className="px-3 py-2 text-muted-foreground tabular-nums">
+                    {/* v1.17.41 — sticky # + Name body cells. bg-background
+                        is opaque so per-category columns don't bleed
+                        through. left offsets match the header above. */}
+                    <td className="px-3 py-2 text-muted-foreground tabular-nums sticky left-0 bg-background">
                       {(page - 1) * limit + index + 1}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 sticky left-[50px] bg-background min-w-[180px]">
                       <KolNameLink
                         name={item.name}
                         onClick={() => {
