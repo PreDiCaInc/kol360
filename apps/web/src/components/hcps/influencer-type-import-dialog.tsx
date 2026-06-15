@@ -24,11 +24,14 @@ import {
   useInfluencerTypeImport,
   type InfluencerTypeImportResult,
 } from '@/hooks/use-hcps';
+import { INFLUENCER_TYPES } from '@kol360/shared';
+import { Badge } from '@/components/ui/badge';
 
 // v1.17.42 — data-team-managed influencer-type classification import.
-// CSV format: NPI,InfluencerType. The 3 canonical values are
-// 'National Leaders', 'Rising Stars', 'Regional Influencers' (case +
-// 'National Leader' singular alternates accepted by the backend).
+// CSV format: NPI,InfluencerType. v1.17.44 — 5 canonical values:
+// 'National Leaders', 'Rising Stars', 'Regional Influencers',
+// 'Regional Leaders', 'Pre-Emergent' (case + singular alternates +
+// 'Pre Emergent' / 'Preemergent' variants accepted by the backend).
 //
 // Two-step UX:
 //   1. Pick disease area + upload CSV → POST /preview returns summary
@@ -114,11 +117,13 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
   // template so the data team doesn't have to guess the column shape.
   const handleDownloadTemplate = () => {
     const headers = ['NPI', 'InfluencerType'];
-    const sampleRows = [
-      ['1234567890', 'National Leaders'],
-      ['0987654321', 'Rising Stars'],
-      ['1112223333', 'Regional Influencers'],
-    ];
+    // v1.17.44 — derive sample rows from the shared canonical list so
+    // adding a type to influencer-types.ts auto-includes it in the
+    // downloaded template. NPI just increments from a known test range.
+    const sampleRows = INFLUENCER_TYPES.map((t, i) => [
+      `99900000${String(i + 1).padStart(2, '0')}`,
+      t,
+    ]);
     const csv = [
       headers.join(','),
       ...sampleRows.map((r) => r.join(',')),
@@ -138,10 +143,24 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
           <DialogTitle>Import Influencer Type Classifications</DialogTitle>
           <DialogDescription>
             Upload a CSV / XLSX / XLS file with NPI + InfluencerType
-            columns and pick the disease area the classifications apply
-            to. Allowed types: National Leaders, Rising Stars,
-            Regional Influencers.
+            columns and pick the disease area the classifications apply to.
           </DialogDescription>
+          {/* v1.17.44 — render the canonical list as badges from the
+              @kol360/shared single source of truth. Adding a new type
+              only requires updating influencer-types.ts; this UI
+              auto-updates. */}
+          <div className="pt-2">
+            <p className="text-xs font-medium text-muted-foreground mb-1.5">
+              Allowed types (case-insensitive, singular/hyphen variants accepted):
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {INFLUENCER_TYPES.map((t) => (
+                <Badge key={t} variant="secondary" className="font-mono text-[11px]">
+                  {t}
+                </Badge>
+              ))}
+            </div>
+          </div>
         </DialogHeader>
 
         {!final ? (

@@ -1,7 +1,19 @@
 import { prisma } from '../lib/prisma';
 import { parse as parseCsv } from 'csv-parse/sync';
 import ExcelJS from 'exceljs';
+import { INFLUENCER_TYPES, type InfluencerType } from '@kol360/shared';
 import { resolveUserIdForAudit } from '../lib/audit';
+
+// v1.17.44 — canonical influencer-type list is INFLUENCER_TYPES in
+// @kol360/shared (single source of truth — same pattern as
+// score-methodology.ts). The frontend dialog renders the same list
+// as "Allowed types" badges, the backend uses it to validate CSV
+// uploads. Adding a type only requires editing INFLUENCER_TYPES.
+//
+// Re-exported under the old name CANONICAL_INFLUENCER_TYPES for any
+// pre-v1.17.44 callers; new code should import INFLUENCER_TYPES.
+export const CANONICAL_INFLUENCER_TYPES = INFLUENCER_TYPES;
+export type { InfluencerType };
 
 // v1.17.42 — data-team-managed classification import for
 // HcpDiseaseArea.influencerType. CSV format: NPI,InfluencerType.
@@ -17,22 +29,24 @@ import { resolveUserIdForAudit } from '../lib/audit';
 // surfaces the per-row error counts, the import endpoint skips
 // invalid rows but completes the batch).
 
-export const CANONICAL_INFLUENCER_TYPES = [
-  'National Leaders',
-  'Rising Stars',
-  'Regional Influencers',
-] as const;
-
-export type InfluencerType = (typeof CANONICAL_INFLUENCER_TYPES)[number];
-
 const CANONICAL_BY_LOWER: Record<string, InfluencerType> = (() => {
   const out: Record<string, InfluencerType> = {};
   for (const t of CANONICAL_INFLUENCER_TYPES) out[t.toLowerCase()] = t;
-  // Common alternates the data team might emit.
+  // Common alternates the data team might emit (singular forms,
+  // hyphen / space / case variants).
   out['national leader'] = 'National Leaders';
   out['rising star'] = 'Rising Stars';
   out['regional influencer'] = 'Regional Influencers';
   out['regional'] = 'Regional Influencers';
+  // v1.17.44 — accept "Regional Leader" (singular). NOTE: this is
+  // DISTINCT from the NominationType.REGIONAL_LEADER enum value used
+  // for survey nominations — different concept, same name.
+  out['regional leader'] = 'Regional Leaders';
+  // v1.17.44 — accept "Pre Emergent" (space), "Preemergent" (no
+  // separator), "Pre-emergent" (lowercase 'e').
+  out['pre emergent'] = 'Pre-Emergent';
+  out['preemergent'] = 'Pre-Emergent';
+  out['pre-emergent'] = 'Pre-Emergent';
   return out;
 })();
 
@@ -186,11 +200,13 @@ export class InfluencerTypeImportService {
       unmatchedNpi: 0,
       unmatchedDiseaseArea: 0,
       invalidType: 0,
-      countsByType: {
-        'National Leaders': 0,
-        'Rising Stars': 0,
-        'Regional Influencers': 0,
-      },
+      // v1.17.44 — initialize every canonical type to 0 from the
+      // single source of truth, so adding a type only needs the const
+      // update above (no second site to edit).
+      countsByType: CANONICAL_INFLUENCER_TYPES.reduce(
+        (acc, t) => ((acc[t] = 0), acc),
+        {} as Record<InfluencerType, number>,
+      ),
       errorRows: [],
       rows: [],
     };

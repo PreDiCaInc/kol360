@@ -4,11 +4,22 @@ import { nominationTypeSchema } from './question';
 // Re-export nomination types for convenience
 export const NOMINATION_TYPES = nominationTypeSchema.options;
 
-// Influencer types for KOL classification
+// Influencer types for KOL classification.
+// v1.17.42: switched from algorithmic (determineInfluencerType) to
+// data-team-managed (HcpDiseaseArea.influencerType). This const is
+// the single source of truth used by both the import validator
+// (apps/api/src/services/influencer-type-import.service.ts) and the
+// frontend "Allowed types" badge list on the import dialog. Adding a
+// new type only requires editing this list.
+// v1.17.44: added 'Regional Leaders' (distinct from Regional
+// Influencers — NOTE: NominationType.REGIONAL_LEADER is a different
+// concept with the same name) + 'Pre-Emergent'.
 export const INFLUENCER_TYPES = [
   'National Leaders',
   'Rising Stars',
   'Regional Influencers',
+  'Regional Leaders',
+  'Pre-Emergent',
 ] as const;
 
 export type InfluencerType = (typeof INFLUENCER_TYPES)[number];
