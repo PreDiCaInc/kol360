@@ -434,13 +434,20 @@ describe('Insights Report API', () => {
       expect(status).toBe(200);
       expect(data.items.length).toBeGreaterThan(0);
 
+      // v1.17.42: influencerType is data-team-managed (HcpDiseaseArea.influencerType).
+      // Null is now valid for any HCP the data team hasn't classified yet —
+      // the no-fallback contract. When a non-null value IS present, it must
+      // still be one of the 3 canonical buckets.
       const valid = new Set(['National Leaders', 'Rising Stars', 'Regional Influencers']);
+      let classified = 0;
       data.items.forEach((kol) => {
-        expect(kol.influencerType).toBeDefined();
-        expect(valid.has(kol.influencerType as string)).toBe(true);
+        if (kol.influencerType != null && kol.influencerType !== '') {
+          expect(valid.has(kol.influencerType as string)).toBe(true);
+          classified++;
+        }
       });
 
-      console.log(`✅ Influencer-type labels valid for ${data.items.length} KOL(s)`);
+      console.log(`✅ Influencer-type labels: ${classified}/${data.items.length} classified, others null (no algorithmic fallback)`);
     });
   });
 
