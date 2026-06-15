@@ -379,7 +379,9 @@ function ScoreTableView({
         <table className="w-full text-sm min-w-[1600px]">
           <thead>
             <tr className="border-b bg-muted/50">
-              <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px] sticky left-0 bg-muted/50 z-10">#</th>
+              {/* bg-muted (no /50) — opaque so columns scrolling under the
+                  sticky # + Name cells don't bleed through visually. */}
+              <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px] sticky left-0 bg-muted z-10">#</th>
               {/* v1.17.40 — sticky Name column so horizontal scroll
                   leaves the name visible next to the # row indicator.
                   left-[50px] mirrors the # column width above. */}
@@ -389,7 +391,7 @@ function ScoreTableView({
                 currentSort={sortBy}
                 currentOrder={sortOrder}
                 onSort={handleSort}
-                className="sticky left-[50px] bg-muted/50 z-10"
+                className="sticky left-[50px] bg-muted z-10"
               />
               <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
               <th className="px-3 py-2 text-left text-sm font-medium">Degree</th>
