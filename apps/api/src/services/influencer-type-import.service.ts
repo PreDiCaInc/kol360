@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { parse as parseCsv } from 'csv-parse/sync';
+import ExcelJS from 'exceljs';
 import { resolveUserIdForAudit } from '../lib/audit';
 
 // v1.17.42 — data-team-managed classification import for
@@ -80,17 +81,48 @@ interface RawCsvRow {
   Type?: string;
 }
 
-function parseRows(buffer: Buffer, filename: string): RawCsvRow[] {
+// v1.17.43 — accept .csv + .xlsx + .xls to match the existing
+// HCP / segment-score import dialogs (consistent admin UX).
+async function parseRows(buffer: Buffer, filename: string): Promise<RawCsvRow[]> {
   const filenameLower = filename.toLowerCase();
-  if (!filenameLower.endsWith('.csv')) {
-    throw new Error('Unsupported file format. Use a .csv file.');
+  const isCsv = filenameLower.endsWith('.csv');
+  const isExcel = filenameLower.endsWith('.xlsx') || filenameLower.endsWith('.xls');
+  if (!isCsv && !isExcel) {
+    throw new Error('Unsupported file format. Use a .csv, .xlsx, or .xls file.');
   }
-  const records = parseCsv(buffer, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
+  if (isCsv) {
+    const records = parseCsv(buffer, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      bom: true,
+    });
+    return records as RawCsvRow[];
+  }
+  // Excel — mirror apps/api/src/services/hcp.service.ts:parseExcelToRows.
+  const workbook = new ExcelJS.Workbook();
+  const arrayBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  ) as ArrayBuffer;
+  await workbook.xlsx.load(arrayBuffer);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) return [];
+  const rows: RawCsvRow[] = [];
+  const headers: string[] = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) {
+      row.eachCell((cell) => headers.push(String(cell.value ?? '').trim()));
+      return;
+    }
+    const rowData: Record<string, string> = {};
+    row.eachCell((cell, colNumber) => {
+      const header = headers[colNumber - 1];
+      if (header) rowData[header] = String(cell.value ?? '').trim();
+    });
+    rows.push(rowData as RawCsvRow);
   });
-  return records as RawCsvRow[];
+  return rows;
 }
 
 function extractNpi(row: RawCsvRow): string {
@@ -124,7 +156,7 @@ export class InfluencerTypeImportService {
   private async run(args: PreviewOrImportArgs): Promise<InfluencerTypeImportResult> {
     const { buffer, filename, diseaseAreaId, apply, actorCognitoSub } = args;
 
-    const raw = parseRows(buffer, filename);
+    const raw = await parseRows(buffer, filename);
     const rows: InfluencerTypeImportRow[] = raw.map((r, i) => ({
       rowNumber: i + 2, // header is row 1
       npi: extractNpi(r),

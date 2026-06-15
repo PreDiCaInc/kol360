@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Download } from 'lucide-react';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 
 // v1.17.42 — data-team-managed influencer-type classification import.
@@ -138,15 +138,37 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
     onOpenChange(false);
   };
 
+  // v1.17.43 — mirror the HcpImportDialog pattern: provide a
+  // template so the data team doesn't have to guess the column shape.
+  const handleDownloadTemplate = () => {
+    const headers = ['NPI', 'InfluencerType'];
+    const sampleRows = [
+      ['1234567890', 'National Leaders'],
+      ['0987654321', 'Rising Stars'],
+      ['1112223333', 'Regional Influencers'],
+    ];
+    const csv = [
+      headers.join(','),
+      ...sampleRows.map((r) => r.join(',')),
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'influencer-types-template.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Import Influencer Type Classifications</DialogTitle>
           <DialogDescription>
-            Upload a CSV (NPI,InfluencerType) and pick the disease area the
-            classifications apply to. Allowed types: National Leaders,
-            Rising Stars, Regional Influencers.
+            Upload a CSV / XLSX / XLS file with NPI + InfluencerType
+            columns and pick the disease area the classifications apply
+            to. Allowed types: National Leaders, Rising Stars,
+            Regional Influencers.
           </DialogDescription>
         </DialogHeader>
 
@@ -171,7 +193,19 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
 
             {/* File picker */}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">CSV File</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">File (CSV, XLSX, or XLS)</label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDownloadTemplate}
+                  className="h-7 gap-1.5 text-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Template
+                </Button>
+              </div>
               <div
                 className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-colors"
                 onClick={() => !preview && fileInputRef.current?.click()}
@@ -180,7 +214,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
-                  accept=".csv"
+                  accept=".xlsx,.xls,.csv"
                   className="hidden"
                   disabled={!!preview}
                 />
@@ -197,7 +231,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
                 ) : (
                   <div className="flex flex-col items-center gap-1">
                     <Upload className="w-7 h-7 text-muted-foreground" />
-                    <p className="text-sm">Click to choose a CSV</p>
+                    <p className="text-sm">Click to choose a file</p>
                   </div>
                 )}
               </div>
@@ -220,7 +254,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
                 </h4>
                 <ul className="text-sm space-y-1 mt-2">
                   <li className="flex justify-between">
-                    <span className="text-muted-foreground">Total rows in CSV:</span>
+                    <span className="text-muted-foreground">Total rows in file:</span>
                     <span className="font-mono tabular-nums">{preview.totalRows}</span>
                   </li>
                   <li className="flex justify-between">
