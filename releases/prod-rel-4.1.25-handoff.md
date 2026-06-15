@@ -20,6 +20,7 @@ Pteam's review of the deployed app surfaced a series of UX wins worth shipping t
 | User profile menu | Top-right of the header (dropdown with avatar + name) | Moved to the **bottom of the sidebar**, above the collapse toggle. Matches modern SaaS patterns (Linear, Notion, Slack, Vercel). Renders avatar-only when collapsed; avatar + name + role when expanded. PLATFORM_ADMIN's "View as Client" picker rode along to the same dropdown. |
 | Header bar | Breadcrumb (left) + ClientBadge (middle) + User dropdown (right) | Stripped to **Breadcrumb (left) + ClientBadge (right)**. ~150 LOC removed; cleaner. |
 | KOL Profile (inside KOL Explorer) — Nominators table | 5 columns: Name / Specialty / State / Nomination Type / Campaign — Campaign visible to everyone | 6 columns. + **NPI** column (between Name and Specialty, font-mono + tabular-nums for alignment, sortable). **Campaign column gated to PLATFORM_ADMIN only** (CLIENT_ADMIN + impersonation hide it). |
+| KOL Profile header (the HCP detail view in Insights) | Name `<h2>` only, then the 4-tile metric row | Name `<h2>` + **NPI** (font-mono muted, directly under the name) + 4-tile row. Pteam asked if tiles should be inline with the name; design call was to keep them as a row because long names + 4 tiles wrap awkwardly at standard laptop widths, and the hero h2 treatment of the name competes visually with the tiles inline. |
 
 ## API additions (small)
 

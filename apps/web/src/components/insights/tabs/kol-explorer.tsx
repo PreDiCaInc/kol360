@@ -819,8 +819,19 @@ function ProfileView({
         </Card>
       ) : (
         <>
-          {/* KOL Name Header */}
-          <h2 className="text-4xl font-extrabold tracking-tight">{profile.name}</h2>
+          {/* KOL Name Header + NPI.
+              v1.17.46 — NPI shown directly under the name (pteam:
+              'can we also have the person's npi in the hcp detail
+              view as well — maybe right under the name'). Muted
+              font-mono so it visually defers to the hero h2. */}
+          <div className="space-y-1">
+            <h2 className="text-4xl font-extrabold tracking-tight">{profile.name}</h2>
+            {profile.npi && (
+              <p className="text-sm font-mono text-muted-foreground tabular-nums">
+                NPI {profile.npi}
+              </p>
+            )}
+          </div>
 
           {/* 4 Metric Badges */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-muted/20 rounded-xl">
