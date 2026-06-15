@@ -29,6 +29,7 @@ import { HcpImportDialog } from '@/components/hcps/hcp-import-dialog';
 import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
 import { InfluencerTypeImportDialog } from '@/components/hcps/influencer-type-import-dialog';
+import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
 import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -67,6 +68,7 @@ export default function HcpsPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAliasImportDialog, setShowAliasImportDialog] = useState(false);
   const [showInfluencerImportDialog, setShowInfluencerImportDialog] = useState(false);
+  const [showSegmentScoreImportDialog, setShowSegmentScoreImportDialog] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<{
@@ -180,12 +182,21 @@ export default function HcpsPage() {
                 Import HCPs
               </Button>
               <Button variant="outline" onClick={() => setShowAliasImportDialog(true)}>
-                <Users className="w-4 h-4 mr-2" />
+                {/* v1.17.45 — Upload icon (was: Users) — consistency with
+                    the other Import buttons. */}
+                <Upload className="w-4 h-4 mr-2" />
                 Import Aliases
               </Button>
               <Button variant="outline" onClick={() => setShowInfluencerImportDialog(true)}>
                 <Upload className="w-4 h-4 mr-2" />
                 Import Influencer Types
+              </Button>
+              {/* v1.17.45 — surfaced on the HCP admin page (was: only
+                  reachable from /admin/hcps/scores). Dialog defaults to
+                  scoreType='segment'. */}
+              <Button variant="outline" onClick={() => setShowSegmentScoreImportDialog(true)}>
+                <Upload className="w-4 h-4 mr-2" />
+                Import Segment Scores
               </Button>
               <Button onClick={() => setShowCreateDialog(true)}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -515,6 +526,10 @@ export default function HcpsPage() {
       <HcpImportDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
       <AliasImportDialog open={showAliasImportDialog} onOpenChange={setShowAliasImportDialog} />
       <InfluencerTypeImportDialog open={showInfluencerImportDialog} onOpenChange={setShowInfluencerImportDialog} />
+      <SegmentScoreImportDialog
+        open={showSegmentScoreImportDialog}
+        onOpenChange={setShowSegmentScoreImportDialog}
+      />
       <HcpFormDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
     </div>
   );
