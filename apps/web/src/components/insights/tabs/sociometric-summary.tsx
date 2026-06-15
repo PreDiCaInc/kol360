@@ -13,6 +13,30 @@ import { Search, ChevronLeft, ChevronRight, FileSpreadsheet, Check, Filter } fro
 import { useSociometricSummary, useInsightsFilterOptions, useDemographics } from '@/hooks/use-insights-report';
 import { useExcelExport } from '@/lib/excel-export';
 import { SortableHeader } from '@/components/insights/shared/sortable-header';
+import { ColumnSelector } from '@/components/insights/column-selector';
+import { useColumnVisibility } from '@/hooks/use-column-visibility';
+
+// v1.17.41 — column-visibility selector for the Sociometric Summary
+// matrix. Sticky # + Name are anchors and stay always visible. No
+// default-hidden columns on this tab (the per-category counts ARE the
+// data); user can hide noise like City if desired. Persists via
+// localStorage under `insights.sociometric-summary.columns`.
+const SOCIOMETRIC_COLUMN_OPTIONS = [
+  { key: 'specialty', label: 'Specialty' },
+  { key: 'influencerType', label: 'Influencer Type' },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'State' },
+  { key: 'total', label: 'Total' },
+  { key: 'nationalLeaders', label: 'National' },
+  { key: 'discussionLeaders', label: 'Discussion' },
+  { key: 'adviceLeaders', label: 'Advice' },
+  { key: 'risingStars', label: 'Rising Star' },
+  { key: 'referralLeaders', label: 'Referral' },
+  { key: 'socialLeaders', label: 'Social' },
+  { key: 'biasedLeaders', label: 'Biased' },
+] as const;
+// Per pteam's request: default hide City. (No Degree column on this tab.)
+const SOCIOMETRIC_DEFAULT_HIDDEN = ['city'];
 import { HeatMapCell } from '@/components/insights/shared/heat-map-cell';
 import { KolNameLink } from '@/components/insights/shared/kol-name-link';
 import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
@@ -68,6 +92,14 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
   const [selectedInfluencerTypes, setSelectedInfluencerTypes] = useState<string[]>([]);
   // v1.17.5: respondent-side filters carried over from Demographics tab.
   const [respondentFilters, setRespondentFilters] = useState<RespondentFiltersState>({});
+
+  // v1.17.41 — per-table column visibility (localStorage-backed).
+  // Sticky # + Name aren't in the options list — they're always shown.
+  const columnVisibility = useColumnVisibility(
+    'insights.sociometric-summary.columns',
+    SOCIOMETRIC_DEFAULT_HIDDEN
+  );
+  const isVisible = columnVisibility.isVisible;
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   // v1.17.5: source role/focus/practice-setting options from the
@@ -380,37 +412,66 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
 
         <ActiveFilterChips filters={activeFilters} />
 
+        {/* v1.17.41 — column-visibility selector */}
+        <div className="flex justify-end">
+          <ColumnSelector
+            columns={[...SOCIOMETRIC_COLUMN_OPTIONS]}
+            visibility={columnVisibility}
+          />
+        </div>
+
         {/* Table */}
         <div className="rounded-md border overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px]">#</th>
-                <SortableHeader label="Name" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <SortableHeader label="Influencer Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <SortableHeader label="City" field="city" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <SortableHeader label="State" field="state" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                {/* v1.17.41 — sticky # + Name columns so horizontal scroll
+                    leaves the HCP identity visible. Opaque bg-muted on the
+                    sticky cells (not /50) so the per-category columns
+                    don't bleed through visually as they scroll behind. */}
+                <th className="px-3 py-2.5 text-left text-sm font-bold w-[50px] sticky left-0 bg-muted z-10">#</th>
+                <SortableHeader
+                  label="Name"
+                  field="name"
+                  currentSort={sortBy}
+                  currentOrder={sortOrder}
+                  onSort={handleSort}
+                  className="sticky left-[50px] bg-muted z-10"
+                />
+                {isVisible('specialty') && (
+                  <SortableHeader label="Specialty" field="specialty" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                )}
+                {isVisible('influencerType') && (
+                  <SortableHeader label="Influencer Type" field="influencerType" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                )}
+                {isVisible('city') && (
+                  <SortableHeader label="City" field="city" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                )}
+                {isVisible('state') && (
+                  <SortableHeader label="State" field="state" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                )}
                 {/* v1.17.26: Total is the FIRST of the count columns
                     (right before Discussion / Referral / \u2026), not the
                     first column of the whole table. Default sort still
                     sortBy='total' sortOrder='desc'. */}
-                <th
-                  className={cn(
-                    'cursor-pointer select-none px-3 py-2 text-center text-sm font-bold',
-                    'hover:bg-muted/50 transition-colors bg-muted',
-                    sortBy === 'total' && 'ring-1 ring-inset ring-foreground/20'
-                  )}
-                  onClick={() => handleSort('total')}
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    <span>Total</span>
-                    <span className={cn('text-xs', sortBy !== 'total' && 'text-muted-foreground/50')}>
-                      {sortBy === 'total' ? (sortOrder === 'asc' ? '\u25B2' : '\u25BC') : '\u25B2'}
-                    </span>
-                  </div>
-                </th>
-                {NOMINATION_COLUMNS.map((col) => (
+                {isVisible('total') && (
+                  <th
+                    className={cn(
+                      'cursor-pointer select-none px-3 py-2 text-center text-sm font-bold',
+                      'hover:bg-muted/50 transition-colors bg-muted',
+                      sortBy === 'total' && 'ring-1 ring-inset ring-foreground/20'
+                    )}
+                    onClick={() => handleSort('total')}
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Total</span>
+                      <span className={cn('text-xs', sortBy !== 'total' && 'text-muted-foreground/50')}>
+                        {sortBy === 'total' ? (sortOrder === 'asc' ? '\u25B2' : '\u25BC') : '\u25B2'}
+                      </span>
+                    </div>
+                  </th>
+                )}
+                {NOMINATION_COLUMNS.filter((col) => isVisible(col.field)).map((col) => (
                   <th
                     key={col.field}
                     className={cn(
@@ -437,23 +498,26 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={14} className="h-24 text-center text-muted-foreground">
+                  <td colSpan={25} className="h-24 text-center text-muted-foreground">
                     Loading...
                   </td>
                 </tr>
               ) : !items.length ? (
                 <tr>
-                  <td colSpan={14} className="h-24 text-center text-muted-foreground">
+                  <td colSpan={25} className="h-24 text-center text-muted-foreground">
                     No data available
                   </td>
                 </tr>
               ) : (
                 items.map((item, index) => (
                   <tr key={item.hcpId} className="border-b last:border-b-0 hover:bg-muted/40 transition-colors even:bg-muted/10">
-                    <td className="px-3 py-2 text-muted-foreground tabular-nums">
+                    {/* v1.17.41 — sticky # + Name body cells. bg-background
+                        is opaque so per-category columns don't bleed
+                        through. left offsets match the header above. */}
+                    <td className="px-3 py-2 text-muted-foreground tabular-nums sticky left-0 bg-background">
                       {(page - 1) * limit + index + 1}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 sticky left-[50px] bg-background min-w-[180px]">
                       <KolNameLink
                         name={item.name}
                         onClick={() => {
@@ -462,33 +526,57 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                         }}
                       />
                     </td>
-                    <td className="px-3 py-2">{item.specialty || '-'}</td>
-                    <td className="px-3 py-2">
-                      {item.influencerType ? (
-                        <Badge variant="outline" className="text-xs">
-                          {item.influencerType}
-                        </Badge>
-                      ) : '-'}
-                    </td>
-                    <td className="px-3 py-2">{toTitleCase(item.city) || '-'}</td>
-                    <td className="px-3 py-2">{item.state || '-'}</td>
+                    {isVisible('specialty') && (
+                      <td className="px-3 py-2">{item.specialty || '-'}</td>
+                    )}
+                    {isVisible('influencerType') && (
+                      <td className="px-3 py-2">
+                        {item.influencerType ? (
+                          <Badge variant="outline" className="text-xs">
+                            {item.influencerType}
+                          </Badge>
+                        ) : '-'}
+                      </td>
+                    )}
+                    {isVisible('city') && (
+                      <td className="px-3 py-2">{toTitleCase(item.city) || '-'}</td>
+                    )}
+                    {isVisible('state') && (
+                      <td className="px-3 py-2">{item.state || '-'}</td>
+                    )}
                     {/* Total: first of the count columns (matches header). */}
-                    <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
-                      {item.total}
-                    </td>
+                    {isVisible('total') && (
+                      <td className="px-3 py-2 text-center tabular-nums font-bold bg-muted/30">
+                        {item.total}
+                      </td>
+                    )}
                     {/* v1.17.32: column order National → Discussion → Advice
                         → Rising Star → Referral → Social → Biased, mirrors
                         NOMINATION_COLUMNS above + the rest of Insights. */}
-                    <HeatMapCell value={item.nationalLeaders} maxValue={maxValues.nationalLeaders} />
-                    <HeatMapCell value={item.discussionLeaders} maxValue={maxValues.discussionLeaders} />
-                    <HeatMapCell value={item.adviceLeaders} maxValue={maxValues.adviceLeaders} />
-                    <HeatMapCell value={item.risingStars} maxValue={maxValues.risingStars} />
-                    <HeatMapCell value={item.referralLeaders} maxValue={maxValues.referralLeaders} />
-                    <HeatMapCell value={item.socialLeaders} maxValue={maxValues.socialLeaders} />
-                    <HeatMapCell
-                      value={(item as { biasedLeaders?: number }).biasedLeaders ?? 0}
-                      maxValue={maxValues.biasedLeaders}
-                    />
+                    {isVisible('nationalLeaders') && (
+                      <HeatMapCell value={item.nationalLeaders} maxValue={maxValues.nationalLeaders} />
+                    )}
+                    {isVisible('discussionLeaders') && (
+                      <HeatMapCell value={item.discussionLeaders} maxValue={maxValues.discussionLeaders} />
+                    )}
+                    {isVisible('adviceLeaders') && (
+                      <HeatMapCell value={item.adviceLeaders} maxValue={maxValues.adviceLeaders} />
+                    )}
+                    {isVisible('risingStars') && (
+                      <HeatMapCell value={item.risingStars} maxValue={maxValues.risingStars} />
+                    )}
+                    {isVisible('referralLeaders') && (
+                      <HeatMapCell value={item.referralLeaders} maxValue={maxValues.referralLeaders} />
+                    )}
+                    {isVisible('socialLeaders') && (
+                      <HeatMapCell value={item.socialLeaders} maxValue={maxValues.socialLeaders} />
+                    )}
+                    {isVisible('biasedLeaders') && (
+                      <HeatMapCell
+                        value={(item as { biasedLeaders?: number }).biasedLeaders ?? 0}
+                        maxValue={maxValues.biasedLeaders}
+                      />
+                    )}
                   </tr>
                 ))
               )}

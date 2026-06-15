@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
+import { useCurrentClient } from '@/hooks/use-current-client';
 import { useSidebarContext } from './sidebar-context';
 import {
   LayoutDashboard,
@@ -177,6 +178,7 @@ function NavItemComponent({
   // Auto-expand if child is active
   const [isExpanded, setIsExpanded] = useState(hasActiveChild || false);
   const Icon = item.icon;
+  const { setCollapsed } = useSidebarContext();
 
   // Update expansion state when active child changes
   useEffect(() => {
@@ -190,7 +192,19 @@ function NavItemComponent({
     return (
       <li>
         <button
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={() => {
+            // v1.17.41 — when the sidebar is collapsed the children list is
+            // hidden regardless of isExpanded (see the `&& !collapsed` gate
+            // below), so a click here used to do nothing visible. Now: if
+            // collapsed, expand the sidebar AND open the section in one
+            // shot so the user lands on the children directly.
+            if (collapsed) {
+              setCollapsed(false);
+              setIsExpanded(true);
+            } else {
+              setIsExpanded(!isExpanded);
+            }
+          }}
           className={cn(
             'group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
             'hover:bg-[hsl(var(--sidebar-accent))]',
@@ -301,7 +315,13 @@ function NavItemComponent({
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const { isImpersonating, clientName: impersonatedClientName, logoUrl, primaryColor } = useImpersonation();
+  const { isImpersonating } = useImpersonation();
+  // v1.17.41 — logo + brand colors via useCurrentClient so the
+  // Insights view-as override (PLATFORM_ADMIN picked a client) lights
+  // up the sidebar branding without flipping impersonation. Nav role
+  // (platform-admin vs client-admin) stays on isImpersonating —
+  // view-as is display-only.
+  const { data: currentClient } = useCurrentClient();
   const { collapsed, setCollapsed } = useSidebarContext();
 
   // When impersonating, show client admin navigation instead of platform admin
@@ -330,13 +350,13 @@ export function Sidebar() {
         collapsed ? 'justify-center px-2' : 'px-5'
       )}>
         <Link href="/admin" className="flex items-center gap-3">
-          {isImpersonating ? (
-            // Client branding when impersonating
+          {currentClient ? (
+            // Client branding when impersonating OR view-as set
             <>
-              {logoUrl ? (
+              {currentClient.logoUrl ? (
                 <Image
-                  src={logoUrl}
-                  alt={impersonatedClientName || 'Client'}
+                  src={currentClient.logoUrl}
+                  alt={currentClient.name}
                   width={collapsed ? 40 : 36}
                   height={collapsed ? 40 : 36}
                   className={cn('rounded-lg object-contain', collapsed ? 'h-10 w-10' : 'h-9 w-9')}
@@ -344,16 +364,16 @@ export function Sidebar() {
               ) : (
                 <div
                   className="flex h-10 w-10 items-center justify-center rounded-xl shadow-lg"
-                  style={{ backgroundColor: primaryColor || '#0066CC' }}
+                  style={{ backgroundColor: currentClient.primaryColor || '#0066CC' }}
                 >
                   <span className="text-sm font-bold text-white">
-                    {impersonatedClientName?.substring(0, 2).toUpperCase() || 'CL'}
+                    {currentClient.name.substring(0, 2).toUpperCase()}
                   </span>
                 </div>
               )}
               {!collapsed && (
                 <span className="text-sm font-semibold text-[hsl(var(--sidebar-foreground))] truncate">
-                  {impersonatedClientName}
+                  {currentClient.name}
                 </span>
               )}
             </>

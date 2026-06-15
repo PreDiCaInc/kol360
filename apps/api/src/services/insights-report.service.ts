@@ -190,6 +190,30 @@ export class InsightsReportService {
   }
 
   /**
+   * v1.17.42 — data-team-managed influencer-type classification
+   * per (HCP, disease area). Replaces the computed
+   * determineInfluencerType() output. When the manual value is unset
+   * for an HCP, the column reads empty (null) in the response — no
+   * algorithmic fallback. Loaded once per request for cheap
+   * per-HCP lookup in the read loops.
+   */
+  private async loadManualInfluencerTypes(
+    hcpIds: string[],
+    diseaseAreaId: string,
+  ): Promise<Map<string, string>> {
+    if (hcpIds.length === 0) return new Map();
+    const rows = await prisma.hcpDiseaseArea.findMany({
+      where: { hcpId: { in: hcpIds }, diseaseAreaId },
+      select: { hcpId: true, influencerType: true },
+    });
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      if (r.influencerType) out.set(r.hcpId, r.influencerType);
+    }
+    return out;
+  }
+
+  /**
    * v1.17.5: shared respondent-filter pipeline. Returns the set of
    * SurveyResponse IDs that pass ALL active filters.
    *
@@ -559,7 +583,7 @@ export class InsightsReportService {
       const hcpIds = [...scoreMap.keys()];
       if (hcpIds.length === 0) return emptyPage;
 
-      const [objMap, hcps] = await Promise.all([
+      const [objMap, hcps, influencerTypeMap] = await Promise.all([
         this.loadObjectiveScores(hcpIds, diseaseAreaId),
         // Perf pass #6 (KOL Explorer): narrow from full Hcp row (~20 columns)
         // to the 7 actually consumed downstream. Specialties relation kept
@@ -581,6 +605,8 @@ export class InsightsReportService {
             },
           },
         }),
+        // v1.17.42 — data-team-managed influencer-type per (HCP, DA).
+        this.loadManualInfluencerTypes(hcpIds, diseaseAreaId),
       ]);
 
       const num = (v: unknown): number | null => (v == null ? null : Number(v));
@@ -592,7 +618,8 @@ export class InsightsReportService {
       const searchLc = search?.toLowerCase();
       const specSet = specialties && specialties.length > 0 ? new Set(specialties) : null;
       const stateSet = states && states.length > 0 ? new Set(states) : null;
-      const thresholds = await this.getInfluencerThresholds();
+      // v1.17.42 — thresholds no longer loaded here; manual map
+      // (influencerTypeMap above) is the source of truth.
       const influencerTypeFilter =
         influencerTypes && influencerTypes.length > 0
           ? influencerTypes
@@ -646,13 +673,13 @@ export class InsightsReportService {
 
         const primarySpecialty =
           hcp.specialties[0]?.specialty?.name || hcp.specialty;
-        const influencerTypeVal = this.determineInfluencerType({
-          compositeScore: a.compositeScore,
-          scoreSurvey: a.scoreSurvey,
-        }, thresholds);
+        // v1.17.42 — manual classification (data-team-managed). No
+        // algorithmic fallback: missing entries read as null. The
+        // pteam-loaded CSV per disease area populates this.
+        const influencerTypeVal = influencerTypeMap.get(hcp.id) ?? null;
         if (
           influencerTypeFilter &&
-          !influencerTypeFilter.includes(influencerTypeVal)
+          (!influencerTypeVal || !influencerTypeFilter.includes(influencerTypeVal))
         ) {
           continue;
         }
@@ -809,7 +836,13 @@ export class InsightsReportService {
       },
     });
     const hcpMap = new Map(hcps.map((h) => [h.id, h]));
-    const thresholds = await this.getInfluencerThresholds();
+    // v1.17.42 — manual influencer-type lookup. determineInfluencerType
+    // is no longer the source; the data-team CSV upload populates this
+    // map per (HCP, diseaseArea). Missing entries surface as null.
+    const influencerTypeMap = await this.loadManualInfluencerTypes(
+      hcps.map((h) => h.id),
+      diseaseAreaId,
+    );
 
     const rankedItems: LeaderRankingItem[] = [];
     let rank = 0;
@@ -829,14 +862,9 @@ export class InsightsReportService {
         city: hcp.city,
         state: hcp.state,
         count: r.count,
-        // v1.17.5: r.score may be undefined under respondent filtering
-        // (the HCP appears in filtered nominations but not in the
-        // pre-aggregated scoreMap). determineInfluencerType handles
-        // missing values gracefully (defaults to 0).
-        influencerType: this.determineInfluencerType({
-          compositeScore: r.score?.compositeScore ?? null,
-          scoreSurvey: r.score?.scoreSurvey ?? null,
-        }, thresholds),
+        // v1.17.42 — manual classification only; null when not yet
+        // classified by the data team for this disease area.
+        influencerType: (influencerTypeMap.get(hcp.id) ?? null) as string,
       });
     }
 
@@ -890,7 +918,9 @@ export class InsightsReportService {
 
     const objective = hcp.diseaseAreaScores[0] ?? null;
     const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
-    const thresholds = await this.getInfluencerThresholds();
+    // v1.17.42 — manual classification lookup for this HCP within
+    // the disease area. Null when not yet classified.
+    const influencerTypeMap = await this.loadManualInfluencerTypes([hcpId], diseaseAreaId);
 
     // Nominators list — scoped to the analysis's included campaigns so it
     // matches the pooled scores.
@@ -995,10 +1025,7 @@ export class InsightsReportService {
       specialty: primarySpecialty,
       city: hcp.city,
       state: hcp.state,
-      influencerType: this.determineInfluencerType({
-        compositeScore: a.compositeScore,
-        scoreSurvey: a.scoreSurvey,
-      }, thresholds),
+      influencerType: (influencerTypeMap.get(hcpId) ?? null) as string,
       scores: {
         // Objective: live from HcpDiseaseAreaScore (null if not enriched).
         scorePublications: objective?.scorePublications ? Number(objective.scorePublications) : null,
@@ -1102,7 +1129,10 @@ export class InsightsReportService {
     if (baseHcpIds.length === 0) return empty;
 
     const searchLc = search?.toLowerCase();
-    const thresholds = await this.getInfluencerThresholds();
+    // v1.17.42 — manual classification map (replaces algorithmic
+    // determineInfluencerType). Loaded once for cheap per-HCP lookup
+    // + filter inside the loop.
+    const influencerTypeMap = await this.loadManualInfluencerTypes(baseHcpIds, diseaseAreaId);
 
     // v1.17.33: dual-shape where-clause (mirrors getLeaderRankings:784-790).
     // Plural arrays from the frontend get the `{ in: [...] }` shape;
@@ -1183,16 +1213,13 @@ export class InsightsReportService {
       // respondent filtering — pre-aggregated path includes everyone).
       if (filteredPerType && total === 0) continue;
 
-      // v1.17.33: influencerType post-filter (the third KOL-side
-      // dimension fixed by this change). The classification can only
-      // be computed after we have the HCP's compositeScore/scoreSurvey
-      // + the analysis thresholds, so it has to be a post-fetch filter
-      // (no equivalent Prisma where-clause).
-      const influencerTypeVal = this.determineInfluencerType({
-        compositeScore: a?.compositeScore ?? null,
-        scoreSurvey: a?.scoreSurvey ?? null,
-      }, thresholds);
-      if (influencerTypeFilter && !influencerTypeFilter.includes(influencerTypeVal)) {
+      // v1.17.42 — manual influencer-type from the data-team CSV
+      // upload. Null when not yet classified for this disease area.
+      const influencerTypeVal = influencerTypeMap.get(hcp.id) ?? null;
+      if (
+        influencerTypeFilter &&
+        (!influencerTypeVal || !influencerTypeFilter.includes(influencerTypeVal))
+      ) {
         continue;
       }
 
