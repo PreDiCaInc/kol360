@@ -608,6 +608,11 @@ function ProfileView({
   const { isImpersonating } = useImpersonation();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN' && !isImpersonating;
   const [showAllNominators, setShowAllNominators] = useState(false);
+  // v1.17.47 — Excel export for the Nominators table. Same useExcelExport
+  // hook + filename / sheetName pattern as the main 'Export Excel' on
+  // the KOL Explorer tab. Includes ALL sorted nominators (not just the
+  // currently-shown 25) since the customer's use case is offline review.
+  const { status: nominatorsExportStatus, exportExcel: exportNominatorsExcel } = useExcelExport();
   // v1.17.45 — extended with 'npi'; campaignName stays sortable but
   // the column only renders for PLATFORM_ADMIN per pteam request.
   const [nominatorSortField, setNominatorSortField] = useState<'name' | 'npi' | 'specialty' | 'state' | 'nominationType' | 'campaignName'>('name');
@@ -765,6 +770,44 @@ function ProfileView({
     }
   };
 
+  // v1.17.47 — Excel export of the Nominators table. Always exports
+  // the FULL sortedNominators list (current sort applied) — not just
+  // the 25 shown when Show All is collapsed. Campaign column included
+  // only for PLATFORM_ADMIN, matching the on-screen role gate.
+  const handleExportNominators = useCallback(() => {
+    if (!sortedNominators.length) return;
+    const headers = [
+      'Rank',
+      'Name',
+      'NPI',
+      'Specialty',
+      'State',
+      'Nomination Type',
+      ...(isPlatformAdmin ? ['Campaign'] : []),
+      'Responded At',
+    ];
+    const rows = sortedNominators.map((n, i) => [
+      i + 1,
+      n.name,
+      n.npi ?? '',
+      n.specialty ?? '',
+      n.state ?? '',
+      NOMINATION_TYPE_LABELS[n.nominationType as NominationType] || n.nominationType,
+      ...(isPlatformAdmin ? [n.campaignName] : []),
+      n.respondedAt,
+    ]);
+    const safeName = (profile?.name ?? 'kol')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+    exportNominatorsExcel({
+      filename: `${safeName}-nominators`,
+      headers,
+      rows,
+      sheetName: 'Nominators',
+    });
+  }, [sortedNominators, isPlatformAdmin, profile?.name, exportNominatorsExcel]);
+
   const handleStateSort = (field: typeof stateSortField) => {
     if (stateSortField === field) {
       setStateSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
@@ -914,11 +957,27 @@ function ProfileView({
                         : `Showing ${Math.min(25, profile.nominators.length)} of ${profile.nominators.length} nominators`}
                     </CardDescription>
                   </div>
-                  {profile.nominators.length > 25 && (
-                    <Button variant="outline" size="sm" onClick={() => setShowAllNominators(!showAllNominators)}>
-                      {showAllNominators ? 'Show Less' : 'Show All'}
+                  {/* v1.17.47 — table actions: Export Excel always
+                      visible; Show All/Less only when > 25 rows. */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportNominators}
+                      disabled={!sortedNominators.length || nominatorsExportStatus === 'exporting'}
+                    >
+                      {nominatorsExportStatus === 'success' ? (
+                        <><Check className="h-3.5 w-3.5 mr-1.5 text-green-600" />Exported!</>
+                      ) : (
+                        <><FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" />Export Excel</>
+                      )}
                     </Button>
-                  )}
+                    {profile.nominators.length > 25 && (
+                      <Button variant="outline" size="sm" onClick={() => setShowAllNominators(!showAllNominators)}>
+                        {showAllNominators ? 'Show Less' : 'Show All'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
