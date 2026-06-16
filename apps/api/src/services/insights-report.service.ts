@@ -108,6 +108,16 @@ export interface RespondentFilters {
   dedPatientsMax?: number;
 }
 
+// v1.17.47 — parse the numeric portion of a "Decile N" label so
+// distributions can be re-sorted into ordinal order (1 → 10) instead
+// of the count-desc default applied by mapToDistribution /
+// mapToSimpleDistribution. Returns 0 for malformed inputs so they
+// land at the start (safe default; doesn't reorder valid deciles).
+function decileNum(label: string): number {
+  const m = /(\d+)/.exec(label);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 function hasAnyRespondentFilter(f?: RespondentFilters): boolean {
   if (!f) return false;
   return (
@@ -2010,10 +2020,16 @@ export class InsightsReportService {
       const byCoreFocus = cat(coreFocusRows);
       const byState = cat(stateRows);
 
-      // Decile rows → 'Decile N' labels for distribution
+      // Decile rows → 'Decile N' labels for distribution.
+      // v1.17.47 — sort by decile NUMBER (1 → 10) not count desc, so
+      // the bar chart reads left-to-right in the natural decile order
+      // instead of highest-population first. mapToDistribution defaults
+      // to count-desc sort, which made sense for categorical labels
+      // like states / specialties but not for an ordinal scale.
       const decileCounts = new Map<string, number>();
       for (const r of decileRows) decileCounts.set(`Decile ${r.decile}`, r.count);
-      const byDecile = this.mapToDistribution(decileCounts, totalRespondents);
+      const byDecile = this.mapToDistribution(decileCounts, totalRespondents)
+        .sort((a, b) => decileNum(a.name) - decileNum(b.name));
 
       const byMonthlyPatients = this.bucketNumbers(
         monthlyPatientsRows.map((r) => Number(r.val)),
@@ -2437,7 +2453,9 @@ export class InsightsReportService {
         byMonthlyPatients,
         byDedPatients,
         byYearsInPractice,
-        byDecile: this.mapToSimpleDistribution(decileCounts),
+        // v1.17.47 — same decile-ordinal sort as the demographics path.
+        byDecile: this.mapToSimpleDistribution(decileCounts)
+          .sort((a, b) => decileNum(a.name) - decileNum(b.name)),
         topicsDiscussed,
         nominators,
       };
