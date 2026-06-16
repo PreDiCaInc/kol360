@@ -862,17 +862,20 @@ function ProfileView({
         </Card>
       ) : (
         <>
-          {/* KOL Name Header + NPI.
-              v1.17.46 — NPI shown directly under the name (pteam:
-              'can we also have the person's npi in the hcp detail
-              view as well — maybe right under the name'). Muted
-              font-mono so it visually defers to the hero h2. */}
-          <div className="space-y-1">
+          {/* KOL Name Header + NPI inline.
+              v1.17.46 — NPI added.
+              v1.17.47 — NPI moved inline next to the name (pteam:
+              'move the NPI next to the name — maybe smaller font —
+              then below looks weird'). items-baseline aligns the
+              small NPI text to the baseline of the hero h2.
+              flex-wrap so long names with credentials still fit on
+              narrow viewports. */}
+          <div className="flex items-baseline gap-3 flex-wrap">
             <h2 className="text-4xl font-extrabold tracking-tight">{profile.name}</h2>
             {profile.npi && (
-              <p className="text-sm font-mono text-muted-foreground tabular-nums">
+              <span className="text-sm font-mono text-muted-foreground tabular-nums">
                 NPI {profile.npi}
-              </p>
+              </span>
             )}
           </div>
 
