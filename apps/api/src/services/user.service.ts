@@ -1,6 +1,40 @@
+import { randomBytes } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { cognitoService } from './cognito.service';
+import { emailService } from './email.service';
+import { logger } from '../lib/logger';
 import { CreateUserInput, UpdateUserInput } from '@kol360/shared';
+
+// v1.17.48 — generate a strong temp password that satisfies the
+// Cognito user-pool password policy (lowercase + uppercase + number
+// + special, min length 8). 18 url-safe-ish chars + a guaranteed
+// symbol + 'Aa1' suffix ensures all four character classes are
+// present even if the random portion happens to miss one.
+function generateTempPassword(): string {
+  const random = randomBytes(16)
+    .toString('base64')
+    .replace(/[+/=]/g, '')
+    .slice(0, 14);
+  // Random suffix from a small symbol pool — guarantees the special
+  // character class. Then 'Aa1' guarantees upper / lower / digit.
+  const symbols = '!@#$%&*';
+  const sym = symbols[randomBytes(1)[0] % symbols.length];
+  return `${random}${sym}Aa1`;
+}
+
+// v1.17.48 — pretty role label for the invite email body.
+function roleLabelFor(role: string): string {
+  switch (role) {
+    case 'PLATFORM_ADMIN':
+      return 'Platform Administrator';
+    case 'CLIENT_ADMIN':
+      return 'Client Administrator';
+    case 'TEAM_MEMBER':
+      return 'Team Member';
+    default:
+      return role.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
+  }
+}
 
 interface ListQuery {
   clientId?: string;
@@ -114,8 +148,17 @@ export class UserService {
       validateEmailForClient(data.email, client);
     }
 
+    // v1.17.48 — generate our own temp password so Cognito's default
+    // one-line "username + temp password" email is suppressed (the
+    // MessageAction='SUPPRESS' branch in cognitoService.createUser
+    // triggers when a tempPassword is provided). We then send a
+    // properly-branded invite email via SES with a real sign-in link.
+    // Pteam: pre-fix users got one ugly line from Cognito with no
+    // link to the app and no branding.
+    const tempPassword = generateTempPassword();
+
     // Create in Cognito first - must succeed before creating DB record
-    const cognitoUser = await cognitoService.createUser(data.email);
+    const cognitoUser = await cognitoService.createUser(data.email, tempPassword);
 
     if (!cognitoUser?.Username) {
       throw new Error('Failed to create user in Cognito');
@@ -134,8 +177,7 @@ export class UserService {
       cognitoService.getRoleGroup(data.role)
     );
 
-    // Only create in database after Cognito operations succeed
-    return prisma.user.create({
+    const dbUser = await prisma.user.create({
       data: {
         cognitoSub: cognitoUser.Username,
         email: data.email,
@@ -146,6 +188,38 @@ export class UserService {
         status: 'PENDING_VERIFICATION',
       },
     });
+
+    // v1.17.48 — send our own polished invitation email via SES.
+    // Resolve client name (if any) so the email can address it.
+    // Wrapped in try/catch: a send failure shouldn't roll back the
+    // Cognito + DB state (the admin can resend later via the existing
+    // resend path). Logged so ops can spot it.
+    try {
+      let clientName: string | undefined;
+      if (data.clientId) {
+        const client = await prisma.client.findUnique({
+          where: { id: data.clientId },
+          select: { name: true },
+        });
+        clientName = client?.name;
+      }
+      await emailService.sendUserInvitation({
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        tempPassword,
+        roleLabel: roleLabelFor(data.role),
+        clientName,
+      });
+    } catch (err) {
+      logger.error('Failed to send user invitation email — Cognito user + DB row remain. Admin should resend.', {
+        userId: dbUser.id,
+        email: data.email,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return dbUser;
   }
 
   async update(id: string, data: UpdateUserInput) {
