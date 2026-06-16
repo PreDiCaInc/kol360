@@ -81,6 +81,115 @@ interface BulkSendResult {
 
 export class EmailService {
   /**
+   * v1.17.48 — user invitation email. Replaces Cognito's default
+   * one-line "username + temp password" email (no branding, no
+   * sign-in link). Mirrors the sendSurveyInvitation polished
+   * template: gradient header with logo, CTA button, code-style
+   * temp-password block, plain-text fallback.
+   *
+   * Caller (userService.invite) generates the temp password itself
+   * and passes both the password AND MessageAction='SUPPRESS' to
+   * Cognito's adminCreateUser — so Cognito sends nothing and we
+   * own the entire invite experience.
+   */
+  async sendUserInvitation(params: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    tempPassword: string;
+    roleLabel: string;
+    clientName?: string;
+  }): Promise<{ messageId: string }> {
+    const { email, firstName, lastName, tempPassword, roleLabel, clientName } = params;
+
+    const loginUrl = `${APP_URL}/login`;
+    const subject = 'Welcome to KOL360 — your account is ready';
+
+    const clientLine = clientName
+      ? `<p style="margin: 0 0 16px 0; color: #374151;">You've been invited to access <strong>${clientName}</strong>'s analytics on KOL360.</p>`
+      : `<p style="margin: 0 0 16px 0; color: #374151;">You've been invited to access KOL360.</p>`;
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.7; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+  <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+    <div style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
+      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" style="height: 36px; margin-bottom: 8px;">
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Key Opinion Leader Analytics</p>
+    </div>
+
+    <div style="padding: 32px 24px;">
+      <h2 style="color: #147a6d; margin: 0 0 20px 0; font-size: 22px; font-weight: 600;">Welcome, ${firstName} ${lastName}</h2>
+
+      ${clientLine}
+
+      <p style="margin: 0 0 16px 0; color: #374151;">Your account has been created. Use the temporary credentials below to sign in for the first time — you'll be prompted to choose a permanent password.</p>
+
+      <div style="background: #f8fafc; border-left: 4px solid #147a6d; border-radius: 8px; padding: 16px 20px; margin: 24px 0;">
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600;">Username</p>
+        <p style="margin: 0 0 16px 0; font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 14px; color: #1a1a2e; word-break: break-all;">${email}</p>
+
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600;">Temporary password</p>
+        <p style="margin: 0; font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 16px; color: #147a6d; font-weight: 600; letter-spacing: 0.5px; word-break: break-all;">${tempPassword}</p>
+      </div>
+
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${loginUrl}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
+          Sign In to KOL360
+        </a>
+      </div>
+
+      <p style="margin: 0 0 4px 0; color: #6b7280; font-size: 14px;">Role: <span style="color: #1a1a2e; font-weight: 600;">${roleLabel}</span></p>
+
+      <p style="font-size: 13px; color: #6b7280; margin: 24px 0 8px 0;">If the button doesn't work, copy this link:</p>
+      <p style="word-break: break-all; color: #147a6d; font-size: 13px; background: #f8fafc; padding: 12px; border-radius: 8px; margin: 0;">${loginUrl}</p>
+
+      <p style="font-size: 12px; color: #9ca3af; margin: 24px 0 0 0;">For your security, do not share this temporary password. It can only be used once and expires after your first sign-in.</p>
+    </div>
+
+    <div style="background: #f8fafc; padding: 24px; border-top: 1px solid #e5e7eb;">
+      <p style="font-size: 13px; color: #6b7280; margin: 0 0 8px 0; text-align: center;">
+        If you weren't expecting this invitation, please disregard this email or contact your administrator.
+      </p>
+      <p style="font-size: 12px; color: #9ca3af; text-align: center; margin: 0;">
+        BioExec Research &middot; KOL360 Platform
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim();
+
+    const textBody = `
+Welcome, ${firstName} ${lastName}
+
+${clientName ? `You've been invited to access ${clientName}'s analytics on KOL360.` : `You've been invited to access KOL360.`}
+
+Your account has been created. Use the temporary credentials below to sign in for the first time — you'll be prompted to choose a permanent password.
+
+Username:           ${email}
+Temporary password: ${tempPassword}
+
+Sign in: ${loginUrl}
+
+Role: ${roleLabel}
+
+For your security, do not share this temporary password. It can only be used once and expires after your first sign-in.
+
+If you weren't expecting this invitation, please disregard this email or contact your administrator.
+
+BioExec Research — KOL360 Platform
+    `.trim();
+
+    return this.sendEmail({ to: email, subject, htmlBody, textBody });
+  }
+
+  /**
    * Send a single email via SES
    */
   async sendEmail(params: SendEmailParams): Promise<{ messageId: string }> {

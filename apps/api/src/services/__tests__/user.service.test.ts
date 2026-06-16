@@ -183,7 +183,14 @@ describe('UserService', () => {
         clientId: 'client-1',
       });
 
-      expect(cognitoService.createUser).toHaveBeenCalledWith('test@example.com');
+      // v1.17.48 — createUser now gets a generated tempPassword as
+      // the 2nd arg so Cognito suppresses its default email and we
+      // send our own polished invite via SES. Assert email is the
+      // 1st arg + a non-empty string password is the 2nd.
+      expect(cognitoService.createUser).toHaveBeenCalledWith(
+        'test@example.com',
+        expect.stringMatching(/.{8,}/),
+      );
       expect(cognitoService.updateUserAttributes).toHaveBeenCalledWith(
         'test@example.com',
         { tenantId: 'client-1' }
