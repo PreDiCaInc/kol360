@@ -976,6 +976,24 @@ export class InsightsReportService {
 
     // Build nominators list. v1.17.45 — npi surfaced for the
     // Nominators table on the KOL Profile view.
+    // v1.17.47 — hasScores: true when the nominator has an
+    // HcpAnalysisScore row in THIS analysis. Frontend uses this to
+    // conditionally hyperlink the nominator name to their own KOL
+    // Profile. Nominators without an analysis row would render an
+    // empty profile (no segment/composite scores), so we don't
+    // link them. One batched query — cheap.
+    const nominatorHcpIds = Array.from(
+      new Set(nominations.filter((n) => n.nominatorHcp).map((n) => n.nominatorHcp!.id)),
+    );
+    const scoredNominatorIds = nominatorHcpIds.length === 0
+      ? new Set<string>()
+      : new Set(
+          (await prisma.hcpAnalysisScore.findMany({
+            where: { analysisId: analysis.id, hcpId: { in: nominatorHcpIds } },
+            select: { hcpId: true },
+          })).map((r) => r.hcpId),
+        );
+
     const nominators: NominatorItem[] = nominations
       .filter((n) => n.nominatorHcp)
       .map((n) => {
@@ -989,6 +1007,7 @@ export class InsightsReportService {
           nominationType: n.question.nominationType as NominationType,
           campaignName: n.response?.campaign?.name || 'Unknown Campaign',
           respondedAt: n.createdAt.toISOString(),
+          hasScores: scoredNominatorIds.has(nomHcp.id),
         };
       });
 

@@ -1006,7 +1006,25 @@ function ProfileView({
                     <tbody>
                       {displayedNominators.map((nominator, index) => (
                         <tr key={`${nominator.id}-${index}`} className="border-b last:border-b-0 hover:bg-muted/30">
-                          <td className="px-3 py-2 font-medium">{nominator.name}</td>
+                          {/* v1.17.47 — nominator name links to their KOL
+                              Profile only when hasScores is true (i.e.
+                              they have an HcpAnalysisScore row in this
+                              analysis — their profile would render
+                              usefully). Otherwise plain text since
+                              their profile would be empty. */}
+                          <td className="px-3 py-2 font-medium">
+                            {nominator.hasScores ? (
+                              <button
+                                type="button"
+                                onClick={() => handleKolChange(nominator.id)}
+                                className="text-primary hover:underline focus:outline-none focus:underline text-left"
+                              >
+                                {nominator.name}
+                              </button>
+                            ) : (
+                              nominator.name
+                            )}
+                          </td>
                           <td className="px-3 py-2 font-mono text-xs tabular-nums">{nominator.npi || '-'}</td>
                           <td className="px-3 py-2">{nominator.specialty || '-'}</td>
                           <td className="px-3 py-2">{nominator.state || '-'}</td>

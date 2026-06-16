@@ -297,6 +297,11 @@ export type SociometricSummaryResponse = z.infer<typeof sociometricSummaryRespon
 // v1.17.45 — npi added so the Nominators table on the KOL Profile
 // view can show NPI alongside name (pteam request, for HCP lookup
 // from the profile context).
+// v1.17.47 — hasScores added: true when the nominator has an
+// HcpAnalysisScore row in this analysis (i.e. they would render
+// usefully if we navigate to their profile). Frontend uses this
+// to conditionally hyperlink the name — nominators without scores
+// stay as plain text since their profile would be empty.
 export const nominatorItemSchema = z.object({
   id: z.string(),
   npi: z.string().nullable(),
@@ -306,6 +311,7 @@ export const nominatorItemSchema = z.object({
   nominationType: nominationTypeSchema,
   campaignName: z.string(),
   respondedAt: z.string(), // ISO date
+  hasScores: z.boolean().default(false),
 });
 
 export type NominatorItem = z.infer<typeof nominatorItemSchema>;
