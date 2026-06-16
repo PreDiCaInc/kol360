@@ -165,15 +165,27 @@ export default function HcpScoresPage() {
       ? OVERVIEW_SCORE_COLUMNS.map((c) => ({ key: c.key, label: c.label }))
       : SURVEY_SCORE_COLUMNS.map((c) => ({ key: c.key, label: c.label }));
 
-  const { data, isLoading, isError, error, refetch } = useHcps({
-    ...filters,
-    query: filters.query,
-  });
   const { data: filterOptions } = useHcpFilters();
   const { data: diseaseAreas = [] } = useDiseaseAreas();
 
   // Set default disease area when loaded
   const activeDiseaseAreaId = selectedDiseaseAreaId || diseaseAreas[0]?.id;
+
+  // v1.17.47 — scope the HCP list to the active disease area.
+  //
+  // Pre-fix: useHcps was called without diseaseAreaIds, so search
+  // returned ALL HCPs across the platform. Per-row score lookup then
+  // pulled scores for the selected DA — for HCPs not linked to that
+  // DA, every score cell rendered as "—". Paul Karpecki (Optometry,
+  // dry-eye) showed up when DA=Medical Oncology with all dashes.
+  //
+  // Fix: pass diseaseAreaIds: [activeDiseaseAreaId] so the search
+  // only returns HCPs with an HcpDiseaseArea link to the active DA.
+  const { data, isLoading, isError, error, refetch } = useHcps({
+    ...filters,
+    query: filters.query,
+    diseaseAreaIds: activeDiseaseAreaId ? [activeDiseaseAreaId] : undefined,
+  });
 
   // handleRecalculateComposites removed in Phase 3 PR A — see Recalculate
   // button on /admin/kol-analysis/<id> for the modern, per-analysis recompute.

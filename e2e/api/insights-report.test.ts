@@ -545,6 +545,30 @@ describe('Insights Report API', () => {
       expect(data.id).toBe(testHcpId);
       expect(data.scores).toBeTruthy();
 
+      // v1.17.45 — nominators carry npi (string | null).
+      // v1.17.47 — nominators carry hasScores (boolean). True when
+      // they have an HcpAnalysisScore row in this analysis (frontend
+      // uses this to hyperlink the name to their KOL Profile).
+      if (Array.isArray(data.nominators) && data.nominators.length > 0) {
+        const n = data.nominators[0] as { npi?: string | null; hasScores?: boolean };
+        expect(typeof n.hasScores).toBe('boolean');
+        // npi is nullable but the field must be present.
+        expect('npi' in n).toBe(true);
+      }
+
+      // v1.17.47 — nominatorDemographics.byDecile sorted ordinally
+      // (1→10), same as the demographics endpoint above.
+      const nomDecile = (data as unknown as { nominatorDemographics?: { byDecile?: { name: string }[] } }).nominatorDemographics?.byDecile;
+      if (Array.isArray(nomDecile) && nomDecile.length > 1) {
+        const nums = nomDecile.map((d) => {
+          const m = /(\d+)/.exec(d.name);
+          return m ? parseInt(m[1], 10) : 0;
+        });
+        for (let i = 1; i < nums.length; i++) {
+          expect(nums[i]).toBeGreaterThanOrEqual(nums[i - 1]);
+        }
+      }
+
       console.log(`✅ KOL profile: ${data.firstName} ${data.lastName}`);
     });
 
@@ -586,6 +610,18 @@ describe('Insights Report API', () => {
       expect(Array.isArray(data.byYearsInPractice)).toBe(true);
       expect(Array.isArray(data.byState)).toBe(true);
       expect(Array.isArray(data.byDecile)).toBe(true);
+
+      // v1.17.47 — byDecile sorted by decile NUMBER ascending (1→10),
+      // not by count desc (which was the pre-fix default of
+      // mapToDistribution). Pre-fix the chart rendered tallest-bar-first;
+      // post-fix the bars walk left-to-right in natural decile order.
+      const decileNums = data.byDecile.map((d: { name: string }) => {
+        const m = /(\d+)/.exec(d.name);
+        return m ? parseInt(m[1], 10) : 0;
+      });
+      for (let i = 1; i < decileNums.length; i++) {
+        expect(decileNums[i]).toBeGreaterThanOrEqual(decileNums[i - 1]);
+      }
       expect(Array.isArray(data.educationalResources)).toBe(true);
       expect(Array.isArray(data.educationalResourcesAcademic)).toBe(true);
       expect(Array.isArray(data.educationalResourcesOther)).toBe(true);

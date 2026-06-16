@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createClientSchema, CreateClientInput } from '@kol360/shared';
@@ -29,6 +29,68 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+
+// v1.17.47 — parse comma/whitespace-separated domain input into a
+// normalized array. Empty input → []. Trims, lowercases, drops
+// empties + dupes. Backend re-validates via Zod (regex check) so we
+// just clean the shape here.
+function parseDomainsInput(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const piece of raw.split(/[\s,]+/)) {
+    const d = piece.trim().toLowerCase();
+    if (!d || seen.has(d)) continue;
+    seen.add(d);
+    out.push(d);
+  }
+  return out;
+}
+
+// v1.17.47 — domains input with local raw-text state.
+//
+// Pre-fix the Input was controlled directly off the parsed array:
+//   display = field.value.join(', ')
+//   onChange → parseDomainsInput → field.onChange(array)
+// Typing ',' or ' ' eats the separator: parse strips trailing
+// separators when re-joining, so the user's keystroke vanished
+// before they could finish the next domain. Could not actually
+// type a list at all.
+//
+// Fix: track the raw display string locally. Sync down from the
+// form value when it changes EXTERNALLY (parent re-renders with a
+// different array). Sync up to the form on blur — at which point
+// react-hook-form has the parsed array ready for validation /
+// submit. Submitting via the form Submit button blurs the input
+// first, so the form state catches up before onSubmit reads it.
+function DomainsInput({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [raw, setRaw] = useState<string>(() => value.join(', '));
+  // Re-sync raw text when the external value changes (form reset,
+  // edit-mode load, etc.) — but only if the parsed array differs
+  // from what we currently display. This guard prevents a
+  // ping-pong: user types ',' → raw updates → blur → onChange →
+  // parent re-renders → effect would otherwise overwrite raw.
+  useEffect(() => {
+    const externalAsString = value.join(', ');
+    if (externalAsString !== parseDomainsInput(raw).join(', ')) {
+      setRaw(externalAsString);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  return (
+    <Input
+      value={raw}
+      onChange={(e) => setRaw(e.target.value)}
+      onBlur={() => onChange(parseDomainsInput(raw))}
+      placeholder="sunpharma.com, na.sunpharma.com"
+    />
+  );
+}
 
 interface Props {
   open: boolean;
@@ -65,21 +127,6 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
       });
     }
   }, [client, form]);
-
-  // Parse comma/whitespace-separated domain input into a normalized array.
-  // Empty input → []. Trims, lowercases, drops empties + dupes. Backend
-  // re-validates via Zod (regex check) so we just clean the shape here.
-  function parseDomainsInput(raw: string): string[] {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const piece of raw.split(/[\s,]+/)) {
-      const d = piece.trim().toLowerCase();
-      if (!d || seen.has(d)) continue;
-      seen.add(d);
-      out.push(d);
-    }
-    return out;
-  }
 
   async function onSubmit(data: CreateClientInput) {
     try {
@@ -212,29 +259,25 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
             <FormField
               control={form.control}
               name="emailDomains"
-              render={({ field }) => {
-                const display = (field.value ?? []).join(', ');
-                return (
-                  <FormItem>
-                    <FormLabel>Allowed Email Domains *</FormLabel>
-                    <FormControl>
-                      <Input
-                        value={display}
-                        onChange={(e) => field.onChange(parseDomainsInput(e.target.value))}
-                        placeholder="sunpharma.com, na.sunpharma.com"
-                      />
-                    </FormControl>
-                    <p className="text-sm text-muted-foreground">
-                      Comma-separated. Users invited to this client must have
-                      an email at one of these domains.{' '}
-                      <strong>At least one domain is required.</strong>{' '}
-                      Bio-Exec staff (@bio-exec.com) are always allowed
-                      regardless of this list.
-                    </p>
-                    <FormMessage />
-                  </FormItem>
-                );
-              }}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Allowed Email Domains *</FormLabel>
+                  <FormControl>
+                    <DomainsInput
+                      value={field.value ?? []}
+                      onChange={field.onChange}
+                    />
+                  </FormControl>
+                  <p className="text-sm text-muted-foreground">
+                    Comma-separated. Users invited to this client must have
+                    an email at one of these domains.{' '}
+                    <strong>At least one domain is required.</strong>{' '}
+                    Bio-Exec staff (@bio-exec.com) are always allowed
+                    regardless of this list.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
 
             <div className="flex justify-end gap-2 pt-4">
