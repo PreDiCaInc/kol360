@@ -304,6 +304,68 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // v1.17.52 — Track B (Apply Filters batch UX) backend.
+  // Cheap COUNT endpoints powering the live "N match" indicator next to
+  // the Apply Filters button. Reuse the shared filter-parsing pipeline
+  // so the count semantics align row-for-row with the corresponding
+  // full-aggregation endpoint at Apply time.
+  //
+  // type=kols       → distinct HCPs matching (Sociometric Summary,
+  //                    KOL Explorer, Benchmarking; takes insightsFilterSchema)
+  // type=respondents → distinct respondents matching (Demographics;
+  //                    takes respondent filters only)
+  fastify.get<{ Params: { diseaseAreaId: string } }>(
+    '/:diseaseAreaId/match-count',
+    async (request, reply) => {
+      const { diseaseAreaId } = request.params;
+      const user = request.user!;
+
+      if (!(await verifyDiseaseAreaAccess(diseaseAreaId, user, reply))) {
+        return;
+      }
+
+      const q = request.query as Record<string, string>;
+      const type = q.type === 'respondents' ? 'respondents' : 'kols';
+      const clientId = resolveClientId(user, q);
+      const respondentFilters = parseRespondentFilters(q);
+
+      if (type === 'respondents') {
+        return requireClientId(reply, () =>
+          insightsReportService.getRespondentMatchCount(diseaseAreaId, respondentFilters, clientId)
+        );
+      }
+
+      // type === 'kols' — accept the full insightsFilterSchema
+      // (KOL-side categoricals + score ranges + search) plus
+      // respondent filters via the shared parser.
+      const filters = insightsFilterSchema.parse(request.query);
+      return requireClientId(reply, () =>
+        insightsReportService.getKolMatchCount(diseaseAreaId, filters, clientId, respondentFilters)
+      );
+    }
+  );
+
+  // KOL Profile drill-down match count — distinct nominators of the
+  // given HCP matching the current respondent filter set.
+  fastify.get<{ Params: { diseaseAreaId: string; hcpId: string } }>(
+    '/:diseaseAreaId/kol-profile/:hcpId/match-count',
+    async (request, reply) => {
+      const { diseaseAreaId, hcpId } = request.params;
+      const user = request.user!;
+
+      if (!(await verifyDiseaseAreaAccess(diseaseAreaId, user, reply))) {
+        return;
+      }
+
+      const q = request.query as Record<string, string>;
+      const clientId = resolveClientId(user, q);
+      const respondentFilters = parseRespondentFilters(q);
+      return requireClientId(reply, () =>
+        insightsReportService.getNominatorMatchCount(diseaseAreaId, hcpId, respondentFilters, clientId)
+      );
+    }
+  );
+
   // Get filter options (specialties, states with data in this disease area)
   fastify.get<{ Params: { diseaseAreaId: string } }>(
     '/:diseaseAreaId/filter-options',

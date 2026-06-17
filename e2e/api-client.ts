@@ -1150,6 +1150,86 @@ export class ApiClient {
     return this.request<FilterOptions>('GET', `/api/v1/insights/${diseaseAreaId}/filter-options`);
   }
 
+  // v1.17.52 — Track B: live "N match" count next to Apply Filters.
+  async getInsightsMatchCount(
+    diseaseAreaId: string,
+    params: {
+      type: 'kols' | 'respondents';
+      clientId?: string;
+      // categorical
+      respondentRoles?: string;
+      coreFocuses?: string;
+      stateOfPractices?: string;
+      practiceSettings?: string;
+      // numeric ranges
+      yearsMin?: number;
+      yearsMax?: number;
+      monthlyPatientsMin?: number;
+      monthlyPatientsMax?: number;
+      dedPatientsMin?: number;
+      dedPatientsMax?: number;
+      // KOL-side (only honored when type=kols)
+      specialties?: string | string[];
+      states?: string | string[];
+      influencerTypes?: string | string[];
+      search?: string;
+    }
+  ) {
+    const query = new URLSearchParams();
+    query.set('type', params.type);
+    if (params.clientId) query.set('clientId', params.clientId);
+    if (params.respondentRoles) query.set('respondentRoles', params.respondentRoles);
+    if (params.coreFocuses) query.set('coreFocuses', params.coreFocuses);
+    if (params.stateOfPractices) query.set('stateOfPractices', params.stateOfPractices);
+    if (params.practiceSettings) query.set('practiceSettings', params.practiceSettings);
+    if (params.yearsMin !== undefined) query.set('yearsMin', params.yearsMin.toString());
+    if (params.yearsMax !== undefined) query.set('yearsMax', params.yearsMax.toString());
+    if (params.monthlyPatientsMin !== undefined) query.set('monthlyPatientsMin', params.monthlyPatientsMin.toString());
+    if (params.monthlyPatientsMax !== undefined) query.set('monthlyPatientsMax', params.monthlyPatientsMax.toString());
+    if (params.dedPatientsMin !== undefined) query.set('dedPatientsMin', params.dedPatientsMin.toString());
+    if (params.dedPatientsMax !== undefined) query.set('dedPatientsMax', params.dedPatientsMax.toString());
+    const append = (key: string, v?: string | string[]) => {
+      if (v === undefined) return;
+      const arr = Array.isArray(v) ? v : [v];
+      for (const item of arr) query.append(key, item);
+    };
+    append('specialties', params.specialties);
+    append('states', params.states);
+    append('influencerTypes', params.influencerTypes);
+    if (params.search) query.set('search', params.search);
+    return this.request<{ count: number }>(
+      'GET',
+      `/api/v1/insights/${diseaseAreaId}/match-count?${query.toString()}`
+    );
+  }
+
+  async getInsightsNominatorMatchCount(
+    diseaseAreaId: string,
+    hcpId: string,
+    params: {
+      clientId?: string;
+      respondentRoles?: string;
+      coreFocuses?: string;
+      stateOfPractices?: string;
+      practiceSettings?: string;
+      yearsMin?: number;
+      yearsMax?: number;
+    }
+  ) {
+    const query = new URLSearchParams();
+    if (params.clientId) query.set('clientId', params.clientId);
+    if (params.respondentRoles) query.set('respondentRoles', params.respondentRoles);
+    if (params.coreFocuses) query.set('coreFocuses', params.coreFocuses);
+    if (params.stateOfPractices) query.set('stateOfPractices', params.stateOfPractices);
+    if (params.practiceSettings) query.set('practiceSettings', params.practiceSettings);
+    if (params.yearsMin !== undefined) query.set('yearsMin', params.yearsMin.toString());
+    if (params.yearsMax !== undefined) query.set('yearsMax', params.yearsMax.toString());
+    return this.request<{ count: number }>(
+      'GET',
+      `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}/match-count?${query.toString()}`
+    );
+  }
+
   /**
    * v1.17.4: demographics endpoint accepts comma-separated multi-select
    * for the 4 categorical filters (respondentRoles, coreFocuses,
