@@ -2724,6 +2724,242 @@ export class InsightsReportService {
     }
     return 'Regional Influencers';
   }
+
+  /**
+   * v1.17.52 — Track B (Apply Filters batch UX) backend.
+   *
+   * Three cheap COUNT methods that power the live "N match" indicator
+   * next to the Apply Filters button. The point is to be MUCH cheaper
+   * than the corresponding full-aggregation endpoint so the count can
+   * update on every dropdown change (debounced ~250ms client-side).
+   *
+   * Semantic contract: "if I clicked Apply right now, how many of THIS
+   * thing would the resulting page show?"
+   *   - getKolMatchCount      → distinct HCPs (Sociometric Summary,
+   *                              KOL Explorer, Benchmarking)
+   *   - getRespondentMatchCount → distinct respondents (Demographics)
+   *   - getNominatorMatchCount → distinct nominators of an HCP
+   *                              (KOL Profile drill-down)
+   *
+   * Implementation choices:
+   *   - Reuse existing helpers (resolveAnalysis, loadAnalysisScores,
+   *     getFilteredResponseIds, computeRespondentFilteredCounts,
+   *     loadManualInfluencerTypes, resolveAccessibleCampaignIds) so
+   *     filter semantics stay aligned with the full endpoints.
+   *   - HCP set is bounded (<1500 on prod) → applying score-range
+   *     filters in JS post-load is fine; no need for SQL gymnastics.
+   *   - No sort, no pagination, no aggregation columns returned.
+   *
+   * Each method returns `{ count }`. Frontend never sees the
+   * intermediate scoreMap / hcp rows.
+   */
+  async getKolMatchCount(
+    diseaseAreaId: string,
+    filters: InsightsFilter,
+    clientId?: string,
+    respondentFilters?: RespondentFilters
+  ): Promise<{ count: number }> {
+    try {
+      const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+      if (!analysis) return { count: 0 };
+
+      const scoreMap = await this.loadAnalysisScores(analysis.id);
+      let hcpIds = [...scoreMap.keys()];
+      if (hcpIds.length === 0) return { count: 0 };
+
+      // Respondent-filter funnel: keep only HCPs nominated by a
+      // filtered response. Matches getSociometricSummary semantics.
+      if (hasAnyRespondentFilter(respondentFilters)) {
+        const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
+        const filteredResponseIds = await this.getFilteredResponseIds(
+          respondentFilters!,
+          includedCampaignIds
+        );
+        if (filteredResponseIds.size === 0) return { count: 0 };
+        const perHcpCounts = await this.computeRespondentFilteredCounts(filteredResponseIds);
+        hcpIds = hcpIds.filter((id) => perHcpCounts.has(id));
+        if (hcpIds.length === 0) return { count: 0 };
+      }
+
+      // Score-range filters — applied in JS against the cached
+      // scoreMap. Mirrors getKolExplorer:673-682.
+      const sf = filters as unknown as Record<string, number | undefined>;
+      const num = (v: unknown): number | null => (v == null ? null : Number(v));
+      const inRange = (v: number | null, min?: number, max?: number) => {
+        if (min !== undefined && (v == null || v < min)) return false;
+        if (max !== undefined && (v == null || v > max)) return false;
+        return true;
+      };
+      // Live objective scores join (matches getKolExplorer).
+      const objMap =
+        sf.scorePublicationsMin !== undefined || sf.scorePublicationsMax !== undefined ||
+        sf.scoreTradePubsMin !== undefined || sf.scoreTradePubsMax !== undefined ||
+        sf.scoreOrgLeadershipMin !== undefined || sf.scoreOrgLeadershipMax !== undefined ||
+        sf.scoreOrgAwardsMin !== undefined || sf.scoreOrgAwardsMax !== undefined ||
+        sf.scoreClinicalTrialsMin !== undefined || sf.scoreClinicalTrialsMax !== undefined ||
+        sf.scoreConferenceMin !== undefined || sf.scoreConferenceMax !== undefined ||
+        sf.scoreSocialMediaMin !== undefined || sf.scoreSocialMediaMax !== undefined ||
+        sf.scoreMediaPodcastsMin !== undefined || sf.scoreMediaPodcastsMax !== undefined
+          ? await this.loadObjectiveScores(hcpIds, diseaseAreaId)
+          : new Map();
+
+      hcpIds = hcpIds.filter((id) => {
+        const a = scoreMap.get(id);
+        if (!a) return false;
+        const o = objMap.get(id);
+        if (!inRange(num(o?.scorePublications), sf.scorePublicationsMin, sf.scorePublicationsMax)) return false;
+        if (!inRange(num(o?.scoreTradePubs), sf.scoreTradePubsMin, sf.scoreTradePubsMax)) return false;
+        if (!inRange(num(o?.scoreOrgLeadership), sf.scoreOrgLeadershipMin, sf.scoreOrgLeadershipMax)) return false;
+        if (!inRange(num(o?.scoreOrgAwards), sf.scoreOrgAwardsMin, sf.scoreOrgAwardsMax)) return false;
+        if (!inRange(num(o?.scoreClinicalTrials), sf.scoreClinicalTrialsMin, sf.scoreClinicalTrialsMax)) return false;
+        if (!inRange(num(o?.scoreConference), sf.scoreConferenceMin, sf.scoreConferenceMax)) return false;
+        if (!inRange(num(o?.scoreSocialMedia), sf.scoreSocialMediaMin, sf.scoreSocialMediaMax)) return false;
+        if (!inRange(num(o?.scoreMediaPodcasts), sf.scoreMediaPodcastsMin, sf.scoreMediaPodcastsMax)) return false;
+        if (!inRange(num(a.scoreSurvey), sf.scoreSurveyMin, sf.scoreSurveyMax)) return false;
+        if (!inRange(num(a.compositeScore), sf.compositeScoreMin, sf.compositeScoreMax)) return false;
+        return true;
+      });
+      if (hcpIds.length === 0) return { count: 0 };
+
+      // Manual influencer type filter (loaded only if requested).
+      const influencerTypeFilter =
+        filters.influencerTypes && filters.influencerTypes.length > 0
+          ? filters.influencerTypes
+          : filters.influencerType
+            ? [filters.influencerType]
+            : null;
+      if (influencerTypeFilter) {
+        const influencerTypeMap = await this.loadManualInfluencerTypes(hcpIds, diseaseAreaId);
+        hcpIds = hcpIds.filter((id) => {
+          const t = influencerTypeMap.get(id);
+          return t != null && influencerTypeFilter.includes(t);
+        });
+        if (hcpIds.length === 0) return { count: 0 };
+      }
+
+      // Final: KOL-side categorical (specialty/state) + name/NPI
+      // search, applied via a SQL COUNT (cheapest).
+      const hcpWhere: Record<string, unknown> = { id: { in: hcpIds } };
+      if (filters.specialties && filters.specialties.length > 0) {
+        hcpWhere.specialty = { in: filters.specialties };
+      } else if (filters.specialty) {
+        hcpWhere.specialty = filters.specialty;
+      }
+      if (filters.states && filters.states.length > 0) {
+        hcpWhere.state = { in: filters.states };
+      } else if (filters.state) {
+        hcpWhere.state = filters.state;
+      }
+      // Search: mirror getKolExplorer's "full name OR NPI contains" check.
+      if (filters.search) {
+        const s = filters.search;
+        hcpWhere.OR = [
+          { firstName: { contains: s, mode: 'insensitive' } },
+          { lastName: { contains: s, mode: 'insensitive' } },
+          { npi: { contains: s } },
+        ];
+      }
+
+      const count = await prisma.hcp.count({ where: hcpWhere });
+      return { count };
+    } catch (error) {
+      logger.error('Error computing KOL match count', { diseaseAreaId, error });
+      throw error;
+    }
+  }
+
+  async getRespondentMatchCount(
+    diseaseAreaId: string,
+    respondentFilters: RespondentFilters | undefined,
+    clientId?: string
+  ): Promise<{ count: number }> {
+    try {
+      if (!clientId) {
+        // Same contract as the 5 analysis-backed endpoints (v1.17.2).
+        throw new MissingClientIdError();
+      }
+
+      // Accessible campaigns = owned UNION analysis-included
+      // (v1.17.50). Lite-client + cross-tenant friendly.
+      const campaignIds = await this.resolveAccessibleCampaignIds(clientId, diseaseAreaId);
+      if (campaignIds.length === 0) return { count: 0 };
+
+      // Most-recent-completed-per-respondent (dedup), honoring each
+      // campaign's own excludeInternalEmails flag — mirrors the
+      // getDemographics line 1465+ semantic exactly.
+      const latestRows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT DISTINCT ON (sr."respondentHcpId") sr.id
+        FROM "SurveyResponse" sr
+        JOIN "Campaign" c ON c.id = sr."campaignId"
+        LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+        WHERE sr."campaignId" IN (${Prisma.join(campaignIds)})
+          AND sr.status = 'COMPLETED'
+          AND (
+            c."excludeInternalEmails" = false
+            OR h.email IS NULL
+            OR h.email NOT LIKE '%@bio-exec.com'
+          )
+        ORDER BY sr."respondentHcpId", sr."completedAt" DESC NULLS LAST
+      `;
+      const latestResponseIds = new Set(latestRows.map((r) => r.id));
+      if (latestResponseIds.size === 0) return { count: 0 };
+
+      // If respondent filters active, intersect with the filtered set.
+      if (hasAnyRespondentFilter(respondentFilters)) {
+        const filtered = await this.getFilteredResponseIds(respondentFilters!, campaignIds);
+        let n = 0;
+        for (const id of latestResponseIds) if (filtered.has(id)) n++;
+        return { count: n };
+      }
+
+      return { count: latestResponseIds.size };
+    } catch (error) {
+      logger.error('Error computing respondent match count', { diseaseAreaId, error });
+      throw error;
+    }
+  }
+
+  async getNominatorMatchCount(
+    diseaseAreaId: string,
+    hcpId: string,
+    respondentFilters: RespondentFilters | undefined,
+    clientId?: string
+  ): Promise<{ count: number }> {
+    try {
+      const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+      if (!analysis) return { count: 0 };
+
+      const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
+      if (includedCampaignIds.length === 0) return { count: 0 };
+
+      const responseFilter = hasAnyRespondentFilter(respondentFilters)
+        ? await this.getFilteredResponseIds(respondentFilters!, includedCampaignIds)
+        : null;
+      if (responseFilter !== null && responseFilter.size === 0) return { count: 0 };
+
+      // Distinct nominator HCP IDs for nominations matched to this HCP.
+      // Scoped to the analysis's included campaigns; if respondent
+      // filters are active, also scope to responseFilter.
+      const rows = await prisma.nomination.findMany({
+        where: {
+          matchedHcpId: hcpId,
+          matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
+          // nominatorHcpId is NOT NULL in schema — every nomination has
+          // a nominator (the respondent who submitted the survey).
+          response: {
+            campaignId: { in: includedCampaignIds },
+            ...(responseFilter && { id: { in: [...responseFilter] } }),
+          },
+        },
+        select: { nominatorHcpId: true },
+        distinct: ['nominatorHcpId'],
+      });
+      return { count: rows.length };
+    } catch (error) {
+      logger.error('Error computing nominator match count', { diseaseAreaId, hcpId, error });
+      throw error;
+    }
+  }
 }
 
 export const insightsReportService = new InsightsReportService();
