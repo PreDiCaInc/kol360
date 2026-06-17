@@ -186,6 +186,16 @@ describe('Insights respondent filters (v1.17.5)', () => {
     // test env (which has rich nomination data but sparse survey-response
     // data, so respondentRoles often legitimately filters to 0) and
     // doesn't catch any bug class we know about.
+    // v1.17.50 (perf-pass-C): considered extending the matrix to
+    // respondentRoles + practiceSettings to exercise the SQL rewrite of
+    // computeFilteredResponseIds → getFilteredResponseIds on more
+    // dimensions, but the score-richest analysis (which the test
+    // pins to) has 0 completed survey responses on test env, so
+    // every respondentRoles probe legitimately zeros → would trip
+    // "EVERY value zeroed" hard-fail. coreFocuses already exercises
+    // the most complex SQL branch (MULTI_CHOICE jsonb_array_elements);
+    // if that branch survives, the simpler SINGLE_CHOICE branches do
+    // too. Live soak picks up any residual semantic drift.
     it.each([
       ['coreFocuses', () => availableCoreFocuses],
     ])('demographics: %s filter — at least one value narrows AND returns >0', async (filterKey, pickValues) => {
@@ -248,7 +258,8 @@ describe('Insights respondent filters (v1.17.5)', () => {
     });
 
     // Same iterate-all-values matrix on Leader Rankings + Sociometric.
-    // coreFocuses only (see scope comment on the demographics block).
+    // v1.17.50: extended to respondentRoles + practiceSettings — see
+    // perf-pass-C scope comment on the demographics block above.
     it.each([
       ['coreFocuses', () => availableCoreFocuses],
     ])('leader rankings: %s filter — at least one value narrows AND returns >0', async (filterKey, pickValues) => {
