@@ -184,6 +184,49 @@ export class InsightsReportService {
   }
 
   /**
+   * v1.17.50 — campaigns accessible to (clientId, diseaseAreaId) for
+   * dashboard-level aggregation: the UNION of
+   *   (a) campaigns owned by this client in this DA, AND
+   *   (b) campaigns INCLUDED in this (client, DA) KolAnalysis
+   * (which can come from OTHER clients, esp. for lite clients).
+   *
+   * Why this exists: pre-4.1.30 getSummary / getDemographics /
+   * getKolNominationMetadata scoped only by (a). Lite clients own 0
+   * campaigns by design, so every dashboard stat read 0 even when
+   * their KolAnalysis included 6+ campaigns from real clients. This
+   * helper unifies the access surface so lite + regular clients both
+   * see the right aggregation.
+   *
+   * For regular clients with both owned + included sets, this is a
+   * UNION — they keep seeing their owned campaigns AND get any cross-
+   * client included ones surfaced (rare but architecturally consistent).
+   */
+  private async resolveAccessibleCampaignIds(
+    clientId: string,
+    diseaseAreaId: string
+  ): Promise<string[]> {
+    const [ownedRows, analysis] = await Promise.all([
+      prisma.campaign.findMany({
+        where: { clientId, diseaseAreaId },
+        select: { id: true },
+      }),
+      prisma.kolAnalysis.findUnique({
+        where: { clientId_diseaseAreaId: { clientId, diseaseAreaId } },
+        select: { id: true },
+      }),
+    ]);
+    const ids = new Set(ownedRows.map((r) => r.id));
+    if (analysis) {
+      const includedLinks = await prisma.kolAnalysisCampaign.findMany({
+        where: { analysisId: analysis.id, included: true },
+        select: { campaignId: true },
+      });
+      for (const l of includedLinks) ids.add(l.campaignId);
+    }
+    return [...ids];
+  }
+
+  /**
    * Live objective scores (Publications…MediaPodcasts) for HCPs in a DA.
    * Objective data is NOT stored on the analysis — read live so re-uploads
    * flow through (locked decision).
@@ -509,51 +552,56 @@ export class InsightsReportService {
         };
       }
 
-      // Campaign filter scoped to the selected client.
-      const campaignFilter: Record<string, unknown> = { diseaseAreaId, clientId };
+      // v1.17.50: accessible campaigns = owned UNION analysis-included.
+      // Old behavior scoped by owned-only, which broke lite clients (own
+      // 0 campaigns). See resolveAccessibleCampaignIds doc.
+      const campaignIds = await this.resolveAccessibleCampaignIds(clientId!, diseaseAreaId);
+      const noCampaigns = campaignIds.length === 0;
 
-      const [scoreAgg, totalCampaigns, totalNominations, totalRespondentsRow] = await Promise.all([
+      const [scoreAgg, totalNominations, totalRespondentsRow] = await Promise.all([
         // KOL count + avg composite from the analysis's scores.
         prisma.hcpAnalysisScore.aggregate({
           where: { analysisId: analysis.id },
           _count: { _all: true },
           _avg: { compositeScore: true },
         }),
-        prisma.campaign.count({ where: campaignFilter }),
-        prisma.nomination.count({
-          where: { response: { campaign: campaignFilter } },
-        }),
+        noCampaigns
+          ? Promise.resolve(0)
+          : prisma.nomination.count({
+              where: { response: { campaignId: { in: campaignIds } } },
+            }),
         // totalRespondents — one row per respondent (most-recent completed
         // response per HCP), with each campaign's own excludeInternalEmails
         // flag honored. Matches getDemographics' definition so the top tile
         // and the Demographics-tab header agree. See PR notes on the
         // dedup rule for the "most-recent SurveyResponse per respondent;
         // all dimensions derived from THAT one response" semantic.
-        prisma.$queryRaw<{ total: number }[]>`
-          SELECT COUNT(*)::int AS total
-          FROM (
-            SELECT DISTINCT ON (sr."respondentHcpId") sr.id
-            FROM "SurveyResponse" sr
-            JOIN "Campaign" c ON c.id = sr."campaignId"
-            LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
-            WHERE c."diseaseAreaId" = ${diseaseAreaId}
-              AND (${clientId ?? null}::text IS NULL OR c."clientId" = ${clientId ?? null})
-              AND sr.status = 'COMPLETED'
-              AND (
-                c."excludeInternalEmails" = false
-                OR h.email IS NULL
-                OR h.email NOT LIKE '%@bio-exec.com'
-              )
-            ORDER BY sr."respondentHcpId", sr."completedAt" DESC NULLS LAST
-          ) latest_per_respondent
-        `,
+        noCampaigns
+          ? Promise.resolve([{ total: 0 }] as { total: number }[])
+          : prisma.$queryRaw<{ total: number }[]>`
+              SELECT COUNT(*)::int AS total
+              FROM (
+                SELECT DISTINCT ON (sr."respondentHcpId") sr.id
+                FROM "SurveyResponse" sr
+                JOIN "Campaign" c ON c.id = sr."campaignId"
+                LEFT JOIN "Hcp" h ON h.id = sr."respondentHcpId"
+                WHERE sr."campaignId" IN (${Prisma.join(campaignIds)})
+                  AND sr.status = 'COMPLETED'
+                  AND (
+                    c."excludeInternalEmails" = false
+                    OR h.email IS NULL
+                    OR h.email NOT LIKE '%@bio-exec.com'
+                  )
+                ORDER BY sr."respondentHcpId", sr."completedAt" DESC NULLS LAST
+              ) latest_per_respondent
+            `,
       ]);
 
       return {
         totalKols: scoreAgg._count._all,
         totalRespondents: totalRespondentsRow[0]?.total ?? 0,
         totalNominations,
-        totalCampaigns,
+        totalCampaigns: campaignIds.length,
         averageCompositeScore: scoreAgg._avg.compositeScore
           ? Number(scoreAgg._avg.compositeScore)
           : null,
@@ -1436,8 +1484,18 @@ export class InsightsReportService {
     filters?: RespondentFilters
   ) {
     try {
+      // v1.17.50: accessible campaigns = owned UNION analysis-included
+      // (see resolveAccessibleCampaignIds). Pre-fix lite clients hit
+      // the campaignIds.length === 0 short-circuit and saw empty
+      // demographics. The PLATFORM_ADMIN path (no clientId) keeps the
+      // original "all campaigns in DA" semantics — they're cross-tenant.
+      const accessibleIds = clientId
+        ? await this.resolveAccessibleCampaignIds(clientId, diseaseAreaId)
+        : null;
       const campaigns = await prisma.campaign.findMany({
-        where: { diseaseAreaId, ...(clientId && { clientId }) },
+        where: accessibleIds
+          ? { id: { in: accessibleIds } }
+          : { diseaseAreaId },
         select: { id: true, excludeInternalEmails: true, showTopicsDiscussed: true },
       });
       const campaignIds = campaigns.map((c) => c.id);
@@ -2170,9 +2228,16 @@ export class InsightsReportService {
    */
   async getKolNominationMetadata(diseaseAreaId: string, hcpId: string, clientId?: string) {
     try {
-      // Get campaigns for disease area (scoped to client if provided)
+      // v1.17.50: accessible campaigns = owned UNION analysis-included
+      // (see resolveAccessibleCampaignIds). PLATFORM_ADMIN (no clientId)
+      // keeps the original DA-wide cross-tenant scope.
+      const accessibleIds = clientId
+        ? await this.resolveAccessibleCampaignIds(clientId, diseaseAreaId)
+        : null;
       const campaigns = await prisma.campaign.findMany({
-        where: { diseaseAreaId, ...(clientId && { clientId }) },
+        where: accessibleIds
+          ? { id: { in: accessibleIds } }
+          : { diseaseAreaId },
         select: { id: true, showTopicsDiscussed: true, excludeInternalEmails: true },
       });
       const campaignIds = campaigns.map((c) => c.id);
