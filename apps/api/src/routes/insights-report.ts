@@ -133,14 +133,21 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       return false;
     }
 
-    const campaignCount = await fastify.prisma.campaign.count({
-      where: {
-        clientId: user.tenantId,
-        diseaseAreaId: diseaseAreaId,
-      },
-    });
+    // v1.17.50 — companion to the 4.1.29 GET /disease-areas filter
+    // broadening. Lite clients reach a DA via KolAnalysis only (0
+    // campaigns by design). Pre-fix this access check rejected them
+    // with 403, which the frontend swallowed as zeros across every
+    // Insights tab. Same OR-on-EITHER-anchor pattern.
+    const [campaignCount, analysisCount] = await Promise.all([
+      fastify.prisma.campaign.count({
+        where: { clientId: user.tenantId, diseaseAreaId },
+      }),
+      fastify.prisma.kolAnalysis.count({
+        where: { clientId: user.tenantId, diseaseAreaId },
+      }),
+    ]);
 
-    if (campaignCount === 0) {
+    if (campaignCount === 0 && analysisCount === 0) {
       reply.status(403).send({
         error: 'Forbidden',
         message: 'No access to this disease area',
