@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
 import { usePlatformStats } from '@/hooks/use-dashboards';
@@ -218,11 +219,26 @@ function QuickActionCard({ href, icon, iconBg, title, description }: QuickAction
 }
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const { user } = useAuth();
   const { isImpersonating, clientName, stopImpersonating } = useImpersonation();
   const { data: stats, isLoading: statsLoading } = usePlatformStats();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN' && !isImpersonating;
   const isClientAdmin = user?.role === 'CLIENT_ADMIN' || isImpersonating;
+
+  // Non-PLATFORM_ADMIN users (CLIENT_ADMIN / TEAM_MEMBER) don't have a
+  // dashboard at this URL — sidebar only lists "KOL Insights" for them.
+  // Redirect to /admin/dashboards so they land somewhere meaningful.
+  useEffect(() => {
+    if (!user) return;
+    if (user.role !== 'PLATFORM_ADMIN') {
+      router.replace('/admin/dashboards');
+    }
+  }, [user, router]);
+
+  if (user && user.role !== 'PLATFORM_ADMIN') {
+    return null;
+  }
 
   const formatNumber = (num: number | undefined) => {
     if (num === undefined) return '—';

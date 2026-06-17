@@ -45,10 +45,17 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       ? {}
       : { clientId: user.tenantId! };
 
+    // v1.17.49: broaden DA visibility to include lite-client KolAnalysis
+    // links. Non-lite clients reach a DA via Campaign; lite clients have 0
+    // campaigns by design and reach a DA only via KolAnalysis.
+    // PLATFORM_ADMIN: clientFilter is {}, both sides match anything.
     const diseaseAreas = await fastify.prisma.diseaseArea.findMany({
       where: {
         isActive: true,
-        campaigns: { some: clientFilter },
+        OR: [
+          { campaigns: { some: clientFilter } },
+          { kolAnalyses: { some: clientFilter } },
+        ],
       },
       select: {
         id: true,

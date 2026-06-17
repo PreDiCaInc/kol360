@@ -142,6 +142,84 @@ describe('Insights Report API', () => {
 
       console.log(`✅ Disease areas: ${data.items.length} items`);
     });
+
+    // v1.17.49 (Track C, Bug #2): lite clients (isLite=true) have 0
+    // campaigns by design and reach a DA only via KolAnalysis. The old
+    // filter required `campaigns: { some: { clientId } }` which silently
+    // excluded them. Structural test: assert that a synthetic
+    // KolAnalysis-only DA is invisible to the OLD shape and visible to
+    // the NEW shape, using prisma directly (bypasses PLATFORM_ADMIN
+    // role-filter shortcut that hides this bug from the API path).
+    it('OR-clause picks up lite-client KolAnalysis-only DA (structural check)', async () => {
+      const prisma = new PrismaClient();
+      const suffix = `${process.pid}-${Math.floor(Math.random() * 1e9)}`;
+      const liteClientId = `e2e-lite-client-${suffix}`;
+      const liteDaId = `e2e-lite-da-${suffix}`;
+      const analysisId = `e2e-lite-analysis-${suffix}`;
+      try {
+        // Seed: lite client + DA + KolAnalysis, NO Campaign.
+        await prisma.client.create({
+          data: {
+            id: liteClientId,
+            name: `E2E Lite ${suffix}`,
+            isLite: true,
+            emailDomains: ['e2e-lite.example'],
+          },
+        });
+        await prisma.diseaseArea.create({
+          data: {
+            id: liteDaId,
+            name: `E2E Lite DA ${suffix}`,
+            therapeuticArea: 'E2E Lite',
+            code: `E2E_LITE_${suffix}`,
+            isActive: true,
+          },
+        });
+        await prisma.kolAnalysis.create({
+          data: {
+            id: analysisId,
+            clientId: liteClientId,
+            diseaseAreaId: liteDaId,
+            name: `E2E Lite Analysis ${suffix}`,
+            weightsJson: {},
+          },
+        });
+
+        // Simulate the per-tenant clientFilter the route uses for
+        // non-PLATFORM_ADMIN users.
+        const clientFilter = { clientId: liteClientId };
+
+        // OLD shape (pre-fix): campaigns-only — should NOT find the DA.
+        const oldShape = await prisma.diseaseArea.findMany({
+          where: {
+            isActive: true,
+            campaigns: { some: clientFilter },
+          },
+          select: { id: true },
+        });
+        expect(oldShape.find((d) => d.id === liteDaId)).toBeUndefined();
+
+        // NEW shape (fix): OR { campaigns | kolAnalyses } — MUST find it.
+        const newShape = await prisma.diseaseArea.findMany({
+          where: {
+            isActive: true,
+            OR: [
+              { campaigns: { some: clientFilter } },
+              { kolAnalyses: { some: clientFilter } },
+            ],
+          },
+          select: { id: true },
+        });
+        expect(newShape.find((d) => d.id === liteDaId)).toBeDefined();
+
+        console.log('✅ Lite-client KolAnalysis-only DA visibility (Track C Bug #2) verified');
+      } finally {
+        await prisma.kolAnalysis.deleteMany({ where: { id: analysisId } });
+        await prisma.diseaseArea.deleteMany({ where: { id: liteDaId } });
+        await prisma.client.deleteMany({ where: { id: liteClientId } });
+        await prisma.$disconnect();
+      }
+    });
   });
 
   describe('Summary Endpoint', () => {
