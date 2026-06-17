@@ -267,186 +267,13 @@ export class InsightsReportService {
   }
 
   /**
-   * v1.17.5: shared respondent-filter pipeline. Returns the set of
-   * SurveyResponse IDs that pass ALL active filters.
-   *
-   * Used by getDemographics (filters which answers feed aggregations)
-   * and by getLeaderRankings / getSociometricSummary (filters which
-   * nominations count toward leader/sociometric counts).
-   *
-   * Caller pre-loads the answers (so the same query that drives the
-   * caller's main work is reused — avoids a redundant DB round-trip).
-   * Empty `answers` input returns empty Set. The caller is expected to
-   * skip calling this helper entirely if `hasAnyRespondentFilter(f)`
-   * returns false — see callers for the gate.
-   *
-   * Filter semantics:
-   *  - 4 categorical filters: each accepts string[]; "value passes" if
-   *    `accept.has(answer)`. Empty array = no filter on that field.
-   *  - 3 range filters: numeric min/max; both bounds optional.
-   *  - All active filters AND together (set intersection).
-   */
-  private async computeFilteredResponseIds(
-    filters: RespondentFilters,
-    answers: Array<{
-      answerText: string | null;
-      answerJson: unknown;
-      question: {
-        questionTextSnapshot: string;
-        question: { type: string };
-      };
-      response: {
-        id: string;
-        respondentHcp?: { state: string | null } | null;
-      };
-    }>
-  ): Promise<Set<string>> {
-    let filteredResponseIds = new Set<string>(answers.map((a) => a.response.id));
-
-    const intersect = (matching: Set<string>) => {
-      filteredResponseIds = new Set([...filteredResponseIds].filter((id) => matching.has(id)));
-    };
-
-    if (filters.respondentRoles && filters.respondentRoles.length > 0) {
-      const accept = new Set(filters.respondentRoles);
-      const matching = new Set<string>();
-      for (const a of answers) {
-        const qt = a.question.questionTextSnapshot.toLowerCase();
-        if (qt.includes('primary medical specialty')) {
-          const value = this.extractSingleChoice(
-            a.answerJson as Record<string, unknown> | null,
-            a.answerText,
-            a.question.question.type
-          );
-          if (value && accept.has(value)) matching.add(a.response.id);
-        }
-      }
-      intersect(matching);
-    }
-
-    if (filters.coreFocuses && filters.coreFocuses.length > 0) {
-      // v1.17.30 — Core Focus is a MULTI_CHOICE question; selections land in
-      // answerJson.selected[]. Single-choice fallback kept for the
-      // theoretical case where a campaign authored Core Focus as
-      // SINGLE_CHOICE — display side (byCoreFocus chart, getFilterOptions
-      // dropdown) accepts both shapes so the filter path mirrors that.
-      // Bug fixed 2026-06-09 per docs/findings/core-focus-filter-broken-2026-06-09.md.
-      const accept = new Set(filters.coreFocuses);
-      const matching = new Set<string>();
-      for (const a of answers) {
-        const qt = a.question.questionTextSnapshot.toLowerCase();
-        if (!qt.includes('core focus')) continue;
-        const questionType = a.question.question.type;
-        if (questionType === 'MULTI_CHOICE' && a.answerJson) {
-          const selected = (a.answerJson as { selected?: string[] }).selected;
-          if (Array.isArray(selected) && selected.some((s) => accept.has(s))) {
-            matching.add(a.response.id);
-          }
-        } else {
-          const value = this.extractSingleChoice(
-            a.answerJson as Record<string, unknown> | null,
-            a.answerText,
-            questionType
-          );
-          if (value && accept.has(value)) matching.add(a.response.id);
-        }
-      }
-      intersect(matching);
-    }
-
-    if (filters.stateOfPractices && filters.stateOfPractices.length > 0) {
-      const accept = new Set(filters.stateOfPractices);
-      const matching = new Set<string>();
-      for (const a of answers) {
-        const state = a.response.respondentHcp?.state;
-        if (state && accept.has(state)) matching.add(a.response.id);
-      }
-      intersect(matching);
-    }
-
-    if (filters.practiceSettings && filters.practiceSettings.length > 0) {
-      const accept = new Set(filters.practiceSettings);
-      const matching = new Set<string>();
-      for (const a of answers) {
-        const qt = a.question.questionTextSnapshot.toLowerCase();
-        if (qt.includes('practice setting')) {
-          const questionType = a.question.question.type;
-          if (questionType === 'MULTI_CHOICE' && a.answerJson) {
-            const selected = (a.answerJson as { selected?: string[] }).selected;
-            if (Array.isArray(selected) && selected.some((s) => accept.has(s))) {
-              matching.add(a.response.id);
-            }
-          } else {
-            const value = this.extractSingleChoice(
-              a.answerJson as Record<string, unknown> | null,
-              a.answerText,
-              questionType
-            );
-            if (value && accept.has(value)) matching.add(a.response.id);
-          }
-        }
-      }
-      intersect(matching);
-    }
-
-    if (filters.yearsMin !== undefined || filters.yearsMax !== undefined) {
-      const matching = new Set<string>();
-      for (const a of answers) {
-        const qt = a.question.questionTextSnapshot.toLowerCase();
-        if (qt.includes('years') && qt.includes('practice')) {
-          const num = this.parseNumber(a.answerText);
-          if (num !== null) {
-            const passMin = filters.yearsMin === undefined || num >= filters.yearsMin;
-            const passMax = filters.yearsMax === undefined || num <= filters.yearsMax;
-            if (passMin && passMax) matching.add(a.response.id);
-          }
-        }
-      }
-      intersect(matching);
-    }
-
-    if (filters.monthlyPatientsMin !== undefined || filters.monthlyPatientsMax !== undefined) {
-      const matching = new Set<string>();
-      for (const a of answers) {
-        const qt = a.question.questionTextSnapshot.toLowerCase();
-        if (qt.includes('how many patients') && !qt.includes('dry eye')) {
-          const num = this.parseNumber(a.answerText);
-          if (num !== null) {
-            const passMin = filters.monthlyPatientsMin === undefined || num >= filters.monthlyPatientsMin;
-            const passMax = filters.monthlyPatientsMax === undefined || num <= filters.monthlyPatientsMax;
-            if (passMin && passMax) matching.add(a.response.id);
-          }
-        }
-      }
-      intersect(matching);
-    }
-
-    if (filters.dedPatientsMin !== undefined || filters.dedPatientsMax !== undefined) {
-      const matching = new Set<string>();
-      for (const a of answers) {
-        const qt = a.question.questionTextSnapshot.toLowerCase();
-        if (qt.includes('dry eye') && qt.includes('patient')) {
-          const num = this.parseNumber(a.answerText);
-          if (num !== null) {
-            const passMin = filters.dedPatientsMin === undefined || num >= filters.dedPatientsMin;
-            const passMax = filters.dedPatientsMax === undefined || num <= filters.dedPatientsMax;
-            if (passMin && passMax) matching.add(a.response.id);
-          }
-        }
-      }
-      intersect(matching);
-    }
-
-    return filteredResponseIds;
-  }
-
-  /**
-   * v1.17.5: companion to computeFilteredResponseIds. Given a set of
-   * response IDs that pass respondent filters, count nominations per HCP
-   * per nomination-type, restricted to nominations whose responseId is in
-   * the set. Used by getLeaderRankings + getSociometricSummary to
-   * recompute per-type counts on the fly when respondent filters are
-   * active (bypassing the pre-aggregated HcpAnalysisScore counts).
+   * v1.17.5 / v1.17.50: companion to getFilteredResponseIds. Given a
+   * set of response IDs that pass respondent filters, count nominations
+   * per HCP per nomination-type, restricted to nominations whose
+   * responseId is in the set. Used by getLeaderRankings +
+   * getSociometricSummary to recompute per-type counts on the fly when
+   * respondent filters are active (bypassing the pre-aggregated
+   * HcpAnalysisScore counts).
    *
    * Returns: hcpId -> (nominationType -> count). HCPs with zero filtered
    * nominations don't appear in the map.
@@ -483,56 +310,239 @@ export class InsightsReportService {
   }
 
   /**
-   * v1.17.5: shared loader for the answer set that drives respondent
-   * filtering on the leader-rankings + sociometric-summary endpoints.
-   * Scoped to the analysis's included campaigns + the campaign-level
-   * excludeInternalEmails flag (any included campaign with the flag on
-   * triggers the exclusion globally, matching getDemographics' behavior).
+   * v1.17.50 (perf-pass-C #1): single-SQL replacement for the
+   * loadAnswersForRespondentFilter → computeFilteredResponseIds chain.
+   *
+   * The old chain:
+   *   1. Fetched ALL SurveyResponseAnswer rows in scope (~10K+ on prod,
+   *      with answerJson + nested question/response objects — multi-MB
+   *      payload) via Prisma.
+   *   2. Ran 7 sequential JS filter passes building successive Sets.
+   *   3. Returned the intersection.
+   *
+   * Profiling on prod (per pteam ticket 2026-06-16): 2-9s per request,
+   * dominated by payload transfer + JS aggregation, not SQL execution
+   * time itself.
+   *
+   * This rewrite collapses both steps into one $queryRaw that returns
+   * just the matching responseId set. Each active filter becomes one
+   * EXISTS clause; inactive filters are spliced out entirely (no
+   * runtime cost). Estimated 2-5× faster on the filter-active path,
+   * with payload dropped to a small CUID-string set.
+   *
+   * Semantics MUST match computeFilteredResponseIds exactly — see the
+   * v1.17.30 Core Focus fix and the v1.17.5 history. Question-text
+   * matches reproduce the JS `.toLowerCase().includes(...)` checks as
+   * `LOWER(...) LIKE '%...%'`. Numeric extraction matches parseNumber's
+   * "strip non-digit-dot, only cast if shape is valid" guard.
+   *
+   * Scoped to:
+   *   - included campaign IDs
+   *   - status = 'COMPLETED'
+   *   - excludeInternalEmails: if ANY included campaign has the flag
+   *     on, apply globally (matches old loadAnswersForRespondentFilter
+   *     uniform-global behavior; differs from getDemographics dedup
+   *     path which honors each campaign's flag separately).
    */
-  private async loadAnswersForRespondentFilter(
+  private async getFilteredResponseIds(
+    filters: RespondentFilters,
     includedCampaignIds: string[]
-  ): Promise<
-    Array<{
-      answerText: string | null;
-      answerJson: unknown;
-      question: { questionTextSnapshot: string; question: { type: string } };
-      response: { id: string; respondentHcp: { state: string | null } | null };
-    }>
-  > {
-    if (includedCampaignIds.length === 0) return [];
+  ): Promise<Set<string>> {
+    if (includedCampaignIds.length === 0) return new Set();
+
     const campaigns = await prisma.campaign.findMany({
       where: { id: { in: includedCampaignIds } },
-      select: { id: true, excludeInternalEmails: true },
+      select: { excludeInternalEmails: true },
     });
     const excludeInternal = campaigns.some((c) => c.excludeInternalEmails);
 
-    return prisma.surveyResponseAnswer.findMany({
-      where: {
-        response: {
-          campaignId: { in: includedCampaignIds },
-          status: 'COMPLETED',
-          ...(excludeInternal && {
-            respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
-          }),
-        },
-      },
-      select: {
-        answerText: true,
-        answerJson: true,
-        question: {
-          select: {
-            questionTextSnapshot: true,
-            question: { select: { type: true } },
-          },
-        },
-        response: {
-          select: {
-            id: true,
-            respondentHcp: { select: { state: true } },
-          },
-        },
-      },
-    });
+    // Build active-filter clauses. Inactive dimensions contribute
+    // nothing to the WHERE.
+    const conditions: Prisma.Sql[] = [];
+
+    // categorical: respondentRoles → "primary medical specialty" question
+    if (filters.respondentRoles && filters.respondentRoles.length > 0) {
+      conditions.push(Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM "SurveyResponseAnswer" a
+          JOIN "SurveyQuestion" q ON q.id = a."questionId"
+          JOIN "Question" qq ON qq.id = q."questionId"
+          WHERE a."responseId" = sr.id
+            AND LOWER(q."questionTextSnapshot") LIKE '%primary medical specialty%'
+            AND COALESCE(
+              CASE WHEN qq.type = 'SINGLE_CHOICE' THEN a."answerJson"->>'selected' END,
+              a."answerText"
+            ) = ANY(${filters.respondentRoles}::text[])
+        )
+      `);
+    }
+
+    // categorical (MULTI/SINGLE-CHOICE): coreFocuses → "core focus" question
+    if (filters.coreFocuses && filters.coreFocuses.length > 0) {
+      conditions.push(Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM "SurveyResponseAnswer" a
+          JOIN "SurveyQuestion" q ON q.id = a."questionId"
+          JOIN "Question" qq ON qq.id = q."questionId"
+          WHERE a."responseId" = sr.id
+            AND LOWER(q."questionTextSnapshot") LIKE '%core focus%'
+            AND (
+              (qq.type = 'MULTI_CHOICE' AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(
+                  COALESCE(a."answerJson"->'selected', '[]'::jsonb)
+                ) x WHERE x = ANY(${filters.coreFocuses}::text[])
+              ))
+              OR (qq.type <> 'MULTI_CHOICE' AND COALESCE(
+                CASE WHEN qq.type = 'SINGLE_CHOICE' THEN a."answerJson"->>'selected' END,
+                a."answerText"
+              ) = ANY(${filters.coreFocuses}::text[]))
+            )
+        )
+      `);
+    }
+
+    // categorical: stateOfPractices → Hcp.state (not an answer)
+    if (filters.stateOfPractices && filters.stateOfPractices.length > 0) {
+      conditions.push(Prisma.sql`rh.state = ANY(${filters.stateOfPractices}::text[])`);
+    }
+
+    // categorical (MULTI/SINGLE-CHOICE): practiceSettings → "practice setting" question
+    if (filters.practiceSettings && filters.practiceSettings.length > 0) {
+      conditions.push(Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM "SurveyResponseAnswer" a
+          JOIN "SurveyQuestion" q ON q.id = a."questionId"
+          JOIN "Question" qq ON qq.id = q."questionId"
+          WHERE a."responseId" = sr.id
+            AND LOWER(q."questionTextSnapshot") LIKE '%practice setting%'
+            AND (
+              (qq.type = 'MULTI_CHOICE' AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(
+                  COALESCE(a."answerJson"->'selected', '[]'::jsonb)
+                ) x WHERE x = ANY(${filters.practiceSettings}::text[])
+              ))
+              OR (qq.type <> 'MULTI_CHOICE' AND COALESCE(
+                CASE WHEN qq.type = 'SINGLE_CHOICE' THEN a."answerJson"->>'selected' END,
+                a."answerText"
+              ) = ANY(${filters.practiceSettings}::text[]))
+            )
+        )
+      `);
+    }
+
+    // numeric range: years → "years"+"practice" question
+    if (filters.yearsMin !== undefined || filters.yearsMax !== undefined) {
+      const yMin = filters.yearsMin ?? null;
+      const yMax = filters.yearsMax ?? null;
+      conditions.push(Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM "SurveyResponseAnswer" a
+          JOIN "SurveyQuestion" q ON q.id = a."questionId"
+          WHERE a."responseId" = sr.id
+            AND LOWER(q."questionTextSnapshot") LIKE '%years%'
+            AND LOWER(q."questionTextSnapshot") LIKE '%practice%'
+            AND CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END IS NOT NULL
+            AND (${yMin}::numeric IS NULL OR CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END >= ${yMin}::numeric)
+            AND (${yMax}::numeric IS NULL OR CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END <= ${yMax}::numeric)
+        )
+      `);
+    }
+
+    // numeric range: monthly patients → "how many patients" NOT "dry eye"
+    if (filters.monthlyPatientsMin !== undefined || filters.monthlyPatientsMax !== undefined) {
+      const mMin = filters.monthlyPatientsMin ?? null;
+      const mMax = filters.monthlyPatientsMax ?? null;
+      conditions.push(Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM "SurveyResponseAnswer" a
+          JOIN "SurveyQuestion" q ON q.id = a."questionId"
+          WHERE a."responseId" = sr.id
+            AND LOWER(q."questionTextSnapshot") LIKE '%how many patients%'
+            AND LOWER(q."questionTextSnapshot") NOT LIKE '%dry eye%'
+            AND CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END IS NOT NULL
+            AND (${mMin}::numeric IS NULL OR CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END >= ${mMin}::numeric)
+            AND (${mMax}::numeric IS NULL OR CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END <= ${mMax}::numeric)
+        )
+      `);
+    }
+
+    // numeric range: dry-eye patients → "dry eye" AND "patient"
+    if (filters.dedPatientsMin !== undefined || filters.dedPatientsMax !== undefined) {
+      const dMin = filters.dedPatientsMin ?? null;
+      const dMax = filters.dedPatientsMax ?? null;
+      conditions.push(Prisma.sql`
+        EXISTS (
+          SELECT 1
+          FROM "SurveyResponseAnswer" a
+          JOIN "SurveyQuestion" q ON q.id = a."questionId"
+          WHERE a."responseId" = sr.id
+            AND LOWER(q."questionTextSnapshot") LIKE '%dry eye%'
+            AND LOWER(q."questionTextSnapshot") LIKE '%patient%'
+            AND CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END IS NOT NULL
+            AND (${dMin}::numeric IS NULL OR CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END >= ${dMin}::numeric)
+            AND (${dMax}::numeric IS NULL OR CASE
+              WHEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g') ~ '^[0-9]+(\.[0-9]+)?$'
+              THEN REGEXP_REPLACE(COALESCE(a."answerText", ''), '[^0-9.]', '', 'g')::numeric
+              ELSE NULL
+            END <= ${dMax}::numeric)
+        )
+      `);
+    }
+
+    const filterFrag = conditions.length === 0
+      ? Prisma.empty
+      : Prisma.sql` AND ${Prisma.join(conditions, ' AND ')}`;
+    const excludeFrag = excludeInternal
+      ? Prisma.sql` AND (rh.email IS NULL OR rh.email NOT LIKE '%@bio-exec.com')`
+      : Prisma.empty;
+
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT sr.id
+      FROM "SurveyResponse" sr
+      LEFT JOIN "Hcp" rh ON rh.id = sr."respondentHcpId"
+      WHERE sr."campaignId" IN (${Prisma.join(includedCampaignIds)})
+        AND sr.status = 'COMPLETED'
+        ${excludeFrag}
+        ${filterFrag}
+    `;
+    return new Set(rows.map((r) => r.id));
   }
 
   /**
@@ -835,11 +845,13 @@ export class InsightsReportService {
     let ranked: Array<{ hcpId: string; count: number; score: AnalysisScoreRow | undefined }>;
     if (hasAnyRespondentFilter(respondentFilters)) {
       // Recompute counts from filtered nominations.
+      // v1.17.50: getFilteredResponseIds collapses the prior
+      // loadAnswersForRespondentFilter → computeFilteredResponseIds
+      // pair into one SQL query (perf-pass-C #1).
       const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
-      const answers = await this.loadAnswersForRespondentFilter(includedCampaignIds);
-      const filteredResponseIds = await this.computeFilteredResponseIds(
+      const filteredResponseIds = await this.getFilteredResponseIds(
         respondentFilters!,
-        answers
+        includedCampaignIds
       );
       if (filteredResponseIds.size === 0) return empty;
       const perHcpCounts = await this.computeRespondentFilteredCounts(filteredResponseIds);
@@ -1189,11 +1201,12 @@ export class InsightsReportService {
     let perHcpCounts: Map<string, Map<NominationType, number>> | null = null;
     let filteredHcpIds: Set<string> | null = null;
     if (hasAnyRespondentFilter(respondentFilters)) {
+      // v1.17.50: getFilteredResponseIds — see perf-pass-C #1 comment
+      // on getLeaderRankings.
       const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
-      const answers = await this.loadAnswersForRespondentFilter(includedCampaignIds);
-      const filteredResponseIds = await this.computeFilteredResponseIds(
+      const filteredResponseIds = await this.getFilteredResponseIds(
         respondentFilters!,
-        answers
+        includedCampaignIds
       );
       if (filteredResponseIds.size === 0) return empty;
       perHcpCounts = await this.computeRespondentFilteredCounts(filteredResponseIds);
@@ -1543,8 +1556,9 @@ export class InsightsReportService {
       // and getSociometricSummary.
       let effectiveResponseIds: Set<string> = latestResponseIds;
       if (hasAnyRespondentFilter(filters)) {
-        const ans = await this.loadAnswersForRespondentFilter(campaignIds);
-        const filtered = await this.computeFilteredResponseIds(filters!, ans);
+        // v1.17.50: getFilteredResponseIds — see perf-pass-C #1
+        // comment on getLeaderRankings.
+        const filtered = await this.getFilteredResponseIds(filters!, campaignIds);
         effectiveResponseIds = new Set(
           [...latestResponseIds].filter((id) => filtered.has(id))
         );

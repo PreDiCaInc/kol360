@@ -693,6 +693,7 @@ model SurveyResponse {
   @@index([respondentHcpId])
   @@index([surveyToken])
   @@index([status])
+  @@index([campaignId, status])
 }
 
 model SurveyResponseAnswer {
