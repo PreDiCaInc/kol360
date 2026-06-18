@@ -202,6 +202,46 @@ export function useDemographics(
 }
 
 /**
+ * v1.17.53 — Survey question text per NominationType for the
+ * Benchmarking tab's (i) info popover.
+ */
+export function useNominationQuestions(diseaseAreaId: string, clientId?: string) {
+  const params = new URLSearchParams();
+  if (clientId) params.append('clientId', clientId);
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ['insights', 'nomination-questions', diseaseAreaId, clientId],
+    queryFn: () =>
+      apiClient.get<{ items: Array<{ nominationType: string; text: string; campaignName: string }> }>(
+        `/api/v1/insights/${diseaseAreaId}/nomination-questions${qs ? '?' + qs : ''}`
+      ),
+    enabled: !!diseaseAreaId && !!clientId,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * v1.17.53 — Survey question text per Demographics chart dimension
+ * (role, coreFocus, practiceSetting, yearsInPractice,
+ * monthlyPatients, dedPatients, topicsDiscussed, educationalResources,
+ * socialMedia, valuableContent, objectivity).
+ */
+export function useDemographicQuestions(diseaseAreaId: string, clientId?: string) {
+  const params = new URLSearchParams();
+  if (clientId) params.append('clientId', clientId);
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ['insights', 'demographic-questions', diseaseAreaId, clientId],
+    queryFn: () =>
+      apiClient.get<{ items: Array<{ dimension: string; text: string; campaignName: string }> }>(
+        `/api/v1/insights/${diseaseAreaId}/demographic-questions${qs ? '?' + qs : ''}`
+      ),
+    enabled: !!diseaseAreaId && !!clientId,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
  * Get KOL nomination metadata (nominator survey answers for a specific KOL)
  */
 export function useKolNominationMetadata(diseaseAreaId: string, hcpId: string | null, clientId?: string) {

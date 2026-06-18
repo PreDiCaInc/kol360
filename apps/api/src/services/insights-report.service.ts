@@ -1387,7 +1387,7 @@ export class InsightsReportService {
    */
   async getFilterOptions(diseaseAreaId: string) {
     try {
-      const [specialtyRows, stateRows, coreFocusRows] = await Promise.all([
+      const [specialtyRows, stateRows, coreFocusRows, influencerTypeRows] = await Promise.all([
         prisma.$queryRaw<{ specialty: string }[]>`
           SELECT DISTINCT h."specialty"
           FROM "Hcp" h
@@ -1444,6 +1444,24 @@ export class InsightsReportService {
           WHERE value IS NOT NULL AND value <> ''
           ORDER BY value ASC
         `,
+        // v1.17.53: distinct influencerType values actually assigned to
+        // HCPs in this DA. Pre-fix this was a hardcoded 3-value list
+        // [National Leaders, Rising Stars, Regional Influencers] that
+        // drifted away from the data: v1.17.44 / prod-rel-4.1.24
+        // expanded the canonical list to include 'Regional Leaders' +
+        // 'Pre-Emergent', and the data team uploaded those values onto
+        // prod HCPs. Customers picking 'Regional Influencers' in the
+        // dropdown got 0 results because no HCP was classified that
+        // way. DB-driven matches the pattern already used for
+        // specialty / state / coreFocus above.
+        prisma.$queryRaw<{ value: string }[]>`
+          SELECT DISTINCT "influencerType" AS value
+          FROM "HcpDiseaseArea"
+          WHERE "diseaseAreaId" = ${diseaseAreaId}
+            AND "influencerType" IS NOT NULL
+            AND "influencerType" <> ''
+          ORDER BY value ASC
+        `,
       ]);
 
       // v1.17.4: state filter whitelist — only emit US 50 + DC.
@@ -1454,12 +1472,13 @@ export class InsightsReportService {
       const specialties = specialtyRows.map((r) => r.specialty);
       const states = stateRows.map((r) => r.state).filter((s) => US_STATE_CODES.has(s));
       const coreFocuses = coreFocusRows.map((r) => r.value);
+      const influencerTypes = influencerTypeRows.map((r) => r.value);
 
       return {
         specialties,
         states,
         coreFocuses,
-        influencerTypes: ['National Leaders', 'Rising Stars', 'Regional Influencers'],
+        influencerTypes,
       };
     } catch (error) {
       logger.error('Error fetching filter options', { diseaseAreaId, error });
@@ -2915,6 +2934,137 @@ export class InsightsReportService {
       return { count: latestResponseIds.size };
     } catch (error) {
       logger.error('Error computing respondent match count', { diseaseAreaId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * v1.17.53 — survey-question text for each nomination type in the
+   * analysis. Powers the (i) tooltip the Benchmarking tab shows on
+   * each LeaderRankingPanel header so users can see what was asked
+   * when these KOLs were nominated.
+   *
+   * Semantics: one entry per `nominationType` (the 7 enum values).
+   * When an analysis pools campaigns whose questionTextSnapshot
+   * happens to differ for the same nomination type — rare but
+   * possible across multiple imports — we surface the text from the
+   * **most recent campaign** (ordered by Campaign.createdAt DESC,
+   * then SurveyQuestion.createdAt DESC). NominationTypes whose
+   * included campaigns have no question rows are omitted.
+   *
+   * Returns: `{ items: [{ nominationType, text, campaignName }] }`.
+   */
+  async getNominationQuestions(
+    diseaseAreaId: string,
+    clientId?: string
+  ): Promise<{ items: Array<{ nominationType: NominationType; text: string; campaignName: string }> }> {
+    try {
+      const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+      if (!analysis) return { items: [] };
+
+      const campaignIds = await this.loadIncludedCampaignIds(analysis.id);
+      if (campaignIds.length === 0) return { items: [] };
+
+      const rows = await prisma.$queryRaw<
+        Array<{ nominationType: string; text: string; campaignName: string }>
+      >`
+        SELECT DISTINCT ON (sq."nominationType")
+          sq."nominationType" AS "nominationType",
+          sq."questionTextSnapshot" AS "text",
+          c.name AS "campaignName"
+        FROM "SurveyQuestion" sq
+        JOIN "Campaign" c ON c.id = sq."campaignId"
+        WHERE sq."campaignId" IN (${Prisma.join(campaignIds)})
+          AND sq."nominationType" IS NOT NULL
+        ORDER BY sq."nominationType", c."createdAt" DESC, sq."createdAt" DESC
+      `;
+
+      return {
+        items: rows.map((r) => ({
+          nominationType: r.nominationType as NominationType,
+          text: r.text,
+          campaignName: r.campaignName,
+        })),
+      };
+    } catch (error) {
+      logger.error('Error fetching nomination questions', { diseaseAreaId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * v1.17.53 — survey-question text for each Demographics chart
+   * dimension. Same UX value as getNominationQuestions but keyed by
+   * dimension slug (the Demographics tab doesn't use the
+   * NominationType enum; its charts are matched by LIKE-pattern
+   * against questionTextSnapshot, mirroring the patterns in
+   * computeFilteredResponseIds + getDemographics).
+   *
+   * Returns one entry per dimension that has at least one matching
+   * SurveyQuestion in the analysis's included campaigns. Most recent
+   * Campaign wins on ties — same semantic as getNominationQuestions.
+   */
+  async getDemographicQuestions(
+    diseaseAreaId: string,
+    clientId?: string
+  ): Promise<{ items: Array<{ dimension: string; text: string; campaignName: string }> }> {
+    try {
+      const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
+      if (!analysis) return { items: [] };
+
+      const campaignIds = await this.loadIncludedCampaignIds(analysis.id);
+      if (campaignIds.length === 0) return { items: [] };
+
+      // Pattern map: keys mirror the dimension slugs the Demographics
+      // tab renders chart cards for. Each value is a LIKE-style match
+      // against LOWER(questionTextSnapshot). Order here = output order.
+      const DIMENSIONS: Array<{ key: string; include: string[]; exclude?: string[] }> = [
+        { key: 'role', include: ['primary medical specialty'] },
+        { key: 'coreFocus', include: ['core focus'] },
+        { key: 'practiceSetting', include: ['practice setting'] },
+        { key: 'yearsInPractice', include: ['years', 'practice'] },
+        { key: 'monthlyPatients', include: ['how many patients'], exclude: ['dry eye'] },
+        { key: 'dedPatients', include: ['dry eye', 'patient'] },
+        { key: 'topicsDiscussed', include: ['topics discussed'] },
+        { key: 'educationalResources', include: ['educational'] },
+        { key: 'socialMedia', include: ['social media'] },
+        { key: 'valuableContent', include: ['valuable'] },
+        { key: 'objectivity', include: ['objectivity'] },
+      ];
+
+      const out: Array<{ dimension: string; text: string; campaignName: string }> = [];
+      for (const d of DIMENSIONS) {
+        const includeFrag = Prisma.join(
+          d.include.map((s) => Prisma.sql`LOWER(sq."questionTextSnapshot") LIKE ${'%' + s + '%'}`),
+          ' AND '
+        );
+        const excludeFrag = d.exclude && d.exclude.length > 0
+          ? Prisma.sql` AND ${Prisma.join(
+              d.exclude.map((s) => Prisma.sql`LOWER(sq."questionTextSnapshot") NOT LIKE ${'%' + s + '%'}`),
+              ' AND '
+            )}`
+          : Prisma.empty;
+
+        const rows = await prisma.$queryRaw<
+          Array<{ text: string; campaignName: string }>
+        >`
+          SELECT sq."questionTextSnapshot" AS "text", c.name AS "campaignName"
+          FROM "SurveyQuestion" sq
+          JOIN "Campaign" c ON c.id = sq."campaignId"
+          WHERE sq."campaignId" IN (${Prisma.join(campaignIds)})
+            AND ${includeFrag}
+            ${excludeFrag}
+          ORDER BY c."createdAt" DESC, sq."createdAt" DESC
+          LIMIT 1
+        `;
+        if (rows.length > 0) {
+          out.push({ dimension: d.key, text: rows[0].text, campaignName: rows[0].campaignName });
+        }
+      }
+
+      return { items: out };
+    } catch (error) {
+      logger.error('Error fetching demographic questions', { diseaseAreaId, error });
       throw error;
     }
   }
