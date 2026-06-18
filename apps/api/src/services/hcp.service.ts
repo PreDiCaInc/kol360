@@ -378,7 +378,19 @@ export class HcpService {
     }
 
     try {
-      // Phase 1: Parse and validate all rows upfront
+      // v1.17.57 — per-branch validation (was: uniform strict validation).
+      // Rationale: docs/findings/hcp-import-relax-validation-for-update-rows-2026-06-18.md
+      // The UPDATE branch (NPI matches an existing HCP) only needs the
+      // fields the row IS providing — the downstream
+      // `row.X || existing.X` fallback preserves anything omitted.
+      // CREATE + MERGE branches stay strict (CREATE: row IS the new
+      // record; MERGE: one-time identity-binding event deserves the
+      // explicit assertion).
+      //
+      // Restructure: extract NPI + name up front, bulk-load existing
+      // HCPs + aliases (same parallel call as before), then per-row
+      // validate against the row's eventual branch.
+
       const validRows: Array<{
         rowIndex: number;
         npi: string;
@@ -392,57 +404,103 @@ export class HcpService {
         fullName: string;
       }> = [];
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        // Extract NPI first for error reporting
-        const rawNpi = String(row['NPI'] || row['npi'] || '').trim();
+      // Phase 1a: light parse — pull NPI + name out of every row so we
+      // can bulk-load before validation.
+      const parsed = rows.map((row, i) => ({
+        rowIndex: i,
+        row,
+        rawNpi: String(row['NPI'] || row['npi'] || '').trim(),
+        rawFirstName: String(row['First Name'] || row['firstName'] || '').trim(),
+        rawLastName: String(row['Last Name'] || row['lastName'] || '').trim(),
+      }));
+
+      // Phase 1b: bulk-load existing HCPs + aliases (parallel — same
+      // two queries as the prior implementation, just hoisted before
+      // validation).
+      const candidateNpis = parsed.filter(p => /^\d{10}$/.test(p.rawNpi)).map(p => p.rawNpi);
+      const candidateFullNames = parsed
+        .filter(p => p.rawFirstName && p.rawLastName)
+        .map(p => `${p.rawFirstName} ${p.rawLastName}`.toLowerCase());
+
+      const [existingHcps, existingAliases] = await Promise.all([
+        prisma.hcp.findMany({
+          where: { npi: { in: candidateNpis } },
+          select: { id: true, npi: true, firstName: true, lastName: true, email: true, specialty: true, subSpecialty: true, city: true, state: true },
+        }),
+        prisma.hcpAlias.findMany({
+          where: { aliasName: { in: candidateFullNames, mode: 'insensitive' } },
+          include: { hcp: true },
+        }),
+      ]);
+
+      const existingByNpi = new Map(existingHcps.map(h => [h.npi, h]));
+      const aliasByName = new Map(existingAliases.map(a => [a.aliasName.toLowerCase(), a]));
+
+      // Phase 1c: per-row, per-branch validation.
+      for (const p of parsed) {
+        const rawNpi = p.rawNpi;
         try {
           if (!/^\d{10}$/.test(rawNpi)) {
             throw new Error('Invalid NPI format');
           }
 
-          const firstName = String(row['First Name'] || row['firstName'] || '').trim();
-          const lastName = String(row['Last Name'] || row['lastName'] || '').trim();
+          const row = p.row;
+          const firstName = p.rawFirstName;
+          const lastName = p.rawLastName;
           const email = (row['Email'] || row['email'] || null) as string | null;
           const rawSpecialty = (row['Specialty'] || row['specialty'] || null) as string | null;
 
-          if (!firstName || !lastName) {
-            throw new Error('First and last name required');
-          }
-          if (!email) {
-            throw new Error('Email is required');
-          }
-          if (!rawSpecialty) {
-            throw new Error('Specialty is required');
+          // v1.17.2: normalize specialty at validation phase so all
+          // write paths see canonical values. v1.17.57: only fires
+          // when the row IS supplying a specialty value; UPDATE
+          // branch with no Specialty column doesn't trip the
+          // normalizer.
+          let specialty = '';
+          if (rawSpecialty) {
+            const normalized = normalizeHcpSpecialty(rawSpecialty);
+            if (!normalized) {
+              throw new Error(
+                `Specialty "${rawSpecialty}" not recognized (expected Optometry or Ophthalmology, or aliases OD/MD/DO)`
+              );
+            }
+            specialty = normalized;
           }
 
-          // v1.17.2: normalize at validation phase so UPDATE + MERGE + CREATE
-          // paths all see canonical values. Pre-fix, the local normalizer
-          // produced credentials (MD/DO/OD) which slipped past the v1.17.0
-          // Hcp_specialty_check whitelist for UPDATE + MERGE → 503 on every
-          // CSV containing existing HCPs.
-          const specialty = normalizeHcpSpecialty(rawSpecialty);
-          if (!specialty) {
-            throw new Error(
-              `Specialty "${rawSpecialty}" not recognized (expected Optometry or Ophthalmology, or aliases OD/MD/DO)`
-            );
+          const existing = existingByNpi.get(rawNpi);
+          if (!existing) {
+            // CREATE / MERGE branch — keep today's strict rules.
+            // (MERGE happens at categorize time when the row's full
+            // name matches an HcpAlias; same requirements as CREATE.)
+            if (!firstName || !lastName) {
+              throw new Error('First and last name required');
+            }
+            if (!email) {
+              throw new Error('Email is required');
+            }
+            if (!rawSpecialty) {
+              throw new Error('Specialty is required');
+            }
           }
+          // UPDATE branch (existing != null): no further field
+          // requirements. Empty strings flow through; the categorize
+          // step's `row.X || existing.X` resolves to the existing
+          // values for omitted columns.
 
           validRows.push({
-            rowIndex: i,
+            rowIndex: p.rowIndex,
             npi: rawNpi,
             firstName,
             lastName,
-            email,
+            email: email ?? '',
             specialty,
             subSpecialty: (row['Sub-specialty'] || row['subSpecialty'] || null) as string | null,
             city: (row['City'] || row['city'] || null) as string | null,
             state: (row['State'] || row['state'] || null) as string | null,
-            fullName: `${firstName} ${lastName}`,
+            fullName: firstName && lastName ? `${firstName} ${lastName}` : '',
           });
         } catch (error) {
           const npiInfo = rawNpi ? ` (NPI: ${rawNpi})` : '';
-          result.errors.push({ row: i + 2, error: `${error instanceof Error ? error.message : 'Unknown error'}${npiInfo}` });
+          result.errors.push({ row: p.rowIndex + 2, error: `${error instanceof Error ? error.message : 'Unknown error'}${npiInfo}` });
         }
       }
 
@@ -452,27 +510,9 @@ export class HcpService {
           created: 0,
           updated: 0,
           errors: result.errors.length,
-          currentItem: 'Loading existing records...',
+          currentItem: 'Categorizing records...',
         });
       }
-
-      // Phase 2: Bulk load existing data (2 queries instead of N*2)
-      const allNpis = validRows.map(r => r.npi);
-      const allFullNames = validRows.map(r => r.fullName.toLowerCase());
-
-      const [existingHcps, existingAliases] = await Promise.all([
-        prisma.hcp.findMany({
-          where: { npi: { in: allNpis } },
-          select: { id: true, npi: true, firstName: true, lastName: true, email: true, specialty: true, subSpecialty: true, city: true, state: true },
-        }),
-        prisma.hcpAlias.findMany({
-          where: { aliasName: { in: allFullNames, mode: 'insensitive' } },
-          include: { hcp: true },
-        }),
-      ]);
-
-      const existingByNpi = new Map(existingHcps.map(h => [h.npi, h]));
-      const aliasByName = new Map(existingAliases.map(a => [a.aliasName.toLowerCase(), a]));
 
       // Phase 3: Categorize records
       const toUpdate: Array<{ npi: string; data: Parameters<typeof prisma.hcp.update>[0]['data'] }> = [];
