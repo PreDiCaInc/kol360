@@ -1,0 +1,96 @@
+# prod-rel-4.1.33 — Soak Checks (v1.17.53)
+
+Tag at the merge commit on `main`. Pure UI release: Apply Filters button + live "N match" indicator on 4 Insights tabs. No migrations. No backend behavior changes.
+
+## Phase A — Sanity
+
+### A1. Version deployed
+
+```bash
+curl -s https://ik6dmnn2ra.us-east-2.awsapprunner.com/health
+# Expected: { "status": "ok", "version": "1.17.53", ... }
+```
+
+### A2. Apply flow works end-to-end on each of the 4 tabs
+
+For Sociometric Summary, KOL Explorer, Demographics, and Leader Rankings:
+
+1. Open the tab. Default unfiltered view loads. Apply button is **muted (outline)** and **disabled**. Live count shows the unfiltered total.
+2. Change a filter dropdown. Apply button transitions to **primary / colored**. Live count updates (debounced ~250ms) to the pending match count.
+3. Confirm the table/charts have NOT changed yet (still showing the previous applied result).
+4. Click Apply. Spinner + "Applying…" briefly; then table/charts refresh; Apply button transitions back to muted.
+5. Click Reset. All filters clear; heavy query refires immediately to the unfiltered baseline.
+6. Repeat 2 — press **Enter** inside the search input instead of clicking Apply. Same result.
+
+### A3. Live count parity
+
+The displayed "N matches" indicator MUST agree with what the user will see after clicking Apply. Pick a filter combination on Sociometric Summary; note the live count before clicking Apply; click Apply; confirm the resulting page's total === the count you saw before. The 4.1.32 backend already enforces this parity in E2E, but UI smoke is the customer-visible signal.
+
+### A4. Chip removal stages pending
+
+Set a few filters → Apply → table updates. Click the × on one of the active-filter chips. Confirm:
+- Apply button transitions back to dirty (chip removal is a pending edit).
+- Table still shows the previous applied result.
+- Clicking Apply commits the chip removal.
+
+(This is a behavioral shift from 4.1.32 where chip removal auto-fired. Confirm it doesn't feel broken — if customer feedback says "I clicked the X, why didn't it work?" we may need to revisit and make chip removal auto-apply.)
+
+## Phase B — Functional smoke (≤30 min)
+
+### B1. Existing data unchanged
+
+For Sun Pharma / B+L on Dry Eye: open each of the 4 tabs unfiltered. Numbers MUST match what they showed on 4.1.32. (No backend changes; the apiFilters shape is identical when applied state matches the previous behavior's live state.)
+
+### B2. Sort + pagination still fire immediately
+
+The Apply pattern only governs filter dimensions. Confirm:
+- Clicking a column header to sort → heavy query refires immediately (not gated on Apply).
+- Changing page or limit → same; immediate refire.
+
+### B3. Lite-client journey unchanged
+
+sam@bio-exec.com / Bio-Exec: confirm the lite-client journey (4.1.29 + 4.1.30 fixes) still works end-to-end with the new Apply UX.
+
+## Phase C — 24h watch
+
+### C1. App Runner health
+
+```bash
+aws apprunner describe-service \
+  --service-arn "arn:aws:apprunner:us-east-2:163859990568:service/kol360-web/9fe5595685ad4ab89cdb29333ab1f5f6" \
+  --region us-east-2 --profile koluser \
+  --query 'Service.Status' --output text
+# Expected: RUNNING
+```
+
+### C2. No new error patterns
+
+```bash
+aws logs filter-log-events \
+  --log-group-name "/aws/apprunner/kol360-web/9fe5595685ad4ab89cdb29333ab1f5f6/service" \
+  --filter-pattern '?ERROR ?error ?Error' \
+  --start-time $(( $(date +%s) - 3600 ))000 \
+  --region us-east-2 --profile koluser \
+  --query 'events[*].message' --output text | tail -30
+```
+
+Look for any React error boundaries / failed React Query calls. The new `useFilters` + `useMatchCount` hooks are scoped to the 4 Insights tabs — errors should be isolated to that surface.
+
+### C3. Match-count endpoint traffic
+
+```bash
+aws logs filter-log-events \
+  --log-group-name "/aws/apprunner/kol360-api/7eb09ba9317d46d681d004d999663ffd/service" \
+  --filter-pattern 'match-count' \
+  --start-time $(( $(date +%s) - 3600 ))000 \
+  --region us-east-2 --profile koluser \
+  --query 'events[*].message' --output text | tail -20
+```
+
+After deploy, `match-count` endpoint traffic should pick up substantially (no traffic existed pre-4.1.33; the 4.1.32 release shipped the BE without an FE caller). Latency MUST stay sub-50ms per call — if it doesn't, the live indicator becomes laggy.
+
+## Rollback gate
+
+If A1–A2 don't pass on any of the 4 tabs within 30 min of deploy, redeploy `prod-rel-4.1.32` (v1.17.52). The match-count endpoint stays harmlessly; the UI reverts to the auto-fire pattern.
+
+If customer feedback flags chip removal as confusing (Phase A4 above), that's a UX iteration not a rollback — flag for next PR to make chip removal auto-apply.
