@@ -198,19 +198,6 @@ function LeaderRankingPanel({
 
   return (
     <div className="space-y-2">
-      {/* v1.17.53 — Survey question info for this panel. Sits above
-          the per-panel search; hidden when the question text hasn't
-          loaded yet OR the analysis has no question of this type. */}
-      {questionText && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <QuestionInfoPopover
-            text={questionText}
-            campaignName={questionCampaign}
-            title={`What was asked for ${label}`}
-          />
-          <span>Survey question</span>
-        </div>
-      )}
       {/* KOL name search for this panel */}
       <div className="relative">
         <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
@@ -222,6 +209,20 @@ function LeaderRankingPanel({
         />
       </div>
       <LeaderTable
+        titleSuffix={
+          questionText ? (
+            // v1.17.55 — survey-question (i) lives inside LeaderTable's
+            // colored title bar (white-on-color background) for
+            // discoverability. The text-white override makes the icon
+            // visible against the bold colored header.
+            <QuestionInfoPopover
+              text={questionText}
+              campaignName={questionCampaign}
+              title={`What was asked for ${label}`}
+              className="text-white/80 hover:text-white"
+            />
+          ) : undefined
+        }
         title={label}
         titleColor={color}
         items={items}

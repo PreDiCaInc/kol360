@@ -55,6 +55,12 @@ export interface LeaderTableProps {
   // context). Without it, falls back to exporting the currently-visible
   // page (legacy behaviour).
   getAllItemsForExport?: () => Promise<LeaderTableItem[]>;
+  // v1.17.55: optional ReactNode rendered inside the colored title bar
+  // to the right of the title text. Used by Benchmarking to surface
+  // the survey-question (i) info popover where the user's eye lands
+  // (the title bar is bold white-on-color; the previous out-of-bar
+  // text-xs row was easy to miss).
+  titleSuffix?: React.ReactNode;
 }
 
 const COLUMN_CONFIG: Record<LeaderTableColumn, { label: string; sortField: string }> = {
@@ -85,6 +91,7 @@ export function LeaderTable({
   maxCount,
   exportFilename,
   getAllItemsForExport,
+  titleSuffix,
 }: LeaderTableProps) {
   const { status: excelExportStatus, exportExcel } = useExcelExport();
 
@@ -130,8 +137,14 @@ export function LeaderTable({
   return (
     <div className="rounded-xl border bg-card shadow-md hover:shadow-lg transition-shadow overflow-hidden">
       {/* Color-coded title header */}
-      <div className={cn('px-4 py-3 font-bold text-white text-base tracking-wide', titleColor)}>
-        {title}
+      <div
+        className={cn(
+          'px-4 py-3 font-bold text-white text-base tracking-wide flex items-center gap-2',
+          titleColor,
+        )}
+      >
+        <span>{title}</span>
+        {titleSuffix}
       </div>
 
       {/* Table */}

@@ -64,6 +64,7 @@ import { StateBarChart } from '@/components/insights/charts/state-bar-chart';
 import { BarDistributionChart } from '@/components/insights/charts/bar-distribution-chart';
 import { useKolExplorer, useKolProfile, useInsightsFilterOptions, useKolNominationMetadata } from '@/hooks/use-insights-report';
 import { useKolMatchCount } from '@/hooks/use-match-count';
+import { useDebouncedValue } from '@/hooks/use-filters';
 import { ApplyFilterControls } from '@/components/insights/shared/apply-filter-controls';
 import { useExcelExport } from '@/lib/excel-export';
 import { toTitleCase } from '@/lib/utils';
@@ -138,8 +139,9 @@ const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
 // dimensions: search, multi-select specialties/states/influencerTypes,
 // plus 10 score-range filters. Page/limit/sort are view controls
 // (re-fire immediately); the rest are "filters" gated on Apply.
+// v1.17.55: `search` removed from the applied snapshot per pteam
+// feedback (search is realtime + debounced; doesn't gate on Apply).
 interface AppliedKolExplorerFilters {
-  search?: string;
   specialties: string[];
   states: string[];
   influencerTypes: string[];
@@ -148,7 +150,6 @@ interface AppliedKolExplorerFilters {
   scoreRanges: Record<string, number | undefined>;
 }
 const EMPTY_APPLIED_KOL: AppliedKolExplorerFilters = {
-  search: undefined,
   specialties: [],
   states: [],
   influencerTypes: [],
@@ -198,20 +199,20 @@ function ScoreTableView({
   // v1.17.31: arrays pass through as arrays — hook serializes as repeated
   // query params (not CSV). See docs/findings/splitcsv-comma-bug-2026-06-09.md.
   // v1.17.53: filter dimensions read from `appliedFilters` (snapshot on
-  // Apply); page/limit/sort/search are still drawn from `filters` —
-  // search remains here for now since the existing onChange wiring goes
-  // through `filters` but we override it from appliedFilters below.
+  // Apply). v1.17.55: search is realtime + debounced 250ms; bypasses
+  // the Apply gate.
+  const debouncedSearch = useDebouncedValue(filters.search ?? '', 250);
   const apiFilters = useMemo<Partial<InsightsFilterInput>>(() => ({
     page: filters.page,
     limit: filters.limit,
     sortBy: filters.sortBy,
     sortOrder: filters.sortOrder,
-    search: appliedFilters.search || undefined,
+    search: debouncedSearch || undefined,
     specialties: appliedFilters.specialties.length > 0 ? appliedFilters.specialties : undefined,
     states: appliedFilters.states.length > 0 ? appliedFilters.states : undefined,
     influencerTypes: appliedFilters.influencerTypes.length > 0 ? appliedFilters.influencerTypes : undefined,
     ...appliedFilters.scoreRanges,
-  }), [filters, appliedFilters]);
+  }), [filters, debouncedSearch, appliedFilters]);
 
   const { data, isLoading } = useKolExplorer(diseaseAreaId, apiFilters, clientId);
   const { status: excelExportStatus, exportExcel } = useExcelExport();
@@ -231,7 +232,7 @@ function ScoreTableView({
   }, [filters]);
 
   const isDirty = useMemo(() => {
-    if ((filters.search ?? '') !== (appliedFilters.search ?? '')) return true;
+    // v1.17.55: search bypasses Apply (realtime), not part of isDirty.
     if (!arrayEq(selectedSpecialties, appliedFilters.specialties)) return true;
     if (!arrayEq(selectedStates, appliedFilters.states)) return true;
     if (!arrayEq(selectedInfluencerTypes, appliedFilters.influencerTypes)) return true;
@@ -254,15 +255,15 @@ function ScoreTableView({
   );
 
   const applyFilters = useCallback(() => {
+    // v1.17.55: search is not in appliedFilters anymore (realtime).
     setAppliedFilters({
-      search: filters.search,
       specialties: [...selectedSpecialties],
       states: [...selectedStates],
       influencerTypes: [...selectedInfluencerTypes],
       scoreRanges: { ...pendingScoreRanges },
     });
     setFilters((prev) => ({ ...prev, page: 1 }));
-  }, [filters.search, selectedSpecialties, selectedStates, selectedInfluencerTypes, pendingScoreRanges]);
+  }, [selectedSpecialties, selectedStates, selectedInfluencerTypes, pendingScoreRanges]);
 
   const resetFilters = useCallback(() => {
     setFilters((prev) => {
@@ -450,7 +451,9 @@ function ScoreTableView({
         </div>
         <div className="flex items-center gap-2">
           {/* v1.17.45 — column selector + Export. v1.17.53 — Apply
-              Filters + live count moved into the filter row below. */}
+              Filters + live count moved into the filter row below.
+              Reset (inside ApplyFilterControls) is the single
+              clear-filters affordance. */}
           <ColumnSelector
             columns={[...KOL_EXPLORER_COLUMN_OPTIONS]}
             visibility={columnVisibility}

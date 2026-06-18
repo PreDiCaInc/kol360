@@ -46,6 +46,7 @@ import {
 } from '@/components/insights/shared/filter-clear-controls';
 import { ApplyFilterControls } from '@/components/insights/shared/apply-filter-controls';
 import { useKolMatchCount } from '@/hooks/use-match-count';
+import { useDebouncedValue } from '@/hooks/use-filters';
 import {
   RespondentFiltersBar,
   RespondentFiltersState,
@@ -85,15 +86,17 @@ const NOMINATION_COLUMNS: {
 // v1.17.53 — Track B Apply Filters batch UX. Filter shape snapshotted
 // on Apply; the heavy useSociometricSummary query reads `applied`, not
 // the live edits. Live "N KOLs match" indicator reads pending (debounced).
+// v1.17.55 — `search` removed from the applied snapshot per pteam
+// feedback ("the text search bar should not be with the apply
+// filter — that should be realtime"). Search now fires the query
+// directly, debounced 250ms.
 interface AppliedSocoFilters {
-  search: string;
   specialties: string[];
   states: string[];
   influencerTypes: string[];
   respondent: RespondentFiltersState;
 }
 const INITIAL_APPLIED: AppliedSocoFilters = {
-  search: '',
   specialties: [],
   states: [],
   influencerTypes: [],
@@ -123,14 +126,17 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
   const [respondentFilters, setRespondentFilters] = useState<RespondentFiltersState>({});
   const [appliedFilters, setAppliedFilters] = useState<AppliedSocoFilters>(INITIAL_APPLIED);
 
+  // v1.17.55 — search is realtime + debounced; it does NOT count
+  // toward isDirty (changing it doesn't enable the Apply button).
+  const debouncedSearch = useDebouncedValue(search, 250);
+
   const isDirty = useMemo(
     () =>
-      search !== appliedFilters.search ||
       !arrayEq(selectedSpecialties, appliedFilters.specialties) ||
       !arrayEq(selectedStates, appliedFilters.states) ||
       !arrayEq(selectedInfluencerTypes, appliedFilters.influencerTypes) ||
       !respEq(respondentFilters, appliedFilters.respondent),
-    [search, selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters, appliedFilters]
+    [selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters, appliedFilters]
   );
 
   const hasActiveFilters = useMemo(
@@ -145,14 +151,13 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
 
   const applyFilters = useCallback(() => {
     setAppliedFilters({
-      search,
       specialties: [...selectedSpecialties],
       states: [...selectedStates],
       influencerTypes: [...selectedInfluencerTypes],
       respondent: { ...respondentFilters },
     });
     setPage(1);
-  }, [search, selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters]);
+  }, [selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters]);
 
   const resetFilters = useCallback(() => {
     setSearch('');
@@ -192,14 +197,17 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
 
   // Build API filters. v1.17.53: reads from APPLIED filter snapshot
   // (not live pending state) — heavy aggregation query only re-fires
-  // on Apply. Sort/page/limit are view controls outside the filter
-  // shape; they re-fire immediately as before.
+  // on Apply. v1.17.55: search is the exception — it reads
+  // debouncedSearch directly so the query fires 250ms after the
+  // user stops typing, with no Apply click required.
+  // Sort/page/limit are view controls outside the filter shape; they
+  // re-fire immediately as before.
   const apiFilters: Partial<InsightsFilterInput> & Record<string, string | string[] | number | undefined> = {
     page,
     limit,
     sortBy,
     sortOrder,
-    search: appliedFilters.search || undefined,
+    search: debouncedSearch || undefined,
     specialties: appliedFilters.specialties.length > 0 ? appliedFilters.specialties : undefined,
     states: appliedFilters.states.length > 0 ? appliedFilters.states : undefined,
     influencerTypes: appliedFilters.influencerTypes.length > 0 ? appliedFilters.influencerTypes : undefined,
@@ -414,7 +422,9 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
           <div className="flex items-center gap-2">
             {/* v1.17.45 — column selector + Export. v1.17.53 — Apply
                 Filters + live count moved out of the header into the
-                filter bar below where the filters actually live. */}
+                filter bar below where the filters actually live.
+                Reset (inside ApplyFilterControls) is the single
+                clear-filters affordance. */}
             <ColumnSelector
               columns={[...SOCIOMETRIC_COLUMN_OPTIONS]}
               visibility={columnVisibility}

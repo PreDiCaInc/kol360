@@ -26,8 +26,6 @@ export interface QuestionInfoPopoverProps {
   campaignName?: string;
   /** Optional heading shown inside the popover, e.g. "Survey question". */
   title?: string;
-  /** Optional tweak to the trigger's size (default: 3.5). */
-  iconSize?: number;
   className?: string;
 }
 
@@ -35,7 +33,6 @@ export function QuestionInfoPopover({
   text,
   campaignName,
   title = 'Survey question',
-  iconSize = 3.5,
   className,
 }: QuestionInfoPopoverProps) {
   if (!text) return null;
@@ -46,13 +43,17 @@ export function QuestionInfoPopover({
         <button
           type="button"
           aria-label={title}
+          // v1.17.55: icon hardcoded h-4 w-4 (was templated h-${size}
+          // which Tailwind JIT can't resolve dynamically). Default
+          // color is muted-foreground; callers pass `className` to
+          // override (e.g. text-white/80 for use inside colored title bars).
           className={cn(
             'inline-flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm',
             className,
           )}
         >
-          <Info className={`h-${iconSize} w-${iconSize}`} />
+          <Info className="h-4 w-4" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-96 p-3 space-y-1.5">
