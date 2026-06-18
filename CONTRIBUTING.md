@@ -7,6 +7,47 @@ This file is the subset that every contributor should know.
 
 ---
 
+## First-time clone setup — activate `.githooks/`
+
+This repo ships its Git hooks under `.githooks/` (tracked in the
+repo, not the per-clone `.git/hooks/` directory). Activate them
+once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Verify:
+
+```bash
+git config core.hooksPath   # should print: .githooks
+```
+
+You only need to do this once per clone. Pulls afterwards pick up
+new/updated hooks automatically.
+
+### Currently shipped
+
+| Hook | Purpose |
+|---|---|
+| `pre-push` | Tripwire that blocks pushes to `Bio-Exec/kol360` carrying internal/sensitive paths (`func-spec/`, `docs/`, `.claude/`, `*.csv`, `*.pem`, etc.) or known credential strings. Backstops `kol360-push-bioexec.sh` for anyone who runs `git push` directly. Pushes to PreDiCa or any other remote are unaffected. |
+
+See [`.githooks/README.md`](.githooks/README.md) for the per-hook
+detail.
+
+### Override
+
+False positives are extremely rare — investigate first. If you've
+verified the contents are safe:
+
+```bash
+git push --no-verify ...
+```
+
+Don't make `--no-verify` a habit.
+
+---
+
 ## Documentation layout
 
 The repo root holds only docs that are **actively load-bearing**

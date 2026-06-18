@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# pre-push — tripwire that blocks any push to the Bio-Exec repo carrying
+# internal/sensitive paths. Backstops kol360-push-bioexec.sh, and catches
+# the case where someone runs `git push` directly without the wrapper.
+#
+# Triggered on EVERY `git push` from this clone, but only enforces when
+# the destination URL matches Bio-Exec/kol360. Pushes to PreDiCa (or any
+# other remote) pass through untouched.
+#
+# Stdin: lines of "<local_ref> <local_sha> <remote_ref> <remote_sha>"
+# (git pushes can target multiple refs in one invocation).
+#
+# To enable in a new clone:
+#   git config core.hooksPath .githooks
+#
+# This is identical to the manifest in
+# ~/.claude/projects/.../memory/bioexec-release.md (Step 3b) — if you
+# change one, change the other.
+
+REMOTE_NAME="$1"
+REMOTE_URL="$2"
+
+# Only enforce on Bio-Exec pushes
+case "$REMOTE_URL" in
+  *Bio-Exec/kol360*) ;;
+  *) exit 0 ;;
+esac
+
+if [ -t 2 ]; then
+  R=$'\e[31m'; Y=$'\e[33m'; Z=$'\e[0m'
+else R=; Y=; Z=; fi
+
+echo "${Y}[pre-push]${Z} Bio-Exec push detected ($REMOTE_NAME → $REMOTE_URL) — scanning for forbidden paths..." >&2
+
+FAILED=0
+while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+  # Skip deletions
+  [ "$LOCAL_SHA" = "0000000000000000000000000000000000000000" ] && continue
+
+  # List every path in the tree being pushed, filter via the canonical manifest
+  LEAK=$(git ls-tree -r --name-only "$LOCAL_SHA" \
+    | grep -iE '^func-spec/|^tech-spec|^tmp/|^creds/|^csv/|^sec-scan|^docs/|^\.claude/|\.csv$|\.log$|\.zip$|\.tar$|\.gz$|\.docx$|\.xlsx$|\.xls$|\.pem$|\.key$|\.md$' \
+    | grep -vxE 'README\.md|DEPLOYMENT\.md' \
+    || true)
+
+  if [ -n "$LEAK" ]; then
+    echo "${R}[pre-push] ABORT${Z} — ref $LOCAL_REF (sha ${LOCAL_SHA:0:7}) contains forbidden paths:" >&2
+    echo "$LEAK" | head -20 | sed 's/^/  /' >&2
+    LEAK_COUNT=$(echo "$LEAK" | wc -l | tr -d ' ')
+    [ "$LEAK_COUNT" -gt 20 ] && echo "  ... and $((LEAK_COUNT - 20)) more" >&2
+    FAILED=1
+  fi
+
+  # Also flag any known credential CONTENT (defense-in-depth)
+  # Matches: actual leaked passwords (specific tokens) + PEM key body.
+  # Does NOT match filenames like 'kol360-bastion-key.pem' (which legitimately
+  # appear in .gitignore / tunnel-up.sh as path references, not key content).
+  CRED_HITS=$(git ls-tree -r --name-only "$LOCAL_SHA" \
+    | while IFS= read -r f; do
+        sha=$(git ls-tree "$LOCAL_SHA" "$f" | awk '{print $3}')
+        [ -z "$sha" ] && continue
+        if git cat-file blob "$sha" 2>/dev/null | grep -qE 'RDS4Bioexec2025|Kol360Prod@2024|E2eTest@2024Secure|-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
+          echo "$f"
+        fi
+      done)
+  if [ -n "$CRED_HITS" ]; then
+    echo "${R}[pre-push] ABORT${Z} — credential strings found in:" >&2
+    echo "$CRED_HITS" | sed 's/^/  /' >&2
+    FAILED=1
+  fi
+done
+
+if [ "$FAILED" -ne 0 ]; then
+  echo "" >&2
+  echo "${R}Push blocked.${Z} Run via ${Y}kol360-push-bioexec.sh <tag>${Z} which does the strip automatically," >&2
+  echo "or manually clean the snapshot before retrying. See memory/bioexec-release.md." >&2
+  echo "" >&2
+  echo "(If this is a false positive — e.g. you've vetted the contents — override with:" >&2
+  echo "  ${Y}git push --no-verify ...${Z})" >&2
+  exit 1
+fi
+
+echo "${Y}[pre-push]${Z} scan clean — push allowed." >&2
+exit 0
