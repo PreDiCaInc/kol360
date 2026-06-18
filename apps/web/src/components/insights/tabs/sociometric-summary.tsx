@@ -42,9 +42,10 @@ import { KolNameLink } from '@/components/insights/shared/kol-name-link';
 import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
 import {
   ActiveFilter,
-  ClearFiltersButton,
   ActiveFilterChips,
 } from '@/components/insights/shared/filter-clear-controls';
+import { ApplyFilterControls } from '@/components/insights/shared/apply-filter-controls';
+import { useKolMatchCount } from '@/hooks/use-match-count';
 import {
   RespondentFiltersBar,
   RespondentFiltersState,
@@ -81,17 +82,87 @@ const NOMINATION_COLUMNS: {
   { field: 'biasedLeaders', label: 'Biased', headerClass: 'bg-red-200 dark:bg-red-800 font-bold' },
 ];
 
+// v1.17.53 — Track B Apply Filters batch UX. Filter shape snapshotted
+// on Apply; the heavy useSociometricSummary query reads `applied`, not
+// the live edits. Live "N KOLs match" indicator reads pending (debounced).
+interface AppliedSocoFilters {
+  search: string;
+  specialties: string[];
+  states: string[];
+  influencerTypes: string[];
+  respondent: RespondentFiltersState;
+}
+const INITIAL_APPLIED: AppliedSocoFilters = {
+  search: '',
+  specialties: [],
+  states: [],
+  influencerTypes: [],
+  respondent: {},
+};
+
+function arrayEq(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+function respEq(a: RespondentFiltersState, b: RespondentFiltersState): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: Props) {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
   const [sortBy, setSortBy] = useState<string>('total');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  // v1.17.53: live "pending" filter state (edits land here on every
+  // dropdown change). Applied is snapshotted on Apply.
   const [search, setSearch] = useState('');
   const [selectedSpecialties, setSelectedSpecialties] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedInfluencerTypes, setSelectedInfluencerTypes] = useState<string[]>([]);
-  // v1.17.5: respondent-side filters carried over from Demographics tab.
   const [respondentFilters, setRespondentFilters] = useState<RespondentFiltersState>({});
+  const [appliedFilters, setAppliedFilters] = useState<AppliedSocoFilters>(INITIAL_APPLIED);
+
+  const isDirty = useMemo(
+    () =>
+      search !== appliedFilters.search ||
+      !arrayEq(selectedSpecialties, appliedFilters.specialties) ||
+      !arrayEq(selectedStates, appliedFilters.states) ||
+      !arrayEq(selectedInfluencerTypes, appliedFilters.influencerTypes) ||
+      !respEq(respondentFilters, appliedFilters.respondent),
+    [search, selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters, appliedFilters]
+  );
+
+  const hasActiveFilters = useMemo(
+    () =>
+      !!search ||
+      selectedSpecialties.length > 0 ||
+      selectedStates.length > 0 ||
+      selectedInfluencerTypes.length > 0 ||
+      hasAnyResp(respondentFilters),
+    [search, selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters]
+  );
+
+  const applyFilters = useCallback(() => {
+    setAppliedFilters({
+      search,
+      specialties: [...selectedSpecialties],
+      states: [...selectedStates],
+      influencerTypes: [...selectedInfluencerTypes],
+      respondent: { ...respondentFilters },
+    });
+    setPage(1);
+  }, [search, selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters]);
+
+  const resetFilters = useCallback(() => {
+    setSearch('');
+    setSelectedSpecialties([]);
+    setSelectedStates([]);
+    setSelectedInfluencerTypes([]);
+    setRespondentFilters({});
+    setAppliedFilters(INITIAL_APPLIED);
+    setPage(1);
+  }, []);
 
   // v1.17.41 — per-table column visibility (localStorage-backed).
   // Sticky # + Name aren't in the options list — they're always shown.
@@ -119,22 +190,35 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     [demographicsData?.byPracticeSetting]
   );
 
-  // Build API filters. Respondent filters merge into the same query string.
-  // v1.17.31: arrays pass through as arrays — hook serializes as repeated
-  // query params. See docs/findings/splitcsv-comma-bug-2026-06-09.md.
+  // Build API filters. v1.17.53: reads from APPLIED filter snapshot
+  // (not live pending state) — heavy aggregation query only re-fires
+  // on Apply. Sort/page/limit are view controls outside the filter
+  // shape; they re-fire immediately as before.
   const apiFilters: Partial<InsightsFilterInput> & Record<string, string | string[] | number | undefined> = {
     page,
     limit,
     sortBy,
     sortOrder,
+    search: appliedFilters.search || undefined,
+    specialties: appliedFilters.specialties.length > 0 ? appliedFilters.specialties : undefined,
+    states: appliedFilters.states.length > 0 ? appliedFilters.states : undefined,
+    influencerTypes: appliedFilters.influencerTypes.length > 0 ? appliedFilters.influencerTypes : undefined,
+    ...respondentFiltersToApiParams(appliedFilters.respondent),
+  };
+
+  const { data, isLoading } = useSociometricSummary(diseaseAreaId, apiFilters, clientId);
+
+  // Live "N KOLs match" — fires only on dirty pending edits.
+  const matchCountFilters = useMemo<Record<string, unknown>>(() => ({
     search: search || undefined,
     specialties: selectedSpecialties.length > 0 ? selectedSpecialties : undefined,
     states: selectedStates.length > 0 ? selectedStates : undefined,
     influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes : undefined,
     ...respondentFiltersToApiParams(respondentFilters),
-  };
-
-  const { data, isLoading } = useSociometricSummary(diseaseAreaId, apiFilters, clientId);
+  }), [search, selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters]);
+  const matchCount = useKolMatchCount(diseaseAreaId, matchCountFilters, clientId, isDirty);
+  const liveCount = isDirty ? matchCount.data?.count : data?.total;
+  const countIsFetching = isDirty && matchCount.isFetching;
   const { status: excelExportStatus, exportExcel } = useExcelExport();
 
   const handleSort = useCallback((field: string) => {
@@ -147,14 +231,14 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     setPage(1);
   }, [sortBy]);
 
+  // v1.17.53: pending edits don't reset page (page only resets on
+  // Apply via applyFilters).
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
-    setPage(1);
   };
 
   const handleMultiSelectChange = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (values: string[]) => {
     setter(values);
-    setPage(1);
   };
 
   const handleLimitChange = (newLimit: number) => {
@@ -163,39 +247,40 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
   };
 
   // v1.17.3 + v1.17.5: chips for BOTH KOL-side filters (search,
-  // specialty, state, influencer type) AND respondent-side filters
-  // (role, focus, state of practice, practice setting, ranges).
+  // specialty, state, influencer type) AND respondent-side filters.
+  // v1.17.53: chip onRemove edits PENDING — user clicks Apply to
+  // commit. (The dirty-state styling on Apply tells them their click
+  // is staged.)
   const activeFilters = useMemo<ActiveFilter[]>(() => {
     const entries: ActiveFilter[] = [];
     if (search.trim()) {
       entries.push({
         key: 'search',
         label: `Search: "${search}"`,
-        onRemove: () => { setSearch(''); setPage(1); },
+        onRemove: () => setSearch(''),
       });
     }
     for (const s of selectedSpecialties) {
       entries.push({
         key: `spec-${s}`,
         label: `Specialty: ${s}`,
-        onRemove: () => { setSelectedSpecialties((prev) => prev.filter((x) => x !== s)); setPage(1); },
+        onRemove: () => setSelectedSpecialties((prev) => prev.filter((x) => x !== s)),
       });
     }
     for (const s of selectedStates) {
       entries.push({
         key: `state-${s}`,
         label: `State: ${s}`,
-        onRemove: () => { setSelectedStates((prev) => prev.filter((x) => x !== s)); setPage(1); },
+        onRemove: () => setSelectedStates((prev) => prev.filter((x) => x !== s)),
       });
     }
     for (const t of selectedInfluencerTypes) {
       entries.push({
         key: `type-${t}`,
         label: `Type: ${t}`,
-        onRemove: () => { setSelectedInfluencerTypes((prev) => prev.filter((x) => x !== t)); setPage(1); },
+        onRemove: () => setSelectedInfluencerTypes((prev) => prev.filter((x) => x !== t)),
       });
     }
-    // Respondent-side chips.
     const respChip = (
       key: 'respondentRoles' | 'coreFocuses' | 'stateOfPractices' | 'practiceSettings',
       label: string
@@ -204,13 +289,10 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
         entries.push({
           key: `${key}-${v}`,
           label: `${label}: ${v}`,
-          onRemove: () => {
-            setRespondentFilters((prev) => ({
-              ...prev,
-              [key]: (prev[key] ?? []).filter((x) => x !== v),
-            }));
-            setPage(1);
-          },
+          onRemove: () => setRespondentFilters((prev) => ({
+            ...prev,
+            [key]: (prev[key] ?? []).filter((x) => x !== v),
+          })),
         });
       }
     };
@@ -229,10 +311,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
       entries.push({
         key: `${String(keyMin)}-${min ?? ''}-${max ?? ''}`,
         label: `${label}: ${min ?? '0'}–${max ?? '∞'}`,
-        onRemove: () => {
-          setRespondentFilters((prev) => ({ ...prev, [keyMin]: undefined, [keyMax]: undefined }));
-          setPage(1);
-        },
+        onRemove: () => setRespondentFilters((prev) => ({ ...prev, [keyMin]: undefined, [keyMax]: undefined })),
       });
     };
     respRange('yearsMin', 'yearsMax', 'Years');
@@ -241,19 +320,14 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     return entries;
   }, [search, selectedSpecialties, selectedStates, selectedInfluencerTypes, respondentFilters]);
 
-  const handleClearAllFilters = useCallback(() => {
-    setSearch('');
-    setSelectedSpecialties([]);
-    setSelectedStates([]);
-    setSelectedInfluencerTypes([]);
-    setRespondentFilters({});
-    setPage(1);
-  }, []);
+  // v1.17.53: Reset == legacy "Clear filters" — clears pending AND
+  // applied, resets page. Used by ApplyFilterControls Reset button.
+  const handleClearAllFilters = resetFilters;
 
-  // Respondent-filter onChange that resets pagination.
+  // v1.17.53: respondent-filter onChange is now a pending edit; page
+  // reset deferred to Apply.
   const handleRespondentFiltersChange = useCallback((next: RespondentFiltersState) => {
     setRespondentFilters(next);
-    setPage(1);
   }, []);
 
   // v1.17.32: Export the FULL list (was: only the current page). Re-fetches
@@ -338,11 +412,9 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            {/* v1.17.3: Clear filters surfaced for the first time on this tab. */}
-            <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAllFilters} />
-            {/* v1.17.45 — column selector moved up here next to Export
-                (was: its own row above the table). Saves vertical space
-                and groups all the table-action buttons together. */}
+            {/* v1.17.45 — column selector + Export. v1.17.53 — Apply
+                Filters + live count moved out of the header into the
+                filter bar below where the filters actually live. */}
             <ColumnSelector
               columns={[...SOCIOMETRIC_COLUMN_OPTIONS]}
               visibility={columnVisibility}
@@ -370,10 +442,30 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
       </CardHeader>
       <CardContent className="space-y-4">
         {/* KOL Filters — who the leader is. */}
-        <div className="bg-muted/50 rounded-lg p-4 print:hidden space-y-3">
+        <div
+          className="bg-muted/50 rounded-lg p-4 print:hidden space-y-3"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && isDirty && (e.target as HTMLElement).tagName === 'INPUT') {
+              e.preventDefault();
+              applyFilters();
+            }
+          }}
+        >
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Filter className="h-4 w-4" />
             <span>KOL Filters</span>
+            {/* v1.17.53 — Apply Filters + live "N KOLs match" indicator. */}
+            <ApplyFilterControls
+              className="ml-auto"
+              isDirty={isDirty}
+              isLoading={isLoading}
+              liveCount={liveCount}
+              countIsFetching={countIsFetching}
+              countLabel="KOLs match"
+              hasActiveFilters={hasActiveFilters}
+              onApply={applyFilters}
+              onReset={handleClearAllFilters}
+            />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="relative">

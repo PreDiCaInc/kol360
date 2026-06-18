@@ -17,9 +17,10 @@ import {
 } from '@/components/insights/shared/respondent-filters-bar';
 import {
   ActiveFilter,
-  ClearFiltersButton,
   ActiveFilterChips,
 } from '@/components/insights/shared/filter-clear-controls';
+import { ApplyFilterControls } from '@/components/insights/shared/apply-filter-controls';
+import { useKolMatchCount } from '@/hooks/use-match-count';
 import type { NominationType } from '@kol360/shared';
 import type { LeaderTableColumn } from '@/components/insights/tables/leader-table';
 
@@ -224,10 +225,82 @@ function LeaderRankingPanel({
   );
 }
 
+// v1.17.53 — Track B Apply Filters batch UX. Leader Rankings has 7
+// LeaderRankingPanel children that all consume the same filter set;
+// applying once re-fires all 7 panel queries. Live "N KOLs match"
+// counts distinct HCPs across all 7 (matches the kols match-count
+// semantic).
+interface AppliedLeaderFilters {
+  specialties?: string[];
+  states?: string[];
+  respondent: RespondentFiltersState;
+}
+const INITIAL_APPLIED_LEADER: AppliedLeaderFilters = {
+  specialties: undefined,
+  states: undefined,
+  respondent: {},
+};
+
+function arrayEq(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (!a && !b) return true;
+  if (!a || !b) return (a?.length ?? 0) === 0 && (b?.length ?? 0) === 0;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Props) {
   const [filters, setFilters] = useState<LeaderFilters>({});
   // v1.17.5: respondent-side filters carried over from Demographics.
   const [respondentFilters, setRespondentFilters] = useState<RespondentFiltersState>({});
+  const [appliedFilters, setAppliedFilters] = useState<AppliedLeaderFilters>(INITIAL_APPLIED_LEADER);
+
+  const isDirty = useMemo(() => {
+    if (!arrayEq(filters.specialties, appliedFilters.specialties)) return true;
+    if (!arrayEq(filters.states, appliedFilters.states)) return true;
+    if (JSON.stringify(respondentFilters) !== JSON.stringify(appliedFilters.respondent)) return true;
+    return false;
+  }, [filters, respondentFilters, appliedFilters]);
+
+  const hasActiveFilters = useMemo(
+    () =>
+      (filters.specialties?.length ?? 0) > 0 ||
+      (filters.states?.length ?? 0) > 0 ||
+      Object.values(respondentFilters).some((v) =>
+        Array.isArray(v) ? v.length > 0 : v !== undefined
+      ),
+    [filters, respondentFilters]
+  );
+
+  const applyFilters = useCallback(() => {
+    setAppliedFilters({
+      specialties: filters.specialties && filters.specialties.length > 0 ? [...filters.specialties] : undefined,
+      states: filters.states && filters.states.length > 0 ? [...filters.states] : undefined,
+      respondent: { ...respondentFilters },
+    });
+  }, [filters, respondentFilters]);
+
+  const resetFilters = useCallback(() => {
+    setFilters({});
+    setRespondentFilters({});
+    setAppliedFilters(INITIAL_APPLIED_LEADER);
+  }, []);
+
+  // Live "N KOLs match" — same kols match-count semantic as the
+  // Sociometric tab; counts distinct HCPs that would appear across
+  // all 7 panels after Apply.
+  const matchCountFilters = useMemo<Record<string, unknown>>(() => ({
+    specialties: filters.specialties && filters.specialties.length > 0 ? filters.specialties : undefined,
+    states: filters.states && filters.states.length > 0 ? filters.states : undefined,
+    ...(Object.fromEntries(
+      Object.entries(respondentFilters).filter(([, v]) =>
+        Array.isArray(v) ? v.length > 0 : v !== undefined
+      )
+    )),
+  }), [filters, respondentFilters]);
+  const matchCount = useKolMatchCount(diseaseAreaId, matchCountFilters, clientId, isDirty);
+  const liveCount = matchCount.data?.count;
+  const countIsFetching = isDirty && matchCount.isFetching;
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   // Source respondent-filter options from the demographics aggregation.
   const { data: demographicsData } = useDemographics(diseaseAreaId, clientId);
@@ -252,10 +325,9 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
   }, []);
 
   const handleClearAll = useCallback(() => {
-    setFilters({});
     setSearchTerms({});
-    setRespondentFilters({});
-  }, []);
+    resetFilters();
+  }, [resetFilters]);
 
   // v1.17.3 + v1.17.4: feed the shared FilterClearControls. Each selected
   // multi-select value gets its own chip. Search-per-panel is captured as a
@@ -350,14 +422,31 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-muted/50 rounded-lg p-4 print:hidden">
+      <div
+        className="bg-muted/50 rounded-lg p-4 print:hidden"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && isDirty && (e.target as HTMLElement).tagName === 'INPUT') {
+            e.preventDefault();
+            applyFilters();
+          }
+        }}
+      >
         <div className="flex items-center gap-2 mb-3">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Filter className="h-4 w-4" />
             <span>Leader Filters</span>
           </div>
-          {/* v1.17.3: shared FilterClearControls — see filter-clear-controls.tsx. */}
-          <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAll} />
+          {/* v1.17.53 — Apply + Reset + live "N KOLs match". */}
+          <ApplyFilterControls
+            className="ml-auto"
+            isDirty={isDirty}
+            liveCount={liveCount}
+            countIsFetching={countIsFetching}
+            countLabel="KOLs match"
+            hasActiveFilters={hasActiveFilters}
+            onApply={applyFilters}
+            onReset={handleClearAll}
+          />
         </div>
 
         {/* v1.17.4: multi-select Specialty + State (was single-select). */}
@@ -418,8 +507,13 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
             color={type.color}
             onKolSelect={onKolSelect}
             clientId={clientId}
-            filters={filters}
-            respondentFilters={respondentFilters}
+            // v1.17.53: panels read APPLIED filters (heavy queries
+            // re-fire only on Apply). Pending edits don't re-fire here.
+            filters={{
+              specialties: appliedFilters.specialties,
+              states: appliedFilters.states,
+            }}
+            respondentFilters={appliedFilters.respondent}
             searchTerm={searchTerms[type.value] || ''}
             onSearchChange={(v) => handleSearchChange(type.value, v)}
           />

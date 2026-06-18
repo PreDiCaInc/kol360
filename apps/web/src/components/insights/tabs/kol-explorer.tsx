@@ -63,13 +63,14 @@ import { PieDistributionChart } from '@/components/insights/charts/pie-distribut
 import { StateBarChart } from '@/components/insights/charts/state-bar-chart';
 import { BarDistributionChart } from '@/components/insights/charts/bar-distribution-chart';
 import { useKolExplorer, useKolProfile, useInsightsFilterOptions, useKolNominationMetadata } from '@/hooks/use-insights-report';
+import { useKolMatchCount } from '@/hooks/use-match-count';
+import { ApplyFilterControls } from '@/components/insights/shared/apply-filter-controls';
 import { useExcelExport } from '@/lib/excel-export';
 import { toTitleCase } from '@/lib/utils';
 import type { InsightsFilterInput, KolExplorerItem, KolExplorerResponse, NominationType } from '@kol360/shared';
 import { apiClient } from '@/lib/api';
 import {
   ActiveFilter,
-  ClearFiltersButton,
   ActiveFilterChips,
 } from '@/components/insights/shared/filter-clear-controls';
 
@@ -133,6 +134,33 @@ const NOMINATION_TYPE_LABELS: Record<NominationType, string> = {
 
 // --- Score Table View ---
 
+// v1.17.53 — Track B Apply Filters batch UX. KOL Explorer has the most
+// dimensions: search, multi-select specialties/states/influencerTypes,
+// plus 10 score-range filters. Page/limit/sort are view controls
+// (re-fire immediately); the rest are "filters" gated on Apply.
+interface AppliedKolExplorerFilters {
+  search?: string;
+  specialties: string[];
+  states: string[];
+  influencerTypes: string[];
+  // Score ranges (Min/Max pairs) live in a flat record keyed by
+  // `${field}Min` / `${field}Max` for direct splat into the API filter.
+  scoreRanges: Record<string, number | undefined>;
+}
+const EMPTY_APPLIED_KOL: AppliedKolExplorerFilters = {
+  search: undefined,
+  specialties: [],
+  states: [],
+  influencerTypes: [],
+  scoreRanges: {},
+};
+
+function arrayEq(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 function ScoreTableView({
   diseaseAreaId,
   onKolSelect,
@@ -152,6 +180,10 @@ function ScoreTableView({
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedInfluencerTypes, setSelectedInfluencerTypes] = useState<string[]>([]);
   const [showScoreFilters, setShowScoreFilters] = useState(false);
+  // v1.17.53: Apply snapshot. Everything that's a "filter" (not a view
+  // control like page/limit/sort) lives here. apiFilters reads filters
+  // from here so heavy aggregation only re-fires on Apply.
+  const [appliedFilters, setAppliedFilters] = useState<AppliedKolExplorerFilters>(EMPTY_APPLIED_KOL);
 
   // v1.17.41 — per-table column visibility (localStorage-backed).
   // Sticky # + Name aren't in the options list — they're always shown.
@@ -165,15 +197,99 @@ function ScoreTableView({
 
   // v1.17.31: arrays pass through as arrays — hook serializes as repeated
   // query params (not CSV). See docs/findings/splitcsv-comma-bug-2026-06-09.md.
-  const apiFilters = useMemo(() => ({
-    ...filters,
-    specialties: selectedSpecialties.length > 0 ? selectedSpecialties : undefined,
-    states: selectedStates.length > 0 ? selectedStates : undefined,
-    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes : undefined,
-  }), [filters, selectedSpecialties, selectedStates, selectedInfluencerTypes]);
+  // v1.17.53: filter dimensions read from `appliedFilters` (snapshot on
+  // Apply); page/limit/sort/search are still drawn from `filters` —
+  // search remains here for now since the existing onChange wiring goes
+  // through `filters` but we override it from appliedFilters below.
+  const apiFilters = useMemo<Partial<InsightsFilterInput>>(() => ({
+    page: filters.page,
+    limit: filters.limit,
+    sortBy: filters.sortBy,
+    sortOrder: filters.sortOrder,
+    search: appliedFilters.search || undefined,
+    specialties: appliedFilters.specialties.length > 0 ? appliedFilters.specialties : undefined,
+    states: appliedFilters.states.length > 0 ? appliedFilters.states : undefined,
+    influencerTypes: appliedFilters.influencerTypes.length > 0 ? appliedFilters.influencerTypes : undefined,
+    ...appliedFilters.scoreRanges,
+  }), [filters, appliedFilters]);
 
   const { data, isLoading } = useKolExplorer(diseaseAreaId, apiFilters, clientId);
   const { status: excelExportStatus, exportExcel } = useExcelExport();
+
+  // v1.17.53 — Apply pattern: snapshot pending → applied, reset page.
+  const pendingScoreRanges = useMemo<Record<string, number | undefined>>(() => {
+    const o: Record<string, number | undefined> = {};
+    for (const key of SCORE_FILTER_KEYS) {
+      const minK = `${key}Min` as keyof InsightsFilterInput;
+      const maxK = `${key}Max` as keyof InsightsFilterInput;
+      const minV = filters[minK];
+      const maxV = filters[maxK];
+      if (minV !== undefined) o[`${key}Min`] = minV as number;
+      if (maxV !== undefined) o[`${key}Max`] = maxV as number;
+    }
+    return o;
+  }, [filters]);
+
+  const isDirty = useMemo(() => {
+    if ((filters.search ?? '') !== (appliedFilters.search ?? '')) return true;
+    if (!arrayEq(selectedSpecialties, appliedFilters.specialties)) return true;
+    if (!arrayEq(selectedStates, appliedFilters.states)) return true;
+    if (!arrayEq(selectedInfluencerTypes, appliedFilters.influencerTypes)) return true;
+    const a = pendingScoreRanges, b = appliedFilters.scoreRanges;
+    const allKeys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    let arr: string[] = [];
+    allKeys.forEach((k) => arr.push(k));
+    for (const k of arr) if (a[k] !== b[k]) return true;
+    return false;
+  }, [filters.search, selectedSpecialties, selectedStates, selectedInfluencerTypes, pendingScoreRanges, appliedFilters]);
+
+  const hasActiveFilters = useMemo(
+    () =>
+      !!filters.search ||
+      selectedSpecialties.length > 0 ||
+      selectedStates.length > 0 ||
+      selectedInfluencerTypes.length > 0 ||
+      Object.keys(pendingScoreRanges).length > 0,
+    [filters.search, selectedSpecialties, selectedStates, selectedInfluencerTypes, pendingScoreRanges]
+  );
+
+  const applyFilters = useCallback(() => {
+    setAppliedFilters({
+      search: filters.search,
+      specialties: [...selectedSpecialties],
+      states: [...selectedStates],
+      influencerTypes: [...selectedInfluencerTypes],
+      scoreRanges: { ...pendingScoreRanges },
+    });
+    setFilters((prev) => ({ ...prev, page: 1 }));
+  }, [filters.search, selectedSpecialties, selectedStates, selectedInfluencerTypes, pendingScoreRanges]);
+
+  const resetFilters = useCallback(() => {
+    setFilters((prev) => {
+      const next: Partial<InsightsFilterInput> = {
+        page: 1,
+        limit: prev.limit,
+        sortBy: prev.sortBy,
+        sortOrder: prev.sortOrder,
+      };
+      return next;
+    });
+    setSelectedSpecialties([]);
+    setSelectedStates([]);
+    setSelectedInfluencerTypes([]);
+    setAppliedFilters(EMPTY_APPLIED_KOL);
+  }, []);
+
+  const matchCountFilters = useMemo<Record<string, unknown>>(() => ({
+    search: filters.search || undefined,
+    specialties: selectedSpecialties.length > 0 ? selectedSpecialties : undefined,
+    states: selectedStates.length > 0 ? selectedStates : undefined,
+    influencerTypes: selectedInfluencerTypes.length > 0 ? selectedInfluencerTypes : undefined,
+    ...pendingScoreRanges,
+  }), [filters.search, selectedSpecialties, selectedStates, selectedInfluencerTypes, pendingScoreRanges]);
+  const matchCount = useKolMatchCount(diseaseAreaId, matchCountFilters, clientId, isDirty);
+  const liveCount = isDirty ? matchCount.data?.count : data?.total;
+  const countIsFetching = isDirty && matchCount.isFetching;
 
   // v1.17.3: Clear filters was missing from this surface entirely —
   // customers with active filters had no way to reset without page
@@ -185,7 +301,7 @@ function ScoreTableView({
       entries.push({
         key: 'search',
         label: `Search: "${filters.search}"`,
-        onRemove: () => setFilters((prev) => ({ ...prev, search: undefined, page: 1 })),
+        onRemove: () => setFilters((prev) => ({ ...prev, search: undefined })),
       });
     }
     for (const s of selectedSpecialties) {
@@ -218,33 +334,23 @@ function ScoreTableView({
       entries.push({
         key: `${key}-range`,
         label: `${key}: ${min ?? 0}–${max ?? 100}`,
-        onRemove: () =>
-          setFilters((prev) => ({ ...prev, [minKey]: undefined, [maxKey]: undefined, page: 1 })),
+        onRemove: () => setFilters((prev) => ({ ...prev, [minKey]: undefined, [maxKey]: undefined })),
       });
     }
     return entries;
   }, [filters, selectedSpecialties, selectedStates, selectedInfluencerTypes]);
 
-  const handleClearAllFilters = useCallback(() => {
-    setFilters((prev) => ({
-      // Preserve sort + pagination; only reset filter values + jump to page 1.
-      page: 1,
-      limit: prev.limit,
-      sortBy: prev.sortBy,
-      sortOrder: prev.sortOrder,
-    }));
-    setSelectedSpecialties([]);
-    setSelectedStates([]);
-    setSelectedInfluencerTypes([]);
-  }, []);
+  // v1.17.53: handleClearAllFilters delegates to resetFilters.
+  const handleClearAllFilters = resetFilters;
 
+  // v1.17.53: filter onChange handlers no longer reset page —
+  // page reset deferred to Apply.
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilters((prev) => ({ ...prev, search: e.target.value, page: 1 }));
+    setFilters((prev) => ({ ...prev, search: e.target.value }));
   };
 
   const handleMultiSelectChange = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (values: string[]) => {
     setter(values);
-    setFilters((prev) => ({ ...prev, page: 1 }));
   };
 
   const handlePageChange = (newPage: number) => {
@@ -255,12 +361,12 @@ function ScoreTableView({
     setFilters((prev) => ({ ...prev, limit: newLimit, page: 1 }));
   };
 
+  // Score-range filter edits are pending too.
   const handleScoreFilterChange = (key: string, min: number, max: number) => {
     setFilters((prev) => ({
       ...prev,
       [`${key}Min`]: min === 0 ? undefined : min,
       [`${key}Max`]: max === 100 ? undefined : max,
-      page: 1,
     }));
   };
 
@@ -343,11 +449,8 @@ function ScoreTableView({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* v1.17.3: Clear filters surfaced for the first time on this tab. */}
-          <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAllFilters} />
-          {/* v1.17.45 — column selector moved up here next to Export
-              (was: its own row above the table). Saves vertical space
-              and groups all the table-action buttons together. */}
+          {/* v1.17.45 — column selector + Export. v1.17.53 — Apply
+              Filters + live count moved into the filter row below. */}
           <ColumnSelector
             columns={[...KOL_EXPLORER_COLUMN_OPTIONS]}
             visibility={columnVisibility}
@@ -367,8 +470,30 @@ function ScoreTableView({
         </div>
       </div>
 
+      {/* v1.17.53 — Apply Filters bar above the filter inputs. */}
+      <div className="flex items-center justify-end gap-2 px-1">
+        <ApplyFilterControls
+          isDirty={isDirty}
+          isLoading={isLoading}
+          liveCount={liveCount}
+          countIsFetching={countIsFetching}
+          countLabel="KOLs match"
+          hasActiveFilters={hasActiveFilters}
+          onApply={applyFilters}
+          onReset={resetFilters}
+        />
+      </div>
+
       {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div
+        className="grid grid-cols-1 md:grid-cols-4 gap-4"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && isDirty && (e.target as HTMLElement).tagName === 'INPUT') {
+            e.preventDefault();
+            applyFilters();
+          }
+        }}
+      >
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input

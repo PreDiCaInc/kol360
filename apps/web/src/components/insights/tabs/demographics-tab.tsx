@@ -1,21 +1,23 @@
 'use client';
 
-import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PieDistributionChart } from '@/components/insights/charts/pie-distribution-chart';
 import { BarDistributionChart } from '@/components/insights/charts/bar-distribution-chart';
 import { StateBarChart } from '@/components/insights/charts/state-bar-chart';
 import { StackedBarChart } from '@/components/insights/charts/stacked-bar-chart';
 import { useDemographics, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import { useFilters } from '@/hooks/use-filters';
+import { useRespondentMatchCount } from '@/hooks/use-match-count';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { Filter } from 'lucide-react';
 import {
   ActiveFilter,
-  ClearFiltersButton,
   ActiveFilterChips,
 } from '@/components/insights/shared/filter-clear-controls';
+import { ApplyFilterControls } from '@/components/insights/shared/apply-filter-controls';
 
 interface Props {
   diseaseAreaId: string;
@@ -46,49 +48,58 @@ const US_STATES = [
   'VA','WA','WV','WI','WY','DC',
 ];
 
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+// v1.17.53 — replaced the local 500ms debounce + auto-fire with the
+// shared `useFilters` Apply pattern. Filter dropdowns mutate `pending`;
+// the heavy demographics query reads `applied`; the live "N
+// respondents match" indicator reads `pending` via a debounced
+// match-count fetch.
+const INITIAL_FILTERS: DemographicFilters = {};
 
-  useEffect(() => {
-    timeoutRef.current = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
+function buildApiFilters(f: DemographicFilters): Record<string, string[] | number> | undefined {
+  const result: Record<string, string[] | number> = {};
+  if (f.respondentRoles && f.respondentRoles.length > 0) result.respondentRoles = f.respondentRoles;
+  if (f.coreFocuses && f.coreFocuses.length > 0) result.coreFocuses = f.coreFocuses;
+  if (f.stateOfPractices && f.stateOfPractices.length > 0) result.stateOfPractices = f.stateOfPractices;
+  if (f.practiceSettings && f.practiceSettings.length > 0) result.practiceSettings = f.practiceSettings;
+  if (f.yearsMin !== undefined) result.yearsMin = f.yearsMin;
+  if (f.yearsMax !== undefined) result.yearsMax = f.yearsMax;
+  if (f.monthlyPatientsMin !== undefined) result.monthlyPatientsMin = f.monthlyPatientsMin;
+  if (f.monthlyPatientsMax !== undefined) result.monthlyPatientsMax = f.monthlyPatientsMax;
+  if (f.dedPatientsMin !== undefined) result.dedPatientsMin = f.dedPatientsMin;
+  if (f.dedPatientsMax !== undefined) result.dedPatientsMax = f.dedPatientsMax;
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
-  const [filters, setFilters] = useState<DemographicFilters>({});
-  const debouncedFilters = useDebounce(filters, 500);
+  const { pending, applied, isDirty, setPending, apply, reset } = useFilters<DemographicFilters>(
+    INITIAL_FILTERS,
+    { tabId: 'demographics' }
+  );
 
-  // Build the API filter object (only include defined values).
-  // v1.17.31: arrays pass through as arrays — the hook + URLSearchParams
-  // append one repeated query param per value. Previously joined as CSV
-  // which shredded values containing commas (e.g. "Dry Eye (including
-  // OSD, MGD, and NK)"). See docs/findings/splitcsv-comma-bug-2026-06-09.md.
-  const apiFilters = useMemo(() => {
-    const result: Record<string, string[] | number | undefined> = {};
-    const arr = (a?: string[]): string[] | undefined =>
-      a && a.length > 0 ? a : undefined;
-    if (arr(debouncedFilters.respondentRoles)) result.respondentRoles = arr(debouncedFilters.respondentRoles);
-    if (arr(debouncedFilters.coreFocuses)) result.coreFocuses = arr(debouncedFilters.coreFocuses);
-    if (arr(debouncedFilters.stateOfPractices)) result.stateOfPractices = arr(debouncedFilters.stateOfPractices);
-    if (arr(debouncedFilters.practiceSettings)) result.practiceSettings = arr(debouncedFilters.practiceSettings);
-    if (debouncedFilters.yearsMin !== undefined) result.yearsMin = debouncedFilters.yearsMin;
-    if (debouncedFilters.yearsMax !== undefined) result.yearsMax = debouncedFilters.yearsMax;
-    if (debouncedFilters.monthlyPatientsMin !== undefined) result.monthlyPatientsMin = debouncedFilters.monthlyPatientsMin;
-    if (debouncedFilters.monthlyPatientsMax !== undefined) result.monthlyPatientsMax = debouncedFilters.monthlyPatientsMax;
-    if (debouncedFilters.dedPatientsMin !== undefined) result.dedPatientsMin = debouncedFilters.dedPatientsMin;
-    if (debouncedFilters.dedPatientsMax !== undefined) result.dedPatientsMax = debouncedFilters.dedPatientsMax;
-    return Object.keys(result).length > 0 ? result : undefined;
-  }, [debouncedFilters]);
+  // Convenience used by every multi-select / range onChange below.
+  const setFilters = useCallback(
+    (updater: (prev: DemographicFilters) => DemographicFilters) => {
+      setPending((p) => updater(p));
+    },
+    [setPending]
+  );
+  const filters = pending; // existing render code reads `filters.*`
 
+  const apiFilters = useMemo(() => buildApiFilters(applied), [applied]);
   const { data, isLoading, error } = useDemographics(diseaseAreaId, clientId, apiFilters);
+
+  // Live "N respondents match" indicator — fires only while the user
+  // has uncommitted edits. When clean, the displayed count comes from
+  // the applied data's totalRespondents (it would match the count
+  // endpoint by construction — perf-pass-C parity contract).
+  const matchCount = useRespondentMatchCount(
+    diseaseAreaId,
+    buildApiFilters(pending) ?? {},
+    clientId,
+    isDirty
+  );
+  const liveCount = isDirty ? matchCount.data?.count : data?.totalRespondents;
+  const countIsFetching = isDirty && matchCount.isFetching;
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   // v1.17.24: a second useDemographics call WITHOUT filters, so the
   // dropdown options (role / coreFocus / practiceSetting) come from the
@@ -124,8 +135,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
   }, [filterOptions?.states]);
 
   const handleClearAll = useCallback(() => {
-    setFilters({});
-  }, []);
+    // v1.17.53: reset clears BOTH pending + applied (Reset button —
+    // matches the pteam ticket: "fires Apply automatically after
+    // reset so user sees the unfiltered view immediately").
+    reset();
+  }, [reset]);
 
   // v1.17.3: drive the shared FilterClearControls (button count + chips).
   // v1.17.4: 4 categorical filters now multi-select arrays — each selected
@@ -258,7 +272,18 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
   // the MultiSelect popover after each pick.
   return (
     <div className="space-y-8">
-      <div className="bg-muted/50 rounded-lg p-4 print:hidden">
+      <div
+        className="bg-muted/50 rounded-lg p-4 print:hidden"
+        onKeyDown={(e) => {
+          // v1.17.53: Enter inside the filter bar triggers Apply
+          // (matches the pteam ticket UX spec). Ignore Enter on
+          // dropdown popovers where MultiSelect handles it itself.
+          if (e.key === 'Enter' && isDirty && (e.target as HTMLElement).tagName === 'INPUT') {
+            e.preventDefault();
+            apply();
+          }
+        }}
+      >
         <div className="flex items-center gap-2 mb-3">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Filter className="h-4 w-4" />
@@ -267,10 +292,22 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
               <span className="text-xs text-muted-foreground animate-pulse">Updating...</span>
             )}
           </div>
-          {/* v1.17.3: prominent right-anchored Clear button (default size,
-              secondary variant, count badge). Earlier sm/outline button
-              wasn't visible enough for customers. */}
-          <ClearFiltersButton activeCount={activeFilters.length} onClear={handleClearAll} />
+          {/* v1.17.53: Apply Filters + Reset + live "N respondents match"
+              indicator. Reset replaces the prior right-anchored
+              ClearFiltersButton (its functionality folded in here per
+              pteam ticket spec). ActiveFilterChips below still allow
+              per-filter removal. */}
+          <ApplyFilterControls
+            className="ml-auto"
+            isDirty={isDirty}
+            isLoading={isLoading}
+            liveCount={liveCount}
+            countIsFetching={countIsFetching}
+            countLabel="respondents match"
+            hasActiveFilters={activeFilters.length > 0}
+            onApply={apply}
+            onReset={handleClearAll}
+          />
         </div>
 
         {/* Row 1: Multi-select dropdowns (v1.17.4 — was single Select) */}
