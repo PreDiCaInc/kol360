@@ -4,31 +4,6 @@ Tag at the merge commit on `main`. Pure UI release: Apply Filters button + live 
 
 ## Phase A — Sanity
 
-### A00. Benchmarking + Demographics survey-question popovers
-
-Open the Benchmarking tab on a customer dashboard (Sun Pharma → Dry Eye). Expected: each of the 7 LeaderRankingPanel headers shows a small "(i) Survey question" badge above the per-panel search input. Click it; a popover renders the actual question text + the campaign it was sourced from. Verify:
-- The text matches what's in the SurveyQuestion table for one of the included campaigns.
-- On dimensions where multiple campaigns have slightly different text (rare), the popover shows the text from the MOST RECENT campaign.
-
-Open Demographics. Expected: the 6 main chart cards (Respondent Role, Total Monthly Patients, Monthly DED Patients, Years in Practice, Practice Setting, Core Focus by Avg Monthly Patients) each have an (i) icon next to their title. Same popover behavior.
-
-If a dimension has no matching question in the included campaigns, the (i) is hidden — no broken/empty popover.
-
-### A0. Sociometric Leaders tab — duplicate block gone
-
-Open the Sociometric Leaders tab. Expected:
-- Top: the master Sociometric Summary matrix (unchanged, now with Apply Filters).
-- Below the matrix: **nothing**. Previously a "Per-Category Leader Tables" section rendered here with 7 leader-ranking panels — that block has been removed (it duplicated Benchmarking).
-- For the per-category leader tables, customers go to the **Benchmarking** tab.
-
-### A0a. Influencer Type filter dropdown reflects actual data
-
-Open any of: Sociometric Summary, KOL Explorer (Total Weighted Score), Benchmarking. Find the Influencer Type filter dropdown. Expected:
-- On prod (Dry Eye): dropdown shows **National Leaders, Pre-Emergent, Regional Leaders, Rising Stars** (4 values, in alpha order). "Regional Influencers" should NOT appear.
-- Pick "Regional Leaders" → live count should show ~1,291 (not 0).
-- Pick "Pre-Emergent" → live count should show ~2,261.
-- Other DAs / non-Dry-Eye: dropdown reflects whatever the data team has uploaded for that DA.
-
 ### A1. Version deployed
 
 ```bash
