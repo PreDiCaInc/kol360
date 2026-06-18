@@ -20,7 +20,9 @@ import {
   ActiveFilterChips,
 } from '@/components/insights/shared/filter-clear-controls';
 import { ApplyFilterControls } from '@/components/insights/shared/apply-filter-controls';
+import { QuestionInfoPopover } from '@/components/insights/shared/question-info-popover';
 import { useKolMatchCount } from '@/hooks/use-match-count';
+import { useNominationQuestions } from '@/hooks/use-insights-report';
 import type { NominationType } from '@kol360/shared';
 import type { LeaderTableColumn } from '@/components/insights/tables/leader-table';
 
@@ -69,6 +71,8 @@ function LeaderRankingPanel({
   respondentFilters,
   searchTerm,
   onSearchChange,
+  questionText,
+  questionCampaign,
 }: {
   diseaseAreaId: string;
   nominationType: NominationType;
@@ -80,6 +84,11 @@ function LeaderRankingPanel({
   respondentFilters: RespondentFiltersState;
   searchTerm: string;
   onSearchChange: (value: string) => void;
+  // v1.17.53 — survey question text for this nomination type.
+  // Undefined if not loaded yet OR the analysis's included campaigns
+  // have no question for this type (e.g. nominationType not authored).
+  questionText?: string;
+  questionCampaign?: string;
 }) {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(15);
@@ -189,6 +198,19 @@ function LeaderRankingPanel({
 
   return (
     <div className="space-y-2">
+      {/* v1.17.53 — Survey question info for this panel. Sits above
+          the per-panel search; hidden when the question text hasn't
+          loaded yet OR the analysis has no question of this type. */}
+      {questionText && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <QuestionInfoPopover
+            text={questionText}
+            campaignName={questionCampaign}
+            title={`What was asked for ${label}`}
+          />
+          <span>Survey question</span>
+        </div>
+      )}
       {/* KOL name search for this panel */}
       <div className="relative">
         <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
@@ -254,6 +276,10 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
   // v1.17.5: respondent-side filters carried over from Demographics.
   const [respondentFilters, setRespondentFilters] = useState<RespondentFiltersState>({});
   const [appliedFilters, setAppliedFilters] = useState<AppliedLeaderFilters>(INITIAL_APPLIED_LEADER);
+
+  // v1.17.53 — survey question text per nominationType. Loaded once
+  // per (DA, client); distributed to each LeaderRankingPanel below.
+  const nominationQuestions = useNominationQuestions(diseaseAreaId, clientId);
 
   const isDirty = useMemo(() => {
     if (!arrayEq(filters.specialties, appliedFilters.specialties)) return true;
@@ -498,26 +524,33 @@ export function LeaderRankingsTab({ diseaseAreaId, onKolSelect, clientId }: Prop
       <ActiveFilterChips filters={activeFilters} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {NOMINATION_TYPES.map((type) => (
-          <LeaderRankingPanel
-            key={type.value}
-            diseaseAreaId={diseaseAreaId}
-            nominationType={type.value}
-            label={type.label}
-            color={type.color}
-            onKolSelect={onKolSelect}
-            clientId={clientId}
-            // v1.17.53: panels read APPLIED filters (heavy queries
-            // re-fire only on Apply). Pending edits don't re-fire here.
-            filters={{
-              specialties: appliedFilters.specialties,
-              states: appliedFilters.states,
-            }}
-            respondentFilters={appliedFilters.respondent}
-            searchTerm={searchTerms[type.value] || ''}
-            onSearchChange={(v) => handleSearchChange(type.value, v)}
-          />
-        ))}
+        {NOMINATION_TYPES.map((type) => {
+          const q = nominationQuestions.data?.items.find(
+            (it) => it.nominationType === type.value
+          );
+          return (
+            <LeaderRankingPanel
+              key={type.value}
+              diseaseAreaId={diseaseAreaId}
+              nominationType={type.value}
+              label={type.label}
+              color={type.color}
+              onKolSelect={onKolSelect}
+              clientId={clientId}
+              // v1.17.53: panels read APPLIED filters (heavy queries
+              // re-fire only on Apply). Pending edits don't re-fire here.
+              filters={{
+                specialties: appliedFilters.specialties,
+                states: appliedFilters.states,
+              }}
+              respondentFilters={appliedFilters.respondent}
+              searchTerm={searchTerms[type.value] || ''}
+              onSearchChange={(v) => handleSearchChange(type.value, v)}
+              questionText={q?.text}
+              questionCampaign={q?.campaignName}
+            />
+          );
+        })}
       </div>
     </div>
   );

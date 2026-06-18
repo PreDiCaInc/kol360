@@ -6,9 +6,10 @@ import { PieDistributionChart } from '@/components/insights/charts/pie-distribut
 import { BarDistributionChart } from '@/components/insights/charts/bar-distribution-chart';
 import { StateBarChart } from '@/components/insights/charts/state-bar-chart';
 import { StackedBarChart } from '@/components/insights/charts/stacked-bar-chart';
-import { useDemographics, useInsightsFilterOptions } from '@/hooks/use-insights-report';
+import { useDemographics, useInsightsFilterOptions, useDemographicQuestions } from '@/hooks/use-insights-report';
 import { useFilters } from '@/hooks/use-filters';
 import { useRespondentMatchCount } from '@/hooks/use-match-count';
+import { QuestionInfoPopover } from '@/components/insights/shared/question-info-popover';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -87,6 +88,19 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
 
   const apiFilters = useMemo(() => buildApiFilters(applied), [applied]);
   const { data, isLoading, error } = useDemographics(diseaseAreaId, clientId, apiFilters);
+
+  // v1.17.53 — survey question text per dimension. Keyed lookup for
+  // the (i) popover on each chart card. Empty until loaded, then
+  // sparse if a dimension has no matching question in the analysis's
+  // included campaigns.
+  const demoQuestions = useDemographicQuestions(diseaseAreaId, clientId);
+  const qByDim = useMemo<Record<string, { text: string; campaignName: string }>>(
+    () =>
+      Object.fromEntries(
+        (demoQuestions.data?.items ?? []).map((it) => [it.dimension, { text: it.text, campaignName: it.campaignName }])
+      ),
+    [demoQuestions.data]
+  );
 
   // Live "N respondents match" indicator — fires only while the user
   // has uncommitted edits. When clean, the displayed count comes from
@@ -475,7 +489,14 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card className="border-t-4 border-t-blue-500 shadow-md rounded-xl">
             <CardHeader>
-              <CardTitle className="text-base font-bold">Respondent Role</CardTitle>
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-base font-bold">Respondent Role</CardTitle>
+                <QuestionInfoPopover
+                  text={qByDim['role']?.text}
+                  campaignName={qByDim['role']?.campaignName}
+                  title="Survey question for Respondent Role"
+                />
+              </div>
               <CardDescription>Primary medical specialty distribution</CardDescription>
             </CardHeader>
             <CardContent>
@@ -505,7 +526,14 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card className="border-t-4 border-t-blue-500 shadow-md rounded-xl">
             <CardHeader>
-              <CardTitle className="text-base font-bold">Total Monthly Patients</CardTitle>
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-base font-bold">Total Monthly Patients</CardTitle>
+                <QuestionInfoPopover
+                  text={qByDim['monthlyPatients']?.text}
+                  campaignName={qByDim['monthlyPatients']?.campaignName}
+                  title="Survey question for Total Monthly Patients"
+                />
+              </div>
               <CardDescription>Distribution of monthly patient volume</CardDescription>
             </CardHeader>
             <CardContent>
@@ -517,7 +545,14 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
 
           <Card className="border-t-4 border-t-emerald-500 shadow-md rounded-xl">
             <CardHeader>
-              <CardTitle className="text-base font-bold">Monthly DED Patients</CardTitle>
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-base font-bold">Monthly DED Patients</CardTitle>
+                <QuestionInfoPopover
+                  text={qByDim['dedPatients']?.text}
+                  campaignName={qByDim['dedPatients']?.campaignName}
+                  title="Survey question for Monthly DED Patients"
+                />
+              </div>
               <CardDescription>Distribution of dry eye disease patient volume</CardDescription>
             </CardHeader>
             <CardContent>
@@ -535,7 +570,14 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card className="border-t-4 border-t-amber-500 shadow-md rounded-xl">
             <CardHeader>
-              <CardTitle className="text-base font-bold">Years in Practice</CardTitle>
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="text-base font-bold">Years in Practice</CardTitle>
+                <QuestionInfoPopover
+                  text={qByDim['yearsInPractice']?.text}
+                  campaignName={qByDim['yearsInPractice']?.campaignName}
+                  title="Survey question for Years in Practice"
+                />
+              </div>
               <CardDescription>Distribution of practice experience</CardDescription>
             </CardHeader>
             <CardContent>
@@ -562,7 +604,14 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
       {/* Practice Setting (full width) */}
       <Card className="border-t-4 border-t-purple-500 shadow-md rounded-xl">
         <CardHeader>
-          <CardTitle className="text-base font-bold">Practice Setting</CardTitle>
+          <div className="flex items-start justify-between gap-2">
+            <CardTitle className="text-base font-bold">Practice Setting</CardTitle>
+            <QuestionInfoPopover
+              text={qByDim['practiceSetting']?.text}
+              campaignName={qByDim['practiceSetting']?.campaignName}
+              title="Survey question for Practice Setting"
+            />
+          </div>
           <CardDescription>Practice type distribution of respondents</CardDescription>
         </CardHeader>
         <CardContent>
@@ -576,7 +625,14 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
       {coreFocusPatientData.length > 0 && (
         <Card className="border-t-4 border-t-cyan-500 shadow-md rounded-xl">
           <CardHeader>
-            <CardTitle className="text-base font-bold">Core Focus by Average Monthly Patients</CardTitle>
+            <div className="flex items-start justify-between gap-2">
+              <CardTitle className="text-base font-bold">Core Focus by Average Monthly Patients</CardTitle>
+              <QuestionInfoPopover
+                text={qByDim['coreFocus']?.text}
+                campaignName={qByDim['coreFocus']?.campaignName}
+                title="Survey question for Core Focus"
+              />
+            </div>
             <CardDescription>Average monthly patients by respondent core focus area</CardDescription>
           </CardHeader>
           <CardContent>

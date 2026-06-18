@@ -366,6 +366,47 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // v1.17.53 — survey-question text per nomination type. Powers the
+  // (i) tooltip on each LeaderRankingPanel header in the Benchmarking
+  // tab. One entry per nominationType; most-recent-campaign wins on
+  // ties.
+  fastify.get<{ Params: { diseaseAreaId: string } }>(
+    '/:diseaseAreaId/nomination-questions',
+    async (request, reply) => {
+      const { diseaseAreaId } = request.params;
+      const user = request.user!;
+
+      if (!(await verifyDiseaseAreaAccess(diseaseAreaId, user, reply))) {
+        return;
+      }
+
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return requireClientId(reply, () =>
+        insightsReportService.getNominationQuestions(diseaseAreaId, clientId)
+      );
+    }
+  );
+
+  // v1.17.53 — survey-question text per Demographics chart dimension.
+  // Same UX pattern as /nomination-questions but keyed by dimension
+  // slug (role, coreFocus, practiceSetting, yearsInPractice, etc.).
+  fastify.get<{ Params: { diseaseAreaId: string } }>(
+    '/:diseaseAreaId/demographic-questions',
+    async (request, reply) => {
+      const { diseaseAreaId } = request.params;
+      const user = request.user!;
+
+      if (!(await verifyDiseaseAreaAccess(diseaseAreaId, user, reply))) {
+        return;
+      }
+
+      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      return requireClientId(reply, () =>
+        insightsReportService.getDemographicQuestions(diseaseAreaId, clientId)
+      );
+    }
+  );
+
   // Get filter options (specialties, states with data in this disease area)
   fastify.get<{ Params: { diseaseAreaId: string } }>(
     '/:diseaseAreaId/filter-options',

@@ -1203,6 +1203,24 @@ export class ApiClient {
     );
   }
 
+  // v1.17.53 — survey-question text per nominationType (Benchmarking).
+  async getInsightsNominationQuestions(diseaseAreaId: string, clientId?: string) {
+    const qs = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
+    return this.request<{ items: Array<{ nominationType: string; text: string; campaignName: string }> }>(
+      'GET',
+      `/api/v1/insights/${diseaseAreaId}/nomination-questions${qs}`
+    );
+  }
+
+  // v1.17.53 — survey-question text per Demographics chart dimension.
+  async getInsightsDemographicQuestions(diseaseAreaId: string, clientId?: string) {
+    const qs = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
+    return this.request<{ items: Array<{ dimension: string; text: string; campaignName: string }> }>(
+      'GET',
+      `/api/v1/insights/${diseaseAreaId}/demographic-questions${qs}`
+    );
+  }
+
   async getInsightsNominatorMatchCount(
     diseaseAreaId: string,
     hcpId: string,

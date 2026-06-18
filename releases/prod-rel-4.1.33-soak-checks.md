@@ -4,6 +4,16 @@ Tag at the merge commit on `main`. Pure UI release: Apply Filters button + live 
 
 ## Phase A — Sanity
 
+### A00. Benchmarking + Demographics survey-question popovers
+
+Open the Benchmarking tab on a customer dashboard (Sun Pharma → Dry Eye). Expected: each of the 7 LeaderRankingPanel headers shows a small "(i) Survey question" badge above the per-panel search input. Click it; a popover renders the actual question text + the campaign it was sourced from. Verify:
+- The text matches what's in the SurveyQuestion table for one of the included campaigns.
+- On dimensions where multiple campaigns have slightly different text (rare), the popover shows the text from the MOST RECENT campaign.
+
+Open Demographics. Expected: the 6 main chart cards (Respondent Role, Total Monthly Patients, Monthly DED Patients, Years in Practice, Practice Setting, Core Focus by Avg Monthly Patients) each have an (i) icon next to their title. Same popover behavior.
+
+If a dimension has no matching question in the included campaigns, the (i) is hidden — no broken/empty popover.
+
 ### A0. Sociometric Leaders tab — duplicate block gone
 
 Open the Sociometric Leaders tab. Expected:

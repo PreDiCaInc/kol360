@@ -3,7 +3,7 @@
 **Status:** Ready for prod deploy. **No migrations.** Reversible.
 **Tag:** `prod-rel-4.1.33` → commit on `main` (cut immediately after this PR merges).
 **Supersedes:** `prod-rel-4.1.32` (v1.17.52).
-**Bundles:** v1.17.53 — Track B frontend: Apply Filters button + live "N match" indicator on 4 Insights tabs. Plus two pteam-flagged cleanups bundled in: (1) deletion of the duplicate per-category leader tables that lived at the bottom of the Sociometric Leaders tab, and (2) fix for the influencer-type filter dropdown which was hardcoded to a stale 3-value list and missed the v1.17.44 expansion ('Regional Leaders' + 'Pre-Emergent').
+**Bundles:** v1.17.53 — Track B frontend: Apply Filters button + live "N match" indicator on 4 Insights tabs. Plus three pteam-flagged cleanups bundled in: (1) deletion of the duplicate per-category leader tables that lived at the bottom of the Sociometric Leaders tab; (2) fix for the influencer-type filter dropdown which was hardcoded to a stale 3-value list and missed the v1.17.44 expansion ('Regional Leaders' + 'Pre-Emergent'); (3) survey-question (i) info popovers on the Benchmarking tab (per leader panel) and the Demographics tab (per chart card) — show users WHAT was asked when these KOLs were nominated / when respondents answered.
 
 ## TL;DR
 
@@ -18,6 +18,16 @@ Shipped to 4 tabs in this release:
 KOL Profile drill-down filters → next PR (it doesn't currently have a filter bar at all; adding one is a separate UI surface, not a conversion).
 
 ## What changes for customers
+
+### Benchmarking + Demographics — (i) survey-question popovers
+
+Two new endpoints (additive, no contract changes):
+- `GET /insights/:da/nomination-questions` — one entry per `NominationType` from the analysis's included campaigns; most-recent-campaign tie-break.
+- `GET /insights/:da/demographic-questions` — one entry per Demographics chart dimension (role, coreFocus, practiceSetting, yearsInPractice, monthlyPatients, dedPatients, topicsDiscussed, educationalResources, socialMedia, valuableContent, objectivity).
+
+Frontend places a small info icon button next to each panel header (Benchmarking) / chart card title (Demographics). Click → popover with the question text + the campaign it was sourced from.
+
+Cross-campaign tie-break: when an analysis pools campaigns whose `questionTextSnapshot` differs slightly for the same dimension (rare but possible across imports), the popover shows the text from the most recent campaign — confirmed by the pteam ticket request.
 
 ### Sociometric Leaders tab — duplicate per-category tables removed
 
