@@ -1387,7 +1387,7 @@ export class InsightsReportService {
    */
   async getFilterOptions(diseaseAreaId: string) {
     try {
-      const [specialtyRows, stateRows, coreFocusRows] = await Promise.all([
+      const [specialtyRows, stateRows, coreFocusRows, influencerTypeRows] = await Promise.all([
         prisma.$queryRaw<{ specialty: string }[]>`
           SELECT DISTINCT h."specialty"
           FROM "Hcp" h
@@ -1444,6 +1444,24 @@ export class InsightsReportService {
           WHERE value IS NOT NULL AND value <> ''
           ORDER BY value ASC
         `,
+        // v1.17.53: distinct influencerType values actually assigned to
+        // HCPs in this DA. Pre-fix this was a hardcoded 3-value list
+        // [National Leaders, Rising Stars, Regional Influencers] that
+        // drifted away from the data: v1.17.44 / prod-rel-4.1.24
+        // expanded the canonical list to include 'Regional Leaders' +
+        // 'Pre-Emergent', and the data team uploaded those values onto
+        // prod HCPs. Customers picking 'Regional Influencers' in the
+        // dropdown got 0 results because no HCP was classified that
+        // way. DB-driven matches the pattern already used for
+        // specialty / state / coreFocus above.
+        prisma.$queryRaw<{ value: string }[]>`
+          SELECT DISTINCT "influencerType" AS value
+          FROM "HcpDiseaseArea"
+          WHERE "diseaseAreaId" = ${diseaseAreaId}
+            AND "influencerType" IS NOT NULL
+            AND "influencerType" <> ''
+          ORDER BY value ASC
+        `,
       ]);
 
       // v1.17.4: state filter whitelist — only emit US 50 + DC.
@@ -1454,12 +1472,13 @@ export class InsightsReportService {
       const specialties = specialtyRows.map((r) => r.specialty);
       const states = stateRows.map((r) => r.state).filter((s) => US_STATE_CODES.has(s));
       const coreFocuses = coreFocusRows.map((r) => r.value);
+      const influencerTypes = influencerTypeRows.map((r) => r.value);
 
       return {
         specialties,
         states,
         coreFocuses,
-        influencerTypes: ['National Leaders', 'Rising Stars', 'Regional Influencers'],
+        influencerTypes,
       };
     } catch (error) {
       logger.error('Error fetching filter options', { diseaseAreaId, error });

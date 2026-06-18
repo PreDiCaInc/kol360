@@ -23,7 +23,6 @@ import { useViewAs } from '@/lib/view-as-context';
 import { IntroductionTab } from '@/components/insights/tabs/introduction-tab';
 import { LeaderRankingsTab } from '@/components/insights/tabs/leader-rankings';
 import { SociometricSummaryTab } from '@/components/insights/tabs/sociometric-summary';
-import { SociometricTablesTab } from '@/components/insights/tabs/sociometric-tables-tab';
 import { KolExplorerTab } from '@/components/insights/tabs/kol-explorer';
 import { DemographicsTab } from '@/components/insights/tabs/demographics-tab';
 
@@ -273,11 +272,13 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
         </TabsContent>
 
         <TabsContent value="sociometric-leaders" className="mt-6">
+          {/* v1.17.53: dropped the per-category "Sociometric Tables"
+              block that used to render below the matrix — those 7 panels
+              were a feature-equivalent subset of the Benchmarking tab
+              (same useLeaderRankings hook, same component shape) minus
+              the filter bar. Customers always had two routes to the same
+              data; Benchmarking is the canonical one. */}
           <SociometricSummaryTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
-          <div className="mt-8">
-            <h2 className="text-xl font-bold mb-4">Per-Category Leader Tables</h2>
-            <SociometricTablesTab diseaseAreaId={diseaseAreaId} onKolSelect={handleKolSelect} clientId={effectiveClientId} />
-          </div>
         </TabsContent>
 
         <TabsContent value="total-weighted-score" className="mt-6">

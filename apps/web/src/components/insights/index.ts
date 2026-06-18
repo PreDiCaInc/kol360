@@ -2,7 +2,6 @@ export * from './insights-dashboard';
 export * from './tabs/introduction-tab';
 export * from './tabs/leader-rankings';
 export * from './tabs/sociometric-summary';
-export * from './tabs/sociometric-tables-tab';
 export * from './tabs/kol-explorer';
 export * from './tables/leader-table';
 export * from './shared/rows-per-page';

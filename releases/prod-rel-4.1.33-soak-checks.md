@@ -4,6 +4,21 @@ Tag at the merge commit on `main`. Pure UI release: Apply Filters button + live 
 
 ## Phase A — Sanity
 
+### A0. Sociometric Leaders tab — duplicate block gone
+
+Open the Sociometric Leaders tab. Expected:
+- Top: the master Sociometric Summary matrix (unchanged, now with Apply Filters).
+- Below the matrix: **nothing**. Previously a "Per-Category Leader Tables" section rendered here with 7 leader-ranking panels — that block has been removed (it duplicated Benchmarking).
+- For the per-category leader tables, customers go to the **Benchmarking** tab.
+
+### A0a. Influencer Type filter dropdown reflects actual data
+
+Open any of: Sociometric Summary, KOL Explorer (Total Weighted Score), Benchmarking. Find the Influencer Type filter dropdown. Expected:
+- On prod (Dry Eye): dropdown shows **National Leaders, Pre-Emergent, Regional Leaders, Rising Stars** (4 values, in alpha order). "Regional Influencers" should NOT appear.
+- Pick "Regional Leaders" → live count should show ~1,291 (not 0).
+- Pick "Pre-Emergent" → live count should show ~2,261.
+- Other DAs / non-Dry-Eye: dropdown reflects whatever the data team has uploaded for that DA.
+
 ### A1. Version deployed
 
 ```bash

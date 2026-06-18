@@ -3,7 +3,7 @@
 **Status:** Ready for prod deploy. **No migrations.** Reversible.
 **Tag:** `prod-rel-4.1.33` → commit on `main` (cut immediately after this PR merges).
 **Supersedes:** `prod-rel-4.1.32` (v1.17.52).
-**Bundles:** v1.17.53 — Track B frontend: Apply Filters button + live "N match" indicator on 4 Insights tabs.
+**Bundles:** v1.17.53 — Track B frontend: Apply Filters button + live "N match" indicator on 4 Insights tabs. Plus two pteam-flagged cleanups bundled in: (1) deletion of the duplicate per-category leader tables that lived at the bottom of the Sociometric Leaders tab, and (2) fix for the influencer-type filter dropdown which was hardcoded to a stale 3-value list and missed the v1.17.44 expansion ('Regional Leaders' + 'Pre-Emergent').
 
 ## TL;DR
 
@@ -18,6 +18,22 @@ Shipped to 4 tabs in this release:
 KOL Profile drill-down filters → next PR (it doesn't currently have a filter bar at all; adding one is a separate UI surface, not a conversion).
 
 ## What changes for customers
+
+### Sociometric Leaders tab — duplicate per-category tables removed
+
+The "Per-Category Leader Tables" block that used to render below the matrix on the **Sociometric Leaders** tab is gone. Those 7 panels were a feature-equivalent subset of the **Benchmarking** tab — same `useLeaderRankings` hook, same component shape, no filter bar. Customers had two routes to the same data; Benchmarking is the canonical one.
+
+This is a UI cleanup, not a data change. Anyone using those panels is one tab click away from the same data with more capability (filters).
+
+### Influencer Type filter dropdown — drift fix
+
+Before: `/insights/:da/filter-options` returned a hardcoded `influencerTypes: ['National Leaders', 'Rising Stars', 'Regional Influencers']` — three values that haven't matched prod data since v1.17.44 / prod-rel-4.1.24 (when the canonical `INFLUENCER_TYPES` list grew to include 'Regional Leaders' and 'Pre-Emergent' and the data team uploaded those values onto prod HCPs).
+
+User-visible symptom on prod: KOL Explorer / Sociometric Summary / Benchmarking — picking "Regional Influencers" returned **0 results** (no HCP was classified that way; the actual prod count of 1,291 HCPs is under 'Regional Leaders'). 'Pre-Emergent' wasn't selectable at all.
+
+After: the endpoint now queries `SELECT DISTINCT "influencerType" FROM "HcpDiseaseArea"` scoped to the DA — same DB-driven pattern already used for `specialties`, `states`, and `coreFocuses`. The dropdown reflects whatever the data team has uploaded.
+
+For prod on Dry Eye specifically, the dropdown now shows: **National Leaders** (87), **Pre-Emergent** (2,261), **Regional Leaders** (1,291), **Rising Stars** (319). Old "Regional Influencers" disappears (it was never in the data).
 
 ### Filter flow — before vs after
 
