@@ -293,14 +293,33 @@ export class KolAnalysisService {
     }
 
     // ---- Composite: live-pull objective scores from HcpDiseaseAreaScore ----
+    // v1.17.56 — pteam request: include EVERY HCP with seg scores in
+    // the DA, even if they don't appear in any included campaign's
+    // nominations. Rationale: "make the dataset consistent — if we have
+    // segment data on a KOL, they should show up on WTD with their
+    // segment-driven composite, regardless of survey activity."
+    //
+    // Implementation: query all `HcpDiseaseAreaScore(da, isCurrent)`
+    // (was: filter by hcpId IN the nominated set), then synthesize
+    // empty score rows for HCPs that have seg scores but aren't yet
+    // in `scoreRows`. The composite loop below covers them naturally
+    // — survey contributes 0 (no survey signal), objective fields
+    // contribute their seg scores × weights.
     const daScores = await prisma.hcpDiseaseAreaScore.findMany({
-      where: {
-        hcpId: { in: [...hcpIds] },
-        diseaseAreaId,
-        isCurrent: true,
-      },
+      where: { diseaseAreaId, isCurrent: true },
     });
     const daByHcp = new Map(daScores.map((d) => [d.hcpId, d as Record<string, unknown>]));
+
+    // v1.17.56 — synthesize rows for seg-only HCPs. All nomination
+    // fields default to null/0 via the createMany `?? null` /  `?? 0`
+    // mapping at the persistence step. nominationCount = 0. scoreSurvey
+    // remains undefined → null on persist → reads as 0 in the composite
+    // calc below (consistent with the existing null-handling logic).
+    for (const da of daScores) {
+      if (hcpIds.has(da.hcpId)) continue;
+      hcpIds.add(da.hcpId);
+      scoreRows.push({ hcpId: da.hcpId, nominationCount: 0 });
+    }
 
     for (const row of scoreRows) {
       const hcpId = row.hcpId as string;
