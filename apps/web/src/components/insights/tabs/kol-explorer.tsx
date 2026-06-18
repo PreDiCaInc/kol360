@@ -62,10 +62,16 @@ import { NominationCountsChart } from '@/components/insights/charts/nomination-c
 import { PieDistributionChart } from '@/components/insights/charts/pie-distribution-chart';
 import { StateBarChart } from '@/components/insights/charts/state-bar-chart';
 import { BarDistributionChart } from '@/components/insights/charts/bar-distribution-chart';
-import { useKolExplorer, useKolProfile, useInsightsFilterOptions, useKolNominationMetadata } from '@/hooks/use-insights-report';
-import { useKolMatchCount } from '@/hooks/use-match-count';
+import { useKolExplorer, useKolProfile, useInsightsFilterOptions, useKolNominationMetadata, useDemographics } from '@/hooks/use-insights-report';
+import { useKolMatchCount, useNominatorMatchCount } from '@/hooks/use-match-count';
 import { useDebouncedValue } from '@/hooks/use-filters';
 import { ApplyFilterControls } from '@/components/insights/shared/apply-filter-controls';
+import {
+  RespondentFiltersBar,
+  type RespondentFiltersState,
+  respondentFiltersToApiParams,
+  hasAnyRespondentFilter,
+} from '@/components/insights/shared/respondent-filters-bar';
 import { useExcelExport } from '@/lib/excel-export';
 import { toTitleCase } from '@/lib/utils';
 import type { InsightsFilterInput, KolExplorerItem, KolExplorerResponse, NominationType } from '@kol360/shared';
@@ -755,8 +761,78 @@ function ProfileView({
     sortOrder: 'desc',
   }, clientId);
 
-  const { data: profile, isLoading } = useKolProfile(diseaseAreaId, selectedKolId, clientId);
+  // v1.17.56 — Apply Filters batch UX on the single-HCP drill-down.
+  // Filters affect the Nominators table + per-nominator demographic
+  // sub-charts. Pending edits → click Apply → useKolProfile re-fires.
+  // Live "N nominators match" indicator via useNominatorMatchCount.
+  const [pendingRespondentFilters, setPendingRespondentFilters] = useState<RespondentFiltersState>({});
+  const [appliedRespondentFilters, setAppliedRespondentFilters] = useState<RespondentFiltersState>({});
+
+  const isFiltersDirty = useMemo(
+    () => JSON.stringify(pendingRespondentFilters) !== JSON.stringify(appliedRespondentFilters),
+    [pendingRespondentFilters, appliedRespondentFilters]
+  );
+  const hasActiveRespondentFilters = useMemo(
+    () => hasAnyRespondentFilter(pendingRespondentFilters),
+    [pendingRespondentFilters],
+  );
+
+  const applyRespondentFilters = useCallback(() => {
+    setAppliedRespondentFilters({ ...pendingRespondentFilters });
+  }, [pendingRespondentFilters]);
+  const resetRespondentFilters = useCallback(() => {
+    setPendingRespondentFilters({});
+    setAppliedRespondentFilters({});
+  }, []);
+
+  const appliedRespondentApiParams = useMemo(
+    () => respondentFiltersToApiParams(appliedRespondentFilters),
+    [appliedRespondentFilters],
+  );
+  const { data: profile, isLoading } = useKolProfile(
+    diseaseAreaId,
+    selectedKolId,
+    clientId,
+    appliedRespondentApiParams,
+  );
   const { data: nominationMeta } = useKolNominationMetadata(diseaseAreaId, selectedKolId, clientId);
+
+  // v1.17.56 — source respondent-filter dropdown options from the
+  // unfiltered demographics for this DA + client. Cheap thanks to
+  // React Query cache shared with the Demographics tab.
+  const { data: profileFilterOptions } = useInsightsFilterOptions(diseaseAreaId);
+  const { data: profileDemographicsForOptions } = useDemographics(diseaseAreaId, clientId);
+  const profileRoleOptions = useMemo(
+    () => (profileDemographicsForOptions?.byRole ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [profileDemographicsForOptions?.byRole],
+  );
+  const profileCoreFocusOptions = useMemo(
+    () => (profileDemographicsForOptions?.byCoreFocus ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [profileDemographicsForOptions?.byCoreFocus],
+  );
+  const profilePracticeSettingOptions = useMemo(
+    () => (profileDemographicsForOptions?.byPracticeSetting ?? []).map((d) => d.name).filter(Boolean).sort(),
+    [profileDemographicsForOptions?.byPracticeSetting],
+  );
+  const profileStateOptions = profileFilterOptions?.states ?? [];
+
+  // Live "N nominators match" indicator — fires only while pending
+  // edits are uncommitted.
+  const pendingMatchCountFilters = useMemo<Record<string, unknown>>(
+    () => respondentFiltersToApiParams(pendingRespondentFilters),
+    [pendingRespondentFilters],
+  );
+  const nominatorMatchCount = useNominatorMatchCount(
+    diseaseAreaId,
+    selectedKolId ?? '',
+    pendingMatchCountFilters,
+    clientId,
+    isFiltersDirty,
+  );
+  const liveNominatorCount = isFiltersDirty
+    ? nominatorMatchCount.data?.count
+    : profile?.nominators?.length;
+  const countIsFetching = isFiltersDirty && nominatorMatchCount.isFetching;
 
   const handleSearchChange = useCallback((search: string) => {
     setSearchQuery(search);
@@ -1044,6 +1120,45 @@ function ProfileView({
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* v1.17.56 — Respondent Filters Bar + Apply pattern.
+              Affects the per-nominator demographic charts below + the
+              Nominators table at the bottom. Same RespondentFiltersBar
+              used on Demographics / Sociometric / Benchmarking. */}
+          <div
+            className="rounded-lg border bg-muted/40 print:hidden"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && isFiltersDirty && (e.target as HTMLElement).tagName === 'INPUT') {
+                e.preventDefault();
+                applyRespondentFilters();
+              }
+            }}
+          >
+            <div className="flex items-center justify-between gap-2 px-4 pt-3">
+              <span className="text-sm font-medium text-muted-foreground">Respondent Filters</span>
+              <ApplyFilterControls
+                isDirty={isFiltersDirty}
+                isLoading={isLoading}
+                liveCount={liveNominatorCount}
+                countIsFetching={countIsFetching}
+                countLabel="nominators match"
+                hasActiveFilters={hasActiveRespondentFilters}
+                onApply={applyRespondentFilters}
+                onReset={resetRespondentFilters}
+              />
+            </div>
+            <div className="px-4 pb-4">
+              <RespondentFiltersBar
+                value={pendingRespondentFilters}
+                onChange={setPendingRespondentFilters}
+                roleOptions={profileRoleOptions}
+                coreFocusOptions={profileCoreFocusOptions}
+                stateOptions={profileStateOptions}
+                practiceSettingOptions={profilePracticeSettingOptions}
+                bare
+              />
+            </div>
           </div>
 
           {/* Charts: Respondent Role Pie + State Bar */}
