@@ -307,10 +307,9 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             )}
           </div>
           {/* v1.17.53: Apply Filters + Reset + live "N respondents match"
-              indicator. Reset replaces the prior right-anchored
-              ClearFiltersButton (its functionality folded in here per
-              pteam ticket spec). ActiveFilterChips below still allow
-              per-filter removal. */}
+              indicator. Reset (inside ApplyFilterControls) is the single
+              clear-filters affordance. ActiveFilterChips below still
+              allow per-filter removal. */}
           <ApplyFilterControls
             className="ml-auto"
             isDirty={isDirty}

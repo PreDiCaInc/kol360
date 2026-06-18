@@ -370,6 +370,11 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
   // (i) tooltip on each LeaderRankingPanel header in the Benchmarking
   // tab. One entry per nominationType; most-recent-campaign wins on
   // ties.
+  // v1.17.55 — strip campaignName for non-PLATFORM_ADMIN viewers.
+  // Lite clients pool data across OTHER clients' campaigns; showing
+  // "Source: <other-client-campaign-name>" leaks the cross-tenant
+  // data source. Conservative blanket rule: only PLATFORM_ADMIN sees
+  // source. Service stays role-agnostic; gate here at the boundary.
   fastify.get<{ Params: { diseaseAreaId: string } }>(
     '/:diseaseAreaId/nomination-questions',
     async (request, reply) => {
@@ -381,15 +386,21 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return requireClientId(reply, () =>
+      const result = await requireClientId(reply, () =>
         insightsReportService.getNominationQuestions(diseaseAreaId, clientId)
       );
+      if (!result || reply.sent) return;
+      if (user.role !== 'PLATFORM_ADMIN') {
+        return { items: result.items.map((it) => ({ ...it, campaignName: '' })) };
+      }
+      return result;
     }
   );
 
   // v1.17.53 — survey-question text per Demographics chart dimension.
   // Same UX pattern as /nomination-questions but keyed by dimension
   // slug (role, coreFocus, practiceSetting, yearsInPractice, etc.).
+  // v1.17.55 — same campaignName strip for non-PLATFORM_ADMIN.
   fastify.get<{ Params: { diseaseAreaId: string } }>(
     '/:diseaseAreaId/demographic-questions',
     async (request, reply) => {
@@ -401,9 +412,14 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const clientId = resolveClientId(user, request.query as Record<string, string>);
-      return requireClientId(reply, () =>
+      const result = await requireClientId(reply, () =>
         insightsReportService.getDemographicQuestions(diseaseAreaId, clientId)
       );
+      if (!result || reply.sent) return;
+      if (user.role !== 'PLATFORM_ADMIN') {
+        return { items: result.items.map((it) => ({ ...it, campaignName: '' })) };
+      }
+      return result;
     }
   );
 

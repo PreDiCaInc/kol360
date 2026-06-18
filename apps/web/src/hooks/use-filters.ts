@@ -3,6 +3,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /**
+ * v1.17.55 — debounce a value by `ms`. Used to make search inputs
+ * fire the heavy aggregation query only after the user stops typing,
+ * since search is realtime / bypasses the Apply Filters batch (per
+ * pteam feedback: "the text search bar should not be with the apply
+ * filter — that should be realtime").
+ */
+export function useDebouncedValue<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState<T>(value);
+  useEffect(() => {
+    const handle = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(handle);
+  }, [value, ms]);
+  return debounced;
+}
+
+/**
  * v1.17.53 — Track B (Apply Filters batch UX) frontend.
  *
  * Holds TWO filter states:
