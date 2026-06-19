@@ -10,6 +10,7 @@ import { useDemographics, useInsightsFilterOptions, useDemographicQuestions } fr
 import { useFilters } from '@/hooks/use-filters';
 import { useRespondentMatchCount } from '@/hooks/use-match-count';
 import { QuestionInfoPopover } from '@/components/insights/shared/question-info-popover';
+import { ChartTableToggle } from '@/components/insights/shared/chart-table-toggle';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -499,9 +500,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
               <CardDescription>Primary medical specialty distribution</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <PieDistributionChart data={roleData} />
-              </div>
+              <ChartTableToggle data={roleData} valueLabel="Respondents">
+                <div className="h-72">
+                  <PieDistributionChart data={roleData} />
+                </div>
+              </ChartTableToggle>
             </CardContent>
           </Card>
 
@@ -511,9 +514,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
               <CardDescription>Market decile distribution of respondents</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <BarDistributionChart data={decileData} color="#8B5CF6" />
-              </div>
+              <ChartTableToggle data={decileData} valueLabel="Respondents">
+                <div className="h-72">
+                  <BarDistributionChart data={decileData} color="#8B5CF6" />
+                </div>
+              </ChartTableToggle>
             </CardContent>
           </Card>
         </div>
@@ -536,9 +541,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
               <CardDescription>Distribution of monthly patient volume</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <BarDistributionChart data={monthlyPatientsData} color="#3B82F6" />
-              </div>
+              <ChartTableToggle data={monthlyPatientsData} valueLabel="Respondents">
+                <div className="h-72">
+                  <BarDistributionChart data={monthlyPatientsData} color="#3B82F6" />
+                </div>
+              </ChartTableToggle>
             </CardContent>
           </Card>
 
@@ -555,9 +562,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
               <CardDescription>Distribution of dry eye disease patient volume</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <BarDistributionChart data={dedPatientsData} color="#10B981" />
-              </div>
+              <ChartTableToggle data={dedPatientsData} valueLabel="Respondents">
+                <div className="h-72">
+                  <BarDistributionChart data={dedPatientsData} color="#10B981" />
+                </div>
+              </ChartTableToggle>
             </CardContent>
           </Card>
         </div>
@@ -580,9 +589,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
               <CardDescription>Distribution of practice experience</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <BarDistributionChart data={yearsData} color="#F59E0B" />
-              </div>
+              <ChartTableToggle data={yearsData} valueLabel="Respondents">
+                <div className="h-72">
+                  <BarDistributionChart data={yearsData} color="#F59E0B" />
+                </div>
+              </ChartTableToggle>
             </CardContent>
           </Card>
 
@@ -635,9 +646,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             <CardDescription>Average monthly patients by respondent core focus area</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
-              <BarDistributionChart data={coreFocusPatientData} color="#06B6D4" />
-            </div>
+            <ChartTableToggle data={coreFocusPatientData} valueLabel="Avg Patients">
+              <div className="h-80">
+                <BarDistributionChart data={coreFocusPatientData} color="#06B6D4" />
+              </div>
+            </ChartTableToggle>
           </CardContent>
         </Card>
       )}
@@ -719,12 +732,16 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             <CardDescription>Content types respondents find most valuable</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-72">
-              <BarDistributionChart
-                data={data.valuableContent.map((d) => ({ name: d.name, value: d.count }))}
-                color="#8B5CF6"
-              />
-            </div>
+            {(() => {
+              const rows = data.valuableContent.map((d) => ({ name: d.name, value: d.count }));
+              return (
+                <ChartTableToggle data={rows} valueLabel="Respondents">
+                  <div className="h-72">
+                    <BarDistributionChart data={rows} color="#8B5CF6" />
+                  </div>
+                </ChartTableToggle>
+              );
+            })()}
           </CardContent>
         </Card>
       )}
@@ -737,12 +754,16 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             <CardDescription>Respondents' rating of leader objectivity</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-72">
-              <BarDistributionChart
-                data={data.objectivityRating.map((d) => ({ name: d.name, value: d.count }))}
-                color="#F59E0B"
-              />
-            </div>
+            {(() => {
+              const rows = data.objectivityRating.map((d) => ({ name: d.name, value: d.count }));
+              return (
+                <ChartTableToggle data={rows} valueLabel="Respondents">
+                  <div className="h-72">
+                    <BarDistributionChart data={rows} color="#F59E0B" />
+                  </div>
+                </ChartTableToggle>
+              );
+            })()}
           </CardContent>
         </Card>
       )}
@@ -756,9 +777,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
               <CardDescription>Topics discussed with HCPs</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <PieDistributionChart data={topicsDiscussedPieData} />
-              </div>
+              <ChartTableToggle data={topicsDiscussedPieData} valueLabel="Respondents">
+                <div className="h-72">
+                  <PieDistributionChart data={topicsDiscussedPieData} />
+                </div>
+              </ChartTableToggle>
             </CardContent>
           </Card>
 
@@ -768,9 +791,11 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
               <CardDescription>Number of respondents per topic</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-72">
-                <BarDistributionChart data={topicsDiscussedBarData} color="#EC4899" />
-              </div>
+              <ChartTableToggle data={topicsDiscussedBarData} valueLabel="Respondents">
+                <div className="h-72">
+                  <BarDistributionChart data={topicsDiscussedBarData} color="#EC4899" />
+                </div>
+              </ChartTableToggle>
             </CardContent>
           </Card>
         </div>

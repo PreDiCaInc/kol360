@@ -136,10 +136,13 @@ export function LeaderTable({
 
   return (
     <div className="rounded-xl border bg-card shadow-md hover:shadow-lg transition-shadow overflow-hidden">
-      {/* Color-coded title header */}
+      {/* Color-coded title header. v1.17.57: titleSuffix right-aligned
+          (justify-between) to match the Demographics card pattern —
+          pteam preferred the right-corner placement over the
+          immediately-next-to-title placement we shipped in v1.17.55. */}
       <div
         className={cn(
-          'px-4 py-3 font-bold text-white text-base tracking-wide flex items-center gap-2',
+          'px-4 py-3 font-bold text-white text-base tracking-wide flex items-center justify-between gap-2',
           titleColor,
         )}
       >

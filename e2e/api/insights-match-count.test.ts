@@ -23,6 +23,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { ApiClient } from '../api-client';
 import { config } from '../config';
+import { TEST_IDS } from '../fixtures';
 
 let CONFIGURED_DISEASE_AREA_ID: string;
 let CONFIGURED_CLIENT_ID: string;
@@ -136,17 +137,23 @@ describe('Insights match-count endpoints (v1.17.52)', () => {
 
     // Parity contract: count must equal demographics.totalRespondents
     // for the same filter set.
+    //
+    // v1.17.57: pinned to the STABLE PARITY fixture (its OWN disease
+    // area, no other test mutates campaigns under it). Pre-fix this
+    // test used the top-scored analysis, which shares a (client, DA)
+    // pair with full-workflow's createTestCampaign() pool. Campaigns
+    // being created/deleted mid-suite caused `resolveAccessibleCampaignIds`
+    // to return different sets between the two API calls → counts
+    // diverged → flake. Fixture isolation kills the race deterministically.
     it('count agrees with demographics.totalRespondents for the same filter set', async () => {
-      if (!CONFIGURED_CLIENT_ID) {
-        console.log('⊘ No scored analysis on this env — skipping');
-        return;
-      }
-      const countRes = await client.getInsightsMatchCount(CONFIGURED_DISEASE_AREA_ID, {
+      const parityDa = TEST_IDS.STABLE_FIXTURE.PARITY_DISEASE_AREA_ID;
+      const parityClient = TEST_IDS.CLIENT_ID;
+      const countRes = await client.getInsightsMatchCount(parityDa, {
         type: 'respondents',
-        clientId: CONFIGURED_CLIENT_ID,
+        clientId: parityClient,
       });
-      const demoRes = await client.getInsightsDemographics(CONFIGURED_DISEASE_AREA_ID, {
-        clientId: CONFIGURED_CLIENT_ID,
+      const demoRes = await client.getInsightsDemographics(parityDa, {
+        clientId: parityClient,
       });
       expect(countRes.status).toBe(200);
       expect(demoRes.status).toBe(200);

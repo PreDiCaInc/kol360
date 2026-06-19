@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { apiClient } from '@/lib/api';
 import { useHcps, useHcpFilters } from '@/hooks/use-hcps';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
 import { useImpersonation } from '@/lib/impersonation-context';
@@ -109,12 +110,43 @@ export default function HcpsPage() {
     }
   };
 
-  const handleExport = () => {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
     if (!hcps.length) return;
+
+    // v1.17.58 — re-fetch with limit=5000 + current filters so the
+    // export covers the FULL filtered list, not just the visible
+    // page. Mirrors the v1.17.32 pattern shipped on Sociometric
+    // Summary / KOL Explorer / Leader Rankings.
+    setIsExporting(true);
+    let allHcps: typeof hcps = [];
+    try {
+      const daParam = filters.diseaseAreaIds && filters.diseaseAreaIds.length > 0
+        ? filters.diseaseAreaIds.join(',')
+        : undefined;
+      const full = await apiClient.get<typeof data>('/api/v1/hcps', {
+        page: 1,
+        limit: 5000,
+        query: filters.query,
+        specialty: filters.specialty,
+        state: filters.state,
+        optOutStatus: filters.optOutStatus,
+        diseaseAreaIds: daParam,
+      });
+      allHcps = full?.items ?? [];
+    } catch (err) {
+      console.error('Export fetch failed; falling back to current page', err);
+      allHcps = hcps;
+    } finally {
+      setIsExporting(false);
+    }
+
+    if (!allHcps.length) return;
 
     // Build CSV content
     const headers = ['BE ID', 'NPI', 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-Specialty', 'City', 'State', 'Aliases', 'Campaigns'];
-    const rows = hcps.map((hcp) => {
+    const rows = allHcps.map((hcp) => {
       const specialties = getSpecialtyDisplay(hcp);
       return [
         hcp.beId,
@@ -183,9 +215,9 @@ export default function HcpsPage() {
               </Button>
             </Link>
           )}
-          <Button variant="outline" onClick={handleExport} disabled={hcps.length === 0}>
+          <Button variant="outline" onClick={handleExport} disabled={hcps.length === 0 || isExporting}>
             <Download className="w-4 h-4 mr-2" />
-            Export
+            {isExporting ? 'Exporting…' : 'Export'}
           </Button>
           {canEdit && (
             <>
