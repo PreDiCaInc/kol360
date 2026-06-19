@@ -79,32 +79,13 @@ describe('HCP CSV import — UPDATE branch accepts partial rows (v1.17.57)', () 
     expect(after.data.specialty).toBe(originalSpecialty);
   });
 
-  it('NPI,Specialty only — updates specialty on existing HCP; preserves everything else', async () => {
-    const alice = TEST_IDS.HCP_1;
-
-    const before = await client.getHcp(alice.id);
-    expect(before.status).toBe(200);
-    const originalCity = before.data.city;
-    const originalState = before.data.state;
-
-    // Flip Alice's specialty. Use the canonical opposite of whatever
-    // she's set to so we know the value definitely changed.
-    const newSpecialty = before.data.specialty === 'Optometry' ? 'Ophthalmology' : 'Optometry';
-    const csv = ['NPI,Specialty', `${alice.npi},${newSpecialty}`].join('\n');
-
-    const { status, data } = await client.importHcps(csv);
-    expect(status).toBe(200);
-    expect(data.errors).toEqual([]);
-    expect(data.updated).toBeGreaterThanOrEqual(1);
-
-    const after = await client.getHcp(alice.id);
-    expect(after.data.specialty).toBe(newSpecialty);
-    expect(after.data.city).toBe(originalCity);
-    expect(after.data.state).toBe(originalState);
-
-    // Restore Alice so downstream tests don't drift.
-    await client.importHcps(['NPI,Specialty', `${alice.npi},${before.data.specialty}`].join('\n'));
-  });
+  // Note: a previous draft of this file had a "NPI,Specialty only" test
+  // that flipped Alice's specialty and restored it. Dropped because it
+  // raced against hcp-import-update-specialty.test.ts (which also
+  // mutates Alice's specialty across a parameterized matrix) when
+  // vitest runs test files in parallel. The NPI,City,State test above
+  // already exercises the partial-row UPDATE code path — specialty-only
+  // is the same code path on a different column.
 
   it('NEW NPI with only NPI,City,State — errors with CREATE-path message (strict rules still apply)', async () => {
     // Use a clearly-not-real NPI we can be sure isn't in the DB.
