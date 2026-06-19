@@ -226,10 +226,15 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
         return;
       }
 
-      const excludeInternal = (request.query as Record<string, string>).excludeInternalEmails === 'true';
-      const clientId = resolveClientId(user, request.query as Record<string, string>);
+      const q = request.query as Record<string, string>;
+      const excludeInternal = q.excludeInternalEmails === 'true';
+      const clientId = resolveClientId(user, q);
+      // v1.17.56 — respondent filters carry over from Demographics /
+      // Sociometric / Benchmarking for the single-HCP drill-down Apply
+      // Filters pattern.
+      const respondentFilters = parseRespondentFilters(q);
       const profile = await requireClientId(reply, () =>
-        insightsReportService.getKolProfile(diseaseAreaId, hcpId, excludeInternal, clientId)
+        insightsReportService.getKolProfile(diseaseAreaId, hcpId, excludeInternal, clientId, respondentFilters)
       );
       if (reply.sent) return; // requireClientId already sent 400
       if (!profile) {

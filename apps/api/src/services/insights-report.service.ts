@@ -956,7 +956,19 @@ export class InsightsReportService {
   /**
    * Get individual KOL profile with all scores and nomination counts
    */
-  async getKolProfile(diseaseAreaId: string, hcpId: string, excludeInternalEmails = false, clientId?: string): Promise<KolProfileWithNominators | null> {
+  async getKolProfile(
+    diseaseAreaId: string,
+    hcpId: string,
+    excludeInternalEmails = false,
+    clientId?: string,
+    // v1.17.56 — respondent filters on the single-HCP drill-down.
+    // When active, the nominators list AND the per-nominator
+    // demographic aggregations (specialty / state / nominationType)
+    // are filtered to nominations whose response passes the filters.
+    // Mirrors the Apply Filters batch UX on Demographics +
+    // Sociometric Summary + Benchmarking + KOL Explorer.
+    respondentFilters?: RespondentFilters,
+  ): Promise<KolProfileWithNominators | null> {
     try {
     const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
     if (!analysis) return null;
@@ -992,9 +1004,19 @@ export class InsightsReportService {
     // the disease area. Null when not yet classified.
     const influencerTypeMap = await this.loadManualInfluencerTypes([hcpId], diseaseAreaId);
 
+    // v1.17.56 — respondent filter set. When active, only nominations
+    // whose response passes the filters survive into the nominators
+    // list + demographic aggregations.
+    const filteredResponseIds = hasAnyRespondentFilter(respondentFilters)
+      ? await this.getFilteredResponseIds(respondentFilters!, includedCampaignIds)
+      : null;
+
     // Nominators list — scoped to the analysis's included campaigns so it
     // matches the pooled scores.
-    const nominations = includedCampaignIds.length === 0 ? [] : await prisma.nomination.findMany({
+    // v1.17.56 — short-circuit when filters narrow to zero responses.
+    const nominations = includedCampaignIds.length === 0 || (filteredResponseIds && filteredResponseIds.size === 0)
+      ? []
+      : await prisma.nomination.findMany({
       where: {
         matchedHcpId: hcpId,
         matchStatus: { in: ['MATCHED', 'NEW_HCP'] },
@@ -1003,6 +1025,7 @@ export class InsightsReportService {
           ...(excludeInternalEmails && {
             respondentHcp: { email: { not: { endsWith: '@bio-exec.com' } } },
           }),
+          ...(filteredResponseIds && { id: { in: [...filteredResponseIds] } }),
         },
       },
       include: {

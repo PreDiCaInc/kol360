@@ -134,14 +134,26 @@ export function useLeaderRankings(
 /**
  * Get individual KOL profile with all scores, nomination counts, and nominator details.
  * Analysis-backed: backend requires clientId.
+ *
+ * v1.17.56 — optional respondentFilters narrow the nominators list +
+ * per-nominator demographic aggregations. Same filter shape used by
+ * Demographics / Sociometric / Benchmarking.
  */
-export function useKolProfile(diseaseAreaId: string, hcpId: string | null, clientId?: string) {
+export function useKolProfile(
+  diseaseAreaId: string,
+  hcpId: string | null,
+  clientId?: string,
+  respondentFilters?: Record<string, unknown>,
+) {
   const params = new URLSearchParams();
   if (clientId) params.append('clientId', clientId);
+  if (respondentFilters) {
+    Object.entries(respondentFilters).forEach(([k, v]) => appendParam(params, k, v));
+  }
   const qs = params.toString();
 
   return useQuery({
-    queryKey: ['kol-profile', diseaseAreaId, hcpId, clientId],
+    queryKey: ['kol-profile', diseaseAreaId, hcpId, clientId, respondentFilters],
     queryFn: () =>
       apiClient.get<KolProfileWithNominators>(
         `/api/v1/insights/${diseaseAreaId}/kol-profile/${hcpId}${qs ? '?' + qs : ''}`

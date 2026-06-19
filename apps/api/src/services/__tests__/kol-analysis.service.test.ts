@@ -215,6 +215,52 @@ describe('KolAnalysisService.recalculateAnalysis — pooled normalization', () =
     expect(Number(eric.compositeScore)).toBeCloseTo(90, 5);
   });
 
+  // v1.17.56 — pteam request: HCPs with HcpDiseaseAreaScore in the
+  // DA but NO nominations should also get an HcpAnalysisScore row,
+  // so the WTD tab surfaces them with their segment-driven composite.
+  // Before the fix, recalc only persisted rows for nominated HCPs;
+  // seg-only HCPs were silently dropped.
+  it('persists rows for seg-only HCPs (have HcpDiseaseAreaScore but no nominations)', async () => {
+    (prisma.kolAnalysis.findUnique as Mock).mockResolvedValue({
+      id: 'an-1',
+      diseaseAreaId: 'da-1',
+      weightsJson: {
+        weightPublications: 50, weightClinicalTrials: 0, weightTradePubs: 0,
+        weightOrgLeadership: 0, weightOrgAwards: 0, weightConference: 0,
+        weightSocialMedia: 0, weightMediaPodcasts: 0, weightSurvey: 50,
+      },
+      campaigns: [{ campaignId: 'A', included: true }],
+    });
+    (prisma.surveyQuestion.findMany as Mock).mockResolvedValue([
+      { nominationType: 'NATIONAL_LEADER' },
+    ]);
+    // Eric has 10 nominations; Bob has seg scores but zero nominations.
+    (prisma.nomination.findMany as Mock).mockResolvedValue([...noms('eric', 'A', 10)]);
+    (prisma.hcpDiseaseAreaScore.findMany as Mock).mockResolvedValue([
+      { hcpId: 'eric', scorePublications: 80 },
+      { hcpId: 'bob', scorePublications: 60 },
+    ]);
+
+    await svc.recalculateAnalysis('an-1');
+
+    const rows = (prisma.hcpAnalysisScore.createMany as Mock).mock.calls[0][0].data;
+    // Both Eric AND Bob must appear in the persisted rows.
+    expect(rows.length).toBe(2);
+    const eric = rows.find((r: { hcpId: string }) => r.hcpId === 'eric');
+    const bob = rows.find((r: { hcpId: string }) => r.hcpId === 'bob');
+
+    // Eric — unchanged from pre-fix: 100*0.5 + 80*0.5 = 90
+    expect(Number(eric.scoreSurvey)).toBeCloseTo(100, 5);
+    expect(Number(eric.compositeScore)).toBeCloseTo(90, 5);
+    expect(eric.nominationCount).toBe(10);
+
+    // Bob — seg-only. Nomination fields default to 0/null; composite
+    // is survey contribution (0) + publication contribution (60*0.5).
+    expect(bob.nominationCount).toBe(0);
+    expect(bob.scoreSurvey).toBeNull();
+    expect(Number(bob.compositeScore)).toBeCloseTo(30, 5);
+  });
+
   it('sets calcStatus=error and rethrows on failure', async () => {
     (prisma.kolAnalysis.findUnique as Mock).mockResolvedValue({
       id: 'an-1', diseaseAreaId: 'da-1', weightsJson: {}, campaigns: [{ campaignId: 'A', included: true }],
