@@ -18,6 +18,18 @@ import { PrismaClient } from '@prisma/client';
 import { ApiClient } from '../api-client';
 import { config } from '../config';
 
+// v1.17.57 — kept in sync with `packages/shared/src/schemas/insights-report.ts`
+// INFLUENCER_TYPES (v1.17.44 5-value expansion). Inlined rather than
+// imported because e2e doesn't resolve the @kol360/shared workspace
+// path (no tsconfig paths mapping).
+const INFLUENCER_TYPES = [
+  'National Leaders',
+  'Rising Stars',
+  'Regional Influencers',
+  'Regional Leaders',
+  'Pre-Emergent',
+] as const;
+
 // Dynamically discovered at startup — never hardcode prod/test row IDs in
 // e2e (they differ per env and per re-seed). Prefer a DA with a backfilled
 // KolAnalysis so the success-path tests exercise real data.
@@ -515,8 +527,12 @@ describe('Insights Report API', () => {
       // v1.17.42: influencerType is data-team-managed (HcpDiseaseArea.influencerType).
       // Null is now valid for any HCP the data team hasn't classified yet —
       // the no-fallback contract. When a non-null value IS present, it must
-      // still be one of the 3 canonical buckets.
-      const valid = new Set(['National Leaders', 'Rising Stars', 'Regional Influencers']);
+      // still be one of the canonical buckets.
+      // v1.17.57: was hardcoded to the pre-4.1.24 3-value list (National
+      // Leaders, Rising Stars, Regional Influencers). v1.17.44 expanded
+      // the canonical set to 5 (added Regional Leaders + Pre-Emergent).
+      // Constant inlined at top of this file — kept in sync with shared.
+      const valid = new Set<string>(INFLUENCER_TYPES);
       let classified = 0;
       data.items.forEach((kol) => {
         if (kol.influencerType != null && kol.influencerType !== '') {

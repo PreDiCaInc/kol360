@@ -522,19 +522,35 @@ export class HcpService {
       for (const row of validRows) {
         const existing = existingByNpi.get(row.npi);
         if (existing) {
-          toUpdate.push({
-            npi: row.npi,
-            data: {
-              firstName: row.firstName || existing.firstName,
-              lastName: row.lastName || existing.lastName,
-              email: row.email || existing.email,
-              specialty: row.specialty || existing.specialty,
-              subSpecialty: row.subSpecialty || existing.subSpecialty,
-              city: row.city || existing.city,
-              state: row.state || existing.state,
-              isSurveyTaker: true,
-            },
-          });
+          // v1.17.57 — UPDATE only sets the columns the row actually
+          // provides. Pre-fix this used `row.X || existing.X` fallbacks
+          // (writing back stale snapshots from the bulk-load step at
+          // the start of importFromFile). Two problems with that:
+          //   1. Stale-snapshot races: between bulk-load (T0) and write
+          //      (T2), any concurrent edit at T1 gets clobbered when we
+          //      write back the T0 value.
+          //   2. Partial-row UPDATE semantics: the ticket's whole point
+          //      is "leave omitted columns alone." Even with the
+          //      validator relaxed, the fallback-to-existing pattern
+          //      can still corrupt the omitted columns under concurrent
+          //      access (the test suite surfaces this by interleaving
+          //      hcp-import-partial-update.test.ts with
+          //      hcp-import-update-specialty.test.ts).
+          // The fix: omit fields from the update `data` entirely when
+          // the row didn't supply them. Prisma leaves omitted columns
+          // untouched in the DB. The `existing` reference is no longer
+          // needed for the UPDATE path.
+          const data: Parameters<typeof prisma.hcp.update>[0]['data'] = {
+            isSurveyTaker: true,
+          };
+          if (row.firstName) data.firstName = row.firstName;
+          if (row.lastName) data.lastName = row.lastName;
+          if (row.email) data.email = row.email;
+          if (row.specialty) data.specialty = row.specialty;
+          if (row.subSpecialty) data.subSpecialty = row.subSpecialty;
+          if (row.city) data.city = row.city;
+          if (row.state) data.state = row.state;
+          toUpdate.push({ npi: row.npi, data });
         } else {
           const aliasMatch = aliasByName.get(row.fullName.toLowerCase());
           if (aliasMatch?.hcp) {

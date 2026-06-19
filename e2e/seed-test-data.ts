@@ -459,6 +459,125 @@ async function seedTestData() {
   });
   console.log(`  ✓ Seeded 4 stable nominations (2 MATCHED + 2 UNMATCHED)`);
 
+  // ============================================================
+  // 12. v1.17.57 — STABLE PARITY fixture (DA + campaign + analysis)
+  //     dedicated to insights-match-count parity test (and other
+  //     read-side parity tests). Lives under its OWN disease area
+  //     so full-workflow's createTestCampaign() pool (which targets
+  //     TEST_IDS.DISEASE_AREA_ID) can't mutate it mid-suite.
+  // ============================================================
+  console.log('\nCreating STABLE PARITY fixture (isolated DA + campaign + analysis)...');
+
+  const parityDa = await prisma.diseaseArea.upsert({
+    where: { id: stable.PARITY_DISEASE_AREA_ID },
+    update: {
+      name: stable.PARITY_DISEASE_AREA_NAME,
+      therapeuticArea: 'E2E Parity',
+      isActive: true,
+    },
+    create: {
+      id: stable.PARITY_DISEASE_AREA_ID,
+      name: stable.PARITY_DISEASE_AREA_NAME,
+      code: stable.PARITY_DISEASE_AREA_CODE,
+      therapeuticArea: 'E2E Parity',
+      isActive: true,
+    },
+  });
+  console.log(`  ✓ Parity DA: ${parityDa.name} (${parityDa.id})`);
+
+  const parityCampaign = await prisma.campaign.upsert({
+    where: { id: stable.PARITY_CAMPAIGN_ID },
+    update: {
+      name: stable.PARITY_CAMPAIGN_NAME,
+      status: 'ACTIVE',
+    },
+    create: {
+      id: stable.PARITY_CAMPAIGN_ID,
+      name: stable.PARITY_CAMPAIGN_NAME,
+      clientId: TEST_IDS.CLIENT_ID,
+      diseaseAreaId: stable.PARITY_DISEASE_AREA_ID,
+      surveyTemplateId: TEST_IDS.SURVEY_TEMPLATE_ID,
+      status: 'ACTIVE',
+      description: 'STABLE parity fixture — DO NOT DELETE. Powers read-side parity tests.',
+      createdBy: TEST_IDS.USER_ID,
+    },
+  });
+  console.log(`  ✓ Parity Campaign: ${parityCampaign.name} (${parityCampaign.id})`);
+
+  await prisma.surveyQuestion.upsert({
+    where: { id: stable.PARITY_SURVEY_QUESTION_ID },
+    update: { questionTextSnapshot: 'E2E Stable Parity Nomination Question' },
+    create: {
+      id: stable.PARITY_SURVEY_QUESTION_ID,
+      campaignId: stable.PARITY_CAMPAIGN_ID,
+      questionId: stable.NOMINATION_QUESTION_ID,
+      sectionName: 'E2E Parity Section',
+      sortOrder: 0,
+      isRequired: false,
+      questionTextSnapshot: 'E2E Stable Parity Nomination Question',
+      nominationType: 'NATIONAL_LEADER',
+    },
+  });
+
+  // 1 completed response from HCP_1 — gives the parity test something
+  // to count (otherwise totalRespondents = 0 = match-count = 0, the
+  // assertion holds trivially but the test isn't proving anything).
+  await prisma.surveyResponse.upsert({
+    where: { id: stable.PARITY_SURVEY_RESPONSE_ID },
+    update: { status: 'COMPLETED' },
+    create: {
+      id: stable.PARITY_SURVEY_RESPONSE_ID,
+      campaignId: stable.PARITY_CAMPAIGN_ID,
+      respondentHcpId: TEST_IDS.HCP_1.id,
+      surveyToken: stable.PARITY_SURVEY_TOKEN,
+      status: 'COMPLETED',
+      startedAt: new Date('2026-01-01T00:00:00Z'),
+      completedAt: new Date('2026-01-01T00:15:00Z'),
+    },
+  });
+
+  // KolAnalysis at (TEST_IDS.CLIENT_ID, PARITY_DA). Required so the
+  // analysis-backed endpoints work for this fixture (resolveAnalysis).
+  // Weights: 100% on survey (composite calc isn't material here, but
+  // weightsJson is required).
+  const parityAnalysis = await prisma.kolAnalysis.upsert({
+    where: { id: stable.PARITY_ANALYSIS_ID },
+    update: {},
+    create: {
+      id: stable.PARITY_ANALYSIS_ID,
+      clientId: TEST_IDS.CLIENT_ID,
+      diseaseAreaId: stable.PARITY_DISEASE_AREA_ID,
+      name: 'E2E Stable Parity Analysis',
+      weightsJson: {
+        weightPublications: 0,
+        weightClinicalTrials: 0,
+        weightTradePubs: 0,
+        weightOrgLeadership: 0,
+        weightOrgAwards: 0,
+        weightConference: 0,
+        weightSocialMedia: 0,
+        weightMediaPodcasts: 0,
+        weightSurvey: 100,
+      },
+    },
+  });
+
+  await prisma.kolAnalysisCampaign.upsert({
+    where: {
+      analysisId_campaignId: {
+        analysisId: stable.PARITY_ANALYSIS_ID,
+        campaignId: stable.PARITY_CAMPAIGN_ID,
+      },
+    },
+    update: { included: true },
+    create: {
+      analysisId: stable.PARITY_ANALYSIS_ID,
+      campaignId: stable.PARITY_CAMPAIGN_ID,
+      included: true,
+    },
+  });
+  console.log(`  ✓ Parity Analysis: ${parityAnalysis.id} (with 1 included campaign)`);
+
   console.log('\n✅ E2E test data seeded successfully!');
   console.log('\nTest data summary:');
   console.log(`  - Client ID: ${TEST_IDS.CLIENT_ID}`);

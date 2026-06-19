@@ -105,6 +105,25 @@ export const TEST_IDS = {
     // The HCP_1 response that holds all 4 nominations (HCP_1 is the nominator)
     SURVEY_RESPONSE_ID: 'cme2e0stable0resp00001',
     SURVEY_TOKEN: 'e2e-stable-token-fixed-01',
+
+    // v1.17.57 — separate disease area + campaign + analysis dedicated
+    // to read-side parity tests (insights-match-count parity).
+    // The "stable" campaign above lives under TEST_IDS.DISEASE_AREA_ID
+    // which is shared with full-workflow's createTestCampaign() pool.
+    // Tests that create/delete campaigns under that (client, DA)
+    // race against parity reads (`resolveAccessibleCampaignIds`
+    // returns the full owned set, so any mid-suite mutation diverges
+    // the count). The PARITY_* fixture lives under its OWN disease
+    // area that no other test touches.
+    PARITY_DISEASE_AREA_ID: 'cme2e0stable0disease01',
+    PARITY_DISEASE_AREA_NAME: 'E2E Stable Parity Disease Area',
+    PARITY_DISEASE_AREA_CODE: 'E2E_PARITY_DA',
+    PARITY_CAMPAIGN_ID: 'cme2e0stable0parity0c1',
+    PARITY_CAMPAIGN_NAME: 'E2E_STABLE_FIXTURE_PARITY_CAMPAIGN',
+    PARITY_SURVEY_QUESTION_ID: 'cme2e0stable0parity0q1',
+    PARITY_SURVEY_RESPONSE_ID: 'cme2e0stable0parity0r1',
+    PARITY_SURVEY_TOKEN: 'e2e-stable-parity-tok-01',
+    PARITY_ANALYSIS_ID: 'cme2e0stable0parityana1',
   },
 
   // HCP for import test (with segmentation data).
