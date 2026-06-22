@@ -199,6 +199,17 @@ export class ApiClient {
     );
   }
 
+  async resendInvite(userId: string) {
+    return this.request<{ success: true }>(
+      'POST',
+      `/api/v1/users/${userId}/resend-invite`,
+    );
+  }
+
+  async deleteUser(userId: string) {
+    return this.request<void>('DELETE', `/api/v1/users/${userId}`);
+  }
+
   async deleteCampaign(id: string) {
     return this.request<void>('DELETE', `/api/v1/campaigns/${id}`);
   }

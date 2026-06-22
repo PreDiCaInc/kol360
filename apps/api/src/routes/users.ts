@@ -419,4 +419,94 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
 
     return user;
   });
+
+  // v1.17.60 — Resend invitation email (PLATFORM_ADMIN only, PENDING users only)
+  fastify.post<{ Params: { id: string } }>('/:id/resend-invite', {
+    preHandler: requirePlatformAdmin(),
+  }, async (request, reply) => {
+    const existing = await userService.getById(request.params.id);
+
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'User not found',
+        statusCode: 404,
+      });
+    }
+
+    // Client admins can only resend to users in their tenant
+    if (request.user!.role === 'CLIENT_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot resend invite to users from other tenants',
+        statusCode: 403,
+      });
+    }
+
+    try {
+      await userService.resendInvite(request.params.id);
+    } catch (err) {
+      if ((err as { code?: string }).code === 'INVALID_STATE') {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: (err as Error).message,
+          statusCode: 400,
+          code: 'INVALID_STATE',
+        });
+      }
+      throw err;
+    }
+
+    await createAuditLog(request.user!.sub, {
+      action: 'user.invite_resent',
+      entityType: 'User',
+      entityId: existing.id,
+      newValues: { email: existing.email },
+    });
+
+    return { success: true };
+  });
+
+  // v1.17.60 — Delete user (PLATFORM_ADMIN only). Hard delete in Cognito + DB.
+  fastify.delete<{ Params: { id: string } }>('/:id', {
+    preHandler: requirePlatformAdmin(),
+  }, async (request, reply) => {
+    const existing = await userService.getById(request.params.id);
+
+    if (!existing) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'User not found',
+        statusCode: 404,
+      });
+    }
+
+    if (existing.cognitoSub === request.user!.sub) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'Cannot delete your own account',
+        statusCode: 400,
+      });
+    }
+
+    // Client admins can only delete users from their tenant
+    if (request.user!.role === 'CLIENT_ADMIN' && existing.clientId !== request.user!.tenantId) {
+      return reply.status(403).send({
+        error: 'Forbidden',
+        message: 'Cannot delete users from other tenants',
+        statusCode: 403,
+      });
+    }
+
+    await userService.delete(request.params.id);
+
+    await createAuditLog(request.user!.sub, {
+      action: 'user.deleted',
+      entityType: 'User',
+      entityId: existing.id,
+      oldValues: { email: existing.email, role: existing.role, clientId: existing.clientId },
+    });
+
+    return reply.status(204).send();
+  });
 };
