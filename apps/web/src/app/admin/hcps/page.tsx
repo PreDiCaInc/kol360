@@ -115,26 +115,44 @@ export default function HcpsPage() {
   const handleExport = async () => {
     if (!hcps.length) return;
 
-    // v1.17.58 — re-fetch with limit=5000 + current filters so the
-    // export covers the FULL filtered list, not just the visible
-    // page. Mirrors the v1.17.32 pattern shipped on Sociometric
-    // Summary / KOL Explorer / Leader Rankings.
+    // v1.17.59 — paginate through ALL pages matching current filters
+    // so the export isn't capped at 5000 (v1.17.58 had a single-fetch
+    // limit=5000 that bit customers with >5k HCPs). Page 1 tells us
+    // total + pages; remaining pages fire in parallel and are
+    // concatenated in order.
+    const PAGE_SIZE = 1000;
     setIsExporting(true);
     let allHcps: typeof hcps = [];
     try {
       const daParam = filters.diseaseAreaIds && filters.diseaseAreaIds.length > 0
         ? filters.diseaseAreaIds.join(',')
         : undefined;
-      const full = await apiClient.get<typeof data>('/api/v1/hcps', {
-        page: 1,
-        limit: 5000,
+      const baseQuery = {
+        limit: PAGE_SIZE,
         query: filters.query,
         specialty: filters.specialty,
         state: filters.state,
         optOutStatus: filters.optOutStatus,
         diseaseAreaIds: daParam,
+      };
+      const firstPage = await apiClient.get<typeof data>('/api/v1/hcps', {
+        ...baseQuery,
+        page: 1,
       });
-      allHcps = full?.items ?? [];
+      const totalPages = firstPage?.pagination?.pages ?? 1;
+      const pages: NonNullable<typeof data>['items'][] = [firstPage?.items ?? []];
+      if (totalPages > 1) {
+        const remaining = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) =>
+            apiClient.get<typeof data>('/api/v1/hcps', {
+              ...baseQuery,
+              page: i + 2,
+            }),
+          ),
+        );
+        for (const p of remaining) pages.push(p?.items ?? []);
+      }
+      allHcps = pages.flat();
     } catch (err) {
       console.error('Export fetch failed; falling back to current page', err);
       allHcps = hcps;
