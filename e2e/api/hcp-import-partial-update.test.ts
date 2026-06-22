@@ -40,15 +40,22 @@ describe('HCP CSV import — UPDATE branch accepts partial rows (v1.17.57)', () 
     client = new ApiClient();
   });
 
-  // The HCP-1 fixture (Alice) is seeded by pnpm e2e:seed and lives
-  // across the workflow tests. We mutate her demographics here to
-  // verify partial updates land + everything else stays put.
+  // v1.17.60 — this file uses TEST_IDS.STABLE_FIXTURE.PARTIAL_UPDATE_HCP_*,
+  // a dedicated HCP seeded by `pnpm e2e:seed` whose city/state may be
+  // mutated freely. Other test files MUST NOT mutate this HCP — that's
+  // what makes the read-back deterministic under vitest's parallel-file
+  // execution. Earlier drafts targeted TEST_IDS.HCP_1 (Alice) and raced
+  // against hcp-import-update-specialty.test.ts (which writes Alice via
+  // full-row CSVs that also pin city/state).
+  // Ticket: docs/findings/e2e-hcp-import-partial-update-fixture-race-2026-06-22.md
 
   it('NPI,City,State only — updates city/state on existing HCP; preserves name/email/specialty', async () => {
-    const alice = TEST_IDS.HCP_1;
+    const fixture = TEST_IDS.STABLE_FIXTURE;
+    const partialHcpId = fixture.PARTIAL_UPDATE_HCP_ID;
+    const partialHcpNpi = fixture.PARTIAL_UPDATE_HCP_NPI;
 
-    // Snapshot Alice's current state pre-import.
-    const before = await client.getHcp(alice.id);
+    // Snapshot the fixture's current state pre-import.
+    const before = await client.getHcp(partialHcpId);
     expect(before.status).toBe(200);
     const originalFirstName = before.data.firstName;
     const originalLastName = before.data.lastName;
@@ -59,7 +66,7 @@ describe('HCP CSV import — UPDATE branch accepts partial rows (v1.17.57)', () 
     // specialty cols.
     const newCity = `Test City ${Date.now()}`;
     const newState = 'MA';
-    const csv = ['NPI,City,State', `${alice.npi},${newCity},${newState}`].join('\n');
+    const csv = ['NPI,City,State', `${partialHcpNpi},${newCity},${newState}`].join('\n');
 
     const { status, data } = await client.importHcps(csv);
     expect(status).toBe(200);
@@ -67,9 +74,9 @@ describe('HCP CSV import — UPDATE branch accepts partial rows (v1.17.57)', () 
     expect(data.updated).toBeGreaterThanOrEqual(1);
     expect(data.created).toBe(0);
 
-    // Re-read Alice. City/state must be the new values; everything
-    // else must be untouched.
-    const after = await client.getHcp(alice.id);
+    // Re-read the fixture. City/state must be the new values;
+    // everything else must be untouched.
+    const after = await client.getHcp(partialHcpId);
     expect(after.status).toBe(200);
     expect(after.data.city).toBe(newCity);
     expect(after.data.state).toBe(newState);
@@ -78,14 +85,6 @@ describe('HCP CSV import — UPDATE branch accepts partial rows (v1.17.57)', () 
     expect(after.data.email).toBe(originalEmail);
     expect(after.data.specialty).toBe(originalSpecialty);
   });
-
-  // Note: a previous draft of this file had a "NPI,Specialty only" test
-  // that flipped Alice's specialty and restored it. Dropped because it
-  // raced against hcp-import-update-specialty.test.ts (which also
-  // mutates Alice's specialty across a parameterized matrix) when
-  // vitest runs test files in parallel. The NPI,City,State test above
-  // already exercises the partial-row UPDATE code path — specialty-only
-  // is the same code path on a different column.
 
   it('NEW NPI with only NPI,City,State — errors with CREATE-path message (strict rules still apply)', async () => {
     // Use a clearly-not-real NPI we can be sure isn't in the DB.

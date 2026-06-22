@@ -578,6 +578,44 @@ async function seedTestData() {
   });
   console.log(`  ✓ Parity Analysis: ${parityAnalysis.id} (with 1 included campaign)`);
 
+  // ============================================================
+  // 13. v1.17.60 — STABLE PARTIAL-UPDATE HCP fixture.
+  //     Dedicated HCP for hcp-import-partial-update.test.ts ONLY.
+  //     The test mutates this HCP's city/state via partial CSVs;
+  //     using shared HCP_1 (Alice) raced against other test files
+  //     that mutate Alice with full-row CSVs in parallel.
+  //     Same fix shape as the v1.17.57 PARITY_* fixture.
+  //     Ticket: docs/findings/e2e-hcp-import-partial-update-fixture-race-2026-06-22.md
+  // ============================================================
+  console.log('\nCreating STABLE PARTIAL-UPDATE HCP fixture...');
+
+  const partialHcp = await prisma.hcp.upsert({
+    where: { id: stable.PARTIAL_UPDATE_HCP_ID },
+    update: {
+      // Reset to canonical seed values on re-seed so a flaky previous
+      // run can't leave the city/state stuck on the test's timestamped
+      // value.
+      firstName: stable.PARTIAL_UPDATE_HCP_FIRSTNAME,
+      lastName: stable.PARTIAL_UPDATE_HCP_LASTNAME,
+      email: stable.PARTIAL_UPDATE_HCP_EMAIL,
+      specialty: stable.PARTIAL_UPDATE_HCP_SPECIALTY,
+      city: stable.PARTIAL_UPDATE_HCP_CITY,
+      state: stable.PARTIAL_UPDATE_HCP_STATE,
+    },
+    create: {
+      id: stable.PARTIAL_UPDATE_HCP_ID,
+      beId: 'E2E-PARTIAL-000001',
+      npi: stable.PARTIAL_UPDATE_HCP_NPI,
+      firstName: stable.PARTIAL_UPDATE_HCP_FIRSTNAME,
+      lastName: stable.PARTIAL_UPDATE_HCP_LASTNAME,
+      email: stable.PARTIAL_UPDATE_HCP_EMAIL,
+      specialty: stable.PARTIAL_UPDATE_HCP_SPECIALTY,
+      city: stable.PARTIAL_UPDATE_HCP_CITY,
+      state: stable.PARTIAL_UPDATE_HCP_STATE,
+    },
+  });
+  console.log(`  ✓ Partial-update HCP: ${partialHcp.firstName} ${partialHcp.lastName} (${partialHcp.id}, NPI ${partialHcp.npi})`);
+
   console.log('\n✅ E2E test data seeded successfully!');
   console.log('\nTest data summary:');
   console.log(`  - Client ID: ${TEST_IDS.CLIENT_ID}`);
