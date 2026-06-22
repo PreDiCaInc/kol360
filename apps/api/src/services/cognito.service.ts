@@ -7,6 +7,8 @@ import {
   AdminAddUserToGroupCommand,
   AdminRemoveUserFromGroupCommand,
   AdminGetUserCommand,
+  AdminSetUserPasswordCommand,
+  AdminDeleteUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { fromSSO } from '@aws-sdk/credential-providers';
 
@@ -120,6 +122,35 @@ export class CognitoService {
       Username: username,
     });
     return getClient().send(command);
+  }
+
+  /**
+   * v1.17.60 — set a NEW temporary password on an existing Cognito user.
+   * Used by the resend-invite flow: previous temp password may have
+   * already been consumed or expired (Cognito default is 7 days).
+   * `Permanent: false` keeps the user in FORCE_CHANGE_PASSWORD state
+   * so first sign-in still prompts for a permanent password.
+   */
+  async setTemporaryPassword(username: string, tempPassword: string) {
+    const command = new AdminSetUserPasswordCommand({
+      UserPoolId: USER_POOL_ID,
+      Username: username,
+      Password: tempPassword,
+      Permanent: false,
+    });
+    await getClient().send(command);
+  }
+
+  /**
+   * v1.17.60 — hard-delete a user from the Cognito pool.
+   * Paired with the DB delete in userService.delete().
+   */
+  async deleteUser(username: string) {
+    const command = new AdminDeleteUserCommand({
+      UserPoolId: USER_POOL_ID,
+      Username: username,
+    });
+    await getClient().send(command);
   }
 
   /**

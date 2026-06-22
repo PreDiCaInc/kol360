@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // v1.17.47 — parse comma/whitespace-separated domain input into a
 // normalized array. Empty input → []. Trims, lowercases, drops
@@ -89,6 +90,139 @@ function DomainsInput({
       onBlur={() => onChange(parseDomainsInput(raw))}
       placeholder="sunpharma.com, na.sunpharma.com"
     />
+  );
+}
+
+// v1.17.60 — logo upload + preview + 20KB cap.
+//
+// `value` is whatever ends up in client.logoUrl: an http(s) URL OR a
+// data:image/* base64 URI (newly accepted by the Zod schema). Upload
+// tab reads the picked file via FileReader.readAsDataURL → that string
+// becomes the field value. Server stores it directly in the column;
+// emails embed the data URI inline. Storage choice: inline (no S3
+// infra needed) — viable because the 20 KB cap keeps the data URI
+// small enough that the row + every outgoing email body stay tiny.
+//
+// The 20 KB binary cap is enforced client-side here AND at the Zod
+// schema layer (~32 KB char cap = ~24 KB binary; tighter than that
+// the schema would reject the rare paste-URL case for a URL > 32 KB,
+// which doesn't exist).
+const LOGO_MAX_BINARY_BYTES = 20 * 1024;
+
+function LogoField({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (next: string | null) => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [imgFailed, setImgFailed] = useState(false);
+  // Decide the default tab from the current value shape so editing
+  // an existing http(s) URL opens on Paste URL, not the empty Upload
+  // form.
+  const initialTab = value && /^data:image\//.test(value) ? 'upload' : 'url';
+
+  return (
+    <FormItem>
+      <FormLabel>Client Logo</FormLabel>
+
+      {value ? (
+        <div className="flex items-center gap-3 rounded-md border p-2 bg-white">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={value}
+            alt="Logo preview"
+            className="h-12 w-auto max-w-[180px] object-contain"
+            onError={() => setImgFailed(true)}
+            onLoad={() => setImgFailed(false)}
+          />
+          <div className="flex-1 min-w-0">
+            {imgFailed ? (
+              <span className="text-sm text-destructive">
+                Image failed to load. Check the URL or upload a new file.
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground break-all">
+                {value.startsWith('data:') ? 'Uploaded image (inline)' : value}
+              </span>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              onChange(null);
+              setImgFailed(false);
+              setError(null);
+            }}
+          >
+            Remove
+          </Button>
+        </div>
+      ) : null}
+
+      <Tabs defaultValue={initialTab} className="mt-2">
+        <TabsList>
+          <TabsTrigger value="upload">Upload</TabsTrigger>
+          <TabsTrigger value="url">Paste URL</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="upload" className="space-y-2">
+          <Input
+            type="file"
+            accept="image/png,image/jpeg,image/svg+xml"
+            onChange={(e) => {
+              setError(null);
+              const file = e.target.files?.[0];
+              if (!file) return;
+              if (file.size > LOGO_MAX_BINARY_BYTES) {
+                const kb = Math.round(file.size / 1024);
+                setError(
+                  `Logo must be ≤ 20 KB (got ${kb} KB). Compress at tinypng.com or export a smaller PNG/SVG.`,
+                );
+                e.target.value = '';
+                return;
+              }
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result;
+                if (typeof result === 'string') {
+                  onChange(result);
+                  setImgFailed(false);
+                }
+              };
+              reader.onerror = () => setError('Could not read file.');
+              reader.readAsDataURL(file);
+              e.target.value = '';
+            }}
+          />
+          {error ? (
+            <p className="text-sm text-destructive">{error}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              PNG, JPG, or SVG. <strong>Max 20 KB</strong> — logos render at a fixed
+              size in emails. SVG preferred for crispness.
+            </p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="url" className="space-y-2">
+          <Input
+            value={value && /^data:image\//.test(value) ? '' : (value ?? '')}
+            onChange={(e) => onChange(e.target.value || null)}
+            placeholder="https://cdn.example.com/logos/acme.png"
+          />
+          <p className="text-sm text-muted-foreground">
+            Public URL to a hosted logo image. No size enforcement on
+            this path — pick something already optimized.
+          </p>
+        </TabsContent>
+      </Tabs>
+
+      <FormMessage />
+    </FormItem>
   );
 }
 
@@ -212,21 +346,10 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
               control={form.control}
               name="logoUrl"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Logo URL</FormLabel>
-                  <FormControl>
-                    <Input
-                      value={field.value ?? ''}
-                      onChange={(e) => field.onChange(e.target.value || null)}
-                      placeholder="https://cdn.example.com/logos/acme.png"
-                    />
-                  </FormControl>
-                  <p className="text-sm text-muted-foreground">
-                    Public URL to a hosted logo image (square works best).
-                    Falls back to a tinted initials avatar if blank.
-                  </p>
-                  <FormMessage />
-                </FormItem>
+                <LogoField
+                  value={field.value ?? null}
+                  onChange={(next) => field.onChange(next)}
+                />
               )}
             />
 

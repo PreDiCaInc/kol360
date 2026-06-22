@@ -124,6 +124,21 @@ export const TEST_IDS = {
     PARITY_SURVEY_RESPONSE_ID: 'cme2e0stable0parity0r1',
     PARITY_SURVEY_TOKEN: 'e2e-stable-parity-tok-01',
     PARITY_ANALYSIS_ID: 'cme2e0stable0parityana1',
+
+    // v1.17.60 — dedicated HCP for partial-row UPDATE tests.
+    // Owned by hcp-import-partial-update.test.ts ONLY. NO other test
+    // may write to this HCP — guarantees deterministic read-back.
+    // Same fix shape as the v1.17.57 PARITY_* fixture: shared
+    // fixture (Alice) → flaky reads → dedicated fixture → clean.
+    // Ticket: docs/findings/e2e-hcp-import-partial-update-fixture-race-2026-06-22.md
+    PARTIAL_UPDATE_HCP_ID: 'cme2e0stable0partial0h1',
+    PARTIAL_UPDATE_HCP_NPI: '1234500001',
+    PARTIAL_UPDATE_HCP_FIRSTNAME: 'PartialUpdate',
+    PARTIAL_UPDATE_HCP_LASTNAME: 'Fixture',
+    PARTIAL_UPDATE_HCP_EMAIL: 'partial.update.fixture@e2etest.example.com',
+    PARTIAL_UPDATE_HCP_SPECIALTY: 'Optometry',
+    PARTIAL_UPDATE_HCP_CITY: 'Boston',
+    PARTIAL_UPDATE_HCP_STATE: 'MA',
   },
 
   // HCP for import test (with segmentation data).

@@ -118,8 +118,8 @@ export class EmailService {
 </head>
 <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.7; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
   <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-    <div style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
-      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" style="height: 36px; margin-bottom: 8px;">
+    <div style="background-color: #147a6d; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
+      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" width="144" height="36" style="width: 144px; height: 36px; max-width: 144px; max-height: 36px; object-fit: contain; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto; border: 0;">
       <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Key Opinion Leader Analytics</p>
     </div>
 
@@ -139,7 +139,7 @@ export class EmailService {
       </div>
 
       <div style="text-align: center; margin: 32px 0;">
-        <a href="${loginUrl}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
+        <a href="${loginUrl}" style="background-color: #147a6d; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
           Sign In to KOL360
         </a>
       </div>
@@ -358,8 +358,8 @@ BioExec Research — KOL360 Platform
 </head>
 <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.7; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
   <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-    <div style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
-      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" style="height: 36px; margin-bottom: 8px;">
+    <div style="background-color: #147a6d; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
+      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" width="144" height="36" style="width: 144px; height: 36px; max-width: 144px; max-height: 36px; object-fit: contain; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto; border: 0;">
       <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Key Opinion Leader Research</p>
     </div>
 
@@ -373,7 +373,7 @@ BioExec Research — KOL360 Platform
       <p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>${honorariumDisplay} gift card</strong> for completing the survey.*</p>
 
       <div style="text-align: center; margin: 32px 0;">
-        <a href="${surveyUrl}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
+        <a href="${surveyUrl}" style="background-color: #147a6d; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
           Start Survey
         </a>
       </div>
@@ -601,8 +601,8 @@ ${unsubscribeUrl}
 </head>
 <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.7; color: #1a1a2e; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
   <div style="background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-    <div style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
-      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" style="height: 36px; margin-bottom: 8px;">
+    <div style="background-color: #147a6d; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); padding: 32px 24px; text-align: center;">
+      <img src="${APP_URL}/images/logo-white.png" alt="KOL360" width="144" height="36" style="width: 144px; height: 36px; max-width: 144px; max-height: 36px; object-fit: contain; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto; border: 0;">
       <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Key Opinion Leader Research</p>
     </div>
 
@@ -620,7 +620,7 @@ ${unsubscribeUrl}
       <p style="margin: 0 0 16px 0; color: #374151;">As a thank you for your time, you will receive a <strong>${honorariumDisplay} gift card</strong> for completing the survey.*</p>
 
       <div style="text-align: center; margin: 32px 0;">
-        <a href="${surveyUrl}" style="background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
+        <a href="${surveyUrl}" style="background-color: #147a6d; background: linear-gradient(135deg, #147a6d 0%, #0f5d54 100%); color: white; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; display: inline-block; box-shadow: 0 4px 14px rgba(20, 122, 109, 0.4);">
           Complete Survey Now
         </a>
       </div>

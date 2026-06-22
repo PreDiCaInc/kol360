@@ -1,7 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useUsers, useApproveUser, useDisableUser, useEnableUser } from '@/hooks/use-users';
+import {
+  useUsers,
+  useApproveUser,
+  useDisableUser,
+  useEnableUser,
+  useResendInvite,
+  useDeleteUser,
+} from '@/hooks/use-users';
 import { useImpersonation } from '@/lib/impersonation-context';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useClients } from '@/hooks/use-clients';
@@ -31,7 +38,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { UserInviteDialog } from '@/components/users/user-invite-dialog';
 import { UserEditDialog } from '@/components/users/user-edit-dialog';
-import { Plus, MoreHorizontal, Check, X, UserCog, AlertTriangle, RefreshCw, Users } from 'lucide-react';
+import { Plus, MoreHorizontal, Check, X, UserCog, AlertTriangle, RefreshCw, Users, Mail, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 interface User {
@@ -65,6 +72,8 @@ export default function UsersPage() {
   const approveUser = useApproveUser();
   const disableUser = useDisableUser();
   const enableUser = useEnableUser();
+  const resendInvite = useResendInvite();
+  const deleteUser = useDeleteUser();
 
   const users = (data?.items || []) as User[];
   const clients = clientsData?.items || [];
@@ -96,6 +105,43 @@ export default function UsersPage() {
       await enableUser.mutateAsync(userId);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to enable user';
+      setActionError(message);
+    }
+  };
+
+  // v1.17.60 — re-send the branded invite email with a fresh temp
+  // password. Only the dropdown item for PENDING users surfaces this.
+  const handleResendInvite = async (userId: string, email: string) => {
+    setActionError(null);
+    try {
+      await resendInvite.mutateAsync(userId);
+      // Inline success acknowledgement via the same banner the error
+      // path uses, just tone-flipped — no toast infra in this page yet.
+      setActionError(null);
+      // Using window.alert here is intentionally minimal — keeps the
+      // diff small. Replace with a proper toast when the page gets one.
+      window.alert(`Invitation resent to ${email}.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to resend invite';
+      setActionError(message);
+    }
+  };
+
+  // v1.17.60 — hard delete (Cognito + DB). Two-step confirm so a
+  // misclick doesn't wipe an account; pteam ask was "del", which is
+  // destructive and irreversible.
+  const handleDelete = async (userId: string, email: string) => {
+    if (!confirm(`Permanently delete ${email}? This removes them from Cognito and the database. Cannot be undone.`)) {
+      return;
+    }
+    if (!confirm(`Are you absolutely sure? This will delete ${email} forever.`)) {
+      return;
+    }
+    setActionError(null);
+    try {
+      await deleteUser.mutateAsync(userId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete user';
       setActionError(message);
     }
   };
@@ -291,10 +337,19 @@ export default function UsersPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           {user.status === 'PENDING_VERIFICATION' && (
-                            <DropdownMenuItem onSelect={() => handleApprove(user.id)}>
-                              <Check className="w-4 h-4 mr-2" />
-                              Approve
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuItem onSelect={() => handleApprove(user.id)}>
+                                <Check className="w-4 h-4 mr-2" />
+                                Approve
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => handleResendInvite(user.id, user.email)}
+                                disabled={resendInvite.isPending}
+                              >
+                                <Mail className="w-4 h-4 mr-2" />
+                                Resend Invite
+                              </DropdownMenuItem>
+                            </>
                           )}
                           {user.status === 'ACTIVE' && (
                             <DropdownMenuItem
@@ -311,6 +366,15 @@ export default function UsersPage() {
                               Enable
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onSelect={() => handleDelete(user.id, user.email)}
+                            disabled={deleteUser.isPending}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )}

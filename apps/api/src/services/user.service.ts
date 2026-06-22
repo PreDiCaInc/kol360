@@ -296,4 +296,66 @@ export class UserService {
       data: { status: 'ACTIVE' },
     });
   }
+
+  /**
+   * v1.17.60 — re-send a welcome/invite email to a PENDING user.
+   * Rotates the Cognito temp password (the previous one may have
+   * been consumed or expired) and re-sends the branded invitation
+   * via SES so the recipient has a fresh, working credential pair.
+   * Only valid for PENDING_VERIFICATION; ACTIVE and DISABLED users
+   * should use the password-reset flow instead.
+   */
+  async resendInvite(id: string) {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { client: { select: { name: true } } },
+    });
+    if (!user) throw new Error('User not found');
+    if (user.status !== 'PENDING_VERIFICATION') {
+      const err = new Error(
+        'Resend invite only valid for users in PENDING_VERIFICATION state',
+      );
+      (err as Error & { code?: string }).code = 'INVALID_STATE';
+      throw err;
+    }
+
+    const tempPassword = generateTempPassword();
+    await cognitoService.setTemporaryPassword(user.email, tempPassword);
+
+    await emailService.sendUserInvitation({
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      tempPassword,
+      roleLabel: roleLabelFor(user.role),
+      clientName: user.client?.name,
+    });
+
+    return user;
+  }
+
+  /**
+   * v1.17.60 — hard delete a user. Removes from Cognito and DB.
+   * Cognito delete is attempted first; if it fails (e.g. user
+   * already gone from the pool), we still proceed with the DB delete
+   * so the row doesn't get orphaned.
+   */
+  async delete(id: string) {
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new Error('User not found');
+
+    try {
+      await cognitoService.deleteUser(user.email);
+    } catch (err) {
+      logger.error('Cognito delete failed; proceeding with DB delete', {
+        userId: user.id,
+        email: user.email,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    return { id };
+  }
 }

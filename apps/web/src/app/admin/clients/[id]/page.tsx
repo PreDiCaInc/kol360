@@ -93,7 +93,7 @@ export default function ClientDetailPage() {
       <Card>
         <CardHeader>
           <CardTitle>Client Information</CardTitle>
-          <CardDescription>Basic information about this client</CardDescription>
+          <CardDescription>All client settings — use Edit to change them.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -112,6 +112,28 @@ export default function ClientDetailPage() {
                   {client.isActive ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
+            <Label className="text-muted-foreground">Logo</Label>
+            <div className="mt-1">
+              {client.logoUrl ? (
+                <div className="flex items-center gap-3">
+                  <img
+                    src={client.logoUrl}
+                    alt="Client logo"
+                    className="h-12 w-auto max-w-[180px] border rounded p-2 bg-white"
+                  />
+                  <span className="text-xs text-muted-foreground break-all">
+                    {client.logoUrl}
+                  </span>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground italic">
+                  No logo set
+                </span>
+              )}
             </div>
           </div>
 
@@ -138,6 +160,33 @@ export default function ClientDetailPage() {
                 style={{ backgroundColor: client.primaryColor }}
               />
               <span className="text-sm font-mono">{client.primaryColor}</span>
+            </div>
+          </div>
+
+          {/* v1.17.60 — surface emailDomains inline. Per v1.17.19 the
+              "empty allowlist = no enforcement" escape hatch is gone;
+              an empty array means only @bio-exec.com staff can be
+              invited, which is effectively a misconfig for any other
+              client. Show that state in destructive tone so the admin
+              spots it at a glance instead of debugging invite failures.
+              Bio-Exec staff are always allowed regardless. */}
+          <div className="border-t pt-4">
+            <Label className="text-muted-foreground">Allowed Email Domains</Label>
+            <div className="mt-1">
+              {client.emailDomains?.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {client.emailDomains.map((d) => (
+                    <Badge key={d} variant="outline">{d}</Badge>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-sm text-destructive italic">
+                  None — only @bio-exec.com staff can be invited
+                </span>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Bio-Exec staff (@bio-exec.com) are always allowed regardless.
+              </p>
             </div>
           </div>
         </CardContent>

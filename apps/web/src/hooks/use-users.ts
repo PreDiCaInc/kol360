@@ -120,3 +120,33 @@ export function useEnableUser() {
     },
   });
 }
+
+// v1.17.60 — rotate the Cognito temp password + re-send the branded
+// invite email. Only valid for PENDING_VERIFICATION users; the BE
+// returns 400 INVALID_STATE for ACTIVE/DISABLED.
+export function useResendInvite() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post<{ success: true }>(`/api/v1/users/${id}/resend-invite`),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', id] });
+    },
+  });
+}
+
+// v1.17.60 — hard delete a user (Cognito + DB). BE blocks the caller
+// from deleting their own account.
+export function useDeleteUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.delete<void>(`/api/v1/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
