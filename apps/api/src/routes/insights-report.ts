@@ -205,12 +205,15 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
 
       const query = leaderRankingQuerySchema.parse(request.query);
       const q = request.query as Record<string, string>;
-      const excludeInternal = q.excludeInternalEmails === 'true';
       const clientId = resolveClientId(user, q);
       // v1.17.5: respondent filters carry over from Demographics.
       const respondentFilters = parseRespondentFilters(q);
+      // v1.17.62 — getLeaderRankings reads from precomputed
+      // HcpAnalysisScore which was already filtered during recalc, so
+      // the old _excludeInternalEmails param was dead weight (and the
+      // route's query-string read of it was a no-op).
       return requireClientId(reply, () =>
-        insightsReportService.getLeaderRankings(diseaseAreaId, query, excludeInternal, clientId, respondentFilters)
+        insightsReportService.getLeaderRankings(diseaseAreaId, query, clientId, respondentFilters)
       );
     }
   );
@@ -227,14 +230,17 @@ export const insightsReportRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const q = request.query as Record<string, string>;
-      const excludeInternal = q.excludeInternalEmails === 'true';
       const clientId = resolveClientId(user, q);
       // v1.17.56 — respondent filters carry over from Demographics /
       // Sociometric / Benchmarking for the single-HCP drill-down Apply
       // Filters pattern.
       const respondentFilters = parseRespondentFilters(q);
+      // v1.17.62 — excludeInternalEmails is now derived from campaign
+      // config inside getKolProfile (matches the other Insights
+      // endpoints). The old opt-in query-string param is removed —
+      // tenant policy lives on the Campaign rows, not the request.
       const profile = await requireClientId(reply, () =>
-        insightsReportService.getKolProfile(diseaseAreaId, hcpId, excludeInternal, clientId, respondentFilters)
+        insightsReportService.getKolProfile(diseaseAreaId, hcpId, clientId, respondentFilters)
       );
       if (reply.sent) return; // requireClientId already sent 400
       if (!profile) {
