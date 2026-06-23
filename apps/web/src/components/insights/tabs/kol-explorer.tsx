@@ -1005,10 +1005,10 @@ function ProfileView({
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
     exportNominatorsExcel({
-      filename: `${safeName}-nominators`,
+      filename: `${safeName}-nominations`,
       headers,
       rows,
-      sheetName: 'Nominators',
+      sheetName: 'Nominations',
     });
   }, [sortedNominators, isPlatformAdmin, profile?.name, exportNominatorsExcel]);
 
@@ -1142,7 +1142,7 @@ function ProfileView({
                 isLoading={isLoading}
                 liveCount={liveNominatorCount}
                 countIsFetching={countIsFetching}
-                countLabel="nominators match"
+                countLabel="nominations match"
                 hasActiveFilters={hasActiveRespondentFilters}
                 onApply={applyRespondentFilters}
                 onReset={resetRespondentFilters}
@@ -1196,11 +1196,17 @@ function ProfileView({
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-base">Nominators</CardTitle>
+                    {/* v1.17.62 — relabel "Nominators" → "Nominations".
+                        Each row is a single nomination event
+                        (nominator + type + campaign); a single
+                        nominator nominating an HCP for 3 types
+                        produces 3 rows. The previous "Nominators"
+                        wording made it look like 3 separate people. */}
+                    <CardTitle className="text-base">Nominations</CardTitle>
                     <CardDescription>
                       {showAllNominators
-                        ? `All ${profile.nominators.length} nominators`
-                        : `Showing ${Math.min(25, profile.nominators.length)} of ${profile.nominators.length} nominators`}
+                        ? `All ${profile.nominators.length} nominations`
+                        : `Showing ${Math.min(25, profile.nominators.length)} of ${profile.nominators.length} nominations`}
                     </CardDescription>
                   </div>
                   {/* v1.17.47 — table actions: Export Excel always

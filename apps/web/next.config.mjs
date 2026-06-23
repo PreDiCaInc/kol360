@@ -65,6 +65,23 @@ const nextConfig = {
           },
         ],
       },
+      {
+        // v1.17.62 — static images + Next.js bundles need to be
+        // embeddable in third-party contexts (email clients pulling
+        // remote images, Open Graph previews, status pages embedding
+        // assets). The default `same-origin` above is correct for
+        // HTML/JS responses (Spectre-style protection) but blocked
+        // every browser-based webmail client from rendering the
+        // logo. Next.js processes header blocks in source order;
+        // same-key entries from later blocks override earlier ones,
+        // so this strictly relaxes CORP for asset paths and leaves
+        // everything else locked down.
+        // Ticket: docs/findings/email-logo-corp-blocks-webmail-render-2026-06-23.md
+        source: '/(images|_next/static)/(.*)',
+        headers: [
+          { key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' },
+        ],
+      },
     ];
   },
 };

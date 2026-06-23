@@ -824,7 +824,6 @@ export class InsightsReportService {
   async getLeaderRankings(
     diseaseAreaId: string,
     query: LeaderRankingQuery,
-    _excludeInternalEmails = false,
     clientId?: string,
     respondentFilters?: RespondentFilters
   ): Promise<LeaderRankingsResponse> {
@@ -959,7 +958,6 @@ export class InsightsReportService {
   async getKolProfile(
     diseaseAreaId: string,
     hcpId: string,
-    excludeInternalEmails = false,
     clientId?: string,
     // v1.17.56 — respondent filters on the single-HCP drill-down.
     // When active, the nominators list AND the per-nominator
@@ -1000,6 +998,20 @@ export class InsightsReportService {
 
     const objective = hcp.diseaseAreaScores[0] ?? null;
     const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
+
+    // v1.17.62 — derive excludeInternalEmails from campaign config
+    // (mirrors getSummary / getDemographics / getKolNominationMetadata).
+    // Was previously an opt-in caller param that the FE never sent →
+    // Bio-Exec staff leaked into customer KOL Profile nominator lists
+    // despite tenant-level "Exclude internal" toggle being ON.
+    // Ticket: docs/findings/kol-profile-ignores-exclude-internal-flag-2026-06-23.md
+    const campaignFlags = includedCampaignIds.length === 0
+      ? []
+      : await prisma.campaign.findMany({
+          where: { id: { in: includedCampaignIds } },
+          select: { excludeInternalEmails: true },
+        });
+    const excludeInternalEmails = campaignFlags.some((c) => c.excludeInternalEmails);
     // v1.17.42 — manual classification lookup for this HCP within
     // the disease area. Null when not yet classified.
     const influencerTypeMap = await this.loadManualInfluencerTypes([hcpId], diseaseAreaId);
