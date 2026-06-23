@@ -184,28 +184,6 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const data = createUserSchema.parse(request.body);
 
-    // Client admins can only invite to their own tenant
-    if (request.user!.role === 'CLIENT_ADMIN') {
-      if (data.clientId && data.clientId !== request.user!.tenantId) {
-        return reply.status(403).send({
-          error: 'Forbidden',
-          message: 'Cannot invite users to other tenants',
-          statusCode: 403
-        });
-      }
-      // Force the clientId to their tenant
-      data.clientId = request.user!.tenantId;
-
-      // Client admins cannot create platform admins
-      if (data.role === 'PLATFORM_ADMIN') {
-        return reply.status(403).send({
-          error: 'Forbidden',
-          message: 'Cannot create platform admin users',
-          statusCode: 403
-        });
-      }
-    }
-
     let user;
     try {
       user = await userService.invite(data);
@@ -245,25 +223,6 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         message: 'User not found',
         statusCode: 404
       });
-    }
-
-    // Client admins can only update users from their tenant
-    if (request.user!.role === 'CLIENT_ADMIN') {
-      if (existing.clientId !== request.user!.tenantId) {
-        return reply.status(403).send({
-          error: 'Forbidden',
-          message: 'Cannot update users from other tenants',
-          statusCode: 403
-        });
-      }
-      // Client admins cannot promote to platform admin
-      if (data.role === 'PLATFORM_ADMIN') {
-        return reply.status(403).send({
-          error: 'Forbidden',
-          message: 'Cannot promote users to platform admin',
-          statusCode: 403
-        });
-      }
     }
 
     let user;
@@ -343,15 +302,6 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // Client admins can only disable users from their tenant
-    if (request.user!.role === 'CLIENT_ADMIN' && existing.clientId !== request.user!.tenantId) {
-      return reply.status(403).send({
-        error: 'Forbidden',
-        message: 'Cannot disable users from other tenants',
-        statusCode: 403
-      });
-    }
-
     // Prevent disabling yourself
     if (existing.cognitoSub === request.user!.sub) {
       return reply.status(400).send({
@@ -389,15 +339,6 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    // Client admins can only enable users from their tenant
-    if (request.user!.role === 'CLIENT_ADMIN' && existing.clientId !== request.user!.tenantId) {
-      return reply.status(403).send({
-        error: 'Forbidden',
-        message: 'Cannot enable users from other tenants',
-        statusCode: 403
-      });
-    }
-
     if (existing.status !== 'DISABLED') {
       return reply.status(400).send({
         error: 'Bad Request',
@@ -431,15 +372,6 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         error: 'Not Found',
         message: 'User not found',
         statusCode: 404,
-      });
-    }
-
-    // Client admins can only resend to users in their tenant
-    if (request.user!.role === 'CLIENT_ADMIN' && existing.clientId !== request.user!.tenantId) {
-      return reply.status(403).send({
-        error: 'Forbidden',
-        message: 'Cannot resend invite to users from other tenants',
-        statusCode: 403,
       });
     }
 
@@ -486,15 +418,6 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
         error: 'Bad Request',
         message: 'Cannot delete your own account',
         statusCode: 400,
-      });
-    }
-
-    // Client admins can only delete users from their tenant
-    if (request.user!.role === 'CLIENT_ADMIN' && existing.clientId !== request.user!.tenantId) {
-      return reply.status(403).send({
-        error: 'Forbidden',
-        message: 'Cannot delete users from other tenants',
-        statusCode: 403,
       });
     }
 
