@@ -47,35 +47,36 @@ const dryRun = !process.argv.includes('--execute');
 const batchArg = process.argv.find((a) => a.startsWith('--batch='));
 const BATCH_SIZE = batchArg ? Number.parseInt(batchArg.split('=')[1], 10) : 500;
 
-const PASSWORD = 'RDS4Bioexec2025';
-const TEST_DB_URL =
-  process.env.TEST_DB_URL ??
-  `postgresql://kol360admin:${PASSWORD}@localhost:5432/kol360`;
-const PROD_DB_URL =
-  process.env.PROD_DB_URL ??
-  `postgresql://kol360admin:${PASSWORD}@localhost:5433/kol360`;
+// Hardcoded tunnel URLs. NOT user-overridable. See sync-hcps-from-prod.ts
+// for the rationale — same safety guarantee applies here: this script
+// can only ever read from prod and write to test, never the other way.
+const SOURCE_DB_URL_PROD = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360';
+const TARGET_DB_URL_TEST = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5432/kol360';
 
-const PROD_HOST_HINT = 'kol360-db-prod';
 const TEST_FIXTURE_ID_PREFIX = 'cme2e0';
 
 function assertSafety() {
-  if (TEST_DB_URL.includes(PROD_HOST_HINT)) {
-    throw new Error(
-      `REFUSING TO RUN: TEST_DB_URL contains "${PROD_HOST_HINT}". Aborting.`,
-    );
+  if (SOURCE_DB_URL_PROD === TARGET_DB_URL_TEST) {
+    throw new Error('REFUSING TO RUN: source and target URLs are identical.');
   }
-  if (TEST_DB_URL === PROD_DB_URL) {
-    throw new Error('REFUSING TO RUN: TEST_DB_URL === PROD_DB_URL. Aborting.');
+  if (!SOURCE_DB_URL_PROD.includes(':5433/')) {
+    throw new Error('REFUSING TO RUN: SOURCE_DB_URL_PROD must be the prod tunnel (port 5433).');
+  }
+  if (!TARGET_DB_URL_TEST.includes(':5432/')) {
+    throw new Error('REFUSING TO RUN: TARGET_DB_URL_TEST must be the test tunnel (port 5432).');
+  }
+  if (TARGET_DB_URL_TEST.includes('kol360-db-prod')) {
+    throw new Error('REFUSING TO RUN: TARGET_DB_URL_TEST contains "kol360-db-prod".');
   }
 }
 
 assertSafety();
 
-const prismaTest = new PrismaClient({
-  datasources: { db: { url: TEST_DB_URL } },
-});
 const prismaProd = new PrismaClient({
-  datasources: { db: { url: PROD_DB_URL } },
+  datasources: { db: { url: SOURCE_DB_URL_PROD } },
+});
+const prismaTest = new PrismaClient({
+  datasources: { db: { url: TARGET_DB_URL_TEST } },
 });
 
 interface Stats {
@@ -95,8 +96,8 @@ async function main() {
   console.log('==============================================');
   console.log(`Segment scores sync prod → test  ${dryRun ? '(DRY RUN)' : '(EXECUTING)'}`);
   console.log('==============================================');
-  console.log(`  source : ${redact(PROD_DB_URL)}`);
-  console.log(`  target : ${redact(TEST_DB_URL)}`);
+  console.log(`  source : ${redact(SOURCE_DB_URL_PROD)}`);
+  console.log(`  target : ${redact(TARGET_DB_URL_TEST)}`);
   console.log(`  batch  : ${BATCH_SIZE}`);
   console.log('');
 

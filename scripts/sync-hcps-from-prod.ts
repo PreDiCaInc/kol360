@@ -16,7 +16,8 @@
  *   - Tier 2/3 stuff: no DiseaseArea, no HcpDiseaseAreaScore, no
  *     HcpSpecialty, no campaigns / nominations / responses / analyses.
  *     "Identity only" per the Tier 1 plan.
- *   - Write to prod. Hard guard against it; see PROD_HOST_HINT below.
+ *   - Write to prod. The source (prod) + target (test) DB URLs are
+ *     hardcoded constants below; no env-var or CLI flag can flip them.
  *
  * Safety:
  *   - Two PrismaClient instances, each with an explicit datasources
@@ -43,10 +44,13 @@
  *   # commit:
  *   cd apps/api && npx tsx ../../scripts/sync-hcps-from-prod.ts --execute
  *
- * Override URLs (not normally needed):
- *
- *   TEST_DB_URL="postgresql://..." PROD_DB_URL="postgresql://..." \
- *     npx tsx ../../scripts/sync-hcps-from-prod.ts --execute
+ * NO env-var URL override. By design.
+ *   Source (prod) and target (test) DB URLs are hardcoded in the
+ *   constants below. The whole point is that this script CANNOT
+ *   write to prod — not by mistake, not by a fat-fingered env var,
+ *   not by an --execute --source --target flag flip. If you need a
+ *   different target DB, edit the constant below in source and
+ *   commit it. There is no "convenient" runtime override.
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -55,61 +59,60 @@ const dryRun = !process.argv.includes('--execute');
 const batchArg = process.argv.find((a) => a.startsWith('--batch='));
 const BATCH_SIZE = batchArg ? Number.parseInt(batchArg.split('=')[1], 10) : 500;
 
-// Default tunnel URLs (per CLAUDE.md):
+// Hardcoded tunnel URLs. NOT user-overridable. The whole point is
+// that this script can only ever read from the prod tunnel and write
+// to the test tunnel — never the other way around. To change a
+// target, edit these constants in source.
+//
+// Tunnel ports per CLAUDE.md:
 //   test → localhost:5432
 //   prod → localhost:5433
 // Both DBs share the same password since the 2026-05 rotation;
 // host/port is the distinguisher.
-const PASSWORD = 'RDS4Bioexec2025';
-const TEST_DB_URL =
-  process.env.TEST_DB_URL ??
-  `postgresql://kol360admin:${PASSWORD}@localhost:5432/kol360`;
-const PROD_DB_URL =
-  process.env.PROD_DB_URL ??
-  `postgresql://kol360admin:${PASSWORD}@localhost:5433/kol360`;
+const SOURCE_DB_URL_PROD = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360';
+const TARGET_DB_URL_TEST = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5432/kol360';
 
-// Hint substrings expected in each URL. Used purely for the safety
-// guard below — NOT for connection routing.
-const PROD_HOST_HINT = 'kol360-db-prod';
-const TEST_PORT_HINT = ':5432/';
-const PROD_PORT_HINT = ':5433/';
-
+// Hard guards. None of these should ever fire if the constants above
+// haven't been tampered with — they're tripwires for the case where
+// someone edits the file and gets it wrong.
 function assertSafety() {
-  // Reject if test URL has any prod-host marker.
-  if (TEST_DB_URL.includes(PROD_HOST_HINT)) {
+  if (SOURCE_DB_URL_PROD === TARGET_DB_URL_TEST) {
     throw new Error(
-      `REFUSING TO RUN: TEST_DB_URL contains "${PROD_HOST_HINT}". ` +
-        `That URL looks like prod. This script writes to its 'test' connection — ` +
-        `if it pointed at prod we'd corrupt prod. Double-check TEST_DB_URL.`,
+      'REFUSING TO RUN: source and target URLs are identical. The hardcoded ' +
+        'constants in this file have been edited to point at the same DB.',
     );
   }
-  // Both tunnel URLs use localhost — distinguish by port. If both
-  // resolve to the same port, we'd be copying a DB onto itself; refuse.
-  if (TEST_DB_URL === PROD_DB_URL) {
-    throw new Error('REFUSING TO RUN: TEST_DB_URL === PROD_DB_URL. Aborting.');
-  }
-  // Soft hint: warn (don't bail) if the ports aren't the expected
-  // tunnel ports. Allows TEST_DB_URL override (e.g. when running
-  // against a non-tunnel test DB).
-  if (!TEST_DB_URL.includes(TEST_PORT_HINT)) {
-    console.warn(
-      `⚠ TEST_DB_URL doesn't look like the canonical test tunnel (expected port 5432). Continuing.`,
+  if (!SOURCE_DB_URL_PROD.includes(':5433/')) {
+    throw new Error(
+      'REFUSING TO RUN: SOURCE_DB_URL_PROD must be the prod tunnel (port 5433). ' +
+        'The hardcoded constant in this file has been edited.',
     );
   }
-  if (!PROD_DB_URL.includes(PROD_PORT_HINT)) {
-    console.warn(
-      `⚠ PROD_DB_URL doesn't look like the canonical prod tunnel (expected port 5433). Continuing.`,
+  if (!TARGET_DB_URL_TEST.includes(':5432/')) {
+    throw new Error(
+      'REFUSING TO RUN: TARGET_DB_URL_TEST must be the test tunnel (port 5432). ' +
+        'The hardcoded constant in this file has been edited.',
+    );
+  }
+  if (TARGET_DB_URL_TEST.includes('kol360-db-prod')) {
+    throw new Error(
+      'REFUSING TO RUN: TARGET_DB_URL_TEST contains "kol360-db-prod". ' +
+        'Aborting — would write to prod.',
     );
   }
 }
 
 assertSafety();
 
-const prismaTest = new PrismaClient({
-  datasources: { db: { url: TEST_DB_URL } },
-});
+// Naming convention: `prismaProd` is read-only intent (only findMany
+// is called against it); `prismaTest` is the write target (upserts).
+// Greppable so the read/write directionality is obvious at every
+// call site.
 const prismaProd = new PrismaClient({
-  datasources: { db: { url: PROD_DB_URL } },
+  datasources: { db: { url: SOURCE_DB_URL_PROD } },
+});
+const prismaTest = new PrismaClient({
+  datasources: { db: { url: TARGET_DB_URL_TEST } },
 });
 
 const TEST_FIXTURE_ID_PREFIX = 'cme2e0';
@@ -130,8 +133,8 @@ async function main() {
   console.log('==============================================');
   console.log(`HCP sync prod → test  ${dryRun ? '(DRY RUN — no writes)' : '(EXECUTING — writes enabled)'}`);
   console.log('==============================================');
-  console.log(`  source : ${redact(PROD_DB_URL)}`);
-  console.log(`  target : ${redact(TEST_DB_URL)}`);
+  console.log(`  source : ${redact(SOURCE_DB_URL_PROD)}`);
+  console.log(`  target : ${redact(TARGET_DB_URL_TEST)}`);
   console.log(`  batch  : ${BATCH_SIZE}`);
   console.log('');
 
