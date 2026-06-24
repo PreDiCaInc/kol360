@@ -53,6 +53,13 @@ const BATCH_SIZE = batchArg ? Number.parseInt(batchArg.split('=')[1], 10) : 500;
 const SOURCE_DB_URL_PROD = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360';
 const TARGET_DB_URL_TEST = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5432/kol360';
 
+// Runtime IP pin — see sync-hcps-from-prod.ts for rationale.
+// `tunnel-up.sh` could route the wrong RDS through localhost:5432;
+// the URL constants here can't detect that. Asking the connected
+// server for inet_server_addr() does.
+const EXPECTED_PROD_RDS_IP = '10.0.149.63';
+const EXPECTED_TEST_RDS_IP = '10.0.153.215';
+
 const TEST_FIXTURE_ID_PREFIX = 'cme2e0';
 
 function assertSafety() {
@@ -102,6 +109,7 @@ async function main() {
   console.log('');
 
   await Promise.all([prismaTest.$connect(), prismaProd.$connect()]);
+  await assertConnectionsPointWhereWeThink();
 
   const stats: Stats = {
     daProdTotal: 0,
@@ -316,6 +324,42 @@ async function main() {
 
 function redact(url: string): string {
   return url.replace(/:[^@]+@/, ':***@');
+}
+
+async function assertConnectionsPointWhereWeThink() {
+  const [prodIpRow, testIpRow] = await Promise.all([
+    prismaProd.$queryRaw<Array<{ inet_server_addr: string | null }>>`SELECT inet_server_addr()`,
+    prismaTest.$queryRaw<Array<{ inet_server_addr: string | null }>>`SELECT inet_server_addr()`,
+  ]);
+  const prodIp = prodIpRow[0]?.inet_server_addr ?? null;
+  const testIp = testIpRow[0]?.inet_server_addr ?? null;
+
+  if (testIp === EXPECTED_PROD_RDS_IP) {
+    throw new Error(
+      `REFUSING TO RUN — target connection reporting prod RDS IP (${testIp}). ` +
+        `Tunnels are misconfigured. ABORTING before any writes.`,
+    );
+  }
+  if (prodIp && testIp && prodIp === testIp) {
+    throw new Error(
+      `REFUSING TO RUN — prod and test connections resolved to the same IP (${prodIp}). Aborting.`,
+    );
+  }
+  if (testIp !== EXPECTED_TEST_RDS_IP) {
+    throw new Error(
+      `REFUSING TO RUN — test IP is ${testIp ?? 'null'}, expected ${EXPECTED_TEST_RDS_IP}. ` +
+        `Tunnel wrong, or RDS rebuilt — update EXPECTED_TEST_RDS_IP if so.`,
+    );
+  }
+  if (prodIp !== EXPECTED_PROD_RDS_IP) {
+    throw new Error(
+      `REFUSING TO RUN — prod IP is ${prodIp ?? 'null'}, expected ${EXPECTED_PROD_RDS_IP}. ` +
+        `Tunnel wrong, or RDS rebuilt — update EXPECTED_PROD_RDS_IP if so.`,
+    );
+  }
+  console.log(`  prod IP: ${prodIp} ✓`);
+  console.log(`  test IP: ${testIp} ✓`);
+  console.log('');
 }
 
 main()

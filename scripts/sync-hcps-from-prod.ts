@@ -72,6 +72,23 @@ const BATCH_SIZE = batchArg ? Number.parseInt(batchArg.split('=')[1], 10) : 500;
 const SOURCE_DB_URL_PROD = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360';
 const TARGET_DB_URL_TEST = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5432/kol360';
 
+// Runtime IP pin — the URL constants above only describe the LOCAL
+// side of the tunnel. If someone misconfigures `tunnel-up.sh prod` to
+// route port 5432 → prod RDS (instead of 5433), the URLs look fine
+// but the actual server we connect to is prod. The pin below catches
+// this by asking the server itself which RDS instance it lives on
+// (via `SELECT inet_server_addr()`).
+//
+// These IPs are the private-VPC IPs of the RDS instances behind the
+// bastion tunnels. They are stable across restarts but CAN change on
+// a full RDS rebuild / failover. If a future run aborts because the
+// observed IP differs, manually verify both tunnels with
+//   psql -h localhost -p 5432 -U kol360admin -d kol360 -c 'SELECT inet_server_addr()'
+//   psql -h localhost -p 5433 -U kol360admin -d kol360 -c 'SELECT inet_server_addr()'
+// and update these constants in source if the IPs legitimately moved.
+const EXPECTED_PROD_RDS_IP = '10.0.149.63';   // kol360-db-prod (read source)
+const EXPECTED_TEST_RDS_IP = '10.0.153.215';  // kol360-db (write target)
+
 // Hard guards. None of these should ever fire if the constants above
 // haven't been tampered with — they're tripwires for the case where
 // someone edits the file and gets it wrong.
@@ -140,6 +157,13 @@ async function main() {
 
   // Connect both sides up front so we fail fast if a tunnel is down.
   await Promise.all([prismaTest.$connect(), prismaProd.$connect()]);
+
+  // Runtime tunnel-correctness pin. URL strings only describe the
+  // LOCAL side of each tunnel; whether localhost:5432 actually maps
+  // to test RDS is a runtime fact we can't infer from constants. Ask
+  // each connected server which RDS instance it is. Refuse to run if
+  // either side reports an unexpected IP.
+  await assertConnectionsPointWhereWeThink();
 
   // ---- 1. Snapshot the test-side protected sets ----
   // These are the NPIs + beIds we will never overwrite (test
@@ -308,6 +332,60 @@ async function main() {
 
 function redact(url: string): string {
   return url.replace(/:[^@]+@/, ':***@');
+}
+
+async function assertConnectionsPointWhereWeThink() {
+  const [prodIpRow, testIpRow] = await Promise.all([
+    prismaProd.$queryRaw<Array<{ inet_server_addr: string | null }>>`SELECT inet_server_addr()`,
+    prismaTest.$queryRaw<Array<{ inet_server_addr: string | null }>>`SELECT inet_server_addr()`,
+  ]);
+  const prodIp = prodIpRow[0]?.inet_server_addr ?? null;
+  const testIp = testIpRow[0]?.inet_server_addr ?? null;
+
+  // The most catastrophic failure: target reports a prod-RDS IP.
+  // Refuse hard.
+  if (testIp === EXPECTED_PROD_RDS_IP) {
+    throw new Error(
+      `REFUSING TO RUN — runtime tunnel check FAILED.\n` +
+        `  Target connection (localhost:5432) is reporting IP ${testIp}, which is the\n` +
+        `  prod RDS instance (EXPECTED_PROD_RDS_IP). Your tunnels are misconfigured —\n` +
+        `  someone almost certainly tunneled prod through port 5432. ABORTING before\n` +
+        `  any writes happen. Re-bring up tunnels and verify with:\n` +
+        `    psql -h localhost -p 5432 -U kol360admin -d kol360 -c 'SELECT inet_server_addr()'\n` +
+        `    psql -h localhost -p 5433 -U kol360admin -d kol360 -c 'SELECT inet_server_addr()'`,
+    );
+  }
+
+  // Both pointing at the same IP — collapsed-tunnel state. Refuse.
+  if (prodIp && testIp && prodIp === testIp) {
+    throw new Error(
+      `REFUSING TO RUN — both 'prod' and 'test' connections resolved to the same RDS IP (${prodIp}). ` +
+        `Tunnels are misconfigured. Aborting.`,
+    );
+  }
+
+  // Either side doesn't match the expected pin — refuse, but with a
+  // softer hint that RDS may have failed over and the script needs
+  // its IP constants updated.
+  if (testIp !== EXPECTED_TEST_RDS_IP) {
+    throw new Error(
+      `REFUSING TO RUN — target (test) IP is ${testIp ?? 'null'}, expected ${EXPECTED_TEST_RDS_IP}.\n` +
+        `  Either the tunnel is wrong OR the test RDS instance was rebuilt / failed over\n` +
+        `  to a new IP. Verify with the psql commands above; if the IP legitimately moved,\n` +
+        `  update EXPECTED_TEST_RDS_IP in source.`,
+    );
+  }
+  if (prodIp !== EXPECTED_PROD_RDS_IP) {
+    throw new Error(
+      `REFUSING TO RUN — source (prod) IP is ${prodIp ?? 'null'}, expected ${EXPECTED_PROD_RDS_IP}.\n` +
+        `  Verify tunnels with the psql commands above; if the IP legitimately moved,\n` +
+        `  update EXPECTED_PROD_RDS_IP in source.`,
+    );
+  }
+
+  console.log(`  prod IP: ${prodIp} ✓`);
+  console.log(`  test IP: ${testIp} ✓`);
+  console.log('');
 }
 
 main()
