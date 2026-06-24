@@ -115,60 +115,94 @@ async function main() {
   };
 
   // ---------- 1. DiseaseArea ----------
+  // Prod and test were seeded independently — same `code` values
+  // (DRY_EYE / RETINA / GLAUCOMA / CORNEA / MEDICAL_ONCOLOGY) but
+  // different cuids on each side. Matching by `code` (which is
+  // UNIQUE) lets us:
+  //   - Update the matching test DA's metadata (therapeutic area,
+  //     name, isActive) from prod values
+  //   - Create new DAs for prod codes that don't exist in test
+  //   - Build a prod-id → test-id translation map for Step 2 so
+  //     score rows can reference the right side's DA id
+  // No cross-side overwrite of fixture codes (E2E_ONCOLOGY,
+  // E2E_PARITY_DA stay test-only).
   console.log('--- Step 1: DiseaseArea ---');
 
   const testDas = await prismaTest.diseaseArea.findMany({
     select: { id: true, code: true },
   });
-  const testDaIds = new Set(testDas.map((d: { id: string }) => d.id));
-  const protectedDaCodes = new Set(
+  const testIdByCode = new Map<string, string>(
+    testDas.map((d: { id: string; code: string }) => [d.code, d.id]),
+  );
+  const fixtureCodes = new Set(
     testDas
       .filter((d: { id: string }) => d.id.startsWith(TEST_FIXTURE_ID_PREFIX))
       .map((d: { code: string }) => d.code),
   );
-  console.log(`Test side: ${testDas.length} DAs (${protectedDaCodes.size} fixture codes protected).`);
+  console.log(`Test side: ${testDas.length} DAs (${fixtureCodes.size} fixture codes protected).`);
 
   const prodDas = await prismaProd.diseaseArea.findMany();
   stats.daProdTotal = prodDas.length;
   console.log(`Prod side: ${prodDas.length} DAs to consider.`);
 
+  // prodDaIdToTestDaId: built so Step 2 can translate score rows.
+  // Includes BOTH already-matched DAs (same code on both sides) and
+  // newly-created DAs (where we used prod's id directly on test).
+  const prodDaIdToTestDaId = new Map<string, string>();
+
   for (const d of prodDas) {
+    // Prod fixtures (cme2e0 prefix) can't be in prod, but defense
+    // in depth.
     if (d.id.startsWith(TEST_FIXTURE_ID_PREFIX)) {
       stats.daSkippedFixture += 1;
       continue;
     }
-    if (protectedDaCodes.has(d.code) && !testDaIds.has(d.id)) {
-      // A test fixture DA already owns this code. Don't overwrite it.
+    if (fixtureCodes.has(d.code)) {
+      // Don't touch test-fixture DAs — they're scoped to e2e tests.
       stats.daSkippedCodeCollision += 1;
       continue;
     }
 
+    const existingTestId = testIdByCode.get(d.code);
+
     if (dryRun) {
       stats.daUpserted += 1;
+      // Mirror the real-execute mapping so Step 2's dry-run is honest.
+      prodDaIdToTestDaId.set(d.id, existingTestId ?? d.id);
       continue;
     }
 
     try {
-      await prismaTest.diseaseArea.upsert({
-        where: { id: d.id },
-        update: {
-          therapeuticArea: d.therapeuticArea,
-          name: d.name,
-          code: d.code,
-          isActive: d.isActive,
-        },
-        create: {
-          id: d.id,
-          therapeuticArea: d.therapeuticArea,
-          name: d.name,
-          code: d.code,
-          isActive: d.isActive,
-        },
-      });
+      if (existingTestId) {
+        // Match by code: update the existing test DA in-place,
+        // keeping its test-side id.
+        await prismaTest.diseaseArea.update({
+          where: { id: existingTestId },
+          data: {
+            therapeuticArea: d.therapeuticArea,
+            name: d.name,
+            isActive: d.isActive,
+          },
+        });
+        prodDaIdToTestDaId.set(d.id, existingTestId);
+      } else {
+        // No test DA owns this code — create one. Use prod's id so
+        // future syncs become a stable update path.
+        await prismaTest.diseaseArea.create({
+          data: {
+            id: d.id,
+            therapeuticArea: d.therapeuticArea,
+            name: d.name,
+            code: d.code,
+            isActive: d.isActive,
+          },
+        });
+        prodDaIdToTestDaId.set(d.id, d.id);
+        testIdByCode.set(d.code, d.id);
+      }
       stats.daUpserted += 1;
-      testDaIds.add(d.id);
     } catch (err) {
-      console.warn(`Skip DA ${d.id} (${d.name}): ${(err as Error).message}`);
+      console.warn(`Skip DA ${d.id} (${d.name}, code ${d.code}): ${(err as Error).message}`);
     }
   }
 
@@ -178,7 +212,9 @@ async function main() {
 
   const testHcpRows = await prismaTest.hcp.findMany({ select: { id: true } });
   const testHcpIds = new Set(testHcpRows.map((r: { id: string }) => r.id));
-  console.log(`Test side: ${testHcpIds.size} HCPs, ${testDaIds.size} DAs available as targets.`);
+  console.log(
+    `Test side: ${testHcpIds.size} HCPs, ${prodDaIdToTestDaId.size} prod-DA → test-DA mappings.`,
+  );
 
   const prodScoreCount = await prismaProd.hcpDiseaseAreaScore.count();
   console.log(`Prod side: ${prodScoreCount} score rows to consider.`);
@@ -202,7 +238,12 @@ async function main() {
         stats.scoreSkippedNoHcp += 1;
         continue;
       }
-      if (!testDaIds.has(s.diseaseAreaId)) {
+      // Translate prod's diseaseAreaId → test's diseaseAreaId via the
+      // code-matched map built in Step 1. If the prod DA wasn't synced
+      // (e.g. its code collided with a test fixture), there's nowhere
+      // for this score to land — skip.
+      const testDaId = prodDaIdToTestDaId.get(s.diseaseAreaId);
+      if (!testDaId) {
         stats.scoreSkippedNoDa += 1;
         continue;
       }
@@ -214,7 +255,7 @@ async function main() {
 
       const data = {
         hcpId: s.hcpId,
-        diseaseAreaId: s.diseaseAreaId,
+        diseaseAreaId: testDaId,
         scorePublications: s.scorePublications,
         scoreClinicalTrials: s.scoreClinicalTrials,
         scoreTradePubs: s.scoreTradePubs,
@@ -240,7 +281,7 @@ async function main() {
         stats.scoreUpserted += 1;
       } catch (err) {
         console.warn(
-          `Skip score ${s.id} (hcp ${s.hcpId}, da ${s.diseaseAreaId}): ${(err as Error).message}`,
+          `Skip score ${s.id} (hcp ${s.hcpId}, prod-da ${s.diseaseAreaId} → test-da ${testDaId}): ${(err as Error).message}`,
         );
       }
     }
