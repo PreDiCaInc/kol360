@@ -17,6 +17,14 @@ const isTestEnvironment = apiUrl.includes('test') ||
 export const metadata: Metadata = {
   title: isTestEnvironment ? '[TEST] KOL360' : 'KOL360',
   description: 'KOL Survey Platform',
+  // v1.17.65 — explicitly declare the favicon so it's emitted as a
+  // <link rel="icon"> in every page's <head>. Without this the App
+  // Router only serves /favicon.ico if it's mirrored into app/; ours
+  // lives under public/ so some pages (e.g. /admin/dashboards/guide)
+  // were rendering without the tab icon.
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
