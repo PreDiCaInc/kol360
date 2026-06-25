@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Users, UserCheck, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Users, UserCheck, MessageSquare, BookOpen } from 'lucide-react';
 import { useSidebarContext } from '@/components/layout/sidebar-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +25,11 @@ import { LeaderRankingsTab } from '@/components/insights/tabs/leader-rankings';
 import { SociometricSummaryTab } from '@/components/insights/tabs/sociometric-summary';
 import { KolExplorerTab } from '@/components/insights/tabs/kol-explorer';
 import { DemographicsTab } from '@/components/insights/tabs/demographics-tab';
+import {
+  InsightsGuideDrawer,
+  useInsightsGuideAutoOpen,
+} from '@/components/insights/insights-guide-drawer';
+import { TabHelpPopover } from '@/components/insights/tab-help-popover';
 
 import '@/components/insights/print-styles.css';
 
@@ -37,6 +42,28 @@ interface InsightsDashboardProps {
 export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }: InsightsDashboardProps) {
   const [activeTab, setActiveTab] = useState('introduction');
   const [selectedKolId, setSelectedKolId] = useState<string | null>(null);
+
+  // v1.17.63 — Insights Use Cases guide. The hook owns the drawer
+  // open state + the first-visit auto-open via localStorage. Per-tab
+  // ? popovers (TabHelpPopover) call openGuideAt() to deep-link into
+  // the right case study.
+  const insightsGuide = useInsightsGuideAutoOpen();
+  const openGuideAt = useCallback(
+    (slug?: string) => {
+      insightsGuide.setOpen(true);
+      if (slug && typeof window !== 'undefined') {
+        // Defer until the drawer has rendered + content has mounted
+        // so the anchor target exists. Two RAFs is enough.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const el = document.getElementById(slug);
+            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        });
+      }
+    },
+    [insightsGuide],
+  );
   // Insights is analysis-backed: one curated analysis per (client, disease
   // area). PLATFORM_ADMIN must pick a client (no "all"); a cross-client view
   // is a dedicated aggregate-client analysis.
@@ -179,6 +206,19 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
               </SelectContent>
             </Select>
           </div>
+
+          {/* v1.17.63 — Use Cases button opens the Insights guide
+              drawer. Sits at the right edge of the header, next to
+              the selectors, so it's discoverable but doesn't fight
+              the analytical chrome below. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => insightsGuide.setOpen(true)}
+          >
+            <BookOpen className="mr-2 h-4 w-4" />
+            Use Cases
+          </Button>
         </div>
       </div>
 
@@ -253,10 +293,22 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-5 print:hidden h-12">
           <TabsTrigger value="introduction">Introduction</TabsTrigger>
-          <TabsTrigger value="demographics">Demographics</TabsTrigger>
-          <TabsTrigger value="dynamic-benchmarking">Benchmarking</TabsTrigger>
-          <TabsTrigger value="sociometric-leaders">Sociometric Leaders</TabsTrigger>
-          <TabsTrigger value="total-weighted-score">Total Weighted Score</TabsTrigger>
+          <TabsTrigger value="demographics">
+            Demographics
+            <TabHelpPopover tab="Demographics" onOpenGuide={openGuideAt} />
+          </TabsTrigger>
+          <TabsTrigger value="dynamic-benchmarking">
+            Benchmarking
+            <TabHelpPopover tab="Benchmarking" onOpenGuide={openGuideAt} />
+          </TabsTrigger>
+          <TabsTrigger value="sociometric-leaders">
+            Sociometric Leaders
+            <TabHelpPopover tab="Sociometric Leaders" onOpenGuide={openGuideAt} />
+          </TabsTrigger>
+          <TabsTrigger value="total-weighted-score">
+            Total Weighted Score
+            <TabHelpPopover tab="Total Weighted Score" onOpenGuide={openGuideAt} />
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="introduction" className="mt-6">
@@ -287,6 +339,16 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
       </Tabs>
       </>
       )}
+
+      {/* v1.17.63 — Insights Use Cases guide drawer. Portals out to
+          body so it overlays the dashboard from the right edge.
+          Auto-opens on first visit (per-user localStorage flag);
+          reachable on demand via the Use Cases button + per-tab ?
+          popovers. */}
+      <InsightsGuideDrawer
+        open={insightsGuide.open}
+        onOpenChange={insightsGuide.setOpen}
+      />
     </div>
   );
 }
