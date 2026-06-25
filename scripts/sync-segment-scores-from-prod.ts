@@ -50,8 +50,23 @@ const BATCH_SIZE = batchArg ? Number.parseInt(batchArg.split('=')[1], 10) : 500;
 // Hardcoded tunnel URLs. NOT user-overridable. See sync-hcps-from-prod.ts
 // for the rationale — same safety guarantee applies here: this script
 // can only ever read from prod and write to test, never the other way.
-const SOURCE_DB_URL_PROD = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360';
-const TARGET_DB_URL_TEST = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5432/kol360';
+// Tunnel URLs. Host + port + database are hardcoded so this script
+// can ONLY ever read from prod (5433) and write to test (5432).
+// Password is injected from SYNC_DB_PASSWORD per pteam policy —
+// credentials are NOT committed to the repo.
+//
+// Set the password for the run via:
+//   export SYNC_DB_PASSWORD='<the test/prod admin password>'
+const SYNC_DB_PASSWORD = process.env.SYNC_DB_PASSWORD;
+if (!SYNC_DB_PASSWORD) {
+  throw new Error(
+    'REFUSING TO RUN: SYNC_DB_PASSWORD env var is required.\n' +
+      "  Set it for the run: export SYNC_DB_PASSWORD='<test/prod admin password>'\n" +
+      '  Do NOT hardcode credentials in source.',
+  );
+}
+const SOURCE_DB_URL_PROD = `postgresql://kol360admin:${SYNC_DB_PASSWORD}@localhost:5433/kol360`;
+const TARGET_DB_URL_TEST = `postgresql://kol360admin:${SYNC_DB_PASSWORD}@localhost:5432/kol360`;
 
 // Runtime IP pin — see sync-hcps-from-prod.ts for rationale.
 // `tunnel-up.sh` could route the wrong RDS through localhost:5432;

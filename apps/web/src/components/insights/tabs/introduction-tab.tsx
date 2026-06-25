@@ -1,18 +1,22 @@
 'use client';
 
-import Link from 'next/link';
 import { BookOpen } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 interface IntroductionTabProps {
   diseaseAreaId: string;
+  /** v1.17.65 — when provided, the "Use Cases" inline link in the
+   *  Methodology card opens the guide drawer instead of navigating to
+   *  the standalone page. Matches the behavior of the Use Cases button
+   *  in the dashboard header. */
+  onOpenGuide?: () => void;
 }
 
 // diseaseAreaId is currently unused but kept for parity with the other tab
 // components — the Introduction tab may surface DA-specific text/branding
 // later, and keeping the prop shape stable means InsightsDashboard can pass
 // it without conditionals.
-export function IntroductionTab(_props: IntroductionTabProps) {
+export function IntroductionTab({ onOpenGuide }: IntroductionTabProps) {
   return (
     <div className="space-y-8">
       {/* Hero Header */}
@@ -58,15 +62,15 @@ export function IntroductionTab(_props: IntroductionTabProps) {
           <p className="text-muted-foreground leading-relaxed pt-2">
             For examples of how to apply these rankings to real business questions —
             organizing dinners, picking symposium speakers, building advisory boards — see the{' '}
-            <Link
-              href="/admin/dashboards/guide"
+            <button
+              type="button"
+              onClick={onOpenGuide}
               className="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline dark:text-blue-400"
             >
               <BookOpen className="h-3.5 w-3.5" />
               Insights — Use Cases
-            </Link>{' '}
-            guide. (You can also open it as a side-drawer via the <strong>Use Cases</strong> button
-            in the dashboard header.)
+            </button>{' '}
+            guide. (Same drawer as the <strong>Use Cases</strong> button in the dashboard header.)
           </p>
         </CardContent>
       </Card>

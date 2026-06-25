@@ -312,7 +312,10 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
         </TabsList>
 
         <TabsContent value="introduction" className="mt-6">
-          <IntroductionTab diseaseAreaId={diseaseAreaId} />
+          <IntroductionTab
+            diseaseAreaId={diseaseAreaId}
+            onOpenGuide={() => openGuideAt()}
+          />
         </TabsContent>
 
         <TabsContent value="demographics" className="mt-6">

@@ -59,18 +59,32 @@ const dryRun = !process.argv.includes('--execute');
 const batchArg = process.argv.find((a) => a.startsWith('--batch='));
 const BATCH_SIZE = batchArg ? Number.parseInt(batchArg.split('=')[1], 10) : 500;
 
-// Hardcoded tunnel URLs. NOT user-overridable. The whole point is
-// that this script can only ever read from the prod tunnel and write
-// to the test tunnel — never the other way around. To change a
-// target, edit these constants in source.
+// Tunnel URLs. Host + port + database are hardcoded so this script
+// can ONLY ever read from the prod tunnel (5433) and write to the
+// test tunnel (5432) — never the other way around. The password is
+// injected from the environment via SYNC_DB_PASSWORD; the script
+// refuses to run if it's not set. Both DBs share the same admin
+// password (rotated 2026-05); per pteam policy do NOT commit
+// credentials to the repo.
 //
 // Tunnel ports per CLAUDE.md:
 //   test → localhost:5432
 //   prod → localhost:5433
-// Both DBs share the same password since the 2026-05 rotation;
-// host/port is the distinguisher.
-const SOURCE_DB_URL_PROD = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5433/kol360';
-const TARGET_DB_URL_TEST = 'postgresql://kol360admin:RDS4Bioexec2025@localhost:5432/kol360';
+//
+// Set the password for the run via:
+//   export SYNC_DB_PASSWORD='<the test/prod admin password>'
+// or inline:
+//   SYNC_DB_PASSWORD='...' npx tsx ../../scripts/sync-hcps-from-prod.ts
+const SYNC_DB_PASSWORD = process.env.SYNC_DB_PASSWORD;
+if (!SYNC_DB_PASSWORD) {
+  throw new Error(
+    'REFUSING TO RUN: SYNC_DB_PASSWORD env var is required.\n' +
+      "  Set it for the run: export SYNC_DB_PASSWORD='<test/prod admin password>'\n" +
+      '  Do NOT hardcode credentials in source. Password is intentionally not committed.',
+  );
+}
+const SOURCE_DB_URL_PROD = `postgresql://kol360admin:${SYNC_DB_PASSWORD}@localhost:5433/kol360`;
+const TARGET_DB_URL_TEST = `postgresql://kol360admin:${SYNC_DB_PASSWORD}@localhost:5432/kol360`;
 
 // Runtime IP pin — the URL constants above only describe the LOCAL
 // side of the tunnel. If someone misconfigures `tunnel-up.sh prod` to

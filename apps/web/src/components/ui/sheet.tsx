@@ -45,7 +45,12 @@ const SheetContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed right-0 top-0 z-50 h-full w-full max-w-[720px] border-l border-border/60 bg-card shadow-2xl duration-200',
+        // v1.17.65 — bumped width: 65vw capped at 1100px so the drawer
+        // takes 60-70% of viewport on common laptop / monitor sizes
+        // (1440 → ~76%, 1920 → ~57%). Below the sm breakpoint the
+        // drawer fills the screen (small phones don't need a split
+        // view to begin with).
+        'fixed right-0 top-0 z-50 h-full w-full sm:w-[65vw] sm:max-w-[1100px] border-l border-border/60 bg-card shadow-2xl duration-200',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
         'flex flex-col',
