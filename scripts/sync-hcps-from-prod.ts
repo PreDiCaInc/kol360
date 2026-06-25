@@ -327,6 +327,26 @@ async function main() {
   } else {
     const after = await prismaTest.hcp.count();
     console.log(`Test HCP table now has ${after} rows total.`);
+
+    // v1.17.65 — advance beid_seq past the highest beId we just
+    // synced. Postgres sequences DO NOT auto-advance when rows are
+    // inserted with explicit values, so without this the next call
+    // to nextval('beid_seq') (e.g. from a normal HCP create via the
+    // API) would return a value that's already taken by a synced
+    // prod row → unique-constraint failure on `beId`. Caught by
+    // every HCP-create-or-import e2e test after the first
+    // sync run. The setval is idempotent (re-running this script
+    // re-reconciles), so it's safe to leave in the happy path.
+    const advanceRow = await prismaTest.$queryRaw<Array<{ next_value: bigint }>>`
+      SELECT setval(
+        'beid_seq',
+        GREATEST(
+          (SELECT MAX(SUBSTRING("beId" FROM 4)::int) FROM "Hcp" WHERE "beId" ~ '^BE-[0-9]+$'),
+          (SELECT last_value FROM beid_seq)
+        )
+      ) AS next_value
+    `;
+    console.log(`beid_seq advanced — next nextval() will return ${Number(advanceRow[0]!.next_value) + 1}.`);
   }
 }
 
