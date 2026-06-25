@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { BookOpen } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
 interface IntroductionTabProps {
@@ -52,6 +54,19 @@ export function IntroductionTab(_props: IntroductionTabProps) {
             Each nominated individual was scored based on the frequency and breadth of nominations
             received, producing composite influence scores that reflect both depth and diversity of
             peer recognition. The resulting rankings provide a data-driven view of the KOL landscape.
+          </p>
+          <p className="text-muted-foreground leading-relaxed pt-2">
+            For examples of how to apply these rankings to real business questions —
+            organizing dinners, picking symposium speakers, building advisory boards — see the{' '}
+            <Link
+              href="/admin/dashboards/guide"
+              className="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline dark:text-blue-400"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              Insights — Use Cases
+            </Link>{' '}
+            guide. (You can also open it as a side-drawer via the <strong>Use Cases</strong> button
+            in the dashboard header.)
           </p>
         </CardContent>
       </Card>
