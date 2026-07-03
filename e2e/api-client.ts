@@ -210,6 +210,21 @@ export class ApiClient {
     return this.request<void>('DELETE', `/api/v1/users/${userId}`);
   }
 
+  async getLatestInviteEvent(userId: string) {
+    return this.request<{
+      latestEvent: {
+        id: string;
+        messageType: 'user_invite' | 'user_invite_resent';
+        status: string;
+        statusReason: string | null;
+        acceptedAt: string;
+        deliveredAt: string | null;
+        bouncedAt: string | null;
+        complainedAt: string | null;
+      } | null;
+    }>('GET', `/api/v1/users/${userId}/latest-invite-event`);
+  }
+
   async deleteCampaign(id: string) {
     return this.request<void>('DELETE', `/api/v1/campaigns/${id}`);
   }

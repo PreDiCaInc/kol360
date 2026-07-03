@@ -100,8 +100,18 @@ export class EmailService {
     tempPassword: string;
     roleLabel: string;
     clientName?: string;
+    // v1.17.67 — non-optional so every user-invite send lands in
+    // EmailDeliveryEvent (webhook can then correlate delivery /
+    // bounce / complaint outcomes back to the User row).
+    userId: string;
+    // Distinguishes the initial invite from a resend so the admin
+    // UI can render "Last invite resent 2 days ago" separately from
+    // "Original invite delivered". Defaults to the initial-invite
+    // variant if a caller forgets to pass it.
+    messageType?: 'user_invite' | 'user_invite_resent';
   }): Promise<{ messageId: string }> {
-    const { email, firstName, lastName, tempPassword, roleLabel, clientName } = params;
+    const { email, firstName, lastName, tempPassword, roleLabel, clientName, userId } = params;
+    const messageType = params.messageType ?? 'user_invite';
 
     const loginUrl = `${APP_URL}/login`;
     const subject = 'Welcome to KOL360 — your account is ready';
@@ -187,7 +197,24 @@ If you weren't expecting this invitation, please disregard this email or contact
 BioExec Research — KOL360 Platform
     `.trim();
 
-    return this.sendEmail({ to: email, subject, htmlBody, textBody });
+    const acceptedAt = new Date();
+    const result = await this.sendEmail({ to: email, subject, htmlBody, textBody });
+
+    // v1.17.67 — per-message delivery tracking (same pattern as
+    // sendSurveyInvitation + sendReminderEmail). Skip when MOCK_MODE.
+    // Ticket: docs/findings/email-delivery-event-scope-gap-2026-07-02.md
+    if (result.messageId && !result.messageId.startsWith('mock-') && !result.messageId.startsWith('blocked-')) {
+      await this.recordDeliveryEvent({
+        userId,
+        messageType,
+        sesMessageId: result.messageId,
+        toEmail: email,
+        subject,
+        acceptedAt,
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -484,22 +511,47 @@ ${unsubscribeUrl}
    * continue — the send already succeeded; we don't want to fail the
    * user's invitation over an observability insert.
    */
-  private async recordDeliveryEvent(params: {
-    campaignId: string;
-    hcpId: string;
-    campaignHcpId?: string;
-    messageType: 'invitation' | 'reminder' | 'opt_out_confirm';
-    sesMessageId: string;
-    toEmail: string;
-    subject: string;
-    acceptedAt: Date;
-  }): Promise<void> {
+  // v1.17.67 — context is now polymorphic: either campaign-scoped
+  // (campaignId + hcpId, optionally campaignHcpId) OR user-scoped
+  // (userId). Exactly ONE slot is set per row. Enforced by the type
+  // union below + code review; no DB CHECK. See
+  // docs/findings/email-delivery-event-scope-gap-2026-07-02.md.
+  private async recordDeliveryEvent(
+    params: {
+      messageType:
+        | 'invitation'
+        | 'reminder'
+        | 'opt_out_confirm'
+        | 'user_invite'
+        | 'user_invite_resent';
+      sesMessageId: string;
+      toEmail: string;
+      subject: string;
+      acceptedAt: Date;
+    } & (
+      | {
+          // Campaign-scoped send (existing behavior).
+          campaignId: string;
+          hcpId: string;
+          campaignHcpId?: string;
+          userId?: never;
+        }
+      | {
+          // User-scoped send (new — v1.17.67).
+          userId: string;
+          campaignId?: never;
+          hcpId?: never;
+          campaignHcpId?: never;
+        }
+    ),
+  ): Promise<void> {
     try {
       await prisma.emailDeliveryEvent.create({
         data: {
-          campaignId: params.campaignId,
-          hcpId: params.hcpId,
-          campaignHcpId: params.campaignHcpId,
+          campaignId: params.campaignId ?? null,
+          hcpId: params.hcpId ?? null,
+          campaignHcpId: params.campaignHcpId ?? null,
+          userId: params.userId ?? null,
           messageType: params.messageType,
           sesMessageId: params.sesMessageId,
           toEmail: params.toEmail,
@@ -1103,7 +1155,7 @@ ${unsubscribeUrl}
           select: { hcpId: true },
           distinct: ['hcpId'],
         })
-      ).map((e: { hcpId: string }) => e.hcpId)
+      ).map((e: { hcpId: string | null }) => e.hcpId).filter((id): id is string => id !== null)
     );
 
     // Start progress tracking if progressId provided

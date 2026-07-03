@@ -137,6 +137,35 @@ export function useResendInvite() {
   });
 }
 
+// v1.17.67 — latest invite-delivery outcome per user, powers the
+// "Last invite: Delivered / Sent / Bounced" chip on the users admin
+// page. Returns null (`latestEvent: null`) for users who've never
+// been sent an invite via the current send path — e.g. users
+// created before v1.17.67 or via mock-mode. Refetch triggered by
+// the resend-invite mutation via the users cache invalidation.
+export interface LatestInviteEvent {
+  id: string;
+  messageType: 'user_invite' | 'user_invite_resent';
+  status: string;
+  statusReason: string | null;
+  acceptedAt: string;
+  deliveredAt: string | null;
+  bouncedAt: string | null;
+  complainedAt: string | null;
+}
+
+export function useLatestInviteEvent(userId: string | null) {
+  return useQuery({
+    queryKey: ['users', userId, 'latest-invite-event'],
+    queryFn: () =>
+      apiClient.get<{ latestEvent: LatestInviteEvent | null }>(
+        `/api/v1/users/${userId}/latest-invite-event`,
+      ),
+    enabled: !!userId,
+    staleTime: 30_000,
+  });
+}
+
 // v1.17.60 — hard delete a user (Cognito + DB). BE blocks the caller
 // from deleting their own account.
 export function useDeleteUser() {

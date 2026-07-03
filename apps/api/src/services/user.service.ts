@@ -210,6 +210,8 @@ export class UserService {
         tempPassword,
         roleLabel: roleLabelFor(data.role),
         clientName,
+        userId: dbUser.id,
+        messageType: 'user_invite',
       });
     } catch (err) {
       logger.error('Failed to send user invitation email — Cognito user + DB row remain. Admin should resend.', {
@@ -329,6 +331,8 @@ export class UserService {
       tempPassword,
       roleLabel: roleLabelFor(user.role),
       clientName: user.client?.name,
+      userId: user.id,
+      messageType: 'user_invite_resent',
     });
 
     return user;

@@ -8,6 +8,8 @@ import {
   useEnableUser,
   useResendInvite,
   useDeleteUser,
+  useLatestInviteEvent,
+  type LatestInviteEvent,
 } from '@/hooks/use-users';
 import { useImpersonation } from '@/lib/impersonation-context';
 import { useAuth } from '@/lib/auth/auth-provider';
@@ -309,6 +311,11 @@ export default function UsersPage() {
                 <TableHead>Client</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                {/* v1.17.67 — Last Invite delivery outcome. Only
+                    populated for PENDING users; ACTIVE users have
+                    already used the invite (past-tense doesn't help
+                    ops), DISABLED users shouldn't be invited again. */}
+                <TableHead>Last Invite</TableHead>
                 <TableHead className="w-24">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -322,6 +329,13 @@ export default function UsersPage() {
                   <TableCell>{user.client?.name || '—'}</TableCell>
                   <TableCell>{getRoleBadge(user.role)}</TableCell>
                   <TableCell>{getStatusBadge(user.status)}</TableCell>
+                  <TableCell>
+                    {user.status === 'PENDING_VERIFICATION' ? (
+                      <LastInviteCell userId={user.id} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {canEditUsers && (
                       <DropdownMenu>
@@ -409,4 +423,64 @@ export default function UsersPage() {
         />
       </div>
   );
+}
+
+// v1.17.67 — Last Invite delivery outcome, per PENDING user. Renders
+// a small compact status: "✓ Delivered <date>" / "⚠ Bounced" / "· Sent"
+// / "—" (no invite tracked yet). Tooltip surfaces the bounce reason
+// if any, so admins can distinguish "hard bounce (bad address)" from
+// "soft bounce (temporary)" without opening CloudWatch.
+function LastInviteCell({ userId }: { userId: string }) {
+  const { data, isLoading } = useLatestInviteEvent(userId);
+  if (isLoading) {
+    return <span className="text-xs text-muted-foreground">…</span>;
+  }
+  const evt = data?.latestEvent;
+  if (!evt) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  return <InviteStatusChip evt={evt} />;
+}
+
+function InviteStatusChip({ evt }: { evt: LatestInviteEvent }) {
+  const when = evt.deliveredAt ?? evt.bouncedAt ?? evt.complainedAt ?? evt.acceptedAt;
+  const whenLabel = when
+    ? new Date(when).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : '';
+  const isResend = evt.messageType === 'user_invite_resent';
+  const resendPrefix = isResend ? 'Resent · ' : '';
+  switch (evt.status) {
+    case 'DELIVERED':
+      return (
+        <span className="text-xs text-emerald-700 dark:text-emerald-400" title={`${resendPrefix}Delivered ${whenLabel}`}>
+          ✓ {resendPrefix}Delivered {whenLabel}
+        </span>
+      );
+    case 'BOUNCED_HARD':
+    case 'BOUNCED_SOFT':
+    case 'COMPLAINED':
+    case 'SUPPRESSED':
+    case 'RENDERING_FAILED':
+      return (
+        <span
+          className="text-xs text-destructive"
+          title={evt.statusReason ?? evt.status}
+        >
+          ⚠ {resendPrefix}{evt.status.replace('_', ' ').toLowerCase()}
+        </span>
+      );
+    case 'DELAYED':
+      return (
+        <span className="text-xs text-amber-700 dark:text-amber-400" title={`${resendPrefix}Delayed`}>
+          … {resendPrefix}Delayed
+        </span>
+      );
+    case 'SENT':
+    default:
+      return (
+        <span className="text-xs text-muted-foreground" title={`${resendPrefix}Sent ${whenLabel} — no delivery event yet`}>
+          · {resendPrefix}Sent {whenLabel}
+        </span>
+      );
+  }
 }
