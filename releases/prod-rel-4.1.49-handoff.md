@@ -3,7 +3,7 @@
 **Status:** Ready for prod deploy. **No migration.** Reversible.
 **Tag:** `prod-rel-4.1.49` → commit on `main` (cut immediately after this PR merges).
 **Supersedes:** `prod-rel-4.1.48` (v1.17.68).
-**Bundles:** v1.17.69 — Canada HCP support **Phase 2**: threads `country` through every Insights/KolAnalysis/Nomination read + Curation write, and finishes the FE identifier sweep with dynamic column labels.
+**Bundles:** v1.17.69 — Canada HCP support **Phase 2**: threads `country` through every Insights/KolAnalysis/Nomination read + Curation write, finishes the FE identifier sweep with dynamic column labels, adds US/CA template toggles to every HCP-related import dialog, extends every CSV parser to accept both NPI and MINC column headers, and makes the HCP single-create form country-aware.
 
 Ticket: [`docs/findings/canada-hcp-support-lite-plan-2026-06-25.md`](../docs/findings/canada-hcp-support-lite-plan-2026-06-25.md).
 
@@ -15,14 +15,14 @@ Phase 1 (4.1.48) laid the schema + validation groundwork. **Prod could safely de
 - **KolAnalysis (`kol-analysis.service.ts`)** — `getDedupReport` + `explainHcp` pull `defaultCountry` from `analysis.client` and filter their HCP lookups. `explainHcp` also rejects cross-country HCP lookup with `reason: 'HCP is not in this analysis's country regime'`.
 - **Nomination matching (`nomination.service.ts`)** — all 4 candidate-search tiers (exact/last-name-partial/trigram/broad-partial) now include `country` from `nomination.response.campaign.client.defaultCountry`. Cross-country name-collision candidates (a US "John Smith" nomination can't fuzzy-match a Canadian "John Smith" HCP) are structurally impossible.
 - **Curation `get-beid` route** — accepts `country` + `nationalIdType` params in the request body. Both default `'US'`/`'NPI'` so existing curation-svc clients keep working unchanged. When `nationalIdType='MINC'`, `npi` is validated as a MINC (12-char CAMD########). Created HCPs get their `country` + `nationalIdType` persisted from the request.
-- **FE identifier sweep** — HCP list column header, HCP list CSV export header, KOL Explorer CSV export + Nominators SortableHeader, Sociometric CSV export, Leader Table CSV export all use the new `inferHcpIdLabel(items)` helper. It picks `'NPI'` or `'MINC'` per the first row's `nationalIdType` — since all rows in one client's dashboard share country, one scan is enough. Falls back to `'NPI'` on empty data (backward compat).
+- **FE identifier sweep** — HCP list column header, HCP list CSV export header, KOL Explorer CSV export + Nominators SortableHeader, Sociometric CSV export, Leader Table CSV export, Survey Status page (header + CSV export) all use the new `inferHcpIdLabel(items)` helper. It picks `'NPI'` or `'MINC'` per the first row's `nationalIdType` — since all rows in one client's dashboard share country, one scan is enough. Falls back to `'NPI'` on empty data (backward compat).
 - **`packages/shared/src/format/hcp-identifier.ts`** — new `inferHcpIdLabel<T>(items)` helper. Sibling to the existing `formatHcpId` / `getHcpIdValue` / `formatMincForDisplay` / `hcpIdColumnHeader`.
+- **HCP form dialog** (`hcp-form-dialog.tsx`) — country selector on create; label + placeholder + maxLength flip between NPI (10 digits) and MINC (12-char CAMD########). Edit mode preserves the row's existing `country`/`nationalIdType`.
+- **Import dialog templates + column-name flexibility** — HCP Import Dialog, Segment Score Import Dialog, Influencer Type Import Dialog, Campaign HCP Import Dialog, and Alias Import Dialog all now expose a US/CA template toggle. Downloaded templates use the correct identifier column header ("NPI" vs "MINC"), sample value, and (where applicable) sample state. On the backend, the parsers behind these paths (`importFromFile` HCP, `importAliases`, `importSegmentScores`, campaign `importHcps`, `influencer-type-import.service`) all accept both "NPI"/"MINC" (and lowercase variants) as identifier column headers so a CA admin can use the right-shaped template end-to-end. Segment score + campaign HCP parsers now validate the identifier as either 10-digit NPI OR CAMD######## MINC.
 
-## What's still deferred (small residuals)
+## What's still deferred
 
-- **HCP list template downloads + import-dialog templates for segment scores / influencer type / campaign HCP / alias** still hardcode "NPI" as their column header. These are static template downloads that specify what the CSV needs to carry — the import validation is already country-aware via the country toggle (added in 4.1.48). Low customer impact; the templates work when a CA admin puts a MINC value under the "NPI" header. Nice-to-have for a future polish pass.
-- **HCP form dialog** (`hcp-form-dialog.tsx`) still labels the field "NPI". Only visible when a PLATFORM_ADMIN uses the single-create UI; low frequency + already validated by the new Zod schema either way.
-- **Curation service on the kolcuration side** needs to start sending `country`/`nationalIdType`. Our route accepts both, defaulted 'US'/'NPI'. Curation team can flip incrementally without any coordination.
+- **Curation service on the kolcuration side** needs to start sending `country`/`nationalIdType`. Our route accepts both, defaulted 'US'/'NPI'. Curation team can flip incrementally without any coordination — no work required in this repo.
 
 ## What changes for customers
 

@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth/auth-provider';
 import { RequireAuth } from '@/components/auth/require-auth';
 import { useExcelExport } from '@/lib/excel-export';
 import { apiClient } from '@/lib/api';
+import { inferHcpIdLabel } from '@kol360/shared';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
@@ -227,7 +228,7 @@ export default function SurveyStatusPage() {
     exportExcel({
       filename: `survey-status-${campaign?.name?.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'campaign'}`,
       headers: [
-        'NPI', 'First Name', 'Last Name', 'Email',
+        inferHcpIdLabel(result.items), 'First Name', 'Last Name', 'Email',
         'Specialty', 'Sub-specialty', 'City', 'State',
         'Status', 'Last Question', 'Total Questions',
         'Last Updated Date', 'Survey Link',
@@ -440,7 +441,7 @@ export default function SurveyStatusPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>NPI</TableHead>
+                      <TableHead>{inferHcpIdLabel(data?.items ?? [])}</TableHead>
                       <TableHead className="cursor-pointer" onClick={() => handleSort('firstName')}>
                         First Name <SortIcon field="firstName" />
                       </TableHead>

@@ -158,8 +158,11 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
   }, []);
 
   const handleDownloadTemplate = () => {
-    const headers = ['NPI', 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-specialty', 'City', 'State'];
-    const sampleRow = ['1234567890', 'John', 'Smith', 'john.smith@example.com', 'Oncology', '', 'Boston', 'MA'];
+    const idColumn = importCountry === 'CA' ? 'MINC' : 'NPI';
+    const sampleId = importCountry === 'CA' ? 'CAMD12345678' : '1234567890';
+    const sampleState = importCountry === 'CA' ? 'ON' : 'MA';
+    const headers = [idColumn, 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-specialty', 'City', 'State'];
+    const sampleRow = [sampleId, 'John', 'Smith', 'john.smith@example.com', 'Oncology', '', 'Boston', sampleState];
 
     const csvContent = [
       headers.join(','),
@@ -169,7 +172,7 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'hcp-import-template.csv';
+    link.download = `hcp-import-template-${importCountry.toLowerCase()}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   };

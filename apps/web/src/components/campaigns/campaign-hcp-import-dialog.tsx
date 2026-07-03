@@ -32,6 +32,9 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  // Template country: switches identifier column header (NPI vs MINC).
+  // Backend accepts both — this only affects the downloaded template.
+  const [templateCountry, setTemplateCountry] = useState<'US' | 'CA'>('US');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -93,8 +96,13 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
     onOpenChange(false);
   };
 
+  const idColumnName = templateCountry === 'CA' ? 'MINC' : 'NPI';
+  const idColumnDescription = templateCountry === 'CA'
+    ? '12-char CAMD######## Canadian Medical Identifier'
+    : '10-digit National Provider Identifier';
+
   const requiredColumns = [
-    { name: 'NPI', description: '10-digit National Provider Identifier' },
+    { name: idColumnName, description: idColumnDescription },
     { name: 'First Name', description: 'HCP first name' },
     { name: 'Last Name', description: 'HCP last name' },
     { name: 'Email', description: 'For survey invitations' },
@@ -118,7 +126,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
 
   const downloadTemplate = () => {
     const headers = [
-      'NPI',
+      idColumnName,
       'First Name',
       'Last Name',
       'Email',
@@ -137,14 +145,14 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
       'Segmentation3',
     ];
     const sampleRow = [
-      '1234567890',
+      templateCountry === 'CA' ? 'CAMD12345678' : '1234567890',
       'John',
       'Doe',
       'john.doe@example.com',
       'Oncology',
       '',
       'Boston',
-      'MA',
+      templateCountry === 'CA' ? 'ON' : 'MA',
       '8',
       '7',
       '5',
@@ -160,7 +168,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'hcp-import-template.csv';
+    a.download = `hcp-import-template-${templateCountry.toLowerCase()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -219,10 +227,28 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <div className="flex items-center justify-between mb-3">
                 <p className="font-medium">Required columns:</p>
-                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={downloadTemplate}>
-                  <Download className="w-3 h-3 mr-1" />
-                  Template
-                </Button>
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex rounded-md border overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setTemplateCountry('US')}
+                      className={`px-2 py-1 text-xs ${templateCountry === 'US' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                    >
+                      US (NPI)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTemplateCountry('CA')}
+                      className={`px-2 py-1 text-xs border-l ${templateCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                    >
+                      CA (MINC)
+                    </button>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={downloadTemplate}>
+                    <Download className="w-3 h-3 mr-1" />
+                    Template
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2 mb-4">
                 {requiredColumns.map((col) => (
@@ -243,7 +269,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
                 ))}
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
-                HCPs are matched by NPI. If an HCP already exists, missing fields will be updated.
+                HCPs are matched by {idColumnName}. If an HCP already exists, missing fields will be updated.
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
                 <span className="font-medium text-foreground">Auto-transformations:</span> Specialty values are standardized on import: OD → Optometry, MD/DO → Ophthalmology

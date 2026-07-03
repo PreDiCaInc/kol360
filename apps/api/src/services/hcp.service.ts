@@ -926,7 +926,7 @@ export class HcpService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        const npi = String(row['NPI'] || row['npi'] || '').trim();
+        const npi = String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || '').trim();
         const alias = String(row['Alias'] || row['alias'] || '').trim();
 
         if (!alias) {
@@ -1083,11 +1083,13 @@ export class HcpService {
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        // Extract NPI first for error reporting
-        const rawNpi = String(row['NPI'] || row['npi'] || '').trim();
+        // Extract identifier first for error reporting. Accept both NPI and
+        // MINC column headers so CA templates work; validation accepts either
+        // 10-digit NPI or 12-char CAMD######## MINC.
+        const rawNpi = String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || '').trim();
         try {
-          if (!/^\d{10}$/.test(rawNpi)) {
-            throw new Error('Invalid NPI format');
+          if (!/^\d{10}$/.test(rawNpi) && !/^CAMD\d{8}$/i.test(rawNpi)) {
+            throw new Error('Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)');
           }
 
           const scoreData: Record<string, number> = {};

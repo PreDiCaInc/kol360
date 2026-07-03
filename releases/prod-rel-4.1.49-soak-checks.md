@@ -43,6 +43,18 @@ VALUES ('cm_ca_soak_test', 'BE-999999', 'CAMD99999999', 'MINC', 'CA', 'Soak', 'C
 - Load any US-scoped Insights dashboard. Search for "Soak CATest" in KOL Explorer. **Expected**: no results.
 - Load KOL Profile drill-down URL with `hcpId=cm_ca_soak_test` on a US dashboard. **Expected**: 404 or null profile (rejected as cross-country).
 
+### B3.5. Import dialog country toggles
+
+- Open Segment Score / Influencer Type / Campaign HCP / Alias Import dialogs.
+- Toggle each dialog's country toggle to CA. Download template → header column reads "MINC" with sample `CAMD########` value.
+- Toggle back to US → header is "NPI" with 10-digit sample.
+- Sanity: uploading a CSV with column header **"NPI"** OR **"MINC"** both parse the identifier — the parser tries both header names.
+
+### B3.6. HCP single-create with CA
+
+- `/admin/hcps` → Add HCP → Country dropdown appears above the identifier field. Pick "Canada (MINC)". Field label changes to "MINC" with placeholder `CAMD12345678` and maxLength 12.
+- Submit with `CAMD99000001` + minimum required fields → 201, HCP created with `country='CA'` + `nationalIdType='MINC'`. Cleanup after.
+
 ### B4. Curation get-beid with country=CA
 
 ```bash

@@ -379,6 +379,7 @@ export class DistributionService {
           select: {
             id: true,
             npi: true,
+            nationalIdType: true,
             firstName: true,
             lastName: true,
             email: true,
@@ -499,6 +500,7 @@ export class DistributionService {
         campaignHcpId: row.id,
         hcpId: row.hcpId,
         npi: row.hcp.npi,
+        nationalIdType: row.hcp.nationalIdType,
         firstName: row.hcp.firstName,
         lastName: row.hcp.lastName,
         email: row.hcp.email,
@@ -585,10 +587,14 @@ export class DistributionService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        // Normalize NPI
-        const npi = String(row['NPI'] || row['npi'] || '').trim();
-        if (!/^\d{10}$/.test(npi)) {
-          throw new Error('Invalid NPI format (must be 10 digits)');
+        // Normalize identifier. Accept both NPI and MINC column headers so
+        // CA templates work; validate as either 10-digit NPI or CAMD########
+        // MINC. This is a campaign-HCP-import lookup path — the HCP must
+        // already exist in the DB, so no country/nationalIdType inference
+        // needed here.
+        const npi = String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || '').trim();
+        if (!/^\d{10}$/.test(npi) && !/^CAMD\d{8}$/i.test(npi)) {
+          throw new Error('Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)');
         }
 
         const hcpData = {

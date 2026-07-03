@@ -57,6 +57,9 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
   const [preview, setPreview] = useState<InfluencerTypeImportResult | null>(null);
   const [final, setFinal] = useState<InfluencerTypeImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Template country: switches identifier column header (NPI vs MINC).
+  // Backend accepts both — this only affects the downloaded template.
+  const [templateCountry, setTemplateCountry] = useState<'US' | 'CA'>('US');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: diseaseAreas } = useDiseaseAreas();
   const previewMutation = useInfluencerTypePreview();
@@ -116,12 +119,12 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
   // v1.17.43 — mirror the HcpImportDialog pattern: provide a
   // template so the data team doesn't have to guess the column shape.
   const handleDownloadTemplate = () => {
-    const headers = ['NPI', 'InfluencerType'];
-    // v1.17.44 — derive sample rows from the shared canonical list so
-    // adding a type to influencer-types.ts auto-includes it in the
-    // downloaded template. NPI just increments from a known test range.
+    const idColumn = templateCountry === 'CA' ? 'MINC' : 'NPI';
+    const headers = [idColumn, 'InfluencerType'];
     const sampleRows = INFLUENCER_TYPES.map((t, i) => [
-      `99900000${String(i + 1).padStart(2, '0')}`,
+      templateCountry === 'CA'
+        ? `CAMD${String(i + 1).padStart(8, '0')}`
+        : `99900000${String(i + 1).padStart(2, '0')}`,
       t,
     ]);
     const csv = [
@@ -131,7 +134,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'influencer-types-template.csv';
+    link.download = `influencer-types-template-${templateCountry.toLowerCase()}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   };
@@ -186,16 +189,34 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">File (CSV, XLSX, or XLS)</label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDownloadTemplate}
-                  className="h-7 gap-1.5 text-xs"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Download Template
-                </Button>
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex rounded-md border overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setTemplateCountry('US')}
+                      className={`px-2 py-1 text-xs ${templateCountry === 'US' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                    >
+                      US (NPI)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTemplateCountry('CA')}
+                      className={`px-2 py-1 text-xs border-l ${templateCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                    >
+                      CA (MINC)
+                    </button>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleDownloadTemplate}
+                    className="h-7 gap-1.5 text-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download Template
+                  </Button>
+                </div>
               </div>
               <div
                 className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-colors"

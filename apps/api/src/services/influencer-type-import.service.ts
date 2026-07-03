@@ -89,6 +89,8 @@ interface PreviewOrImportArgs {
 interface RawCsvRow {
   NPI?: string;
   npi?: string;
+  MINC?: string;
+  minc?: string;
   InfluencerType?: string;
   influencerType?: string;
   Influencer?: string;
@@ -140,7 +142,7 @@ async function parseRows(buffer: Buffer, filename: string): Promise<RawCsvRow[]>
 }
 
 function extractNpi(row: RawCsvRow): string {
-  return (row.NPI ?? row.npi ?? '').trim();
+  return (row.NPI ?? row.npi ?? row.MINC ?? row.minc ?? '').trim();
 }
 
 function extractType(row: RawCsvRow): string {
