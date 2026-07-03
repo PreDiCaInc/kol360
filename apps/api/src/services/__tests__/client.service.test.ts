@@ -124,7 +124,7 @@ describe('ClientService', () => {
 
       expect(result).toEqual(mockClient);
       expect(prisma.client.create).toHaveBeenCalledWith({
-        data: { name: 'New Client', type: 'FULL', primaryColor: '#0066CC', emailDomains: ['example.com'] },
+        data: { name: 'New Client', type: 'FULL', primaryColor: '#0066CC', emailDomains: ['example.com'], defaultCountry: 'US' },
       });
     });
 
