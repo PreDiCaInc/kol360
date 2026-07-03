@@ -296,10 +296,23 @@ model HcpImportBatch {
 // don't rewrite history.
 model EmailDeliveryEvent {
   id              String   @id @default(cuid())
-  campaignId      String
-  hcpId           String
+  // v1.17.67 — campaignId + hcpId relaxed to nullable so non-campaign
+  // sends (user invites, invite resends, and future transactional
+  // emails) can also be tracked through the same SES → SNS → webhook
+  // pipeline. Exactly ONE context slot is populated per row —
+  // campaign sends use campaignId+hcpId (and campaignHcpId when
+  // applicable); user-scoped sends use userId. The webhook doesn't
+  // care which slot is set; it looks up by sesMessageId (still
+  // unique) and updates the delivery outcome regardless.
+  // Enforcement is app-side only — no DB CHECK — because the writers
+  // are audited (email.service.recordDeliveryEvent) and the cost of
+  // a runtime CHECK doesn't buy us anything the code review already
+  // catches. See docs/findings/email-delivery-event-scope-gap-2026-07-02.md.
+  campaignId      String?
+  hcpId           String?
   campaignHcpId   String?  // FK relation to CampaignHcp when applicable
-  messageType     String   // 'invitation' | 'reminder' | 'opt_out_confirm' | etc.
+  userId          String?  // set for user-invite / invite-resend / future transactional
+  messageType     String   // 'invitation' | 'reminder' | 'user_invite' | 'user_invite_resent' | 'opt_out_confirm' | etc.
   sesMessageId    String   @unique  // SES MessageId returned on accept
   toEmail         String   // snapshot of the address SES received
   fromEmail       String
@@ -316,6 +329,7 @@ model EmailDeliveryEvent {
 
   @@index([campaignId, status])
   @@index([hcpId])
+  @@index([userId])
   @@index([toEmail])
   @@index([acceptedAt])
 }

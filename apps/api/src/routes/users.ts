@@ -177,6 +177,45 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     return user;
   });
 
+  // v1.17.67 — latest invite-delivery outcome for a user.
+  // Reads the newest EmailDeliveryEvent row where userId = :id +
+  // messageType ∈ ('user_invite', 'user_invite_resent'). Returns
+  // { latestEvent: null } when no invite has been sent yet. Used by
+  // the users admin page to render a per-row "Last invite: Delivered
+  // / Sent / Bounced" chip so admins don't have to ping pteam when a
+  // user says "didn't get the invite."
+  // Ticket: docs/findings/email-delivery-event-scope-gap-2026-07-02.md
+  fastify.get<{ Params: { id: string } }>('/:id/latest-invite-event', {
+    preHandler: requirePlatformAdmin(),
+  }, async (request, reply) => {
+    const user = await userService.getById(request.params.id);
+    if (!user) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: 'User not found',
+        statusCode: 404,
+      });
+    }
+    const latest = await fastify.prisma.emailDeliveryEvent.findFirst({
+      where: {
+        userId: request.params.id,
+        messageType: { in: ['user_invite', 'user_invite_resent'] },
+      },
+      orderBy: { acceptedAt: 'desc' },
+      select: {
+        id: true,
+        messageType: true,
+        status: true,
+        statusReason: true,
+        acceptedAt: true,
+        deliveredAt: true,
+        bouncedAt: true,
+        complainedAt: true,
+      },
+    });
+    return { latestEvent: latest };
+  });
+
   // Invite new user (v1.17.20: PLATFORM_ADMIN only — client roles are
   // view-only across the app per product decision)
   fastify.post('/invite', {
