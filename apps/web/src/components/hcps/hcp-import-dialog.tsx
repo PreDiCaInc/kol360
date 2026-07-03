@@ -145,6 +145,7 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
     setResult(null);
     setProgress(null);
     setIsImporting(false);
+    setImportCountry('US');
     onOpenChange(false);
   };
 

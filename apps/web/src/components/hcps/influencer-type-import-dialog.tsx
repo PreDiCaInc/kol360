@@ -113,6 +113,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
     setPreview(null);
     setFinal(null);
     setError(null);
+    setTemplateCountry('US');
     onOpenChange(false);
   };
 

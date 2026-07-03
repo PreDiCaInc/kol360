@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { parse as parseCsv } from 'csv-parse/sync';
 import ExcelJS from 'exceljs';
-import { INFLUENCER_TYPES, type InfluencerType } from '@kol360/shared';
+import { INFLUENCER_TYPES, type InfluencerType, normalizeMinc } from '@kol360/shared';
 import { resolveUserIdForAudit } from '../lib/audit';
 
 // v1.17.44 — canonical influencer-type list is INFLUENCER_TYPES in
@@ -142,7 +142,15 @@ async function parseRows(buffer: Buffer, filename: string): Promise<RawCsvRow[]>
 }
 
 function extractNpi(row: RawCsvRow): string {
-  return (row.NPI ?? row.npi ?? row.MINC ?? row.minc ?? '').trim();
+  const raw = (row.NPI ?? row.npi ?? row.MINC ?? row.minc ?? '').trim();
+  // v1.17.69 — normalize MINC to canonical uppercase / no-separator form
+  // so DB lookup matches. NPI values pass through unchanged.
+  const upper = raw.toUpperCase();
+  if (/[A-Z]/.test(upper)) {
+    const normalized = normalizeMinc(upper);
+    if (normalized) return normalized;
+  }
+  return raw;
 }
 
 function extractType(row: RawCsvRow): string {
@@ -182,6 +190,18 @@ export class InfluencerTypeImportService {
       hasDiseaseAreaLink: null,
     }));
 
+    // v1.17.69 — pre-validate identifier shape so malformed IDs surface
+    // as a clear per-row error rather than silently landing in the
+    // "NPI not found" bucket. Mirrors the value-shape check in the
+    // segment-score + campaign-hcp parsers.
+    const invalidIdentifierRows = new Set<number>();
+    for (const row of rows) {
+      if (!row.npi) continue; // missing → handled below
+      if (!/^\d{10}$/.test(row.npi) && !/^CAMD\d{8}$/.test(row.npi)) {
+        invalidIdentifierRows.add(row.rowNumber);
+      }
+    }
+
     const npis = Array.from(new Set(rows.map((r) => r.npi).filter(Boolean)));
     const hcps = await prisma.hcp.findMany({
       where: { npi: { in: npis } },
@@ -220,12 +240,21 @@ export class InfluencerTypeImportService {
       row.hasDiseaseAreaLink = hcpId ? linkedHcpIds.has(hcpId) : null;
 
       if (!row.npi) {
-        result.errorRows.push({ row: row.rowNumber, npi: '', rawType: row.rawType, reason: 'Missing NPI' });
+        result.errorRows.push({ row: row.rowNumber, npi: '', rawType: row.rawType, reason: 'Missing identifier' });
+        continue;
+      }
+      if (invalidIdentifierRows.has(row.rowNumber)) {
+        result.errorRows.push({
+          row: row.rowNumber,
+          npi: row.npi,
+          rawType: row.rawType,
+          reason: 'Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)',
+        });
         continue;
       }
       if (!hcpId) {
         result.unmatchedNpi += 1;
-        result.errorRows.push({ row: row.rowNumber, npi: row.npi, rawType: row.rawType, reason: 'NPI not found' });
+        result.errorRows.push({ row: row.rowNumber, npi: row.npi, rawType: row.rawType, reason: 'Identifier not found' });
         continue;
       }
       if (!row.resolvedType) {

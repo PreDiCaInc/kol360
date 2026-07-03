@@ -153,6 +153,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     setResult(null);
     setProgress(null);
     setIsImporting(false);
+    setTemplateCountry('US');
     onOpenChange(false);
   };
 

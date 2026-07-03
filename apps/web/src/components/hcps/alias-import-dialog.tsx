@@ -71,6 +71,7 @@ export function AliasImportDialog({ open, onOpenChange }: Props) {
   const handleClose = () => {
     setSelectedFile(null);
     setResult(null);
+    setTemplateCountry('US');
     onOpenChange(false);
   };
 

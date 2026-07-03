@@ -93,6 +93,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
   const handleClose = () => {
     setSelectedFile(null);
     setResult(null);
+    setTemplateCountry('US');
     onOpenChange(false);
   };
 
