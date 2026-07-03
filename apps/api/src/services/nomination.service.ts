@@ -196,12 +196,24 @@ export class NominationService {
         response: {
           include: {
             respondentHcp: { select: { state: true, specialty: true } },
+            // v1.17.69 — walk to campaign.client.defaultCountry so we
+            // can country-scope the candidate list. A US-campaign
+            // nomination shouldn't be matchable to a CA HCP with the
+            // same name and vice versa.
+            campaign: {
+              select: { client: { select: { defaultCountry: true } } },
+            },
           },
         },
       },
     });
 
     if (!nomination) return [];
+
+    // v1.17.69 — country regime derived from the nomination's
+    // campaign's client. Threaded into every tier of the candidate
+    // search below.
+    const country = nomination.response?.campaign?.client?.defaultCountry === 'CA' ? 'CA' : 'US';
 
     // Context from the nominator — used as a tiebreaker boost. The HCP doing
     // the nominating is statistically more likely to know peers in their own
@@ -251,8 +263,12 @@ export class NominationService {
     const rawNameTrimmed = normalizedName;
 
     // Tier 1: Exact full name match or alias match (most specific)
+    // v1.17.69 — country-scoped: US-campaign nominations only match
+    // against US HCPs; CA-campaign only against CA. Threaded through
+    // all 4 tiers below via AND with the OR clause.
     const exactMatches = await prisma.hcp.findMany({
       where: {
+        country,
         OR: [
           // Exact first+last match (assumes "First Last" format)
           ...(nameParts.length >= 2
@@ -296,6 +312,7 @@ export class NominationService {
     const lastNameMatches = nameParts.length >= 2
       ? await prisma.hcp.findMany({
           where: {
+            country,
             AND: [
               { lastName: { equals: nameParts[nameParts.length - 1], mode: 'insensitive' as const } },
               { firstName: { startsWith: nameParts[0], mode: 'insensitive' as const } },
@@ -312,12 +329,16 @@ export class NominationService {
     // token) is far more robust: the usually-correct first name anchors the
     // comparison, so a single-char surname typo still scores ~0.65–0.75 while
     // unrelated names rarely clear the 0.45 floor. Backed by pg_trgm.
+    // v1.17.69 — Tier 2.5 trigram search is also country-scoped so
+    // fuzzy matches can't cross tenants (US "Donnenfield" typo
+    // shouldn't fuzz to a hypothetical CA "Donnenfeld").
     const trigramRows = normalizedName.length > 0
       ? await prisma.$queryRaw<Array<{ id: string; similarity: number }>>`
           SELECT id,
                  similarity(lower("firstName" || ' ' || "lastName"), ${normalizedName.toLowerCase()})::float AS similarity
           FROM "Hcp"
-          WHERE similarity(lower("firstName" || ' ' || "lastName"), ${normalizedName.toLowerCase()}) >= 0.45
+          WHERE country = ${country}
+            AND similarity(lower("firstName" || ' ' || "lastName"), ${normalizedName.toLowerCase()}) >= 0.45
           ORDER BY similarity DESC
           LIMIT 20
         `
@@ -327,7 +348,7 @@ export class NominationService {
     );
     const trigramMatches = trigramRows.length > 0
       ? await prisma.hcp.findMany({
-          where: { id: { in: trigramRows.map(r => r.id) } },
+          where: { id: { in: trigramRows.map(r => r.id) }, country },
           include: { aliases: true },
         })
       : [];
@@ -341,6 +362,7 @@ export class NominationService {
     const containsTokens = tier3Tokens.length > 0 ? tier3Tokens : nameParts;
     const partialMatches = await prisma.hcp.findMany({
       where: {
+        country,
         OR: [
           ...containsTokens.flatMap((part: string) => [
             { firstName: { contains: part, mode: 'insensitive' as const } },

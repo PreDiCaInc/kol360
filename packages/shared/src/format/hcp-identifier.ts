@@ -74,3 +74,22 @@ export function getHcpIdValue(hcp: HcpIdRef): string {
 export function hcpIdColumnHeader(type: 'NPI' | 'MINC'): string {
   return type;
 }
+
+/**
+ * v1.17.69 — infer the ID column label ("NPI" or "MINC") from a
+ * loaded list of HCP-like records. Falls back to 'NPI' when the
+ * list is empty or every row is missing `nationalIdType`. Useful
+ * for CSV export headers + on-screen table column labels where
+ * threading `client.defaultCountry` through every prop would be
+ * noisy. All items in one client's dashboard share country, so a
+ * single scan of the array is sufficient.
+ */
+export function inferHcpIdLabel<
+  T extends { nationalIdType?: string | null },
+>(items: readonly T[]): 'NPI' | 'MINC' {
+  for (const item of items) {
+    if (item.nationalIdType === 'MINC') return 'MINC';
+    if (item.nationalIdType === 'NPI') return 'NPI';
+  }
+  return 'NPI';
+}

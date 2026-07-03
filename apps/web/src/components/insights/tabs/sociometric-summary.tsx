@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { apiClient } from '@/lib/api';
 import { ScoreTooltip } from '@/components/insights/score-tooltip';
 import type { SociometricSummaryResponse } from '@kol360/shared';
+import { inferHcpIdLabel } from '@kol360/shared';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -363,8 +364,13 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     const items = fullData?.items ?? [];
     if (items.length === 0) return;
 
-    const headers = ['Rank', 'NPI', 'Name', 'Specialty', 'Influencer Type', 'City', 'State',
-      'Total', 'National', 'Discussion', 'Advice', 'Rising Star', 'Referral', 'Social', 'Biased'];
+    // v1.17.69 — identifier header follows the data's country.
+    const headers = [
+      'Rank',
+      inferHcpIdLabel(items as ReadonlyArray<{ nationalIdType?: string | null }>),
+      'Name', 'Specialty', 'Influencer Type', 'City', 'State',
+      'Total', 'National', 'Discussion', 'Advice', 'Rising Star', 'Referral', 'Social', 'Biased',
+    ];
     const rows = items.map((item, index) => [
       index + 1,
       (item as { npi?: string | null }).npi ?? '',

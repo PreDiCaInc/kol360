@@ -83,6 +83,12 @@ export const curationRoutes: FastifyPluginAsync = async (fastify) => {
         data: {
           beId,
           npi: body.npi ?? null,
+          // v1.17.69 — persist country + type from the request. Both
+          // default 'US'/'NPI' via the shared Zod schema so existing
+          // curation clients that don't send them get the same
+          // behavior they had pre-v1.17.69.
+          country: body.country,
+          nationalIdType: body.nationalIdType,
           firstName: body.firstName,
           lastName: body.lastName,
           email: 'nomail@kol360research.com', // schema default; curation has no email at this point

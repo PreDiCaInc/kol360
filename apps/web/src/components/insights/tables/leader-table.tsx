@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Download, FileSpreadsheet, Check } from 'lucide-react';
 import { SortableHeader } from '@/components/insights/shared/sortable-header';
+import { inferHcpIdLabel } from '@kol360/shared';
 import { HeatMapCell } from '@/components/insights/shared/heat-map-cell';
 import { KolNameLink } from '@/components/insights/shared/kol-name-link';
 import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
@@ -23,6 +24,7 @@ export interface LeaderTableItem {
   name: string;
   hcpId: string;
   npi?: string | null; // v1.17.32: surfaced for the full-list export
+  nationalIdType?: string | null; // v1.17.69 — for MINC/NPI column-label switch on CSV export
   specialty: string | null;
   city?: string | null;
   state?: string | null;
@@ -104,7 +106,8 @@ export function LeaderTable({
       : items;
     if (sourceItems.length === 0) return;
 
-    const headers = ['Rank', 'NPI', ...columns.map((c) => COLUMN_CONFIG[c].label)];
+    // v1.17.69 — identifier header follows the data's country.
+    const headers = ['Rank', inferHcpIdLabel(sourceItems), ...columns.map((c) => COLUMN_CONFIG[c].label)];
     const rows = sourceItems.map((item, index) => {
       const row: (string | number | null | undefined)[] = [
         // Re-number when exporting the full list so the rank column is
