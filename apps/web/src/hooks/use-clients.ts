@@ -17,6 +17,11 @@ interface Client {
   /// at least one domain. bio-exec.com is always allowed regardless,
   /// hardcoded in apps/api/src/services/user.service.ts.
   emailDomains: string[];
+  /// v1.17.68 — which country's HCPs this client's admin surfaces work on.
+  /// Defaults 'US' for every existing client. Set 'CA' at client-create
+  /// time to spin up a Canadian tenant (per pteam: use a separate Client
+  /// row per country rather than mixing on one).
+  defaultCountry?: 'US' | 'CA';
   createdAt: string;
   updatedAt: string;
   _count?: {

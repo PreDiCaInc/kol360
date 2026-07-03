@@ -118,7 +118,7 @@ describe('ClientService', () => {
       (prisma.client.create as Mock).mockResolvedValue(mockClient);
 
       const result = await clientService.create(
-        { name: 'New Client', type: 'FULL', primaryColor: '#0066CC', emailDomains: ['example.com'] },
+        { name: 'New Client', type: 'FULL', primaryColor: '#0066CC', emailDomains: ['example.com'], defaultCountry: 'US' },
         'admin-user'
       );
 
@@ -134,7 +134,7 @@ describe('ClientService', () => {
       (prisma.client.create as Mock).mockResolvedValue(mockClient);
 
       const result = await clientService.create(
-        { name: 'Minimal Client', type: 'LITE', primaryColor: '#000000', emailDomains: ['example.com'] },
+        { name: 'Minimal Client', type: 'LITE', primaryColor: '#000000', emailDomains: ['example.com'], defaultCountry: 'US' },
         'admin-user'
       );
 

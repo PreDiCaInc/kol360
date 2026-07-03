@@ -31,6 +31,7 @@ import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
 import { InfluencerTypeImportDialog } from '@/components/hcps/influencer-type-import-dialog';
 import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
+import { getHcpIdValue } from '@kol360/shared';
 import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -168,7 +169,7 @@ export default function HcpsPage() {
       const specialties = getSpecialtyDisplay(hcp);
       return [
         hcp.beId,
-        hcp.npi || "",
+        getHcpIdValue(hcp),
         hcp.firstName,
         hcp.lastName,
         hcp.email || '',
@@ -486,7 +487,7 @@ export default function HcpsPage() {
             <TableBody>
               {hcps.map((hcp) => (
                 <TableRow key={hcp.id}>
-                  <TableCell className="font-mono text-muted-foreground">{hcp.beId}</TableCell><TableCell>{hcp.npi || "--"}</TableCell>
+                  <TableCell className="font-mono text-muted-foreground">{hcp.beId}</TableCell><TableCell>{getHcpIdValue(hcp) || "--"}</TableCell>
                   <TableCell>
                     <Link
                       href={`/admin/hcps/${hcp.id}`}

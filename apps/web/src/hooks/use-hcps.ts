@@ -47,6 +47,14 @@ interface Hcp {
   id: string;
   beId: string;
   npi: string | null;
+  // v1.17.68 — multi-country identifier support. `npi` holds either
+  // a 10-digit NPI (US) or a normalized 12-char CAMD######## MINC
+  // (CA). `nationalIdType` says which so `formatHcpId()` /
+  // `getHcpIdValue()` know how to render it. Optional in the FE type
+  // for backward compat with pre-v1.17.68 responses (defaults to
+  // 'NPI' inside the display helpers).
+  nationalIdType?: 'NPI' | 'MINC';
+  country?: 'US' | 'CA';
   isSurveyTaker: boolean;
   isNominated: boolean;
   firstName: string;

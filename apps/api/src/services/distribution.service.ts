@@ -715,6 +715,10 @@ export class DistributionService {
         } else {
           // Create new HCP atomically (beId generation + creation in single transaction)
           // email is guaranteed to be non-null here (validated above)
+          // v1.17.68 — nomination flow is US-only today; explicitly
+          // set country/nationalIdType so the CreateHcpInput contract
+          // is satisfied without waiting for Zod defaults (this call
+          // doesn't parse through the schema).
           hcp = await hcpServiceInstance.createWithAtomicBeId({
             ...hcpData,
             email: hcpData.email as string, // Validated above - email is required
@@ -722,6 +726,8 @@ export class DistributionService {
             // unmappable values (e.g. cross-domain) become null on the
             // typed column and stay in the legacy subSpecialty if present.
             specialty: normalizeHcpSpecialty(hcpData.specialty),
+            country: 'US',
+            nationalIdType: 'NPI',
           }, userId);
           createdHcpIds.push(hcp.id);
           // v1.17.35: dedicated hcp.created row per CREATE so audit
