@@ -41,7 +41,10 @@ describe('HCP Schemas', () => {
 
     it('should accept valid HCP data', () => {
       const result = createHcpSchema.parse(validHcp);
-      expect(result).toEqual(validHcp);
+      // v1.17.68 — parse output includes country + nationalIdType
+      // (defaulted 'US'/'NPI'). Existing US callers still get the
+      // same behavior; the defaults just populate the parsed output.
+      expect(result).toEqual({ ...validHcp, country: 'US', nationalIdType: 'NPI' });
     });
 
     it('should require email field', () => {
