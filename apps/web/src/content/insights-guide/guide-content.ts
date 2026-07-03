@@ -85,7 +85,7 @@ export const CASE_STUDIES: CaseStudy[] = [
         n: 5,
         body: 'Click any KOL\'s name to open the KOL Profile drill-down. The profile shows tabulated scores across leadership categories plus metadata on the doctors who nominated them.',
         image: 'case-1-step-5.png',
-        imageAlt: 'KOL Profile drill-down with score breakdown and nominator list.',
+        imageAlt: 'Full KOL Profile drill-down — score breakdown, per-type nomination counts, Respondent Filters bar, nominations by role and state, Nominations table, and demographic sub-charts (Practice Setting, Core Focus, Treatment Decile, DED Patients, Total Monthly Patients, Years in Practice).',
       },
       {
         n: 6,
@@ -131,10 +131,12 @@ export const CASE_STUDIES: CaseStudy[] = [
         imageAlt: 'Sociometric Leaders tab showing influencer type classifications.',
       },
       {
+        // v1.17.66 — image dropped per docs/findings/insights-guide-v1.1-image-refresh-2026-07-01.md.
+        // The sort-arrow UI is self-evident; the removed screenshot only showed
+        // "result after clicking the arrow" which didn't teach anything the
+        // user can't see in real time. Text unchanged.
         n: 2,
         body: 'Apply the same filters as Case Study 2 (GA / FL / AL state, Optometrist role) and click Apply Filters. Click the sort arrow on the Rising Stars panel to rank by nominations received — descending puts the strongest candidates at the top.',
-        image: 'case-3-step-2.png',
-        imageAlt: 'Sociometric Leaders Rising Stars panel sorted by nominations descending.',
       },
     ],
   },
