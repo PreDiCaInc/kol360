@@ -28,7 +28,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Search HCPs
   fastify.get('/', async (request, reply) => {
-    const { query, specialty, state, diseaseAreaIds, optOutStatus, page, limit, sortBy, sortOrder } = request.query as {
+    const { query, specialty, state, diseaseAreaIds, optOutStatus, page, limit, sortBy, sortOrder, country } = request.query as {
       query?: string;
       specialty?: string;
       state?: string;
@@ -38,6 +38,10 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
       limit?: string;
       sortBy?: string;
       sortOrder?: string;
+      // v1.17.68 — optional country filter. Web layer passes the
+      // currently-scoped Client.defaultCountry so a US client's admin
+      // list hides CA HCPs (and vice versa). Unset = all.
+      country?: string;
     };
 
     // CLIENT_ADMIN can only see HCPs assigned to their campaigns
@@ -78,6 +82,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
         ? (sortBy as 'name' | 'npi' | 'state' | 'specialty')
         : undefined,
       sortOrder: sortOrder === 'desc' ? 'desc' : sortOrder === 'asc' ? 'asc' : undefined,
+      country: country === 'CA' ? 'CA' : country === 'US' ? 'US' : undefined,
       page: parseInt(page || '1', 10),
       limit: parseInt(limit || '50', 10),
     });
@@ -259,7 +264,16 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Bulk import HCPs from Excel or CSV
   fastify.post('/import', async (request, reply) => {
-    const { importId } = request.query as { importId?: string };
+    // v1.17.68 — `country` query param determines which national-ID
+    // regime validates the CSV's identifier column (`NPI` / `MINC`).
+    // Defaults to 'US' so existing admin import flows keep working
+    // with zero change. The web UI passes 'CA' when the current
+    // Client's defaultCountry is Canada.
+    const { importId, country: countryRaw } = request.query as {
+      importId?: string;
+      country?: string;
+    };
+    const country: 'US' | 'CA' = countryRaw === 'CA' ? 'CA' : 'US';
     const file = await request.file();
     if (!file) {
       return reply.status(400).send({
@@ -279,7 +293,14 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const buffer = await file.toBuffer();
-    const result = await hcpService.importFromFile(buffer, request.user!.sub, file.filename, importId);
+    const result = await hcpService.importFromFile(
+      buffer,
+      request.user!.sub,
+      file.filename,
+      importId,
+      null,
+      country,
+    );
 
     // v1.17.35: the batch-summary audit row now points at the new
     // HcpImportBatch.id, and per-row 'hcp.created' / 'hcp.updated' rows

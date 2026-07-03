@@ -384,8 +384,12 @@ export class ApiClient {
    * had the v1.17.0 503 regression. Returns { total, created, updated, merged,
    * errors[] }.
    */
-  async importHcps(csvContent: string, filename: string = 'hcps.csv') {
-    const url = `${this.baseUrl}/api/v1/hcps/import`;
+  async importHcps(csvContent: string, filename: string = 'hcps.csv', country?: 'US' | 'CA') {
+    // v1.17.68 — optional country param picks which national-ID
+    // regime validates each row. Defaults US (backward compat).
+    const url = country
+      ? `${this.baseUrl}/api/v1/hcps/import?country=${country}`
+      : `${this.baseUrl}/api/v1/hcps/import`;
     const formData = new FormData();
     const blob = new Blob([csvContent], { type: 'text/csv' });
     formData.append('file', blob, filename);

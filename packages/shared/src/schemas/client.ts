@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { countrySchema } from './hcp';
 
 export const clientTypeSchema = z.enum(['FULL', 'LITE']);
 
@@ -47,6 +48,14 @@ export const createClientSchema = z.object({
   emailDomains: z
     .array(emailDomainSchema)
     .min(1, 'At least one email domain is required'),
+  // v1.17.68 — the default country regime this client's HCPs use.
+  // Threads into every HCP import + HCP list scoped to this client.
+  // Defaults 'US' so existing clients remain US-scoped without any
+  // explicit write. Set 'CA' when spinning up a Canadian tenant (per
+  // pteam: recommended pattern is a separate Client row per country
+  // — e.g. "Sun Pharma US" + "Sun Pharma Canada" — rather than one
+  // client with mixed-country HCPs).
+  defaultCountry: countrySchema.default('US'),
 });
 
 export const updateClientSchema = createClientSchema.partial();

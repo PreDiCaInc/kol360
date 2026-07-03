@@ -4,6 +4,9 @@ export * from './types';
 // Schemas
 export * from './schemas';
 
+// Format helpers (v1.17.68) — HCP identifier display, MINC formatting
+export * from './format';
+
 // Constants
 export * from './constants';
 

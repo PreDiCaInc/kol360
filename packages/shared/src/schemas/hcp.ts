@@ -2,6 +2,68 @@ import { z } from 'zod';
 
 export const npiSchema = z.string().regex(/^\d{10}$/, 'NPI must be 10 digits');
 
+// v1.17.68 — Canada MINC support.
+// Ticket: docs/findings/canada-hcp-support-lite-plan-2026-06-25.md
+//
+// MINC (Medical Identification Number for Canada) canonical form is a
+// 12-character alphanumeric identifier: CAMD######## where
+//   - CA (positions 1-2) → country code, always 'CA'
+//   - MD (positions 3-4) → profession code, always 'MD' for physicians
+//   - #### #### (positions 5-11) → 7-digit serial
+//   - # (position 12) → 1-digit check digit (format-only — no
+//     published checksum algorithm; we validate format only)
+//
+// Input may include optional hyphens (CA-MD-123-4567-8) or spaces for
+// display formatting. Normalizer strips non-alphanumerics and
+// uppercases before validation.
+export const COUNTRIES = ['US', 'CA'] as const;
+export const NATIONAL_ID_TYPES = ['NPI', 'MINC'] as const;
+export const countrySchema = z.enum(COUNTRIES);
+export const nationalIdTypeSchema = z.enum(NATIONAL_ID_TYPES);
+export type Country = z.infer<typeof countrySchema>;
+export type NationalIdType = z.infer<typeof nationalIdTypeSchema>;
+
+/**
+ * Normalize a MINC input string to the canonical 12-char uppercase
+ * alphanumeric form. Returns null when the result isn't exactly 12
+ * characters. Callers should feed the result into mincSchema for the
+ * full format check.
+ */
+export function normalizeMinc(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const stripped = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return stripped.length === 12 ? stripped : null;
+}
+
+/**
+ * Validate a normalized MINC value against the CA / MD / 8-digit
+ * layout. Use `normalizeMinc()` first if the input may contain
+ * hyphens or mixed case.
+ */
+export const mincSchema = z
+  .string()
+  .regex(
+    /^CAMD\d{8}$/,
+    'MINC must be 12 characters: CAMD followed by 8 digits (input may be hyphenated; will be normalized)',
+  );
+
+/**
+ * Cross-check that the value stored in the `npi` column actually
+ * matches its declared type. NPI values must be 10 digits; MINC
+ * values must be 12-char CAMD######## after normalization.
+ * Callers should already have normalized MINC input via
+ * `normalizeMinc()` before passing here.
+ */
+export function validateNationalIdValue(
+  value: string,
+  type: NationalIdType,
+): { ok: true } | { ok: false; message: string } {
+  const schema = type === 'NPI' ? npiSchema : mincSchema;
+  const result = schema.safeParse(value);
+  if (result.success) return { ok: true };
+  return { ok: false, message: result.error.errors[0]?.message ?? 'Invalid identifier' };
+}
+
 // Specialty is binary: a practitioner is one of these two. Sub-specialty
 // (focus area) is multi-select and unified with DiseaseArea (see
 // `diseaseAreaIds` below) — sourced live from the DiseaseArea table.
@@ -33,8 +95,18 @@ export function normalizeHcpSpecialty(raw: string | null | undefined): HcpSpecia
   return null;
 }
 
-export const createHcpSchema = z.object({
-  npi: npiSchema,
+// v1.17.68 — `npi` field now holds either an NPI (US) or a MINC (CA)
+// depending on the row's nationalIdType. Column name unchanged for
+// backward compat across the ~100 references in api + web code.
+// `country` + `nationalIdType` default to US/NPI when the caller
+// doesn't set them, keeping every existing writer working without
+// change.
+//
+// Base object separated from the refined variants so
+// `updateHcpSchema` can still call `.partial()` on the base (partial
+// then re-attach the same refinement for the fields that are present).
+const hcpBaseSchema = z.object({
+  npi: z.string(),
   firstName: z.string().min(1).max(50),
   lastName: z.string().min(1).max(50),
   email: z.string().email(),
@@ -46,7 +118,42 @@ export const createHcpSchema = z.object({
   subSpecialty: z.string().optional().nullable(),
   city: z.string().optional().nullable(),
   state: z.string().length(2).optional().nullable(),
+  country: countrySchema.default('US'),
+  nationalIdType: nationalIdTypeSchema.default('NPI'),
+  // Informational only — cross-licensed HCPs' secondary IDs.
+  // Not indexed, not used for nomination matching.
+  alternateIds: z
+    .array(
+      z.object({
+        type: nationalIdTypeSchema,
+        country: countrySchema,
+        value: z.string().min(1),
+      }),
+    )
+    .optional()
+    .nullable(),
 });
+
+// Cross-validate that the supplied identifier matches the declared
+// type (used by both create + update variants when both fields are
+// present in the payload).
+function refineNpiType(
+  data: { npi?: string; nationalIdType?: NationalIdType },
+  ctx: z.RefinementCtx,
+): void {
+  if (!data.npi) return; // Absence is fine — update semantics.
+  const type = data.nationalIdType ?? 'NPI';
+  const check = validateNationalIdValue(data.npi, type);
+  if (!check.ok) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['npi'],
+      message: check.message,
+    });
+  }
+}
+
+export const createHcpSchema = hcpBaseSchema.superRefine(refineNpiType);
 
 export const createNominatedHcpSchema = z.object({
   npi: npiSchema.optional().nullable(),
@@ -73,10 +180,13 @@ export const createNominatedHcpSchema = z.object({
 // gateWritesToAdmins preHandler (already covers all writes since
 // v1.17.20). Backend route surfaces a clean 409 when the new value
 // collides with the Hcp.npi @unique constraint.
-export const updateHcpSchema = createHcpSchema.partial().extend({
-  isSurveyTaker: z.boolean().optional(),
-  isNominated: z.boolean().optional(),
-});
+export const updateHcpSchema = hcpBaseSchema
+  .partial()
+  .extend({
+    isSurveyTaker: z.boolean().optional(),
+    isNominated: z.boolean().optional(),
+  })
+  .superRefine(refineNpiType);
 
 export type CreateHcpInput = z.infer<typeof createHcpSchema>;
 export type CreateNominatedHcpInput = z.infer<typeof createNominatedHcpSchema>;

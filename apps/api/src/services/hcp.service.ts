@@ -23,6 +23,12 @@ interface SearchParams {
   diseaseAreaIds?: string[]; // Multi-select sub-specialty filter (via HcpDiseaseArea)
   hcpIds?: string[]; // Filter to specific HCP IDs (for tenant scoping)
   optOutStatus?: 'any' | 'global' | 'campaign' | 'active' | 'none'; // 'any' = any active opt-out, 'global' = global only, 'campaign' = campaign-scope only, 'none' = no opt-out, 'active' alias for 'any'
+  /** v1.17.68 — country filter. When set, restricts the list to HCPs
+   *  in that country. Not set = all countries (backward compat).
+   *  The HCP admin list route passes this through from the request
+   *  query param; the FE picks the value from Client.defaultCountry
+   *  once a client is scoped. */
+  country?: 'US' | 'CA';
   // v1.17.45 — sortable simple columns for View Scores facelift.
   // Only Hcp-table fields supported here; score-column sort requires
   // a JOIN on HcpDiseaseAreaScore filtered to a specific disease area
@@ -49,13 +55,22 @@ export class HcpService {
   }
 
   async search(params: SearchParams) {
-    const { query, specialty, state, diseaseAreaIds, hcpIds, optOutStatus, page, limit, sortBy, sortOrder } = params;
+    const { query, specialty, state, diseaseAreaIds, hcpIds, optOutStatus, page, limit, sortBy, sortOrder, country } = params;
 
     const where: Record<string, unknown> = {};
 
     // Tenant scoping: filter to specific HCP IDs if provided
     if (hcpIds !== undefined) {
       where.id = { in: hcpIds };
+    }
+
+    // v1.17.68 — country scoping. When set, restrict to HCPs in that
+    // country. All existing US HCPs (defaulted `country='US'`) match
+    // when country='US'; any newly-imported CA HCPs are hidden. When
+    // unset, no country filter (backward compat for pre-v1.17.68
+    // callers).
+    if (country) {
+      where.country = country;
     }
 
     // Sub-specialty filter (multi-select via HcpDiseaseArea join)
@@ -305,9 +320,19 @@ export class HcpService {
     // diseaseAreaIds is the new multi-select sub-specialty; persist via the
     // HcpDiseaseArea join. Strip from the HCP create data — it's not a
     // column on Hcp itself.
-    const { diseaseAreaIds, ...hcpData } = data;
+    // v1.17.68 — alternateIds is Json? on the DB but the Zod schema
+    // gives it a strict object-array shape; peel it off and hand
+    // Prisma an untyped JsonValue via the `as` cast to keep the
+    // generated types happy.
+    const { diseaseAreaIds, alternateIds, ...hcpData } = data;
     const created = await prisma.hcp.create({
-      data: { ...hcpData, beId: newBeId, isSurveyTaker: true, createdBy },
+      data: {
+        ...hcpData,
+        beId: newBeId,
+        isSurveyTaker: true,
+        createdBy,
+        alternateIds: (alternateIds ?? undefined) as Prisma.InputJsonValue | undefined,
+      },
     });
     if (diseaseAreaIds && diseaseAreaIds.length > 0) {
       await this.setHcpDiseaseAreas(created.id, diseaseAreaIds);
@@ -319,8 +344,15 @@ export class HcpService {
     // diseaseAreaIds (multi-select sub-specialty) is a join replacement —
     // strip from Hcp update payload and reconcile via setHcpDiseaseAreas
     // when provided (undefined = leave unchanged; [] = clear).
-    const { diseaseAreaIds, ...hcpData } = data;
-    const updated = await prisma.hcp.update({ where: { id }, data: hcpData });
+    // v1.17.68 — same alternateIds peel-off as create.
+    const { diseaseAreaIds, alternateIds, ...hcpData } = data;
+    const updated = await prisma.hcp.update({
+      where: { id },
+      data: {
+        ...hcpData,
+        alternateIds: (alternateIds ?? undefined) as Prisma.InputJsonValue | undefined,
+      },
+    });
     if (diseaseAreaIds !== undefined) {
       await this.setHcpDiseaseAreas(id, diseaseAreaIds);
     }
@@ -356,7 +388,15 @@ export class HcpService {
     /** v1.17.35: if set, the new HcpImportBatch row is tagged with this
      * campaignId. The /campaigns/:id/import-hcps route passes it; the
      * generic /hcps/bulk route leaves it null. */
-    campaignId?: string | null
+    campaignId?: string | null,
+    /** v1.17.68 — country the CSV is being imported into. Determines
+     * which national-ID regex validates each row's `npi` column and
+     * what value lands in `nationalIdType` + `country` on created /
+     * merged rows. Defaults to 'US' so existing US-only clients keep
+     * their current behavior. The import dialog picks this per
+     * `Client.defaultCountry` when the admin opens the flow scoped
+     * to a particular client. */
+    country: 'US' | 'CA' = 'US',
   ) {
     const { importProgressStore } = await import('./import-progress.service');
     const rows = await this.parseFileToRows(buffer, filename);
@@ -404,31 +444,89 @@ export class HcpService {
         fullName: string;
       }> = [];
 
-      // Phase 1a: light parse — pull NPI + name out of every row so we
-      // can bulk-load before validation.
+      // v1.17.68 — country-aware validation. When the import is
+      // scoped to country='CA', the identifier column is a MINC —
+      // normalize (strip non-alphanumerics, upper-case) then validate
+      // against `CAMD\d{8}`. For country='US', keep the 10-digit NPI
+      // check. `nationalIdType` on the created rows is picked from
+      // country so downstream display helpers know which flavor the
+      // stored `npi` column holds.
+      const nationalIdType: 'NPI' | 'MINC' = country === 'CA' ? 'MINC' : 'NPI';
+      const validateIdFormat = (val: string): { ok: true; normalized: string } | { ok: false } => {
+        if (nationalIdType === 'NPI') {
+          return /^\d{10}$/.test(val) ? { ok: true, normalized: val } : { ok: false };
+        }
+        // MINC: normalize hyphenated / spaced / lowercase input to
+        // canonical 12-char CAMD######## form, then check pattern.
+        const stripped = val.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (stripped.length !== 12) return { ok: false };
+        return /^CAMD\d{8}$/.test(stripped) ? { ok: true, normalized: stripped } : { ok: false };
+      };
+      const idFormatMessage = nationalIdType === 'NPI'
+        ? 'Invalid NPI format (must be 10 digits)'
+        : 'Invalid MINC format (must normalize to CAMD followed by 8 digits, e.g. CA-MD-1234-567-8)';
+
+      // Phase 1a: light parse — pull identifier + name out of every
+      // row so we can bulk-load before validation. Column header stays
+      // 'NPI' for backward compat across every existing CSV admins
+      // hand to the platform; that column just carries a MINC value
+      // when country='CA'. v1.17.68 also accepts 'MINC' as an
+      // alternate header for CA imports.
       const parsed = rows.map((row, i) => ({
         rowIndex: i,
         row,
-        rawNpi: String(row['NPI'] || row['npi'] || '').trim(),
+        rawNpi: String(
+          row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || '',
+        ).trim(),
         rawFirstName: String(row['First Name'] || row['firstName'] || '').trim(),
         rawLastName: String(row['Last Name'] || row['lastName'] || '').trim(),
       }));
 
       // Phase 1b: bulk-load existing HCPs + aliases (parallel — same
       // two queries as the prior implementation, just hoisted before
-      // validation).
-      const candidateNpis = parsed.filter(p => /^\d{10}$/.test(p.rawNpi)).map(p => p.rawNpi);
+      // validation). v1.17.68 — normalize each row's identifier once
+      // up front so downstream branches always work in canonical form
+      // and DB lookups match what's stored.
+      const normalizedIds = parsed
+        .map((p) => {
+          const check = validateIdFormat(p.rawNpi);
+          return check.ok ? check.normalized : null;
+        });
+      const candidateNpis = normalizedIds.filter((v): v is string => v !== null);
       const candidateFullNames = parsed
         .filter(p => p.rawFirstName && p.rawLastName)
         .map(p => `${p.rawFirstName} ${p.rawLastName}`.toLowerCase());
 
+      // v1.17.68 — scope the bulk-load to the import's country. Two
+      // reasons:
+      //   1. NPI lookup: existingByNpi should only match same-country
+      //      HCPs. Cross-country NPI/MINC value collisions are
+      //      structurally impossible (NPI = 10 digits, MINC =
+      //      CAMD########) but we still filter by country as a
+      //      defense-in-depth invariant.
+      //   2. HcpAlias MERGE branch (line ~555): pre-fix the alias
+      //      match ignored country entirely, so a Canadian import row
+      //      for "John Smith" would silently MERGE into a US "John
+      //      Smith" HCP if the names collide. Country-scoping the
+      //      alias fetch closes that data-integrity hole.
       const [existingHcps, existingAliases] = await Promise.all([
         prisma.hcp.findMany({
-          where: { npi: { in: candidateNpis } },
-          select: { id: true, npi: true, firstName: true, lastName: true, email: true, specialty: true, subSpecialty: true, city: true, state: true },
+          where: { npi: { in: candidateNpis }, country },
+          select: {
+            id: true, npi: true, firstName: true, lastName: true,
+            email: true, specialty: true, subSpecialty: true,
+            city: true, state: true, country: true,
+          },
         }),
         prisma.hcpAlias.findMany({
-          where: { aliasName: { in: candidateFullNames, mode: 'insensitive' } },
+          where: {
+            aliasName: { in: candidateFullNames, mode: 'insensitive' },
+            // Only match aliases attached to HCPs in the same country
+            // as this import. Prevents cross-country name-collision
+            // MERGE (e.g. Canadian import merging into a US HCP with
+            // the same name).
+            hcp: { country },
+          },
           include: { hcp: true },
         }),
       ]);
@@ -438,10 +536,11 @@ export class HcpService {
 
       // Phase 1c: per-row, per-branch validation.
       for (const p of parsed) {
-        const rawNpi = p.rawNpi;
+        const check = validateIdFormat(p.rawNpi);
+        const rawNpi = check.ok ? check.normalized : p.rawNpi;
         try {
-          if (!/^\d{10}$/.test(rawNpi)) {
-            throw new Error('Invalid NPI format');
+          if (!check.ok) {
+            throw new Error(idFormatMessage);
           }
 
           const row = p.row;
@@ -636,6 +735,13 @@ export class HcpService {
           const createData = batch.map((row, idx) => ({
             beId: beIds[i + idx],
             npi: row.npi,
+            // v1.17.68 — record which country the row came from and
+            // what national-ID regime its `npi` value belongs to.
+            // Passed once at the top of importFromFile (default 'US'
+            // / 'NPI') so every row in one import lands with a
+            // consistent country+type pair.
+            country,
+            nationalIdType,
             firstName: row.firstName,
             lastName: row.lastName,
             email: row.email,

@@ -23,6 +23,16 @@ model Client {
   /// (opt-in mode for backwards compat). Validated only at user invite +
   /// reassignment time; existing users with mismatched domains keep working.
   emailDomains           String[]                @default([])
+  // v1.17.68 — multi-country support. Determines which national-ID
+  // regime this client's HCPs use (NPI for US, MINC for CA) and
+  // scopes Insights queries via WHERE Hcp.country = defaultCountry.
+  // For a customer running both US + CA programs, spin up TWO
+  // Client rows (e.g. "Sun Pharma US" + "Sun Pharma Canada") — each
+  // with its own defaultCountry. NOT NULL default 'US' means the
+  // existing 13k HCPs and all existing clients stay on the US path
+  // without any code or data change.
+  // See docs/findings/canada-hcp-support-lite-plan-2026-06-25.md.
+  defaultCountry         String                  @default("US")
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   campaigns              Campaign[]
@@ -181,7 +191,35 @@ model CampaignHcpExclusion {
 model Hcp {
   id                  String                  @id @default(cuid())
   beId                String                  @unique
+  // v1.17.68 — multi-country identifier support (Canada MINC).
+  // `npi` (column name unchanged for backward compat across 100+
+  // references) now stores whichever national ID the row's country
+  // uses. Which regime is in play is determined by nationalIdType:
+  //   - 'NPI'  → 10-digit numeric (US)
+  //   - 'MINC' → 12-char CAMD######## (CA, normalized to uppercase
+  //     alphanumeric before store; display formatting is separate)
+  // The @unique constraint is safe as-is: NPI is always 10 digits;
+  // MINC always begins with 'CAMD' letters — the value spaces don't
+  // overlap by format so a stored NPI can never collide with a
+  // stored MINC. The 2-character country prefix on MINC also means
+  // no all-numeric values in the MINC space.
   npi                 String?                 @unique
+  // v1.17.68 — which national-ID regime the value in `npi` belongs
+  // to. Defaults to 'NPI' so existing 13k US HCPs and any code that
+  // doesn't yet know about types keeps working.
+  nationalIdType      String                  @default("NPI")
+  // v1.17.68 — ISO 3166-1 alpha-2 country. Threaded into Insights
+  // via Client.defaultCountry (see Client model). Determines which
+  // FE display formatter fires + which validation regex the import
+  // dialog picks. Defaults to 'US'.
+  country             String                  @default("US")
+  // v1.17.68 — rare (<5%) cross-licensed HCPs have a secondary ID
+  // in their other country. Stored here as informational metadata
+  // only (NOT indexed, NOT used for queries or nomination matching).
+  // The primary ID in `npi` is the source of truth for nominations,
+  // exports, and Insights aggregations. Shape:
+  //   { type: 'NPI'|'MINC', country: 'US'|'CA', value: string }[]
+  alternateIds        Json?
   isSurveyTaker       Boolean                 @default(false)
   isNominated         Boolean                 @default(false)
   firstName           String
@@ -232,6 +270,11 @@ model Hcp {
   @@index([isSurveyTaker])
   @@index([isNominated])
   @@index([importBatchId])
+  // v1.17.68 — country filter is on the hot path for every Insights
+  // query (WHERE country = $client.defaultCountry). Also useful for
+  // the HCP admin list when a US-scoped client is looking up their
+  // HCPs. Compound with npi keeps the fast NPI lookup in place.
+  @@index([country])
 }
 
 // v1.17.35 — per-batch record for bulk HCP imports. Mirrors the

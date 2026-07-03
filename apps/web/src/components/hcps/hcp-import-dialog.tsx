@@ -44,6 +44,13 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
+  // v1.17.68 — country regime for this import batch. Determines
+  // which identifier column format is expected (NPI 10-digits vs MINC
+  // CA-MD-####-###-#) and what value lands in the row's `country`
+  // + `nationalIdType` on created rows. Default 'US' — the vast
+  // majority of imports today. Admin picks 'CA' when loading a
+  // Canadian roster.
+  const [importCountry, setImportCountry] = useState<'US' | 'CA'>('US');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -104,7 +111,7 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
       formData.append('file', selectedFile);
 
       const importResult = await api<ImportResult>(
-        `/api/v1/hcps/import?importId=${encodeURIComponent(importId)}`,
+        `/api/v1/hcps/import?importId=${encodeURIComponent(importId)}&country=${importCountry}`,
         {
           method: 'POST',
           body: formData,
@@ -238,6 +245,30 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
           </div>
         ) : !result ? (
           <div className="space-y-4">
+            {/* v1.17.68 — country selector. Determines which national-
+                ID column format the CSV needs to carry + how the
+                validator interprets each row. Default US matches every
+                pre-Canada import. */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium">HCP Country:</label>
+              <div className="inline-flex rounded-md border">
+                <button
+                  type="button"
+                  onClick={() => setImportCountry('US')}
+                  className={`px-3 py-1.5 text-sm ${importCountry === 'US' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                >
+                  United States (NPI)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportCountry('CA')}
+                  className={`px-3 py-1.5 text-sm border-l ${importCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                >
+                  Canada (MINC)
+                </button>
+              </div>
+            </div>
+
             {/* File Drop Zone */}
             <div
               className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
@@ -288,7 +319,11 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
                 </Button>
               </div>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li>NPI (10 digits)</li>
+                <li>
+                  {importCountry === 'CA'
+                    ? 'MINC (12-char CA-MD-####-###-# — hyphens optional)'
+                    : 'NPI (10 digits)'}
+                </li>
                 <li>First Name</li>
                 <li>Last Name</li>
                 <li>Email</li>

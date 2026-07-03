@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useHcp, useAddHcpAlias, useRemoveHcpAlias, useUpdateHcp } from '@/hooks/use-hcps';
+import { formatHcpId, getHcpIdValue } from '@kol360/shared';
 import { useOptOutHcp, useResubscribeHcp } from '@/hooks/use-distribution';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useImpersonation } from '@/lib/impersonation-context';
@@ -221,7 +222,7 @@ export default function HcpDetailPage() {
             <div className="flex items-center gap-2 mt-1">
               <span className="text-muted-foreground font-mono text-sm">BE ID: {hcp.beId}</span>
               <span className="text-muted-foreground">|</span>
-              <span className="text-muted-foreground font-mono text-sm">NPI: {hcp.npi || "N/A"}</span>
+              <span className="text-muted-foreground font-mono text-sm">{formatHcpId(hcp)}</span>
               {hcp.isSurveyTaker && (
                 <Badge variant="default" className="ml-2">Survey Taker</Badge>
               )}
@@ -341,8 +342,8 @@ export default function HcpDetailPage() {
                     <div className="flex items-start gap-3">
                       <Hash className="w-5 h-5 text-muted-foreground mt-0.5" />
                       <div>
-                        <p className="text-sm text-muted-foreground">NPI</p>
-                        <p className="font-medium font-mono">{hcp.npi || "N/A"}</p>
+                        <p className="text-sm text-muted-foreground">{hcp.nationalIdType ?? 'NPI'}</p>
+                        <p className="font-medium font-mono">{getHcpIdValue(hcp) || "N/A"}</p>
                       </div>
                     </div>
 
