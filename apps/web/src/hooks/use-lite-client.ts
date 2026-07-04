@@ -29,6 +29,7 @@ interface HcpScores {
 interface Hcp {
   id: string;
   npi: string;
+  nationalIdType?: 'NPI' | 'MINC' | null;
   firstName: string;
   lastName: string;
   specialty: string | null;

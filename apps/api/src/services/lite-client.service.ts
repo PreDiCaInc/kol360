@@ -169,6 +169,7 @@ export class LiteClientService {
           select: {
             id: true,
             npi: true,
+            nationalIdType: true,
             firstName: true,
             lastName: true,
             specialty: true,
