@@ -31,7 +31,7 @@ import { HcpFormDialog } from '@/components/hcps/hcp-form-dialog';
 import { AliasImportDialog } from '@/components/hcps/alias-import-dialog';
 import { InfluencerTypeImportDialog } from '@/components/hcps/influencer-type-import-dialog';
 import { SegmentScoreImportDialog } from '@/components/hcps/segment-score-import-dialog';
-import { getHcpIdValue } from '@kol360/shared';
+import { getHcpIdValue, inferHcpIdLabel } from '@kol360/shared';
 import { Plus, Upload, Search, ChevronLeft, ChevronRight, Users, AlertTriangle, RefreshCw, Stethoscope, MapPin, BarChart3, Download } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -164,7 +164,8 @@ export default function HcpsPage() {
     if (!allHcps.length) return;
 
     // Build CSV content
-    const headers = ['BE ID', 'NPI', 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-Specialty', 'City', 'State', 'Aliases', 'Campaigns'];
+    // v1.17.69 — identifier header follows the list's country (NPI or MINC).
+    const headers = ['BE ID', inferHcpIdLabel(allHcps), 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-Specialty', 'City', 'State', 'Aliases', 'Campaigns'];
     const rows = allHcps.map((hcp) => {
       const specialties = getSpecialtyDisplay(hcp);
       return [
@@ -474,7 +475,7 @@ export default function HcpsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>BE ID</TableHead>
-                <TableHead>NPI</TableHead>
+                <TableHead>{inferHcpIdLabel(hcps)}</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Specialty</TableHead>

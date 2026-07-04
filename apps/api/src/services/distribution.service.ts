@@ -5,7 +5,20 @@ import { HcpService } from './hcp.service';
 const hcpServiceInstance = new HcpService();
 import { emailService } from './email.service';
 import { createAuditLog } from '../lib/audit';
-import { normalizeHcpSpecialty } from '@kol360/shared';
+import { normalizeHcpSpecialty, normalizeMinc } from '@kol360/shared';
+
+// v1.17.69 — mirrors hcp.service.ts helper. Uppercases + strips
+// separators so a hyphenated / lowercase MINC in the campaign-hcp CSV
+// matches the canonical CAMD######## stored on Hcp.npi.
+function normalizeIdentifierForLookup(raw: string): string {
+  const trimmed = raw.trim();
+  const upper = trimmed.toUpperCase();
+  if (/[A-Z]/.test(upper)) {
+    const normalized = normalizeMinc(upper);
+    if (normalized) return normalized;
+  }
+  return trimmed;
+}
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
 
@@ -379,6 +392,7 @@ export class DistributionService {
           select: {
             id: true,
             npi: true,
+            nationalIdType: true,
             firstName: true,
             lastName: true,
             email: true,
@@ -499,6 +513,7 @@ export class DistributionService {
         campaignHcpId: row.id,
         hcpId: row.hcpId,
         npi: row.hcp.npi,
+        nationalIdType: row.hcp.nationalIdType,
         firstName: row.hcp.firstName,
         lastName: row.hcp.lastName,
         email: row.hcp.email,
@@ -585,10 +600,15 @@ export class DistributionService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        // Normalize NPI
-        const npi = String(row['NPI'] || row['npi'] || '').trim();
-        if (!/^\d{10}$/.test(npi)) {
-          throw new Error('Invalid NPI format (must be 10 digits)');
+        // Normalize identifier. Accept both NPI and MINC column headers so
+        // CA templates work; validate as either 10-digit NPI or CAMD########
+        // MINC. MINC input normalized to canonical uppercase / no-separator
+        // form so DB lookup + create both use the canonical shape.
+        const npi = normalizeIdentifierForLookup(
+          String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || ''),
+        );
+        if (!/^\d{10}$/.test(npi) && !/^CAMD\d{8}$/.test(npi)) {
+          throw new Error('Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)');
         }
 
         const hcpData = {
@@ -715,19 +735,19 @@ export class DistributionService {
         } else {
           // Create new HCP atomically (beId generation + creation in single transaction)
           // email is guaranteed to be non-null here (validated above)
-          // v1.17.68 — nomination flow is US-only today; explicitly
-          // set country/nationalIdType so the CreateHcpInput contract
-          // is satisfied without waiting for Zod defaults (this call
-          // doesn't parse through the schema).
+          // v1.17.69 — infer country/nationalIdType from the identifier
+          // shape. Value validation above narrowed to either a 10-digit
+          // NPI (US) or CAMD######## MINC (CA). If a CA admin uploads a
+          // campaign-hcp CSV that includes a MINC not yet in the DB,
+          // we must persist country='CA'/nationalIdType='MINC' so
+          // Insights doesn't misclassify it as a US HCP later.
+          const isMinc = /^CAMD\d{8}$/.test(npi);
           hcp = await hcpServiceInstance.createWithAtomicBeId({
             ...hcpData,
             email: hcpData.email as string, // Validated above - email is required
-            // Coerce freeform CSV specialty → canonical 2-value enum;
-            // unmappable values (e.g. cross-domain) become null on the
-            // typed column and stay in the legacy subSpecialty if present.
             specialty: normalizeHcpSpecialty(hcpData.specialty),
-            country: 'US',
-            nationalIdType: 'NPI',
+            country: isMinc ? 'CA' : 'US',
+            nationalIdType: isMinc ? 'MINC' : 'NPI',
           }, userId);
           createdHcpIds.push(hcp.id);
           // v1.17.35: dedicated hcp.created row per CREATE so audit

@@ -53,6 +53,10 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
+  // Template country: switches the identifier column header (NPI vs MINC)
+  // and its sample value. The backend accepts both column names — this
+  // only affects the downloaded template so admins get the right headings.
+  const [templateCountry, setTemplateCountry] = useState<'US' | 'CA'>('US');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -149,6 +153,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     setResult(null);
     setProgress(null);
     setIsImporting(false);
+    setTemplateCountry('US');
     onOpenChange(false);
   };
 
@@ -192,8 +197,10 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     : 'Upload an Excel file with HCP segment scores across 8 categories.';
 
   const handleDownloadTemplate = () => {
-    const headers = ['NPI', ...columns.map(c => c.name)];
-    const exampleRow = ['1234567890', ...columns.map(() => '50')];
+    const idColumn = templateCountry === 'CA' ? 'MINC' : 'NPI';
+    const sampleId = templateCountry === 'CA' ? 'CAMD12345678' : '1234567890';
+    const headers = [idColumn, ...columns.map(c => c.name)];
+    const exampleRow = [sampleId, ...columns.map(() => '50')];
 
     const csvContent = [
       headers.join(','),
@@ -346,15 +353,33 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <div className="flex items-center justify-between mb-2">
                 <p className="font-medium">Required columns:</p>
-                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={handleDownloadTemplate}>
-                  <Download className="w-3 h-3 mr-1" />
-                  Template
-                </Button>
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex rounded-md border overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setTemplateCountry('US')}
+                      className={`px-2 py-1 text-xs ${templateCountry === 'US' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                    >
+                      US (NPI)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTemplateCountry('CA')}
+                      className={`px-2 py-1 text-xs border-l ${templateCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                    >
+                      CA (MINC)
+                    </button>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={handleDownloadTemplate}>
+                    <Download className="w-3 h-3 mr-1" />
+                    Template
+                  </Button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  NPI (10 digits)
+                  {templateCountry === 'CA' ? 'MINC (CAMD########)' : 'NPI (10 digits)'}
                 </div>
                 {columns.map((col) => (
                   <div key={col.field} className="flex items-center gap-1">

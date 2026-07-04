@@ -75,6 +75,7 @@ import {
 import { useExcelExport } from '@/lib/excel-export';
 import { toTitleCase } from '@/lib/utils';
 import type { InsightsFilterInput, KolExplorerItem, KolExplorerResponse, NominationType } from '@kol360/shared';
+import { inferHcpIdLabel } from '@kol360/shared';
 import { apiClient } from '@/lib/api';
 import {
   ActiveFilter,
@@ -415,7 +416,10 @@ function ScoreTableView({
     if (items.length === 0) return;
 
     const headers = [
-      'Rank', 'NPI', 'Name', 'Specialty', 'Degree', 'City', 'State', 'Influencer Type',
+      'Rank',
+      // v1.17.69 — column header follows the data's country (NPI or MINC).
+      inferHcpIdLabel(items as ReadonlyArray<{ nationalIdType?: string | null }>),
+      'Name', 'Specialty', 'Degree', 'City', 'State', 'Influencer Type',
       'Publications', 'Trade Pubs', 'Org Leadership', 'Org Awards', 'Clinical Trials',
       'Conference', 'Social Media', 'Media/Podcasts', 'Survey', 'Total Weighted Score',
     ];
@@ -983,7 +987,8 @@ function ProfileView({
     const headers = [
       'Rank',
       'Name',
-      'NPI',
+      // v1.17.69 — MINC when the current dashboard is CA-scoped.
+      inferHcpIdLabel(sortedNominators as ReadonlyArray<{ nationalIdType?: string | null }>),
       'Specialty',
       'State',
       'Nomination Type',
@@ -1239,7 +1244,8 @@ function ProfileView({
                       <tr className="border-b">
                         <SortableHeader label="Name" field="name" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         {/* v1.17.45 — NPI column added per pteam request */}
-                        <SortableHeader label="NPI" field="npi" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
+                        {/* v1.17.69 — MINC when CA-scoped. */}
+                        <SortableHeader label={inferHcpIdLabel(sortedNominators as ReadonlyArray<{ nationalIdType?: string | null }>)} field="npi" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         <SortableHeader label="Specialty" field="specialty" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         <SortableHeader label="State" field="state" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         <SortableHeader label="Nomination Type" field="nominationType" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { countrySchema, nationalIdTypeSchema, mincSchema, npiSchema } from './hcp';
 
 // v1.17.29 — request/response contract for the curation integration.
 // Wire spec: kolcuration/spec/curation-kol360-sync-spec-v0.3.md §6.2
@@ -23,22 +24,42 @@ const discoveredFromSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const getBeIdRequestSchema = z.object({
-  firstName: z.string().min(1).max(50),
-  lastName: z.string().min(1).max(50),
-  // hcpSpecialtySchema enum — kept loose here to avoid the shared package
-  // pulling in the heavyweight constraint. The route layer re-validates
-  // against the canonical specialty enum via Hcp_specialty_check at
-  // insert time, so a bad value still 400s.
-  specialty: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().length(2).optional(),
-  // Optional NPI. When present, kol360 dedupes on Hcp.npi @unique and
-  // returns the existing beId. When absent, mints a new beId with
-  // npi=NULL and stashes discoveredFrom.notes (the reviewer's reason).
-  npi: z.string().regex(/^\d{10}$/, 'NPI must be 10 digits').optional(),
-  discoveredFrom: discoveredFromSchema,
-});
+export const getBeIdRequestSchema = z
+  .object({
+    firstName: z.string().min(1).max(50),
+    lastName: z.string().min(1).max(50),
+    // hcpSpecialtySchema enum — kept loose here to avoid the shared package
+    // pulling in the heavyweight constraint. The route layer re-validates
+    // against the canonical specialty enum via Hcp_specialty_check at
+    // insert time, so a bad value still 400s.
+    specialty: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().length(2).optional(),
+    // Optional identifier. When present, kol360 dedupes on Hcp.npi
+    // (which stores either NPI or MINC per nationalIdType) and returns
+    // the existing beId. When absent, mints a new beId with npi=NULL
+    // and stashes discoveredFrom.notes (the reviewer's reason).
+    npi: z.string().optional(),
+    // v1.17.69 — multi-country identifier support. Callers may specify
+    // country + nationalIdType; both default to US/NPI so existing
+    // curation clients keep working. When nationalIdType='MINC',
+    // `npi` is validated as a MINC (12-char CAMD########).
+    country: countrySchema.default('US'),
+    nationalIdType: nationalIdTypeSchema.default('NPI'),
+    discoveredFrom: discoveredFromSchema,
+  })
+  .superRefine((data, ctx) => {
+    if (!data.npi) return;
+    const schema = data.nationalIdType === 'MINC' ? mincSchema : npiSchema;
+    const check = schema.safeParse(data.npi);
+    if (!check.success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['npi'],
+        message: check.error.errors[0]?.message ?? 'Invalid identifier',
+      });
+    }
+  });
 
 export const getBeIdResponseSchema = z.object({
   beId: z.string(),

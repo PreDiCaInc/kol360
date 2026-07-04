@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createHcpSchema, CreateHcpInput, HCP_SPECIALTIES } from '@kol360/shared';
+import type { Country, NationalIdType } from '@kol360/shared';
 import { useCreateHcp, useUpdateHcp, useHcp } from '@/hooks/use-hcps';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useDiseaseAreas } from '@/hooks/use-disease-areas';
@@ -60,6 +61,8 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
     resolver: zodResolver(createHcpSchema),
     defaultValues: {
       npi: '',
+      country: 'US',
+      nationalIdType: 'NPI',
       firstName: '',
       lastName: '',
       email: '',
@@ -70,6 +73,15 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
       state: null,
     },
   });
+
+  const country = (form.watch('country') as Country | undefined) ?? 'US';
+  const nationalIdType: NationalIdType = country === 'CA' ? 'MINC' : 'NPI';
+  const idPlaceholder = nationalIdType === 'MINC' ? 'CAMD12345678' : '1234567890';
+  const idMaxLength = nationalIdType === 'MINC' ? 12 : 10;
+
+  useEffect(() => {
+    form.setValue('nationalIdType', nationalIdType);
+  }, [nationalIdType, form]);
 
   useEffect(() => {
     if (hcp) {
@@ -83,6 +95,8 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
       const loadedDaIds = (hcp.diseaseAreas ?? []).map((d) => d.diseaseArea.id);
       form.reset({
         npi: hcp.npi || '',
+        country: ((hcp as { country?: string }).country as Country | undefined) ?? 'US',
+        nationalIdType: ((hcp as { nationalIdType?: string }).nationalIdType as NationalIdType | undefined) ?? 'NPI',
         firstName: hcp.firstName,
         lastName: hcp.lastName,
         email: hcp.email || '',
@@ -95,6 +109,8 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
     } else if (!hcpId) {
       form.reset({
         npi: '',
+        country: 'US',
+        nationalIdType: 'NPI',
         firstName: '',
         lastName: '',
         email: '',
@@ -146,26 +162,50 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {!isEdit && (
+              <FormField
+                control={form.control}
+                name="country"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Country</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={(field.value as string | undefined) ?? 'US'}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="US">United States (NPI)</SelectItem>
+                        <SelectItem value="CA">Canada (MINC)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <FormField
               control={form.control}
               name="npi"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>NPI</FormLabel>
+                  <FormLabel>{nationalIdType}</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="1234567890"
-                      maxLength={10}
-                      // v1.17.34: editable on existing HCPs for
-                      // PLATFORM_ADMIN; disabled for everyone else.
+                      placeholder={idPlaceholder}
+                      maxLength={idMaxLength}
                       disabled={isEdit && !canEditNpi}
                     />
                   </FormControl>
                   {isEdit && canEditNpi && (
                     <p className="text-xs text-muted-foreground">
-                      Changing the NPI is logged to the audit trail. The new value
-                      must be unique across all HCPs.
+                      Changing the {nationalIdType} is logged to the audit trail. The
+                      new value must be unique across all HCPs.
                     </p>
                   )}
                   <FormMessage />

@@ -434,9 +434,15 @@ export class KolAnalysisService {
   async getDedupReport(analysisId: string) {
     const analysis = await prisma.kolAnalysis.findUnique({
       where: { id: analysisId },
-      include: { campaigns: true },
+      // v1.17.69 — pull client.defaultCountry so we can country-scope
+      // the HCP query below. Analysis lives under a Client which has
+      // one country regime; every HCP in a well-formed analysis
+      // shares it. Filter defensively at read time so cross-country
+      // drift can't leak into the dedup report.
+      include: { campaigns: true, client: { select: { defaultCountry: true } } },
     });
     if (!analysis) throw new Error('Analysis not found');
+    const country = analysis.client?.defaultCountry === 'CA' ? 'CA' : 'US';
 
     const includedCampaignIds = analysis.campaigns
       .filter((c) => c.included)
@@ -458,8 +464,8 @@ export class KolAnalysisService {
     ];
     const [hcps, campaigns] = await Promise.all([
       prisma.hcp.findMany({
-        where: { id: { in: hcpIds } },
-        select: { id: true, firstName: true, lastName: true, npi: true },
+        where: { id: { in: hcpIds }, country },
+        select: { id: true, firstName: true, lastName: true, npi: true, nationalIdType: true },
       }),
       prisma.campaign.findMany({
         where: { id: { in: campaignIds } },
@@ -501,9 +507,12 @@ export class KolAnalysisService {
   async explainHcp(analysisId: string, hcpId: string) {
     const analysis = await prisma.kolAnalysis.findUnique({
       where: { id: analysisId },
-      include: { campaigns: true },
+      // v1.17.69 — country regime pulled from the analysis's client
+      // so the HCP lookup below rejects cross-country deep-links.
+      include: { campaigns: true, client: { select: { defaultCountry: true } } },
     });
     if (!analysis) throw new Error('Analysis not found');
+    const country = analysis.client?.defaultCountry === 'CA' ? 'CA' : 'US';
 
     const includedCampaignIds = analysis.campaigns
       .filter((c) => c.included)
@@ -522,8 +531,16 @@ export class KolAnalysisService {
     const row = scoreRows.find((r) => r.hcpId === hcpId);
     const hcp = await prisma.hcp.findUnique({
       where: { id: hcpId },
-      select: { id: true, firstName: true, lastName: true, npi: true },
+      select: { id: true, firstName: true, lastName: true, npi: true, nationalIdType: true, country: true },
     });
+    // v1.17.69 — reject cross-country lookup as HCP-not-found.
+    if (hcp && hcp.country !== country) {
+      return {
+        found: false as const,
+        reason: 'HCP is not in this analysis\'s country regime',
+        hcp: null,
+      };
+    }
     if (!row) {
       return {
         found: false as const,

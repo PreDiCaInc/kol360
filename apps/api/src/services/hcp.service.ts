@@ -2,7 +2,23 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
-import { CreateHcpInput, UpdateHcpInput, normalizeHcpSpecialty } from '@kol360/shared';
+import { CreateHcpInput, UpdateHcpInput, normalizeHcpSpecialty, normalizeMinc } from '@kol360/shared';
+
+// v1.17.69 — shared identifier normalizer used by the aux CSV parsers
+// (aliases, segment-scores) so a hyphenated/lowercase MINC in the CSV
+// column matches the canonical CAMD######## stored on Hcp.npi.
+// Also uppercases MINC inputs — case-sensitivity would otherwise cause
+// lookup misses without any user-facing error.
+function normalizeIdentifierForLookup(raw: string): string {
+  const trimmed = raw.trim();
+  const upper = trimmed.toUpperCase();
+  // MINC-shaped (starts with CA/MD when stripped of separators)
+  if (/[A-Z]/.test(upper)) {
+    const normalized = normalizeMinc(upper);
+    if (normalized) return normalized;
+  }
+  return trimmed;
+}
 import { resolveUserIdForAudit } from '../lib/audit';
 
 // v1.17.2: the local normalizeSpecialty() that used to live here mapped CSV
@@ -926,7 +942,9 @@ export class HcpService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        const npi = String(row['NPI'] || row['npi'] || '').trim();
+        const npi = normalizeIdentifierForLookup(
+          String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || ''),
+        );
         const alias = String(row['Alias'] || row['alias'] || '').trim();
 
         if (!alias) {
@@ -1083,11 +1101,16 @@ export class HcpService {
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        // Extract NPI first for error reporting
-        const rawNpi = String(row['NPI'] || row['npi'] || '').trim();
+        // Extract identifier first for error reporting. Accept both NPI and
+        // MINC column headers so CA templates work; validation accepts either
+        // 10-digit NPI or 12-char CAMD######## MINC. Normalize MINC to
+        // canonical uppercase / no-separator form so lookup matches stored.
+        const rawNpi = normalizeIdentifierForLookup(
+          String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || ''),
+        );
         try {
-          if (!/^\d{10}$/.test(rawNpi)) {
-            throw new Error('Invalid NPI format');
+          if (!/^\d{10}$/.test(rawNpi) && !/^CAMD\d{8}$/.test(rawNpi)) {
+            throw new Error('Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)');
           }
 
           const scoreData: Record<string, number> = {};

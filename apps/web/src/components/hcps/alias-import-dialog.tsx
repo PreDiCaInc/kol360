@@ -25,6 +25,14 @@ export function AliasImportDialog({ open, onOpenChange }: Props) {
     skipped: number;
     errors: { row: number; error: string }[];
   } | null>(null);
+  // Template country: switches identifier column header (NPI vs MINC).
+  // Backend accepts both — this only affects the informational text.
+  const [templateCountry, setTemplateCountry] = useState<'US' | 'CA'>('US');
+  const idColumnName = templateCountry === 'CA' ? 'MINC' : 'NPI';
+  const idColumnDescr = templateCountry === 'CA'
+    ? 'MINC (CAMD########) - must match an existing HCP'
+    : 'NPI (10 digits) - must match an existing HCP';
+  const sampleId = templateCountry === 'CA' ? 'CAMD12345678' : '1234567890';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importAliases = useImportHcpAliases();
 
@@ -63,6 +71,7 @@ export function AliasImportDialog({ open, onOpenChange }: Props) {
   const handleClose = () => {
     setSelectedFile(null);
     setResult(null);
+    setTemplateCountry('US');
     onOpenChange(false);
   };
 
@@ -72,7 +81,7 @@ export function AliasImportDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Import HCP Aliases</DialogTitle>
           <DialogDescription>
-            Upload an Excel file with NPI and alias pairs. Duplicate aliases will be skipped.
+            Upload an Excel file with {idColumnName} and alias pairs. Duplicate aliases will be skipped.
           </DialogDescription>
         </DialogHeader>
 
@@ -115,14 +124,32 @@ export function AliasImportDialog({ open, onOpenChange }: Props) {
 
             {/* Template Info */}
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
-              <p className="font-medium mb-2">Required columns:</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-medium">Required columns:</p>
+                <div className="inline-flex rounded-md border overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setTemplateCountry('US')}
+                    className={`px-2 py-1 text-xs ${templateCountry === 'US' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                  >
+                    US (NPI)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTemplateCountry('CA')}
+                    className={`px-2 py-1 text-xs border-l ${templateCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                  >
+                    CA (MINC)
+                  </button>
+                </div>
+              </div>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li>NPI (10 digits) - must match an existing HCP</li>
+                <li>{idColumnDescr}</li>
                 <li>Alias - the alternative name</li>
               </ul>
               <p className="mt-3 text-xs text-muted-foreground">
-                Example: A row with NPI &quot;1234567890&quot; and Alias &quot;Dr. John Smith&quot;
-                will add that alias to the HCP with the matching NPI.
+                Example: A row with {idColumnName} &quot;{sampleId}&quot; and Alias &quot;Dr. John Smith&quot;
+                will add that alias to the HCP with the matching {idColumnName}.
               </p>
             </div>
 

@@ -98,6 +98,7 @@ export interface SurveyStatusItem {
   campaignHcpId: string;
   hcpId: string;
   npi: string | null;
+  nationalIdType?: 'NPI' | 'MINC' | null;
   firstName: string;
   lastName: string;
   email: string | null;

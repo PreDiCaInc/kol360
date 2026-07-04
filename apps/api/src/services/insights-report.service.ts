@@ -166,6 +166,29 @@ export class InsightsReportService {
     });
   }
 
+  /**
+   * v1.17.69 — resolve the country regime for a client. Threaded
+   * into every hcp-touching Insights query so a Sun Pharma US
+   * dashboard never returns CA HCPs (and vice versa). Defaults to
+   * 'US' when the row is missing or the field is unset — protects
+   * existing US-only clients from any behavior change.
+   *
+   * Callers cache the result per-call rather than re-querying — the
+   * client's defaultCountry doesn't change mid-request.
+   *
+   * Ticket: docs/findings/canada-hcp-support-lite-plan-2026-06-25.md
+   * (Phase 2 — the country threading Phase 1 deferred.)
+   */
+  private async resolveClientCountry(clientId: string | undefined): Promise<'US' | 'CA'> {
+    if (!clientId) return 'US';
+    const client = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: { defaultCountry: true },
+    });
+    const country = client?.defaultCountry;
+    return country === 'CA' ? 'CA' : 'US';
+  }
+
   /** Analysis (survey/composite/per-type) scores keyed by hcpId. */
   private async loadAnalysisScores(
     analysisId: string
@@ -643,6 +666,14 @@ export class InsightsReportService {
       const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
       if (!analysis) return emptyPage;
 
+      // v1.17.69 — country regime for this client. Threaded into
+      // every HCP query below so a US-scoped dashboard can't return
+      // CA HCPs (and vice versa). Defensive read-time filter — the
+      // KolAnalysis is client-scoped but the underlying score rows
+      // reference hcpId without country, so cross-country HCPs
+      // that somehow ended up in the analysis get filtered here.
+      const country = await this.resolveClientCountry(clientId);
+
       // Analysis defines the HCP set + survey/composite; objective scores
       // are joined live from HcpDiseaseAreaScore. With two tables we can't
       // do mixed where/orderBy in one query — the analysis HCP set is
@@ -657,7 +688,7 @@ export class InsightsReportService {
         // to the 7 actually consumed downstream. Specialties relation kept
         // for the primary-specialty join.
         prisma.hcp.findMany({
-          where: { id: { in: hcpIds } },
+          where: { id: { in: hcpIds }, country },
           select: {
             id: true,
             firstName: true,
@@ -666,6 +697,7 @@ export class InsightsReportService {
             city: true,
             state: true,
             npi: true,
+            nationalIdType: true,
             specialties: {
               where: { isPrimary: true },
               include: { specialty: true },
@@ -877,8 +909,14 @@ export class InsightsReportService {
 
     if (ranked.length === 0) return empty;
 
+    // v1.17.69 — country scope for this client. Threaded into the
+    // Leader Rankings HCP query so a US client can never surface a
+    // CA HCP in their leader tables (and vice versa).
+    const country = await this.resolveClientCountry(clientId);
+
     const hcpWhere: Record<string, unknown> = {
       id: { in: ranked.map((r) => r.hcpId) },
+      country,
     };
     if (specialties && specialties.length > 0) hcpWhere.specialty = { in: specialties };
     else if (specialty) hcpWhere.specialty = specialty;
@@ -887,6 +925,7 @@ export class InsightsReportService {
 
     // Perf pass #6 (Leader Rankings): narrow to the 6 fields consumed below.
     // v1.17.32: also npi (surfaced for the full-list export).
+    // v1.17.69 — also nationalIdType so the FE can render MINC vs NPI.
     const hcps = await prisma.hcp.findMany({
       where: hcpWhere,
       select: {
@@ -897,6 +936,7 @@ export class InsightsReportService {
         city: true,
         state: true,
         npi: true,
+        nationalIdType: true,
         specialties: {
           where: { isPrimary: true },
           include: { specialty: true },
@@ -971,6 +1011,14 @@ export class InsightsReportService {
     const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
     if (!analysis) return null;
 
+    // v1.17.69 — country regime for this client. `findUnique` by id
+    // isn't country-scoped by DB but we defensively return null when
+    // the HCP is in the wrong country for this client's view — same
+    // effect as "HCP not found" from the caller's perspective. Blocks
+    // cross-country KOL Profile drill-down (deep-linked URL from
+    // another tenant with the same HCP id).
+    const country = await this.resolveClientCountry(clientId);
+
     // Get HCP + live objective scores (objective may be absent for a
     // survey-only KOL — handled as null below).
     const hcp = await prisma.hcp.findUnique({
@@ -988,6 +1036,7 @@ export class InsightsReportService {
       },
     });
     if (!hcp) return null;
+    if (hcp.country !== country) return null;
 
     // Survey/composite/per-type come from the analysis. If the HCP isn't in
     // the analysis, there's no profile to show.
@@ -1262,11 +1311,15 @@ export class InsightsReportService {
     // + filter inside the loop.
     const influencerTypeMap = await this.loadManualInfluencerTypes(baseHcpIds, diseaseAreaId);
 
+    // v1.17.69 — country scope for this client.
+    const country = await this.resolveClientCountry(clientId);
+
     // v1.17.33: dual-shape where-clause (mirrors getLeaderRankings:784-790).
     // Plural arrays from the frontend get the `{ in: [...] }` shape;
     // singular legacy params fall through to equality.
     const hcpWhere: Record<string, unknown> = {
       id: { in: baseHcpIds },
+      country,
     };
     if (specialties && specialties.length > 0) hcpWhere.specialty = { in: specialties };
     else if (specialty) hcpWhere.specialty = specialty;
@@ -1274,6 +1327,7 @@ export class InsightsReportService {
     else if (state) hcpWhere.state = state;
 
     // Perf pass #6 (Sociometric Summary): narrow to the 6 fields consumed below.
+    // v1.17.69 — also nationalIdType for FE identifier display.
     const hcps = await prisma.hcp.findMany({
       where: hcpWhere,
       select: {
@@ -1284,6 +1338,7 @@ export class InsightsReportService {
         city: true,
         state: true,
         npi: true, // v1.17.32: surfaced for the full-list export
+        nationalIdType: true,
         specialties: {
           where: { isPrimary: true },
           include: { specialty: true },
@@ -2893,7 +2948,10 @@ export class InsightsReportService {
 
       // Final: KOL-side categorical (specialty/state) + name/NPI
       // search, applied via a SQL COUNT (cheapest).
-      const hcpWhere: Record<string, unknown> = { id: { in: hcpIds } };
+      // v1.17.69 — country-scoped so a US client's live-count widget
+      // never counts CA HCPs into the "N kols match" total.
+      const country = await this.resolveClientCountry(clientId);
+      const hcpWhere: Record<string, unknown> = { id: { in: hcpIds }, country };
       if (filters.specialties && filters.specialties.length > 0) {
         hcpWhere.specialty = { in: filters.specialties };
       } else if (filters.specialty) {
