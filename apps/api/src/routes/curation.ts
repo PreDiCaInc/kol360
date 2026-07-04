@@ -33,7 +33,15 @@ export const curationRoutes: FastifyPluginAsync = async (fastify) => {
       if (body.npi) {
         const existing = await prisma.hcp.findUnique({
           where: { npi: body.npi },
-          select: { id: true, beId: true, firstName: true, lastName: true, createdAt: true },
+          select: {
+            id: true,
+            beId: true,
+            firstName: true,
+            lastName: true,
+            createdAt: true,
+            country: true,
+            nationalIdType: true,
+          },
         });
         if (existing) {
           const nameMatches =
@@ -67,6 +75,12 @@ export const curationRoutes: FastifyPluginAsync = async (fastify) => {
             id: existing.id,
             createdAt: existing.createdAt.toISOString(),
             wasExisting: true,
+            // Echo persisted values, not request values — dedup path
+            // returns the STORED row's country, which may differ from
+            // whatever the caller sent this time (rare but possible if
+            // an earlier mint used different values).
+            country: existing.country as 'US' | 'CA',
+            nationalIdType: existing.nationalIdType as 'NPI' | 'MINC',
           };
           return reply.status(201).send(resp);
         }
@@ -99,7 +113,7 @@ export const curationRoutes: FastifyPluginAsync = async (fastify) => {
           discoveredFrom: body.discoveredFrom,
           createdBy: m2mClientId,
         },
-        select: { id: true, beId: true, createdAt: true },
+        select: { id: true, beId: true, createdAt: true, country: true, nationalIdType: true },
       });
 
       await createAuditLog(m2mClientId, {
@@ -125,6 +139,8 @@ export const curationRoutes: FastifyPluginAsync = async (fastify) => {
         id: created.id,
         createdAt: created.createdAt.toISOString(),
         wasExisting: false,
+        country: created.country as 'US' | 'CA',
+        nationalIdType: created.nationalIdType as 'NPI' | 'MINC',
       };
       return reply.status(201).send(resp);
     }

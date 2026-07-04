@@ -1,4 +1,8 @@
-# Canada HCP Support — Curation-svc Integration Spec
+# Canada HCP Support — Curation-svc Integration Spec (v1 — SUPERSEDED)
+
+> ⚠️ **This spec has been superseded by [v2](curation-svc-canada-integration-spec-v2.md)** after curation-svc team review ([review](curation-svc-canada-integration-spec-v1-review.md)). v2 adds server-side `country`/`nationalIdType` pairing enforcement, response echo of persisted fields, and clarifies the always-send expectation, cross-licensing path, backfill identification method, correction flow, and rate-limit posture.
+>
+> Read v2 instead. This file is kept only as history.
 
 **Status:** Ready for curation-svc integration.
 **kol360 side:** shipped v1.17.69 (prod-rel-4.1.49), backward compatible.
