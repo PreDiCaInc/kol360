@@ -44,4 +44,30 @@ Curation-svc has agreed to ping kol360 when they observe the first cross-license
 ## What we're NOT changing
 
 - `Hcp.alternateIds` schema field stays. It was added in Phase 1 with exactly this deferred rollout in mind.
-- `discoveredFrom.notes` remains freeform. No structured-field promotion until Path A flips.
+- `discoveredFrom.notes` remains freeform on the wire. No schema promotion until Path A flips.
+
+## Canonical `discoveredFrom.notes` format for cross-licensed HCPs
+
+**Accepted 2026-07-04** in reply to the curation-svc team's ACK ([`canada-cross-licensing-path-b-decision-2026-07-04-ack.md`](canada-cross-licensing-path-b-decision-2026-07-04-ack.md) §4). Curation-svc's UI auto-prepends the block so reviewer overhead is zero; kol360 pattern-matches at Path A flip-day.
+
+Structured prefix + prose, single-alt only (multi-alt is out of scope until we hit it):
+
+```
+alt_id_type: NPI
+alt_id: 1234567890
+
+<reviewer prose about cross-licensing context>
+```
+
+- `alt_id_type` ∈ `{NPI, MINC}` — matches the primary `nationalIdType` value domain.
+- `alt_id` — value in canonical form (10-digit NPI or `CAMD########` MINC).
+- Blank line separates the structured block from freeform prose.
+- Prose is optional but recommended for reviewer context.
+
+Backfill regex at Path A flip-day:
+
+```
+/alt_id_type:\s*(NPI|MINC)\s*\nalt_id:\s*(\S+)/
+```
+
+Records without this prefix (pre-2026-07-04 legacy, if any accumulate) fall through to NLP parsing — expected to be zero at flip-day given the ADR's "ping on first observation" trigger.
