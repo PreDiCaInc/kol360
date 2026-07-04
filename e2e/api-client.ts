@@ -577,13 +577,14 @@ export class ApiClient {
 
   // ==================== HCPs ====================
 
-  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; diseaseAreaIds?: string[]; optOutStatus?: 'any' | 'global' | 'campaign' | 'none'; page?: number; limit?: number; sortBy?: 'name' | 'npi' | 'state' | 'specialty'; sortOrder?: 'asc' | 'desc' }) {
+  async listHcps(params?: { query?: string; search?: string; specialty?: string; state?: string; country?: 'US' | 'CA'; diseaseAreaIds?: string[]; optOutStatus?: 'any' | 'global' | 'campaign' | 'none'; page?: number; limit?: number; sortBy?: 'name' | 'npi' | 'state' | 'specialty'; sortOrder?: 'asc' | 'desc' }) {
     const queryParams = new URLSearchParams();
     // Support both 'query' and 'search' as aliases for the search parameter
     const searchTerm = params?.query || params?.search;
     if (searchTerm) queryParams.set('query', searchTerm);
     if (params?.specialty) queryParams.set('specialty', params.specialty);
     if (params?.state) queryParams.set('state', params.state);
+    if (params?.country) queryParams.set('country', params.country);
     // Sub-specialty multi-select filter (joins HcpDiseaseArea). Backend accepts
     // a comma-delimited string or repeated params; comma is simpler.
     if (params?.diseaseAreaIds && params.diseaseAreaIds.length > 0) {
@@ -598,6 +599,7 @@ export class ApiClient {
     const queryStr = queryParams.toString() ? `?${queryParams.toString()}` : '';
     return this.request<{ items: Hcp[]; pagination: Pagination }>('GET', `/api/v1/hcps${queryStr}`);
   }
+
 
   async getHcp(id: string) {
     return this.request<Hcp>('GET', `/api/v1/hcps/${id}`);

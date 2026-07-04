@@ -791,10 +791,19 @@ export class NominationService {
     // create payload and reconcile via setHcpDiseaseAreas after creation.
     const beId = await hcpServiceInstance.generateBeId();
     const { diseaseAreaIds, ...hcpCreateData } = hcpData;
+    // v1.17.70 — infer country/nationalIdType from the identifier shape
+    // when a value is present. Prevents a MINC nominated HCP from
+    // landing with country='US' (schema default) which would silently
+    // misclassify them for Insights filters. `createNominatedHcpSchema`
+    // today accepts NPI-only; leaving room for the future when CA
+    // nominations flip on. NPI/no-npi rows keep the US default.
+    const isMinc = !!hcpData.npi && /^CAMD\d{8}$/i.test(hcpData.npi);
     const hcp = await prisma.hcp.create({
       data: {
         ...hcpCreateData,
-        npi: hcpData.npi || null,
+        npi: hcpData.npi ? (isMinc ? hcpData.npi.toUpperCase() : hcpData.npi) : null,
+        country: isMinc ? 'CA' : 'US',
+        nationalIdType: isMinc ? 'MINC' : 'NPI',
         // v1.17.20: Hcp.email is now NOT NULL with a placeholder default.
         // The nomination-create-HCP path may not have a real email; fall
         // back to the placeholder so the row inserts cleanly.

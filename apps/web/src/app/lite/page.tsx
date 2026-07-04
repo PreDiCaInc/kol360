@@ -35,6 +35,7 @@ import {
   useDiseaseAreaStats,
   useLiteTopKols,
 } from '@/hooks/use-lite-client';
+import { inferHcpIdLabel } from '@kol360/shared';
 import {
   BarChart,
   Bar,
@@ -338,7 +339,9 @@ export default function LiteDashboardPage() {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Name</TableHead>
-                            <TableHead>NPI</TableHead>
+                            <TableHead>
+                              {inferHcpIdLabel((hcpScoresData?.data ?? []).map((d) => d.hcp))}
+                            </TableHead>
                             <TableHead>Specialty</TableHead>
                             <TableHead>State</TableHead>
                             <TableHead className="text-right">Composite</TableHead>

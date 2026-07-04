@@ -837,6 +837,7 @@ export class ExportService {
           hcp: {
             select: {
               npi: true,
+              nationalIdType: true,
               firstName: true,
               lastName: true,
               email: true,

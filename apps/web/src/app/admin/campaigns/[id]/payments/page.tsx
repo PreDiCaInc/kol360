@@ -12,6 +12,7 @@ import {
 } from '@/hooks/use-payments';
 import { useCampaign } from '@/hooks/use-campaigns';
 import { RequireAuth } from '@/components/auth/require-auth';
+import { inferHcpIdLabel } from '@kol360/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -389,7 +390,9 @@ export default function CampaignPaymentsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>HCP</TableHead>
-                      <TableHead>NPI</TableHead>
+                      <TableHead>
+                        {inferHcpIdLabel((payments?.items ?? []).map((p) => p.hcp))}
+                      </TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Completed</TableHead>
