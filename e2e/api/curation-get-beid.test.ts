@@ -43,6 +43,13 @@ function freshNpi(): string {
   return `9${suffix}`;
 }
 
+// v1.17.71 — 12-char CAMD######## MINC. Serial derived from epoch so
+// re-runs land on unique values.
+function freshMinc(): string {
+  const suffix = String(Date.now() % 100_000_000).padStart(8, '0');
+  return `CAMD${suffix}`;
+}
+
 async function mintM2MToken(): Promise<string | null> {
   if (!M2M_CLIENT_ID || !M2M_CLIENT_SECRET || !COGNITO_DOMAIN) return null;
   const creds = Buffer.from(`${M2M_CLIENT_ID}:${M2M_CLIENT_SECRET}`).toString('base64');
@@ -241,6 +248,86 @@ describe('POST /api/v1/hcps/get-beid — curation M2M integration', () => {
     });
     expect(status).toBe(400);
   });
+
+  // v1.17.71 — curation-svc team review sign-off #1: pairing enforcement.
+  it.skipIf(!m2mToken)(
+    'CA path — POST with country=CA + nationalIdType=MINC + valid MINC mints correctly',
+    async () => {
+      if (!m2mToken) return;
+      const minc = freshMinc();
+      const { status, data } = await postGetBeId(m2mToken, {
+        firstName: 'François',
+        lastName: 'Tremblay',
+        specialty: 'Ophthalmology',
+        state: 'QC',
+        npi: minc,
+        country: 'CA',
+        nationalIdType: 'MINC',
+        discoveredFrom: {
+          source_url: 'https://example.ca/f',
+          scraper_run_id: `ca-happy-${Date.now()}`,
+          ai_verification_snapshot_url: 's3://x/f.html',
+          captured_at: new Date().toISOString(),
+        },
+      });
+      expect(status).toBe(201);
+      // Response echo (added v1.17.71 per review §3.2)
+      expect(data).toMatchObject({ country: 'CA', nationalIdType: 'MINC', wasExisting: false });
+      mintedHcpIds.push(data?.id as string);
+
+      if (prisma) {
+        const row = await prisma.hcp.findUnique({ where: { id: data?.id as string } });
+        expect(row?.npi).toBe(minc);
+        expect(row?.country).toBe('CA');
+        expect(row?.nationalIdType).toBe('MINC');
+      }
+    },
+    20_000,
+  );
+
+  it.skipIf(!m2mToken)(
+    'pairing enforced — POST with country=US + nationalIdType=MINC is rejected 400',
+    async () => {
+      if (!m2mToken) return;
+      const { status } = await postGetBeId(m2mToken, {
+        firstName: 'Wrong',
+        lastName: 'Pairing',
+        specialty: 'Ophthalmology',
+        npi: freshMinc(),
+        country: 'US',
+        nationalIdType: 'MINC',
+        discoveredFrom: {
+          source_url: 'https://example.com/w',
+          scraper_run_id: `pair-us-minc-${Date.now()}`,
+          ai_verification_snapshot_url: 's3://x/w.html',
+          captured_at: new Date().toISOString(),
+        },
+      });
+      expect(status).toBe(400);
+    },
+  );
+
+  it.skipIf(!m2mToken)(
+    'pairing enforced — POST with country=CA + nationalIdType=NPI is rejected 400',
+    async () => {
+      if (!m2mToken) return;
+      const { status } = await postGetBeId(m2mToken, {
+        firstName: 'Wrong',
+        lastName: 'Pairing2',
+        specialty: 'Ophthalmology',
+        npi: freshNpi(),
+        country: 'CA',
+        nationalIdType: 'NPI',
+        discoveredFrom: {
+          source_url: 'https://example.com/w2',
+          scraper_run_id: `pair-ca-npi-${Date.now()}`,
+          ai_verification_snapshot_url: 's3://x/w2.html',
+          captured_at: new Date().toISOString(),
+        },
+      });
+      expect(status).toBe(400);
+    },
+  );
 });
 
 // Suppress unused-import warning when the suite skips end-to-end.

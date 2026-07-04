@@ -49,6 +49,24 @@ export const getBeIdRequestSchema = z
     discoveredFrom: discoveredFromSchema,
   })
   .superRefine((data, ctx) => {
+    // v1.17.71 — enforce country/nationalIdType pairing at the schema
+    // level. Requested by the curation-svc team review of
+    // curation-svc-canada-integration-spec-v1.md §2.1: unpaired combos
+    // ('US' + 'MINC', 'CA' + 'NPI') are semantically wrong and were
+    // previously accepted with defaults applied per-field independently.
+    // Server-side is the right home for the invariant; belt-and-braces
+    // with curation-svc's client-side check.
+    const isMincCountry = data.country === 'CA';
+    const isMincType = data.nationalIdType === 'MINC';
+    if (isMincCountry !== isMincType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['nationalIdType'],
+        message:
+          "country and nationalIdType must be paired: 'CA' → 'MINC', 'US' → 'NPI'",
+      });
+      return; // don't spam a second error about identifier shape
+    }
     if (!data.npi) return;
     const schema = data.nationalIdType === 'MINC' ? mincSchema : npiSchema;
     const check = schema.safeParse(data.npi);
@@ -69,6 +87,12 @@ export const getBeIdResponseSchema = z.object({
   //   true  → NPI matched an existing Hcp; we returned that row's beId.
   //   false → fresh mint (either with NPI provided + new, or no NPI at all).
   wasExisting: z.boolean(),
+  // v1.17.71 — echo persisted country + nationalIdType so the client can
+  // confirm what actually got stored without a follow-up GET. Requested
+  // in curation-svc review §3.2. Additive fields — existing curation
+  // clients that ignore them keep working.
+  country: countrySchema,
+  nationalIdType: nationalIdTypeSchema,
 });
 
 export type GetBeIdRequest = z.infer<typeof getBeIdRequestSchema>;
