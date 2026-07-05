@@ -11,8 +11,14 @@
  * lives in source control + ships with the release. Screenshots go
  * under apps/web/public/help/insights-guide/.
  *
+ * v1.17.72 — extended with `tour?: TourStep[]` for the interactive
+ * walkthrough layer. See docs/findings/insights-use-case-tours-
+ * interactive-walkthroughs-2026-07-04.md.
+ *
  * Ticket: docs/findings/insights-use-case-guide-presentation-2026-06-24.md
  */
+
+import type { TourStep, TourSummary } from '@kol360/shared';
 
 export interface GuideStep {
   /** Optional step number. Renders as "Step N." if set. */
@@ -37,6 +43,21 @@ export interface CaseStudy {
   scenario: string;
   /** Step-by-step body. */
   steps: GuideStep[];
+  /**
+   * v1.17.72 — Optional interactive tour steps. When present, the
+   * guide drawer renders a "▶ Take the tour" button alongside "Read
+   * guide". Absence → tour button hidden, static screenshots only.
+   *
+   * A checkpoint tooltip is auto-inserted at render time between the
+   * last 'intro' and first 'deep-dive' step.
+   */
+  tour?: TourStep[];
+  /**
+   * v1.17.72 — Optional "Show me the summary" text digest surfaced in
+   * Phase 3. Bullets recap the case-study takeaways without requiring
+   * the user to complete the tour or read the full guide.
+   */
+  tourSummary?: TourSummary;
 }
 
 export interface PracticeScenario {
@@ -94,6 +115,100 @@ export const CASE_STUDIES: CaseStudy[] = [
         imageAlt: 'Nominations table within the KOL Profile drill-down.',
       },
     ],
+    // v1.17.72 — pilot tour for Case Study 1. Quick intro = 3 steps
+    // (basics: Benchmarking + State filter + top-3 leaders); Deep dive
+    // = 4 steps (Respondent Role, KOL Profile drill via drawer, then
+    // Nominators table + demographics on the opened profile panel).
+    //
+    // Architecture note: KOL Profile is NOT a separate route — it's a
+    // `selectedKolId` state change inside kol-explorer.tsx that opens
+    // an inline profile panel. The tour spec originally described this
+    // as a route change; reality is a state/drawer change. Same
+    // waitForElement machinery still applies (profile panel loads
+    // data async, so nominators-table renders after the click), just
+    // with `target-click` advance instead of `route-change`.
+    tour: [
+      // ── Quick intro ───────────────────────────────────────────────
+      {
+        target: 'tab-benchmarking',
+        segment: 'intro',
+        title: 'Open Benchmarking',
+        body: 'Benchmarking shows leaders across nomination categories. Click here to start.',
+        placement: 'bottom',
+        // Clicking the Benchmarking tab auto-advances the tour. Next
+        // button in the tooltip works as a manual override.
+        advanceOn: 'target-click',
+        highlight: 'pulse',
+      },
+      {
+        target: 'filter-state',
+        segment: 'intro',
+        requiredTab: 'dynamic-benchmarking',
+        title: 'Pick your states',
+        body: 'Open the State filter and select Florida, California, and New York.',
+        placement: 'bottom',
+        advanceOn: 'next-button',
+        highlight: 'pulse',
+      },
+      {
+        target: 'leader-table',
+        segment: 'intro',
+        requiredTab: 'dynamic-benchmarking',
+        title: 'Review the top leaders',
+        body: 'The top-ranked KOLs across each nomination category are your speaker shortlist candidates.',
+        placement: 'top',
+        advanceOn: 'next-button',
+        highlight: 'outline',
+      },
+      // ── Deep dive ─────────────────────────────────────────────────
+      {
+        target: 'filter-respondent-role',
+        segment: 'deep-dive',
+        requiredTab: 'dynamic-benchmarking',
+        title: 'Focus on Optometrists',
+        body: 'Since the target audience is optometrists, narrow the Respondent Role filter to Optometrist.',
+        placement: 'bottom',
+        advanceOn: 'next-button',
+        highlight: 'pulse',
+      },
+      {
+        target: 'kol-row-first',
+        segment: 'deep-dive',
+        requiredTab: 'dynamic-benchmarking',
+        title: 'Drill into a KOL',
+        body: 'Click any KOL name to open their profile panel. It loads async — the tour will wait.',
+        placement: 'right',
+        advanceOn: 'target-click',
+        highlight: 'pulse',
+      },
+      {
+        target: 'nominators-table',
+        segment: 'deep-dive',
+        title: 'Read the Nominations table',
+        body: 'These are the real doctors who nominated this KOL. Their practice settings and focus areas shape your invite list.',
+        placement: 'top',
+        advanceOn: 'next-button',
+        highlight: 'outline',
+      },
+      {
+        target: 'demographics-panel',
+        segment: 'deep-dive',
+        title: 'Understand the mix',
+        body: 'Scroll to see practice-setting, core-focus, and years-in-practice distributions. Ready to apply this to your own scenario?',
+        placement: 'top',
+        advanceOn: 'next-button',
+        highlight: 'none',
+      },
+    ],
+    tourSummary: {
+      bullets: [
+        'Open Benchmarking + filter State to FL / CA / NY for a shortlist.',
+        'Add Respondent Role = Optometry to tighten to your audience.',
+        'Drill into a KOL to see who nominated them + their demographic mix.',
+        'The Nominations table doubles as an invite-list source.',
+      ],
+      readGuideAnchor: 'case-1-fl-optometrist-dinner',
+    },
   },
   {
     slug: 'case-2-seco-discussion',

@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { Filter } from 'lucide-react';
+import { tourAnchor } from '@kol360/shared';
 
 /**
  * v1.17.5: shared respondent-filter shape — must mirror the backend
@@ -100,7 +101,7 @@ export function RespondentFiltersBar({
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-        <div>
+        <div {...tourAnchor('filter-respondent-role')}>
           <Label className="text-xs text-muted-foreground mb-1 block">Respondent Role</Label>
           <MultiSelect
             options={roleOptions}
@@ -118,7 +119,7 @@ export function RespondentFiltersBar({
             placeholder="All Focus Areas"
           />
         </div>
-        <div>
+        <div {...tourAnchor('filter-state')}>
           <Label className="text-xs text-muted-foreground mb-1 block">State of Practice</Label>
           <MultiSelect
             options={stateOptions}

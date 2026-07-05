@@ -1,0 +1,183 @@
+/**
+ * Tour visual overrides — layered on top of shepherd.js's base CSS.
+ * Themed to match the KOL360 brand + shadcn look.
+ *
+ * Consumed via a side-effect import in the layout that mounts
+ * <TourProvider>. Small enough to inline; kept as a separate file
+ * so scope is grep-friendly.
+ */
+
+/* Modal overlay — dims the rest of the page + cuts a hole around the
+ * highlighted target. Shepherd renders this as an SVG. Its own CSS
+ * sets opacity:0.5 on the visible container which multiplies with our
+ * fill's alpha; force opacity:1 so the fill's alpha is what actually
+ * shows through. */
+.shepherd-modal-overlay-container.shepherd-modal-is-visible,
+.shepherd-modal-overlay-container {
+  fill: rgba(0, 0, 0, 0.75);
+  opacity: 1 !important;
+  transition: opacity 200ms ease-out;
+  /* Above app content but below the tour tooltip so buttons stay
+   * clickable. Shepherd's default is fine but we lock it explicitly
+   * so app-side sticky bars don't accidentally end up on top. */
+  z-index: 9998;
+}
+
+/* The path element does the actual drawing. Belt-and-suspenders. */
+.shepherd-modal-overlay-container path {
+  fill: rgba(0, 0, 0, 0.75);
+}
+
+/* Ensure the tooltip renders ABOVE the overlay. */
+.shepherd-element {
+  z-index: 9999 !important;
+}
+
+/* v1.17.72 — while a tour is running, hoist portal-rendered popovers
+ * (Radix Select / Popover / Dropdown / etc.) above the modal overlay
+ * so filter dropdowns opened during a tour step are visible +
+ * interactive. Without this, the options render at Radix's default
+ * z-index (50) which sits BELOW the shepherd modal (9998) and users
+ * see them dimmed / can't click. */
+body[data-tour-active="true"] [data-radix-popper-content-wrapper],
+body[data-tour-active="true"] [data-radix-select-viewport],
+body[data-tour-active="true"] [data-radix-dropdown-menu-content],
+body[data-tour-active="true"] [data-radix-popover-content],
+body[data-tour-active="true"] [data-radix-select-content],
+body[data-tour-active="true"] [data-radix-menu-content],
+body[data-tour-active="true"] [role="listbox"],
+body[data-tour-active="true"] [role="menu"] {
+  z-index: 10000 !important;
+}
+
+/* Base card styling — matches shadcn Card. */
+.kol360-tour-step {
+  --shepherd-bg: hsl(var(--background));
+  --shepherd-text-color: hsl(var(--foreground));
+  --shepherd-border-radius: 0.5rem;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 0.12);
+  font-family: inherit;
+}
+
+.kol360-tour-step .shepherd-header {
+  padding: 0.75rem 1rem 0.25rem;
+  background: transparent;
+  font-weight: 600;
+}
+
+.kol360-tour-step .shepherd-title {
+  color: hsl(var(--foreground));
+  font-size: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* v1.17.72 — small "Step N of M" tag above the title. Wizard-style
+ * progress cue so the user always knows where they are in the flow. */
+.kol360-tour-step-counter {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: hsl(var(--primary));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.kol360-tour-checkpoint-badge {
+  color: hsl(var(--primary));
+}
+
+.kol360-tour-step-title-text {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+
+.kol360-tour-step .shepherd-text {
+  padding: 0.5rem 1rem 0.75rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.kol360-tour-step .shepherd-footer {
+  padding: 0.5rem 1rem 1rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.kol360-tour-step .shepherd-button {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.kol360-tour-step .shepherd-button:hover:not(:disabled) {
+  background: hsl(var(--primary) / 0.9);
+}
+
+.kol360-tour-step .shepherd-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kol360-tour-step .shepherd-button.shepherd-button-secondary {
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+}
+
+.kol360-tour-step .shepherd-button.shepherd-button-secondary:hover:not(:disabled) {
+  background: hsl(var(--muted));
+}
+
+/* Checkpoint tooltip — same shape, subtle brand accent. */
+.kol360-tour-checkpoint {
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 8px 24px hsl(var(--primary) / 0.15);
+}
+
+/* Target highlights — applied DIRECTLY on the target element by
+ * TourProvider (`applyTargetHighlight` in beforeShowPromise). Base
+ * outline + optional pulse animation. Removed on step 'hide'. */
+.kol360-tour-highlight-pulse,
+.kol360-tour-highlight-outline {
+  outline: 3px solid hsl(var(--primary));
+  outline-offset: 4px;
+  border-radius: 0.375rem;
+  transition: outline-color 200ms ease-out;
+  position: relative;
+  z-index: 1;
+}
+
+.kol360-tour-highlight-pulse {
+  animation: kol360-tour-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes kol360-tour-pulse {
+  0%, 100% {
+    outline-color: hsl(var(--primary));
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4);
+  }
+  50% {
+    outline-color: hsl(var(--primary) / 0.6);
+    box-shadow: 0 0 0 10px hsl(var(--primary) / 0);
+  }
+}
+
+/* Respect the OS reduced-motion pref even if TourProvider forgot to
+ * pass the outline class — belt + suspenders. */
+@media (prefers-reduced-motion: reduce) {
+  .kol360-tour-highlight-pulse {
+    animation: none;
+    box-shadow: none;
+  }
+}

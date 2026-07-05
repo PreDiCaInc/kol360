@@ -75,7 +75,7 @@ import {
 import { useExcelExport } from '@/lib/excel-export';
 import { toTitleCase } from '@/lib/utils';
 import type { InsightsFilterInput, KolExplorerItem, KolExplorerResponse, NominationType } from '@kol360/shared';
-import { inferHcpIdLabel } from '@kol360/shared';
+import { inferHcpIdLabel, tourAnchor } from '@kol360/shared';
 import { apiClient } from '@/lib/api';
 import {
   ActiveFilter,
@@ -1079,7 +1079,7 @@ function ProfileView({
               small NPI text to the baseline of the hero h2.
               flex-wrap so long names with credentials still fit on
               narrow viewports. */}
-          <div className="flex items-baseline gap-3 flex-wrap">
+          <div className="flex items-baseline gap-3 flex-wrap" {...tourAnchor('kol-profile-header')}>
             <h2 className="text-4xl font-extrabold tracking-tight">{profile.name}</h2>
             {profile.npi && (
               <span className="text-sm font-mono text-muted-foreground tabular-nums">
@@ -1197,7 +1197,7 @@ function ProfileView({
 
           {/* Nominators Table */}
           {profile.nominators && profile.nominators.length > 0 && (
-            <Card>
+            <Card {...tourAnchor('nominators-table')}>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -1307,7 +1307,7 @@ function ProfileView({
           )}
 
           {/* Nominator Demographics Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" {...tourAnchor('demographics-panel')}>
             <Card className="border-t-4 border-t-violet-500 shadow-md rounded-xl">
               <CardHeader>
                 <CardTitle className="text-base font-bold">Nominations by Practice Setting</CardTitle>

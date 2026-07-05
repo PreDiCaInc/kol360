@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Users, UserCheck, MessageSquare, BookOpen } from 'lucide-react';
+import { ArrowLeft, Users, UserCheck, MessageSquare, BookOpen, Play, Check } from 'lucide-react';
 import { useSidebarContext } from '@/components/layout/sidebar-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,10 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useInsightsSummary, useDashboardDiseaseAreas } from '@/hooks/use-insights-report';
 import { useClients } from '@/hooks/use-clients';
 import { useAuth } from '@/lib/auth/auth-provider';
 import { useViewAs } from '@/lib/view-as-context';
+import { tourAnchor } from '@kol360/shared';
+import { useTourContext } from '@/components/tours/tour-context';
+import { CASE_STUDIES } from '@/content/insights-guide/guide-content';
 
 // Tab components
 import { IntroductionTab } from '@/components/insights/tabs/introduction-tab';
@@ -32,6 +43,76 @@ import {
 import { TabHelpPopover } from '@/components/insights/tab-help-popover';
 
 import '@/components/insights/print-styles.css';
+
+/**
+ * "How to..." dropdown — primary entry point for the interactive
+ * tour system. Lists every case study whose tour is authored (each
+ * launches the walkthrough on click) + a bottom link into the static
+ * documentation drawer.
+ *
+ * Split out as a sibling component so the tour context (which reads
+ * completion state from localStorage) mounts lazily — the dashboard
+ * shell doesn't pull the tour engine in until the user opens the
+ * menu.
+ */
+function HowToMenu({ onOpenGuide }: { onOpenGuide: () => void }) {
+  const { startTour, completionStore } = useTourContext();
+  const [completed, setCompleted] = useState<string[]>([]);
+
+  // Read + reactively refresh completion state so the ✓ appears the
+  // instant a tour finishes.
+  useEffect(() => {
+    void completionStore.getAllCompleted().then(setCompleted);
+  }, [completionStore]);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Play className="mr-2 h-4 w-4" />
+          How to…
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-72">
+        <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+          Interactive walkthroughs
+        </DropdownMenuLabel>
+        {CASE_STUDIES.map((cs) => {
+          const hasTour = (cs.tour?.length ?? 0) > 0;
+          const isDone = completed.includes(cs.slug);
+          return (
+            <DropdownMenuItem
+              key={cs.slug}
+              disabled={!hasTour}
+              onSelect={() => hasTour && startTour(cs.slug)}
+              className="flex flex-col items-start gap-0.5 py-2"
+            >
+              <div className="flex items-center gap-1.5 w-full">
+                <span className="font-medium truncate">{cs.title}</span>
+                {isDone && <Check className="h-3.5 w-3.5 text-green-600 shrink-0" aria-label="Tour completed" />}
+                {!hasTour && (
+                  <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">
+                    coming soon
+                  </span>
+                )}
+              </div>
+              {cs.scenario && (
+                <span className="text-xs text-muted-foreground line-clamp-2">
+                  {cs.scenario}
+                </span>
+              )}
+            </DropdownMenuItem>
+          );
+        })}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onOpenGuide}>
+          <BookOpen className="mr-2 h-4 w-4" />
+          Read the full documentation
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 interface InsightsDashboardProps {
   diseaseAreaId: string;
@@ -207,18 +288,12 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
             </Select>
           </div>
 
-          {/* v1.17.63 — Use Cases button opens the Insights guide
-              drawer. Sits at the right edge of the header, next to
-              the selectors, so it's discoverable but doesn't fight
-              the analytical chrome below. */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => insightsGuide.setOpen(true)}
-          >
-            <BookOpen className="mr-2 h-4 w-4" />
-            Use Cases
-          </Button>
+          {/* v1.17.72 — "How to..." dropdown: primary entry to the
+              interactive tours. Lists the 5 case studies (each launches
+              its walkthrough) with a bottom link that opens the full
+              static-screenshot documentation drawer. Replaces the old
+              "Use Cases" button (which opened the drawer directly). */}
+          <HowToMenu onOpenGuide={() => insightsGuide.setOpen(true)} />
         </div>
       </div>
 
@@ -292,20 +367,20 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-5 print:hidden h-12">
-          <TabsTrigger value="introduction">Introduction</TabsTrigger>
-          <TabsTrigger value="demographics">
+          <TabsTrigger value="introduction" {...tourAnchor('tab-introduction')}>Introduction</TabsTrigger>
+          <TabsTrigger value="demographics" {...tourAnchor('tab-demographics')}>
             Demographics
             <TabHelpPopover tab="Demographics" onOpenGuide={openGuideAt} />
           </TabsTrigger>
-          <TabsTrigger value="dynamic-benchmarking">
+          <TabsTrigger value="dynamic-benchmarking" {...tourAnchor('tab-benchmarking')}>
             Benchmarking
             <TabHelpPopover tab="Benchmarking" onOpenGuide={openGuideAt} />
           </TabsTrigger>
-          <TabsTrigger value="sociometric-leaders">
+          <TabsTrigger value="sociometric-leaders" {...tourAnchor('tab-sociometric-leaders')}>
             Sociometric Leaders
             <TabHelpPopover tab="Sociometric Leaders" onOpenGuide={openGuideAt} />
           </TabsTrigger>
-          <TabsTrigger value="total-weighted-score">
+          <TabsTrigger value="total-weighted-score" {...tourAnchor('tab-total-weighted-score')}>
             Total Weighted Score
             <TabHelpPopover tab="Total Weighted Score" onOpenGuide={openGuideAt} />
           </TabsTrigger>

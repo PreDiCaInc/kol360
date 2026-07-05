@@ -7,8 +7,17 @@
 // the dashboard header. The only difference between the two surfaces
 // is the wrapping chrome (header, close button, max-width) — the
 // content body is identical.
+//
+// v1.17.72 — Per-case-study "Take the tour" button + completion
+// checkmark. Button is opt-in per caseStudy.tour presence; checkmark
+// rendered when the slug is in the tour completion store. See
+// docs/findings/insights-use-case-tours-interactive-walkthroughs-2026-07-04.md
 
+import { useEffect, useState } from 'react';
+import { Check, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useTourContext } from '@/components/tours/tour-context';
 import {
   CASE_STUDIES,
   PRACTICE_SCENARIOS,
@@ -17,13 +26,32 @@ import {
 const ASSET_BASE = '/help/insights-guide';
 
 export function InsightsGuideContent() {
+  const { startTour, completionStore, isTourActive } = useTourContext();
+  const [completed, setCompleted] = useState<string[]>([]);
+
+  // Re-read the completion list whenever a tour starts/ends. isTourActive
+  // flips false when a tour completes, which is exactly when a fresh
+  // checkmark may need to show up.
+  useEffect(() => {
+    let cancelled = false;
+    void completionStore.getAllCompleted().then((slugs) => {
+      if (!cancelled) setCompleted(slugs);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [completionStore, isTourActive]);
+
   return (
     <article className="prose-base max-w-none space-y-12">
       <Intro />
 
       <TableOfContents />
 
-      <CaseStudiesSection />
+      <CaseStudiesSection
+        completed={completed}
+        onStartTour={startTour}
+      />
 
       <PracticeSection />
     </article>
@@ -74,11 +102,23 @@ function TableOfContents() {
   );
 }
 
-function CaseStudiesSection() {
+function CaseStudiesSection({
+  completed,
+  onStartTour,
+}: {
+  completed: string[];
+  onStartTour: (slug: string) => void;
+}) {
   return (
     <section className="space-y-12">
       {CASE_STUDIES.map((c, i) => (
-        <CaseStudyBlock key={c.slug} index={i + 1} caseStudy={c} />
+        <CaseStudyBlock
+          key={c.slug}
+          index={i + 1}
+          caseStudy={c}
+          isCompleted={completed.includes(c.slug)}
+          onStartTour={onStartTour}
+        />
       ))}
     </section>
   );
@@ -87,10 +127,15 @@ function CaseStudiesSection() {
 function CaseStudyBlock({
   index,
   caseStudy,
+  isCompleted,
+  onStartTour,
 }: {
   index: number;
   caseStudy: (typeof CASE_STUDIES)[number];
+  isCompleted: boolean;
+  onStartTour: (slug: string) => void;
 }) {
+  const hasTour = Boolean(caseStudy.tour && caseStudy.tour.length > 0);
   return (
     <section
       id={caseStudy.slug}
@@ -100,9 +145,33 @@ function CaseStudyBlock({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Case Study {index}
         </p>
-        <h3 className="text-xl font-semibold tracking-tight">
-          {caseStudy.title}
-        </h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-xl font-semibold tracking-tight">
+            {caseStudy.title}
+          </h3>
+          {isCompleted && (
+            <span
+              className="inline-flex items-center gap-1 text-xs font-medium text-green-600"
+              aria-label="Tour completed"
+              title="You've completed this tour"
+            >
+              <Check className="h-4 w-4" aria-hidden="true" />
+              <span className="sr-only">Tour completed</span>
+            </span>
+          )}
+        </div>
+        {hasTour && (
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onStartTour(caseStudy.slug)}
+            >
+              <Play className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              Take the tour
+            </Button>
+          </div>
+        )}
         <div className="flex flex-wrap gap-1.5">
           {caseStudy.tabs.map((t) => (
             <Badge key={t} variant="outline" className="text-xs">
