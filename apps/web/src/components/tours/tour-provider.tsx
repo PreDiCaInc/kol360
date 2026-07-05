@@ -367,15 +367,75 @@ export function TourProvider({
       const renderStepCounter = (n: number, total: number) =>
         `<div class="kol360-tour-step-counter">Step ${n} of ${total}</div>`;
 
+      // Factory for the Next/Done button — reused to inject a fallback
+      // Next on target-click steps whose anchor is missing (empty data).
+      const buildNextButton = (i: number, step: TourStep, selector: string, isLast: boolean) => ({
+        text: isLast ? 'Done' : 'Next',
+        action() {
+          sweepHighlights();
+          if (isLast) {
+            telemetry.track('tour.completed', {
+              tourSlug: activeTour.slug,
+              totalSteps: tourSteps.length,
+              durationMs: Date.now() - launchedAtRef.current,
+            });
+            void completionStore.markCompleted(activeTour.slug);
+            shepherdTour.complete();
+            return;
+          }
+          telemetry.track('tour.step_advanced', {
+            tourSlug: activeTour.slug,
+            fromStep: i,
+            toStep: i + 1,
+            advanceMethod: 'next-button',
+          });
+          activityBump();
+          writeUrl(activeTour.slug, i + 1);
+          // For target-click steps, click the target so Shepherd's own
+          // advanceOn takes over. If target missing, just manually
+          // advance.
+          if (step.advanceOn === 'target-click') {
+            const target = document.querySelector<HTMLElement>(selector);
+            if (target) {
+              const rect = target.getBoundingClientRect();
+              const opts = {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: rect.left + rect.width / 2,
+                clientY: rect.top + rect.height / 2,
+                button: 0,
+                buttons: 1,
+              } as MouseEventInit;
+              target.dispatchEvent(new MouseEvent('mousedown', opts));
+              target.dispatchEvent(new MouseEvent('mouseup', opts));
+              target.dispatchEvent(new MouseEvent('click', opts));
+              return;
+            }
+          }
+          shepherdTour.next();
+        },
+      });
+
       for (let i = 0; i < tourSteps.length; i++) {
         const step = tourSteps[i];
         const selector = tourAnchorSelector(step.target);
         const isLast = i === tourSteps.length - 1;
+        // v1.17.72 (Tier 1) — target-click steps hide Next so the user
+        // MUST click the actual UI element to advance (muscle memory).
+        // Shepherd's own advanceOn handles the transition on click. If
+        // the anchor turns out to be missing at show-time (empty data),
+        // beforeShowPromise injects a fallback Next so users can still
+        // continue.
+        const hideNext = step.advanceOn === 'target-click';
+        const bodyWithHint = hideNext
+          ? `${step.body}<div class="kol360-tour-action-hint">Click the highlighted element to continue.</div>`
+          : step.body;
 
         shepherdTour.addStep({
           id: `step-${i}`,
           title: `${renderStepCounter(i + 1, totalUserSteps)}<span class="kol360-tour-step-title-text">${step.title}</span>`,
-          text: step.body,
+          text: bodyWithHint,
           attachTo: { element: selector, on: step.placement ?? 'auto' },
           // Highlight class applies to the TARGET only via
           // applyTargetHighlight; the tooltip just carries the base
@@ -400,6 +460,23 @@ export function TourProvider({
                 expectedAnchor: step.target,
                 timeoutMs: timeoutForAdvanceMode(step.advanceOn),
               });
+              // Tier 1 fallback — the anchor's gone (empty data / feature
+              // flagged off). If this is a target-click step, Next was
+              // hidden; without it the user's only escape is Skip. Inject
+              // a Next button so they can continue.
+              if (hideNext) {
+                const stepInstance = shepherdTour.getById(`step-${i}`);
+                if (stepInstance) {
+                  const currentButtons =
+                    (stepInstance.options.buttons as Array<Record<string, unknown>>) ?? [];
+                  stepInstance.updateStepOptions({
+                    buttons: [
+                      ...currentButtons,
+                      buildNextButton(i, step, selector, isLast),
+                    ],
+                  });
+                }
+              }
               return;
             }
             // Apply the pulse/outline highlight directly on the target
@@ -448,65 +525,7 @@ export function TourProvider({
                 shepherdTour.back();
               },
             },
-            {
-              text: isLast ? 'Done' : 'Next',
-              action() {
-                // v1.17.72 — sweep highlights BEFORE advancing.
-                // Shepherd's `hide` event lags (or doesn't fire) when
-                // transitioning to a target-less step like the
-                // auto-inserted checkpoint, leaving the previous
-                // step's ring on-screen. Doing it here means the
-                // previous highlight is always gone before the next
-                // step's beforeShowPromise applies a new one.
-                sweepHighlights();
-                if (isLast) {
-                  telemetry.track('tour.completed', {
-                    tourSlug: activeTour.slug,
-                    totalSteps: tourSteps.length,
-                    durationMs: Date.now() - launchedAtRef.current,
-                  });
-                  void completionStore.markCompleted(activeTour.slug);
-                  shepherdTour.complete();
-                  return;
-                }
-                telemetry.track('tour.step_advanced', {
-                  tourSlug: activeTour.slug,
-                  fromStep: i,
-                  toStep: i + 1,
-                  advanceMethod: 'next-button',
-                });
-                activityBump();
-                writeUrl(activeTour.slug, i + 1);
-                // v1.17.72 — for target-click steps, click the target
-                // element. Shepherd's own advanceOn: { event: 'click' }
-                // will detect the click and advance the tour — do NOT
-                // also call shepherdTour.next() here or the tour
-                // double-advances into an inconsistent state (the
-                // symptom: Next appears to do nothing).
-                if (step.advanceOn === 'target-click') {
-                  const target = document.querySelector<HTMLElement>(selector);
-                  if (target) {
-                    const rect = target.getBoundingClientRect();
-                    const opts = {
-                      bubbles: true,
-                      cancelable: true,
-                      view: window,
-                      clientX: rect.left + rect.width / 2,
-                      clientY: rect.top + rect.height / 2,
-                      button: 0,
-                      buttons: 1,
-                    } as MouseEventInit;
-                    target.dispatchEvent(new MouseEvent('mousedown', opts));
-                    target.dispatchEvent(new MouseEvent('mouseup', opts));
-                    target.dispatchEvent(new MouseEvent('click', opts));
-                    return; // Shepherd's advanceOn handles the next()
-                  }
-                  // Target missing (e.g. empty leader table). Fall
-                  // through to manual advance so user isn't stuck.
-                }
-                shepherdTour.next();
-              },
-            },
+            ...(hideNext ? [] : [buildNextButton(i, step, selector, isLast)]),
           ],
         });
         stepIndexToShepherd.push(shepherdTour.steps.length - 1);

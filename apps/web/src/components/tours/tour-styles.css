@@ -102,6 +102,17 @@ body[data-tour-active="true"] [role="menu"] {
   line-height: 1.4;
 }
 
+/* v1.17.72 (Tier 1) — subtle CTA under target-click step bodies so
+ * users know they need to actually perform the action to advance. */
+.kol360-tour-step .kol360-tour-action-hint {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed hsl(var(--border));
+  color: hsl(var(--primary));
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
 .kol360-tour-step .shepherd-footer {
   padding: 0.5rem 1rem 1rem;
   display: flex;
