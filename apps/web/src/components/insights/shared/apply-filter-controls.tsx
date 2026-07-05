@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Loader2, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { tourAnchor } from '@kol360/shared';
 
 /**
  * v1.17.53 — Track B (Apply Filters batch UX).
@@ -88,6 +89,7 @@ export function ApplyFilterControls({
         onClick={onApply}
         disabled={isLoading || !isDirty}
         className={cn(isDirty && 'shadow-sm', 'min-w-[7.5rem]')}
+        {...tourAnchor('btn-apply-filters')}
       >
         {isLoading ? (
           <span className="inline-flex items-center gap-1.5">

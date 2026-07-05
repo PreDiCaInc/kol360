@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { InsightsGuideContent } from './insights-guide-content';
+import { useTourContext } from '@/components/tours/tour-context';
 
 const SEEN_STORAGE_KEY = 'kol360.insightsGuideSeenAt';
 
@@ -33,6 +34,15 @@ interface InsightsGuideDrawerProps {
 }
 
 export function InsightsGuideDrawer({ open, onOpenChange }: InsightsGuideDrawerProps) {
+  // v1.17.72 — when a tour launches (either from this drawer's "Take
+  // the tour" button OR from the top-level "How to…" dropdown), close
+  // the drawer so its overlay doesn't intercept clicks on the
+  // Shepherd tooltip or the Insights UI the tour is walking through.
+  const { isTourActive } = useTourContext();
+  useEffect(() => {
+    if (isTourActive && open) onOpenChange(false);
+  }, [isTourActive, open, onOpenChange]);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent>

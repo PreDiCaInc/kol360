@@ -255,6 +255,8 @@ Once curation-svc rolls out on v1.17.71+ integration:
 
 Why not Path A? `Hcp.alternateIds` needs FE surfaces (dedup UI, cross-country search) that we haven't scoped. Path B lets us capture the data now via the `notes` field without a schema-blocked ship window.
 
+**Full rationale, revisit criteria, and what we're accepting:** [`canada-cross-licensing-path-b-decision-2026-07-04.md`](canada-cross-licensing-path-b-decision-2026-07-04.md).
+
 **Q2. What if the reviewer isn't sure whether the HCP is US or CA?**
 
 Reviewer picks their best guess (default US as a policy — matches the historical corpus). If they later realize the classification is wrong, follow the correction flow in Q5 below.

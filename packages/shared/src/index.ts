@@ -16,3 +16,7 @@ export * from './email-placeholders';
 // Score methodology — single source of truth for the scoreSurvey formula
 // and the tooltip text shown across Insights surfaces (v1.17.40).
 export * from './score-methodology';
+
+// Tour engine primitives (v1.17.72) — anchors, schema, waitForElement,
+// completion store, telemetry. See tours/index.ts.
+export * from './tours';

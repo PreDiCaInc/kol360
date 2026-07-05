@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, Download, FileSpreadsheet, Check } from 'lucide-react';
 import { SortableHeader } from '@/components/insights/shared/sortable-header';
-import { inferHcpIdLabel } from '@kol360/shared';
+import { inferHcpIdLabel, tourAnchor } from '@kol360/shared';
 import { HeatMapCell } from '@/components/insights/shared/heat-map-cell';
 import { KolNameLink } from '@/components/insights/shared/kol-name-link';
 import { RowsPerPage } from '@/components/insights/shared/rows-per-page';
@@ -138,7 +138,10 @@ export function LeaderTable({
   const endRow = Math.min(page * limit, total);
 
   return (
-    <div className="rounded-xl border bg-card shadow-md hover:shadow-lg transition-shadow overflow-hidden">
+    <div
+      className="rounded-xl border bg-card shadow-md hover:shadow-lg transition-shadow overflow-hidden"
+      {...tourAnchor('leader-table')}
+    >
       {/* Color-coded title header. v1.17.57: titleSuffix right-aligned
           (justify-between) to match the Demographics card pattern —
           pteam preferred the right-corner placement over the
@@ -200,8 +203,12 @@ export function LeaderTable({
                 </td>
               </tr>
             ) : (
-              items.map((item) => (
-                <tr key={item.hcpId} className="border-b last:border-b-0 hover:bg-muted/40 transition-colors even:bg-muted/10">
+              items.map((item, index) => (
+                <tr
+                  key={item.hcpId}
+                  className="border-b last:border-b-0 hover:bg-muted/40 transition-colors even:bg-muted/10"
+                  {...(index === 0 ? tourAnchor('kol-row-first') : {})}
+                >
                   <td className="px-3 py-2 text-muted-foreground tabular-nums">{item.rank}</td>
                   {columns.map((col) => {
                     if (col === 'name') {
