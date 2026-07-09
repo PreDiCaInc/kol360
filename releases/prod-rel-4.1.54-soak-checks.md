@@ -1,4 +1,4 @@
-# prod-rel-4.1.53 — Soak Checks (v1.17.73)
+# prod-rel-4.1.54 — Soak Checks (v1.17.74)
 
 Tag at the merge commit on `main`. Small Tier-1 polish on top of the tour walkthroughs. **No migration.**
 
@@ -8,7 +8,7 @@ Tag at the merge commit on `main`. Small Tier-1 polish on top of the tour walkth
 
 ```bash
 curl -s https://ik6dmnn2ra.us-east-2.awsapprunner.com/health
-# Expected: { "status": "ok", "version": "1.17.73", ... }
+# Expected: { "status": "ok", "version": "1.17.74", ... }
 ```
 
 ### A2. Everything Phase-1 tour still works
