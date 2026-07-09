@@ -55,9 +55,18 @@ import '@/components/insights/print-styles.css';
  * shell doesn't pull the tour engine in until the user opens the
  * menu.
  */
+// v1.17.75 — one-time first-visit ring around the "How to…" button so
+// new users notice it without a disruptive auto-launched modal. Runs
+// once per device (localStorage-gated), fades after ~3 seconds, and
+// clears the flag immediately if the user clicks the button so the
+// ring never fires again for them.
+const HOW_TO_RING_STORAGE_KEY = 'kol360.how-to-cta-shown-at';
+const HOW_TO_RING_DURATION_MS = 3200;
+
 function HowToMenu({ onOpenGuide }: { onOpenGuide: () => void }) {
   const { startTour, completionStore } = useTourContext();
   const [completed, setCompleted] = useState<string[]>([]);
+  const [ringOn, setRingOn] = useState(false);
 
   // Read + reactively refresh completion state so the ✓ appears the
   // instant a tour finishes.
@@ -65,10 +74,35 @@ function HowToMenu({ onOpenGuide }: { onOpenGuide: () => void }) {
     void completionStore.getAllCompleted().then(setCompleted);
   }, [completionStore]);
 
+  // First-visit attention ring — three quick pulses, then dismiss.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (window.localStorage.getItem(HOW_TO_RING_STORAGE_KEY)) return;
+      window.localStorage.setItem(HOW_TO_RING_STORAGE_KEY, String(Date.now()));
+    } catch {
+      // Private-browsing mode or storage disabled — skip the ring, no
+      // point risking a runtime.
+      return;
+    }
+    setRingOn(true);
+    const t = window.setTimeout(() => setRingOn(false), HOW_TO_RING_DURATION_MS);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  const dismissRing = () => {
+    if (ringOn) setRingOn(false);
+  };
+
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => open && dismissRing()}>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button
+          variant="outline"
+          size="sm"
+          className={ringOn ? 'kol360-how-to-cta-pulse' : undefined}
+          onClick={dismissRing}
+        >
           <Play className="mr-2 h-4 w-4" />
           How to…
         </Button>

@@ -14,9 +14,10 @@
 // docs/findings/insights-use-case-tours-interactive-walkthroughs-2026-07-04.md
 
 import { useEffect, useState } from 'react';
-import { Check, Play } from 'lucide-react';
+import { Check, FileText, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTourContext } from '@/components/tours/tour-context';
 import {
   CASE_STUDIES,
@@ -161,7 +162,7 @@ function CaseStudyBlock({
           )}
         </div>
         {hasTour && (
-          <div>
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -170,6 +171,36 @@ function CaseStudyBlock({
               <Play className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
               Take the tour
             </Button>
+            {/* v1.17.75 — "Show me the summary" surfaces the tour's
+                takeaway bullets in a compact popover for users who
+                want the digest without doing the walkthrough. Sourced
+                from caseStudy.tourSummary.bullets (authored alongside
+                the tour steps). */}
+            {caseStudy.tourSummary && caseStudy.tourSummary.bullets.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <FileText className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                    Show me the summary
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80" align="start">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Case takeaways
+                    </p>
+                    <ul className="space-y-1.5 text-sm">
+                      {caseStudy.tourSummary.bullets.map((b, idx) => (
+                        <li key={idx} className="flex gap-2">
+                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                          <span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
         )}
         <div className="flex flex-wrap gap-1.5">
