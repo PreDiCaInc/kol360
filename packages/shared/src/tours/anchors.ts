@@ -34,6 +34,10 @@ export const TOUR_ANCHORS = {
   // Leader Table + KOL Explorer table anchors
   'kol-row-first':             'kol-row-first',
   'leader-table':              'leader-table',
+  // v1.17.77 — KOL scores table on the Total Weighted Score tab
+  // (KolExplorerTab component). Distinct from `leader-table` which
+  // lives inside LeaderTable on the Benchmarking tab.
+  'weighted-score-table':      'weighted-score-table',
 
   // KOL Profile (route-change target — Case Study 1 Deep dive step 6)
   'kol-profile-header':        'kol-profile-header',

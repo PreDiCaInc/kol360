@@ -240,6 +240,21 @@ function CaseStudyBlock({
                 />
               </figure>
             )}
+            {/* v1.17.77 — secondary screenshot for steps that walk
+                across two distinct UI states (Case 1 Step 5's
+                "click a KOL name → the profile drill-down" is the
+                canonical example). Rendered stacked below the primary. */}
+            {step.image2 && (
+              <figure className="overflow-hidden rounded-lg border bg-muted/20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`${ASSET_BASE}/${step.image2}`}
+                  alt={step.image2Alt ?? ''}
+                  className="block w-full"
+                  loading="lazy"
+                />
+              </figure>
+            )}
           </li>
         ))}
       </ol>
