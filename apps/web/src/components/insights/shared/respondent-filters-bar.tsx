@@ -110,7 +110,7 @@ export function RespondentFiltersBar({
             placeholder="All Roles"
           />
         </div>
-        <div>
+        <div {...tourAnchor('filter-specialty')}>
           <Label className="text-xs text-muted-foreground mb-1 block">Core Focus</Label>
           <MultiSelect
             options={coreFocusOptions}
