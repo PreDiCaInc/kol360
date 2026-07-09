@@ -501,7 +501,16 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             </CardHeader>
             <CardContent>
               <ChartTableToggle data={roleData} valueLabel="Respondents">
-                <div className="h-72">
+                {/* v1.17.76 — inline width + minHeight so ResponsiveContainer
+                    inside PieDistributionChart gets a stable measurement at
+                    mount. Without this the pie renders at 0×0 on first
+                    paint because the ChartTableToggle wrapper's outer div
+                    hasn't settled its width when Recharts measures. Bar
+                    charts don't need this (they re-measure on scale
+                    changes); pies do (fixed innerRadius/outerRadius geometry
+                    doesn't force a re-render). See
+                    docs/findings/insights-demographics-pie-blank-inside-chart-table-toggle-2026-07-08.md */}
+                <div className="h-72" style={{ width: '100%', minHeight: 288 }}>
                   <PieDistributionChart data={roleData} />
                 </div>
               </ChartTableToggle>
@@ -778,7 +787,9 @@ export function DemographicsTab({ diseaseAreaId, clientId }: Props) {
             </CardHeader>
             <CardContent>
               <ChartTableToggle data={topicsDiscussedPieData} valueLabel="Respondents">
-                <div className="h-72">
+                {/* v1.17.76 — see comment on the Respondent Role card
+                    above; same ResponsiveContainer measurement race. */}
+                <div className="h-72" style={{ width: '100%', minHeight: 288 }}>
                   <PieDistributionChart data={topicsDiscussedPieData} />
                 </div>
               </ChartTableToggle>
