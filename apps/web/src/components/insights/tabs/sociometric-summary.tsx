@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { apiClient } from '@/lib/api';
 import { ScoreTooltip } from '@/components/insights/score-tooltip';
 import type { SociometricSummaryResponse } from '@kol360/shared';
-import { inferHcpIdLabel } from '@kol360/shared';
+import { inferHcpIdLabel, tourAnchor } from '@kol360/shared';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -416,7 +416,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
   const totalPages = data?.totalPages || 1;
 
   return (
-    <Card className="shadow-md rounded-xl">
+    <Card className="shadow-md rounded-xl" {...tourAnchor('sociometric-table')}>
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <div>

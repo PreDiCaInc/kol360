@@ -161,8 +161,13 @@ describe('Canada HCP isolation — automated soak (v1.17.69)', () => {
   it('Leader Rankings for a US client omits the CA HCP', async () => {
     if (!dbAvailable) return;
 
+    // v1.17.71 hardening made `nominationType` a required query param
+    // on the leader-rankings endpoint. Value doesn't matter for this
+    // isolation check — we just need a valid enum value so the request
+    // reaches the country filter.
     const rankings = await client.getInsightsLeaderRankings(TEST_IDS.DISEASE_AREA_ID, {
       clientId: TEST_IDS.CLIENT_ID,
+      nominationType: 'NATIONAL_LEADER',
       limit: 500,
     });
     expect(rankings.status).toBe(200);
