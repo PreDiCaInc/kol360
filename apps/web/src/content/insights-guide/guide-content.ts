@@ -31,6 +31,14 @@ export interface GuideStep {
   image?: string;
   /** Alt text for the screenshot. */
   imageAlt?: string;
+  /**
+   * v1.17.77 — Optional secondary screenshot for steps that walk
+   * across two distinct UI states (Case 1 Step 5's "click a KOL
+   * name → the profile drill-down" is the canonical case).
+   * Renders stacked below the primary image with an em-dash caption.
+   */
+  image2?: string;
+  image2Alt?: string;
 }
 
 export interface CaseStudy {
@@ -94,25 +102,23 @@ export const CASE_STUDIES: CaseStudy[] = [
         n: 3,
         body: 'Because the target audience is optometrists, filter further by setting the Respondent Role to "Optometrist."',
         image: 'case-1-step-3.png',
-        imageAlt: 'Respondent Role filter set to Optometrist.',
+        imageAlt: 'Respondent Role filter set to Optometrist — composite view showing both the KOL State multi-select (Step 2) and Respondent Role dropdown (Step 3) with red-box callouts.',
       },
       {
         n: 4,
         body: 'Read the top KOLs nominated across each leadership category. These are your speaker shortlist candidates — names that came up most often in the filter you specified.',
-        image: 'case-1-step-4.png',
-        imageAlt: 'Benchmarking leader rankings showing top KOLs per nomination type.',
       },
       {
         n: 5,
         body: 'Click any KOL\'s name to open the KOL Profile drill-down. The profile shows tabulated scores across leadership categories plus metadata on the doctors who nominated them.',
         image: 'case-1-step-5.png',
-        imageAlt: 'Full KOL Profile drill-down — score breakdown, per-type nomination counts, Respondent Filters bar, nominations by role and state, Nominations table, and demographic sub-charts (Practice Setting, Core Focus, Treatment Decile, DED Patients, Total Monthly Patients, Years in Practice).',
+        imageAlt: 'National Leaders and Discussion Leaders panels with all filters applied (State: CA/FL/NY + Resp Role: Optometry) and a red "Click to view KOL full profile" arrow on Eric Donnenfeld\'s name.',
+        image2: 'case-1-step-5b.png',
+        image2Alt: 'Full KOL Profile drill-down for Eric Donnenfeld — score breakdown, per-type nomination counts, Respondent Filters bar, nominations by role and state, Nominations table, and demographic sub-charts (Practice Setting, Core Focus, Treatment Decile, DED Patients, Total Monthly Patients, Years in Practice).',
       },
       {
         n: 6,
         body: 'In the KOL Profile, read the Nominations table at the bottom. The doctors, practice settings, and practice focus areas listed there are real attendees you can use to shape your dinner invite list.',
-        image: 'case-1-step-6.png',
-        imageAlt: 'Nominations table within the KOL Profile drill-down.',
       },
     ],
     // v1.17.72 — pilot tour for Case Study 1. Quick intro = 3 steps
@@ -317,12 +323,16 @@ export const CASE_STUDIES: CaseStudy[] = [
         imageAlt: 'Sociometric Leaders tab showing influencer type classifications.',
       },
       {
-        // v1.17.66 — image dropped per docs/findings/insights-guide-v1.1-image-refresh-2026-07-01.md.
-        // The sort-arrow UI is self-evident; the removed screenshot only showed
-        // "result after clicking the arrow" which didn't teach anything the
-        // user can't see in real time. Text unchanged.
+        // v1.17.77 — image restored from Sun Pharma Case Study v1.1
+        // docx (rId16 / image4.png) after full v1.1 image sweep.
+        // Supersedes the v1.17.66 "image dropped" decision from
+        // docs/findings/insights-guide-v1.1-image-refresh-2026-07-01.md
+        // — the July 1 finding proposed dropping this image, but
+        // v1.1 as-shipped kept it. Following the source of truth.
         n: 2,
         body: 'Apply the same filters as Case Study 2 (GA / FL / AL state, Optometrist role) and click Apply Filters. Click the sort arrow on the Rising Stars panel to rank by nominations received — descending puts the strongest candidates at the top.',
+        image: 'case-3-step-2.png',
+        imageAlt: 'Sociometric Leaders table with a red "Click to sort list" arrow on the Rising Star column header.',
       },
     ],
     tour: [
@@ -504,13 +514,13 @@ export const CASE_STUDIES: CaseStudy[] = [
       {
         n: 1,
         body: 'Open the Total Weighted Score tab. Set the weights to emphasize Trade Publications and the National Leader segment. Apply any geography or role filters that matter for your audience. The results refresh as soon as the filters are applied.',
-        image: 'case-5-step-1.png',
-        imageAlt: 'Total Weighted Score tab with Trade Pubs and National Leader weights configured.',
       },
       {
         n: 2,
         body: 'Sort the Trade Publication column descending to surface the top names. The composite weighted score column shows who scores well across BOTH signals, not just one.',
         note: 'Use the scale-filter sliders to constrain the score range if you want to focus on a tighter band — e.g. only KOLs in the top quintile across both signals.',
+        image: 'case-5-step-2.png',
+        imageAlt: 'Total Weighted Score results with the Trade Publication column sorted descending.',
       },
     ],
     tour: [
@@ -555,8 +565,15 @@ export const CASE_STUDIES: CaseStudy[] = [
         highlight: 'pulse',
       },
       // ── Deep dive ─────────────────────────────────────────────────
+      // v1.17.77 — targets `weighted-score-table` (the KOL Explorer's
+      // score table on the Total Weighted Score tab) instead of
+      // `leader-table` (which lives inside LeaderTable on the
+      // Benchmarking tab and doesn't render here). Prior to this fix
+      // Case 5 deep-dive steps fired `tour.anchor_missing` telemetry
+      // silently and users saw no highlight during "Sort by Trade
+      // Pubs" / "Read the composite".
       {
-        target: 'leader-table',
+        target: 'weighted-score-table',
         segment: 'deep-dive',
         requiredTab: 'total-weighted-score',
         title: 'Sort by Trade Pubs',
@@ -566,7 +583,7 @@ export const CASE_STUDIES: CaseStudy[] = [
         highlight: 'outline',
       },
       {
-        target: 'leader-table',
+        target: 'weighted-score-table',
         segment: 'deep-dive',
         requiredTab: 'total-weighted-score',
         title: 'Read the composite',

@@ -555,7 +555,7 @@ function ScoreTableView({
       </div>
 
       {/* Results Table */}
-      <div className="rounded-md border overflow-x-auto">
+      <div className="rounded-md border overflow-x-auto" {...tourAnchor('weighted-score-table')}>
         {/* v1.17.41 — dropped hardcoded min-w-[1600px]: it forced the
             table to stay 1600px wide even when the column selector
             hid columns, defeating the point. Now sizes to content. */}
