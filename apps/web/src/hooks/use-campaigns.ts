@@ -254,6 +254,9 @@ export interface SurveyPreviewQuestion {
   minEntries: number | null;
   defaultEntries: number | null;
   nominationType: string | null;
+  // v1.17.79 — Brand-Affinity Grid opt-in per question. Always present;
+  // false for every question on a non-grid campaign.
+  useBrandGrid: boolean;
 }
 
 export interface SurveyPreviewData {

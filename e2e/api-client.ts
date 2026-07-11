@@ -175,6 +175,20 @@ export class ApiClient {
     }>('PUT', `/api/v1/campaigns/${campaignId}/brand-options`, { brands });
   }
 
+  // v1.17.79 — PATCH per-question useBrandGrid toggle. Nested under the
+  // campaign so tenant guards flow naturally on the server.
+  async updateSurveyQuestionBrandGrid(
+    campaignId: string,
+    surveyQuestionId: string,
+    useBrandGrid: boolean
+  ) {
+    return this.request<{ id: string; useBrandGrid: boolean; error?: string; message?: string }>(
+      'PATCH',
+      `/api/v1/campaigns/${campaignId}/survey-questions/${surveyQuestionId}`,
+      { useBrandGrid }
+    );
+  }
+
   // ==================== Clients ====================
 
   async createClient(data: {
@@ -1537,6 +1551,8 @@ export interface SurveyQuestion {
   isRequired: boolean;
   options?: string[];
   nominationType?: string;
+  // v1.17.79 — Brand-Affinity Grid opt-in per question.
+  useBrandGrid?: boolean;
 }
 
 export interface SurveyAnswer {
