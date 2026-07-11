@@ -88,14 +88,14 @@ model DiseaseArea {
 }
 
 model Specialty {
-  id          String         @id @default(cuid())
-  name        String         @unique
-  code        String         @unique
-  category    String?        // e.g., "Medical", "Surgical", "Primary Care"
-  isActive    Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  hcps        HcpSpecialty[]
+  id        String         @id @default(cuid())
+  name      String         @unique
+  code      String         @unique
+  category  String? // e.g., "Medical", "Surgical", "Primary Care"
+  isActive  Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  hcps      HcpSpecialty[]
 
   @@index([category])
   @@index([isActive])
@@ -105,11 +105,11 @@ model Specialty {
 // (single source of truth — same list that scopes campaigns/analyses), not
 // a separate parallel list. Multi-select (HCPs can focus on >1 area).
 model HcpDiseaseArea {
-  id            String      @id @default(cuid())
-  hcpId         String
-  diseaseAreaId String
-  isPrimary     Boolean     @default(false)
-  createdAt     DateTime    @default(now())
+  id             String      @id @default(cuid())
+  hcpId          String
+  diseaseAreaId  String
+  isPrimary      Boolean     @default(false)
+  createdAt      DateTime    @default(now())
   // v1.17.42 — data-team-managed classification per (HCP, disease area).
   // Replaces the computed determineInfluencerType() output: when set,
   // this value is authoritative; when null the column reads empty in
@@ -117,8 +117,8 @@ model HcpDiseaseArea {
   // admin section. Allowed values today: 'National Leaders',
   // 'Rising Stars', 'Regional Influencers'.
   influencerType String?
-  hcp           Hcp         @relation(fields: [hcpId], references: [id], onDelete: Cascade)
-  diseaseArea   DiseaseArea @relation(fields: [diseaseAreaId], references: [id], onDelete: Cascade)
+  hcp            Hcp         @relation(fields: [hcpId], references: [id], onDelete: Cascade)
+  diseaseArea    DiseaseArea @relation(fields: [diseaseAreaId], references: [id], onDelete: Cascade)
 
   @@unique([hcpId, diseaseAreaId])
   @@index([hcpId])
@@ -189,8 +189,8 @@ model CampaignHcpExclusion {
 }
 
 model Hcp {
-  id                  String                  @id @default(cuid())
-  beId                String                  @unique
+  id                  String                 @id @default(cuid())
+  beId                String                 @unique
   // v1.17.68 — multi-country identifier support (Canada MINC).
   // `npi` (column name unchanged for backward compat across 100+
   // references) now stores whichever national ID the row's country
@@ -203,16 +203,16 @@ model Hcp {
   // overlap by format so a stored NPI can never collide with a
   // stored MINC. The 2-character country prefix on MINC also means
   // no all-numeric values in the MINC space.
-  npi                 String?                 @unique
+  npi                 String?                @unique
   // v1.17.68 — which national-ID regime the value in `npi` belongs
   // to. Defaults to 'NPI' so existing 13k US HCPs and any code that
   // doesn't yet know about types keeps working.
-  nationalIdType      String                  @default("NPI")
+  nationalIdType      String                 @default("NPI")
   // v1.17.68 — ISO 3166-1 alpha-2 country. Threaded into Insights
   // via Client.defaultCountry (see Client model). Determines which
   // FE display formatter fires + which validation regex the import
   // dialog picks. Defaults to 'US'.
-  country             String                  @default("US")
+  country             String                 @default("US")
   // v1.17.68 — rare (<5%) cross-licensed HCPs have a secondary ID
   // in their other country. Stored here as informational metadata
   // only (NOT indexed, NOT used for queries or nomination matching).
@@ -220,18 +220,18 @@ model Hcp {
   // exports, and Insights aggregations. Shape:
   //   { type: 'NPI'|'MINC', country: 'US'|'CA', value: string }[]
   alternateIds        Json?
-  isSurveyTaker       Boolean                 @default(false)
-  isNominated         Boolean                 @default(false)
+  isSurveyTaker       Boolean                @default(false)
+  isNominated         Boolean                @default(false)
   firstName           String
   lastName            String
-  email               String                  @default("nomail@kol360research.com")
-  specialty           String?                 // Legacy field - kept for backward compatibility
+  email               String                 @default("nomail@kol360research.com")
+  specialty           String? // Legacy field - kept for backward compatibility
   subSpecialty        String?
   city                String?
   state               String?
   yearsInPractice     Int?
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
   createdBy           String?
   // Curation sync (v1.17.29 / dba-ticket-kol360-deploy-sync-endpoints-koltest.md).
   // curationManagedAt is set the first time the curation-svc Cognito M2M client
@@ -247,8 +247,8 @@ model Hcp {
   aliases             HcpAlias[]
   campaignScores      HcpCampaignScore[]
   diseaseAreaScores   HcpDiseaseAreaScore[]
-  nominationsReceived Nomination[]            @relation("NominatedHcp")
-  nominationsGiven    Nomination[]            @relation("NominatorHcp")
+  nominationsReceived Nomination[]           @relation("NominatedHcp")
+  nominationsGiven    Nomination[]           @relation("NominatorHcp")
   payments            Payment[]
   surveyResponses     SurveyResponse[]
   clientExclusions    ClientHcpExclusion[]
@@ -260,7 +260,7 @@ model Hcp {
   // it (when applicable). Null for HCPs created via single-create UI,
   // backfill scripts, or pre-v1.17.35 imports.
   importBatchId       String?
-  importBatch         HcpImportBatch?         @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  importBatch         HcpImportBatch?        @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
 
   @@index([beId])
   @@index([npi])
@@ -290,19 +290,19 @@ model Hcp {
 // errorRows captures rejected rows from the same CSV alongside the
 // successful ones so the full import outcome is reconstructible.
 model HcpImportBatch {
-  id              String   @id @default(cuid())
-  campaignId      String?  // null for /hcps/bulk; set for /campaigns/:id/import-hcps
-  importedBy      String   // cognito sub
-  fileName        String
-  recordsTotal    Int
-  recordsCreated  Int
-  recordsUpdated  Int
-  recordsSkipped  Int      @default(0)
-  recordsErrored  Int      @default(0)
-  createdHcpIds   String[] @default([])
-  updatedHcpIds   String[] @default([])
-  errorRows       Json?    // [{ row: 4, error: "...", rawData: {...} }, ...]
-  importedAt      DateTime @default(now())
+  id             String   @id @default(cuid())
+  campaignId     String? // null for /hcps/bulk; set for /campaigns/:id/import-hcps
+  importedBy     String // cognito sub
+  fileName       String
+  recordsTotal   Int
+  recordsCreated Int
+  recordsUpdated Int
+  recordsSkipped Int      @default(0)
+  recordsErrored Int      @default(0)
+  createdHcpIds  String[] @default([])
+  updatedHcpIds  String[] @default([])
+  errorRows      Json? // [{ row: 4, error: "...", rawData: {...} }, ...]
+  importedAt     DateTime @default(now())
 
   hcps Hcp[]
 
@@ -338,7 +338,7 @@ model HcpImportBatch {
 // toEmail is snapshotted at send time so future Hcp.email edits
 // don't rewrite history.
 model EmailDeliveryEvent {
-  id              String   @id @default(cuid())
+  id            String    @id @default(cuid())
   // v1.17.67 — campaignId + hcpId relaxed to nullable so non-campaign
   // sends (user invites, invite resends, and future transactional
   // emails) can also be tracked through the same SES → SNS → webhook
@@ -351,24 +351,24 @@ model EmailDeliveryEvent {
   // are audited (email.service.recordDeliveryEvent) and the cost of
   // a runtime CHECK doesn't buy us anything the code review already
   // catches. See docs/findings/email-delivery-event-scope-gap-2026-07-02.md.
-  campaignId      String?
-  hcpId           String?
-  campaignHcpId   String?  // FK relation to CampaignHcp when applicable
-  userId          String?  // set for user-invite / invite-resend / future transactional
-  messageType     String   // 'invitation' | 'reminder' | 'user_invite' | 'user_invite_resent' | 'opt_out_confirm' | etc.
-  sesMessageId    String   @unique  // SES MessageId returned on accept
-  toEmail         String   // snapshot of the address SES received
-  fromEmail       String
-  subject         String
-  status          String   // see enum comment above
-  statusReason    String?  // bounce diagnostic / suppression reason
-  acceptedAt      DateTime // SES 250 OK time
-  deliveredAt     DateTime?
-  bouncedAt       DateTime?
-  complainedAt    DateTime?
-  rawEvent        Json?    // full SES event payload for diagnostics
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  campaignId    String?
+  hcpId         String?
+  campaignHcpId String? // FK relation to CampaignHcp when applicable
+  userId        String? // set for user-invite / invite-resend / future transactional
+  messageType   String // 'invitation' | 'reminder' | 'user_invite' | 'user_invite_resent' | 'opt_out_confirm' | etc.
+  sesMessageId  String    @unique // SES MessageId returned on accept
+  toEmail       String // snapshot of the address SES received
+  fromEmail     String
+  subject       String
+  status        String // see enum comment above
+  statusReason  String? // bounce diagnostic / suppression reason
+  acceptedAt    DateTime // SES 250 OK time
+  deliveredAt   DateTime?
+  bouncedAt     DateTime?
+  complainedAt  DateTime?
+  rawEvent      Json? // full SES event payload for diagnostics
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([campaignId, status])
   @@index([hcpId])
@@ -567,7 +567,7 @@ model Question {
   updatedAt        DateTime          @updatedAt
   minEntries       Int?
   defaultEntries   Int?
-  nominationType   NominationType?   // For nomination questions: which type of KOL
+  nominationType   NominationType? // For nomination questions: which type of KOL
   sectionQuestions SectionQuestion[]
   surveyQuestions  SurveyQuestion[]
 
@@ -627,49 +627,54 @@ model TemplateSection {
 }
 
 model Campaign {
-  id                       String                  @id @default(cuid())
-  clientId                 String
-  diseaseAreaId            String
-  surveyTemplateId         String?
-  name                     String
-  description              String?
-  status                   CampaignStatus          @default(DRAFT)
-  honorariumAmount         Decimal                 @default(0) @db.Decimal(10, 2)
-  surveyOpenDate           DateTime?
-  surveyCloseDate          DateTime?
-  publishedAt              DateTime?
-  createdAt                DateTime                @default(now())
-  updatedAt                DateTime                @updatedAt
-  createdBy                String?
-  invitationEmailBody      String?
-  invitationEmailSubject   String?
-  reminderEmailBody        String?
-  reminderEmailSubject     String?
-  surveyAlreadyDoneMessage   String?
-  surveyAlreadyDoneTitle     String?
-  surveyDisqualifiedMessage  String?
-  surveyDisqualifiedTitle    String?
-  surveyThankYouMessage      String?
-  surveyThankYouTitle        String?
-  surveyWelcomeMessage       String?
-  surveyWelcomeTitle         String?
-  excludeInternalEmails    Boolean                 @default(false)
-  showTopicsDiscussed      Boolean                 @default(false)
+  id                        String                 @id @default(cuid())
+  clientId                  String
+  diseaseAreaId             String
+  surveyTemplateId          String?
+  name                      String
+  description               String?
+  status                    CampaignStatus         @default(DRAFT)
+  honorariumAmount          Decimal                @default(0) @db.Decimal(10, 2)
+  surveyOpenDate            DateTime?
+  surveyCloseDate           DateTime?
+  publishedAt               DateTime?
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
+  createdBy                 String?
+  invitationEmailBody       String?
+  invitationEmailSubject    String?
+  reminderEmailBody         String?
+  reminderEmailSubject      String?
+  surveyAlreadyDoneMessage  String?
+  surveyAlreadyDoneTitle    String?
+  surveyDisqualifiedMessage String?
+  surveyDisqualifiedTitle   String?
+  surveyThankYouMessage     String?
+  surveyThankYouTitle       String?
+  surveyWelcomeMessage      String?
+  surveyWelcomeTitle        String?
+  excludeInternalEmails     Boolean                @default(false)
+  showTopicsDiscussed       Boolean                @default(false)
   // Workflow step confirmation timestamps (when user explicitly reviewed/confirmed each step)
-  scoreConfigConfirmedAt   DateTime?
-  templatesConfirmedAt     DateTime?
-  client                   Client                  @relation(fields: [clientId], references: [id])
-  diseaseArea              DiseaseArea             @relation(fields: [diseaseAreaId], references: [id])
-  surveyTemplate           SurveyTemplate?         @relation(fields: [surveyTemplateId], references: [id])
-  campaignHcps             CampaignHcp[]
+  scoreConfigConfirmedAt    DateTime?
+  templatesConfirmedAt      DateTime?
+  // Brand-Affinity Grid mode: set to the first SurveyResponse.completedAt
+  // once any respondent has submitted. Nulls the API's ability to mutate
+  // brandOptions from this point on (item O in the spec).
+  brandsFrozenAt            DateTime?
+  client                    Client                 @relation(fields: [clientId], references: [id])
+  diseaseArea               DiseaseArea            @relation(fields: [diseaseAreaId], references: [id])
+  surveyTemplate            SurveyTemplate?        @relation(fields: [surveyTemplateId], references: [id])
+  campaignHcps              CampaignHcp[]
   // compositeScoreConfig relation removed in Phase 3 PR B — model dropped.
-  hcpCampaignScores        HcpCampaignScore[]
-  hcpExclusions            CampaignHcpExclusion[]
-  optOuts                  OptOut[]
-  payments                 Payment[]
-  surveyQuestions          SurveyQuestion[]
-  surveyResponses          SurveyResponse[]
-  kolAnalysisCampaigns     KolAnalysisCampaign[]
+  hcpCampaignScores         HcpCampaignScore[]
+  hcpExclusions             CampaignHcpExclusion[]
+  optOuts                   OptOut[]
+  payments                  Payment[]
+  surveyQuestions           SurveyQuestion[]
+  surveyResponses           SurveyResponse[]
+  kolAnalysisCampaigns      KolAnalysisCampaign[]
+  brandOptions              CampaignBrandOption[]
 
   @@index([clientId])
   @@index([diseaseAreaId])
@@ -687,18 +692,18 @@ model CampaignHcp {
   createdAt      DateTime  @default(now())
 
   // Campaign-level HCP segmentation fields (optional, from import)
-  marketDecile        Int?      // Ranking 1-10
-  product1Decile      Int?      // Ranking 1-10
-  product2Decile      Int?      // Ranking 1-10
-  practiceSetting     String?   // Surgical, Community, Academic, Retail
-  practiceSentiment   String?   // Categorical
-  prescribingBehavior String?   // Champions/Loyalist, Splitter, Dabblers, Unaware/Disengaged
-  segmentation1       String?   // Categorical
-  segmentation2       String?   // Categorical
-  segmentation3       String?   // Categorical
+  marketDecile        Int? // Ranking 1-10
+  product1Decile      Int? // Ranking 1-10
+  product2Decile      Int? // Ranking 1-10
+  practiceSetting     String? // Surgical, Community, Academic, Retail
+  practiceSentiment   String? // Categorical
+  prescribingBehavior String? // Champions/Loyalist, Splitter, Dabblers, Unaware/Disengaged
+  segmentation1       String? // Categorical
+  segmentation2       String? // Categorical
+  segmentation3       String? // Categorical
 
-  campaign       Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  hcp            Hcp       @relation(fields: [hcpId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  hcp      Hcp      @relation(fields: [hcpId], references: [id])
 
   @@unique([campaignId, hcpId])
   @@index([surveyToken])
@@ -713,7 +718,10 @@ model SurveyQuestion {
   sortOrder            Int                    @default(0)
   isRequired           Boolean                @default(false)
   questionTextSnapshot String
-  nominationType       NominationType?        // Frozen copy of nomination type
+  nominationType       NominationType? // Frozen copy of nomination type
+  // Brand-Affinity Grid (item L): when true, respondent survey renders
+  // the brand grid on every nomination row for this question.
+  useBrandGrid         Boolean                @default(false)
   createdAt            DateTime               @default(now())
   nominations          Nomination[]
   campaign             Campaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -786,6 +794,7 @@ model Nomination {
   nominatorHcp    Hcp                   @relation("NominatorHcp", fields: [nominatorHcpId], references: [id])
   question        SurveyQuestion        @relation(fields: [questionId], references: [id])
   response        SurveyResponse        @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  brandFlags      NominationBrandFlag[]
 
   @@index([responseId])
   @@index([questionId])
@@ -797,6 +806,63 @@ model Nomination {
   /// AND matchStatus IN (...) AND matchedHcpId ...`. Composite is
   /// growth insurance more than today's win (12k rows ≈ 10 noms/response).
   @@index([responseId, matchStatus, matchedHcpId], name: "Nomination_filter_idx")
+}
+
+// -----------------------------------------------------------------------
+// Brand-Affinity Grid Nomination (Phase 1) — see
+// docs/findings/brand-affinity-grid-nomination-plan-2026-07-08.md
+//
+// Data model: a campaign in Grid mode has 1..N CampaignBrandOption rows
+// (ordered), and every Nomination on a useBrandGrid question has 1..N
+// NominationBrandFlag rows. Neutral / Don't Know are sentinel flag types
+// with brandOptionId = NULL. Mutual exclusion between BRAND and
+// NEUTRAL/DONT_KNOW is enforced in the Zod write-schema, not at the DB
+// level (item S).
+// -----------------------------------------------------------------------
+
+model CampaignBrandOption {
+  id           String   @id @default(cuid())
+  campaignId   String
+  brandName    String
+  displayOrder Int
+  createdAt    DateTime @default(now())
+
+  campaign             Campaign              @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  nominationBrandFlags NominationBrandFlag[]
+
+  @@unique([campaignId, brandName])
+  @@unique([campaignId, displayOrder])
+  @@index([campaignId])
+}
+
+model NominationBrandFlag {
+  id            String        @id @default(cuid())
+  nominationId  String
+  flagType      BrandFlagType
+  brandOptionId String?
+  createdAt     DateTime      @default(now())
+
+  nomination  Nomination           @relation(fields: [nominationId], references: [id], onDelete: Cascade)
+  brandOption CampaignBrandOption? @relation(fields: [brandOptionId], references: [id], onDelete: SetNull)
+
+  // Prisma unique covers the BRAND case (nominationId + brandOptionId
+  // both non-null → Postgres enforces). For the NEUTRAL / DONT_KNOW
+  // case (brandOptionId is NULL) Postgres treats NULLs as distinct
+  // inside a UNIQUE tuple, so this compound alone does NOT stop dup
+  // NEUTRAL rows for the same nomination. The migration adds a partial
+  // unique index `NominationBrandFlag_sentinel_uniq` on
+  // (nominationId, flagType) WHERE brandOptionId IS NULL that closes
+  // the gap. Zod also enforces the invariant at write-time (item S).
+  @@unique([nominationId, brandOptionId, flagType])
+  @@index([nominationId])
+  @@index([brandOptionId])
+  @@index([flagType])
+}
+
+enum BrandFlagType {
+  BRAND
+  NEUTRAL
+  DONT_KNOW
 }
 
 model Payment {
@@ -986,7 +1052,7 @@ enum SurveyResponseStatus {
   IN_PROGRESS
   COMPLETED
   EXCLUDED
-  RECENTLY_SURVEYED  // HCP completed survey for same disease area within past year
+  RECENTLY_SURVEYED // HCP completed survey for same disease area within past year
 }
 
 enum NominationMatchStatus {
@@ -1029,13 +1095,13 @@ enum QuestionType {
 // Nomination types for categorizing HCP nominations
 enum NominationType {
   DISCUSSION_LEADERS // Discussion Leaders in the field
-  REFERRAL_LEADERS   // Referral Leaders / trusted colleagues
-  ADVICE_LEADERS     // Advice Leaders for clinical guidance
-  NATIONAL_LEADER    // National KOL / thought leader
-  RISING_STAR        // Emerging/up-and-coming KOL
-  SOCIAL_LEADER      // Social media / digital influencer
-  REGIONAL_LEADER    // Regional influencer / local leader
-  BIASED_LEADER      // Biased / conflicted leader
+  REFERRAL_LEADERS // Referral Leaders / trusted colleagues
+  ADVICE_LEADERS // Advice Leaders for clinical guidance
+  NATIONAL_LEADER // National KOL / thought leader
+  RISING_STAR // Emerging/up-and-coming KOL
+  SOCIAL_LEADER // Social media / digital influencer
+  REGIONAL_LEADER // Regional influencer / local leader
+  BIASED_LEADER // Biased / conflicted leader
 }
 
 enum ActorType {

@@ -105,3 +105,11 @@ creds/
 # CSV files and csv folder
 *.csv
 csv/
+
+# Local-only working state (never committed — proprietary data or personal utilities)
+insights2/
+auth-brief-followup-q2-q3-close.md
+scripts/backfill-payments.ts
+scripts/import-survey-data.ts
+scripts/load-sociometric-scores.ts
+scripts/load-weighted-scores.ts
