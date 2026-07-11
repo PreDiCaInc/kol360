@@ -13,10 +13,12 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { PrismaClient } from '@prisma/client';
 import { config } from '../config';
 import { ApiClient } from '../api-client';
 
 const skipIfNoAuth = !config.authToken;
+const prisma = new PrismaClient();
 
 describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — useBrandGrid per-question toggle', () => {
   const api = new ApiClient();
@@ -24,10 +26,10 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — useBrandGrid per-question
   let nominationSurveyQuestionId: string | null = null;
 
   beforeAll(async () => {
-    // createTestCampaign attaches TEST_IDS.SURVEY_TEMPLATE_ID so the campaign
-    // gets SurveyQuestions instantiated at creation-time. Not all templates
-    // include a nomination question — the survey-preview response tells us
-    // for sure.
+    // createTestCampaign attaches TEST_IDS.SURVEY_TEMPLATE_ID. The seeded
+    // template happens to contain no nomination-type questions (the seed
+    // covers Demographics/free-text only), so we self-provision one for
+    // the test rather than depending on unrelated seed content.
     const created = await api.createTestCampaign({
       description: 'brand-grid question-toggle test',
     });
@@ -35,17 +37,44 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — useBrandGrid per-question
     campaignId = created.data.id;
     console.log(`Created campaign ${campaignId} for question-toggle tests`);
 
-    const preview = await api.getSurveyPreview(campaignId!);
-    expect(preview.status).toBe(200);
-    const nomQ = preview.data.questions.find((q) => q.nominationType);
-    if (!nomQ) {
+    // Look up any Question in the bank with a nominationType — the fixture
+    // question ids drift over time, so we search dynamically.
+    const nomQuestion = await prisma.question.findFirst({
+      where: { nominationType: { not: null } },
+      select: { id: true, text: true, nominationType: true },
+    });
+    if (!nomQuestion) {
       throw new Error(
-        'Test template has no nomination question — pick a template with ≥1 nomination question or extend the test-data seed'
+        'No Question row with nominationType found in the DB — cannot run useBrandGrid toggle test'
       );
     }
-    nominationSurveyQuestionId = nomQ.id;
-    // Fresh campaign — every question should default to useBrandGrid: false.
-    expect(nomQ.useBrandGrid).toBe(false);
+
+    // Insert a SurveyQuestion into the fresh test campaign referencing
+    // that nomination Question. Cleanup cascades when the campaign gets
+    // deleted in afterAll.
+    const sq = await prisma.surveyQuestion.create({
+      data: {
+        campaignId: campaignId!,
+        questionId: nomQuestion.id,
+        sectionName: 'E2E Test Nomination Section',
+        sortOrder: 100,
+        isRequired: false,
+        questionTextSnapshot: nomQuestion.text,
+        nominationType: nomQuestion.nominationType,
+      },
+      select: { id: true },
+    });
+    nominationSurveyQuestionId = sq.id;
+
+    // Sanity: survey-preview now surfaces the injected question with
+    // useBrandGrid: false (the additive default).
+    const preview = await api.getSurveyPreview(campaignId!);
+    expect(preview.status).toBe(200);
+    const injected = preview.data.questions.find(
+      (q) => q.id === nominationSurveyQuestionId
+    );
+    expect(injected).toBeDefined();
+    expect(injected!.useBrandGrid).toBe(false);
   });
 
   afterAll(async () => {
@@ -56,6 +85,7 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — useBrandGrid per-question
         console.warn(`Cleanup failed for campaign ${campaignId}:`, err);
       }
     }
+    await prisma.$disconnect();
   });
 
   describe('GET /survey-preview shape', () => {
