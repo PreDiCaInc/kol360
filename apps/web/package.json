@@ -1,6 +1,6 @@
 {
   "name": "@kol360/web",
-  "version": "1.17.78",
+  "version": "1.17.79",
   "private": true,
   "scripts": {
     "dev": "next dev",

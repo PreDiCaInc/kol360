@@ -162,3 +162,13 @@ export const brandOptionOutputSchema = z.object({
   createdAt: z.string().datetime(),
 });
 export type BrandOptionOutput = z.infer<typeof brandOptionOutputSchema>;
+
+// PATCH payload for a single SurveyQuestion's grid toggle. Small, single
+// field for now — if additional per-question grid settings emerge later
+// (e.g. a per-question brand-list override) they'd extend this schema.
+export const updateSurveyQuestionBrandGridSchema = z.object({
+  useBrandGrid: z.boolean(),
+});
+export type UpdateSurveyQuestionBrandGridInput = z.infer<
+  typeof updateSurveyQuestionBrandGridSchema
+>;

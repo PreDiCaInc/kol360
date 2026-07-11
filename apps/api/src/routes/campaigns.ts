@@ -5,6 +5,7 @@ import {
   campaignListQuerySchema,
   emailTemplatesSchema,
   landingPageTemplatesSchema,
+  updateSurveyQuestionBrandGridSchema,
 } from '@kol360/shared';
 import { requireTenantUser, gateWritesToAdmins } from '../middleware/rbac';
 import { CampaignService } from '../services/campaign.service';
@@ -582,6 +583,9 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
       minEntries: sq.question.minEntries,
       defaultEntries: sq.question.defaultEntries,
       nominationType: sq.nominationType,
+      // v1.17.79 — Brand-Affinity Grid opt-in per question (spec item L).
+      // Additive field; non-grid campaigns show all questions as false.
+      useBrandGrid: sq.useBrandGrid,
     }));
 
     // Group by section
@@ -606,6 +610,68 @@ export const campaignRoutes: FastifyPluginAsync = async (fastify) => {
       totalQuestions: questions.length,
     };
   });
+
+  // v1.17.79 — PATCH per-question useBrandGrid toggle (Brand-Affinity Grid,
+  // spec item L). Scoped under /campaigns/:id/survey-questions/:sqId so the
+  // existing tenant guard flows naturally. The SurveyQuestion row must
+  // belong to the URL's campaign — mismatch returns 404 (avoids ID
+  // enumeration across tenants).
+  fastify.patch<{ Params: { id: string; sqId: string } }>(
+    '/:id/survey-questions/:sqId',
+    async (request, reply) => {
+      const { id: campaignId, sqId } = request.params;
+
+      const campaign = await campaignService.getById(campaignId);
+      if (!campaign) {
+        return reply.status(404).send({
+          error: 'Not Found',
+          message: 'Campaign not found',
+          statusCode: 404,
+        });
+      }
+      if (
+        request.user!.role !== 'PLATFORM_ADMIN' &&
+        campaign.clientId !== request.user!.tenantId
+      ) {
+        return reply.status(403).send({
+          error: 'Forbidden',
+          message: 'Cannot access campaigns from other tenants',
+          statusCode: 403,
+        });
+      }
+
+      const parsed = updateSurveyQuestionBrandGridSchema.parse(request.body);
+
+      const sq = await fastify.prisma.surveyQuestion.findFirst({
+        where: { id: sqId, campaignId },
+        select: { id: true, useBrandGrid: true, nominationType: true },
+      });
+      if (!sq) {
+        return reply.status(404).send({
+          error: 'Not Found',
+          message: 'Survey question not found for this campaign',
+          statusCode: 404,
+        });
+      }
+
+      const updated = await fastify.prisma.surveyQuestion.update({
+        where: { id: sqId },
+        data: { useBrandGrid: parsed.useBrandGrid },
+        select: { id: true, useBrandGrid: true },
+      });
+
+      await createAuditLog(request.user!.sub, {
+        action: 'survey_question.brand_grid_toggled',
+        entityType: 'SurveyQuestion',
+        entityId: sqId,
+        oldValues: { useBrandGrid: sq.useBrandGrid },
+        newValues: { useBrandGrid: parsed.useBrandGrid },
+        tenantId: campaign.clientId,
+      });
+
+      return updated;
+    }
+  );
 
   // Confirm workflow step (for DRAFT campaigns)
   fastify.post<{ Params: { id: string }; Body: { step: 'scores' | 'templates' } }>(

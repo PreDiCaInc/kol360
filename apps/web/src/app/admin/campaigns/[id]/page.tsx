@@ -23,6 +23,7 @@ import { useSendReminders, useSendInvitations, useDistributionStats, useEmailPro
 import { RequireAuth } from '@/components/auth/require-auth';
 import { CampaignHcpsTab } from '@/components/campaigns/campaign-hcps-tab';
 import { CampaignTemplatesTab } from '@/components/campaigns/campaign-templates-tab';
+import { CampaignBrandGridSection } from '@/components/campaigns/campaign-brand-grid-section';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -843,6 +844,11 @@ export default function CampaignDetailPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* v1.17.79 — Brand-Affinity Grid config. Renders as its own
+                  card so admins can leave the campaign in Classic mode
+                  (empty brand list) with zero visual noise. */}
+              <CampaignBrandGridSection campaignId={campaignId} canEdit={canEdit} />
 
               {/* Campaign Status Audit Log */}
               <Card>
