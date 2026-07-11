@@ -32,6 +32,14 @@ interface SurveyQuestion {
   options: QuestionOption[] | null;
   minEntries: number | null;
   defaultEntries: number | null;
+  // v1.17.81 — Brand-Affinity Grid opt-in per question.
+  useBrandGrid: boolean;
+}
+
+interface BrandOption {
+  id: string;
+  brandName: string;
+  displayOrder: number;
 }
 
 interface SurveyData {
@@ -49,6 +57,8 @@ interface SurveyData {
     surveyAlreadyDoneMessage: string | null;
     surveyDisqualifiedTitle: string | null;
     surveyDisqualifiedMessage: string | null;
+    // v1.17.81 — Brand list; empty on classic campaigns.
+    brandOptions: BrandOption[];
   };
   hcp: {
     firstName: string;

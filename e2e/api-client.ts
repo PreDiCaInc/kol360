@@ -840,6 +840,19 @@ export class ApiClient {
     );
   }
 
+  // v1.17.81 — Map-shape submit for Brand-Affinity Grid tests. The
+  // production FE sends this shape (Record<questionId, answerValue>),
+  // matching submitSurveySchema in @kol360/shared. The array-shape
+  // `submitSurvey` above is legacy and mostly gets 400'd by the server
+  // in the workflow test; both are kept so no other test breaks.
+  async submitSurveyAnswerMap(token: string, answers: Record<string, unknown>) {
+    return this.request<{ submitted?: boolean; error?: string; message?: string }>(
+      'POST',
+      `/api/v1/survey/take/${token}/submit`,
+      { answers }
+    );
+  }
+
   // ==================== Exports ====================
 
   async exportResponses(campaignId: string) {
