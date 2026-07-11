@@ -17,6 +17,7 @@ import { surveyTemplateRoutes } from './routes/survey-templates';
 // score-config routes removed in Phase 3 PR A (campaign-level scoring teardown).
 // Weights now live on KolAnalysis per-analysis; see /admin/kol-analysis dashboard.
 import { campaignRoutes } from './routes/campaigns';
+import { campaignBrandOptionRoutes } from './routes/campaign-brand-options';
 import { diseaseAreaRoutes } from './routes/disease-areas';
 import { distributionRoutes } from './routes/distribution';
 import { surveyTakingRoutes } from './routes/survey-taking';
@@ -106,6 +107,7 @@ export async function configureApp(fastify: ReturnType<typeof Fastify>) {
   await fastify.register(surveyTemplateRoutes, { prefix: '/api/v1/survey-templates' });
   // scoreConfigRoutes removed in Phase 3 PR A.
   await fastify.register(campaignRoutes, { prefix: '/api/v1/campaigns' });
+  await fastify.register(campaignBrandOptionRoutes, { prefix: '/api/v1/campaigns' });
   await fastify.register(diseaseAreaRoutes, { prefix: '/api/v1/disease-areas' });
   await fastify.register(specialtyRoutes, { prefix: '/api/v1/specialties' });
   await fastify.register(distributionRoutes, { prefix: '/api/v1' });

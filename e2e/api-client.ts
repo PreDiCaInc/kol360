@@ -150,6 +150,31 @@ export class ApiClient {
     return this.request<Campaign>('PUT', `/api/v1/campaigns/${id}`, data);
   }
 
+  // ==================== Brand-Affinity Grid: Brand Options ====================
+  // v1.17.78 — Phase 1 backend. See
+  // docs/findings/brand-affinity-grid-nomination-plan-2026-07-08.md
+
+  async getBrandOptions(campaignId: string) {
+    return this.request<{
+      brandOptions: BrandOption[];
+      brandsFrozenAt: string | null;
+    }>('GET', `/api/v1/campaigns/${campaignId}/brand-options`);
+  }
+
+  async upsertBrandOptions(
+    campaignId: string,
+    brands: Array<{ brandName: string; displayOrder: number }>
+  ) {
+    return this.request<{
+      brandOptions?: BrandOption[];
+      // Present on 409 (BrandsFrozenError)
+      brandsFrozenAt?: string;
+      // Present on 4xx
+      error?: string;
+      message?: string;
+    }>('PUT', `/api/v1/campaigns/${campaignId}/brand-options`, { brands });
+  }
+
   // ==================== Clients ====================
 
   async createClient(data: {
@@ -1330,6 +1355,15 @@ export interface Campaign {
 }
 
 export type CampaignStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED' | 'PUBLISHED';
+
+// v1.17.78 — Brand-Affinity Grid Phase 1 (backend).
+export interface BrandOption {
+  id: string;
+  campaignId: string;
+  brandName: string;
+  displayOrder: number;
+  createdAt: string;
+}
 
 export interface CreateCampaignInput {
   name: string;

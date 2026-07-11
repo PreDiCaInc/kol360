@@ -3,6 +3,9 @@ import { PrismaPromise } from '@prisma/client';
 import { isPlaceholderEmail } from '@kol360/shared';
 import { createAuditLog } from '../lib/audit';
 import { logger } from '../lib/logger';
+import { CampaignBrandOptionService } from './campaign-brand-option.service';
+
+const brandOptionService = new CampaignBrandOptionService();
 
 interface SurveyQuestion {
   id: string;
@@ -327,13 +330,25 @@ export class SurveyTakingService {
       throw new Error(`Validation failed: ${validationErrors.join('; ')}`);
     }
 
-    // Mark as completed
-    await prisma.surveyResponse.update({
-      where: { id: response.id },
-      data: {
-        status: 'COMPLETED',
-        completedAt: new Date(),
-      },
+    // Mark as completed. Also freeze the campaign's brand-option list
+    // atomically in the same transaction — see item O in the
+    // brand-affinity-grid plan. Idempotent for non-first responses
+    // (freezeIfFirstResponse is a `WHERE brandsFrozenAt IS NULL`
+    // updateMany, so it's a no-op after the first hit).
+    const completedAt = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.surveyResponse.update({
+        where: { id: response.id },
+        data: {
+          status: 'COMPLETED',
+          completedAt,
+        },
+      });
+      await brandOptionService.freezeIfFirstResponse(
+        response.campaignId,
+        completedAt,
+        tx
+      );
     });
 
     // v1.17.38 — SURFACE (don't auto-update) survey-provided "Email

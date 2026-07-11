@@ -30,3 +30,4 @@ export * from './dashboard';
 export * from './insights-report';
 export * from './insights2';
 export * from './curation';
+export * from './brand-affinity';
