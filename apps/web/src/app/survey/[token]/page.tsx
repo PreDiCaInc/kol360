@@ -67,6 +67,28 @@ interface Question {
   options: QuestionOption[] | null;
   minEntries: number | null;
   defaultEntries: number | null;
+  // v1.17.81 — Brand-Affinity Grid opt-in per question. Always present;
+  // false for every question on a classic (non-grid) campaign.
+  useBrandGrid: boolean;
+}
+
+// v1.17.81 — Brand-Affinity Grid respondent value shape for MULTI_TEXT
+// answers. Grid questions store this shape; classic MULTI_TEXT stays
+// as string[]. See packages/shared/src/schemas/survey-taking.ts.
+type BrandFlagValue =
+  | { flagType: 'BRAND'; brandOptionId: string }
+  | { flagType: 'NEUTRAL' }
+  | { flagType: 'DONT_KNOW' };
+
+interface MultiTextGridValue {
+  names: string[];
+  brandFlags: BrandFlagValue[][];
+}
+
+interface BrandOption {
+  id: string;
+  brandName: string;
+  displayOrder: number;
 }
 
 
@@ -235,9 +257,36 @@ export default function SurveyPage() {
     }
 
     if (question.type === 'MULTI_TEXT' && question.minEntries != null && question.minEntries > 0) {
-      const filledEntries = Array.isArray(answer) ? answer.filter(Boolean).length : 0;
+      // v1.17.81 — MULTI_TEXT with grid stores { names, brandFlags }.
+      const names = Array.isArray(answer)
+        ? answer
+        : (answer && typeof answer === 'object' && 'names' in (answer as Record<string, unknown>)
+            ? ((answer as { names: string[] }).names)
+            : []);
+      const filledEntries = names.filter(Boolean).length;
       if (filledEntries < question.minEntries) {
         return `Please provide at least ${question.minEntries} names`;
+      }
+    }
+
+    // v1.17.81 — grid-mode integrity: every non-empty nominee row on a
+    // useBrandGrid question must have at least one brand flag (BRAND,
+    // Neutral, or Don't Know). Mirrors the server-side item S invariant
+    // so the respondent gets an inline message instead of a submit-time
+    // 400.
+    if (question.type === 'MULTI_TEXT' && question.useBrandGrid) {
+      const grid = answer && typeof answer === 'object' && 'names' in (answer as Record<string, unknown>)
+        ? (answer as { names: string[]; brandFlags: unknown[][] })
+        : null;
+      if (grid) {
+        for (let i = 0; i < grid.names.length; i++) {
+          const trimmed = (grid.names[i] ?? '').trim();
+          if (!trimmed) continue;
+          const flags = grid.brandFlags[i] ?? [];
+          if (!Array.isArray(flags) || flags.length === 0) {
+            return `Please answer the brand grid for "${trimmed}" (pick a brand, Neutral, or Don't Know)`;
+          }
+        }
       }
     }
 
@@ -595,6 +644,7 @@ export default function SurveyPage() {
                 onChange={(value) => updateAnswer(question.id, value)}
                 error={validationErrors[question.id]}
                 showNumber={currentStepData.questions.length > 1}
+                brandOptions={survey?.campaign.brandOptions ?? []}
               />
             ))}
           </CardContent>
@@ -689,9 +739,12 @@ interface QuestionRendererProps {
   onChange: (value: unknown) => void;
   error?: string;
   showNumber?: boolean;
+  // v1.17.81 — Brand list for the campaign. Empty on classic
+  // campaigns; ignored unless question.useBrandGrid = true.
+  brandOptions: BrandOption[];
 }
 
-function QuestionRenderer({ question, index, value, onChange, error, showNumber = true }: QuestionRendererProps) {
+function QuestionRenderer({ question, index, value, onChange, error, showNumber = true, brandOptions }: QuestionRendererProps) {
   const renderInput = () => {
     switch (question.type) {
       case 'SINGLE_CHOICE':
@@ -786,6 +839,17 @@ function QuestionRenderer({ question, index, value, onChange, error, showNumber 
         );
 
       case 'MULTI_TEXT':
+        if (question.useBrandGrid && brandOptions.length > 0) {
+          return (
+            <MultiTextGridInput
+              value={value as MultiTextGridValue | string[] | undefined}
+              onChange={onChange}
+              minEntries={question.minEntries}
+              defaultEntries={question.defaultEntries}
+              brandOptions={brandOptions}
+            />
+          );
+        }
         return (
           <MultiTextInput
             value={value as string[]}
@@ -940,6 +1004,212 @@ function MultiTextInput({ value, onChange, minEntries, defaultEntries }: MultiTe
           * Minimum {minRequired} names required
         </p>
       )}
+    </div>
+  );
+}
+
+// v1.17.81 — Brand-Affinity Grid nominee row. One per name entry; the
+// respondent picks any combination of brand chips OR a single Neutral
+// / Don't Know sentinel. Item R (auto-swap): clicking a brand while
+// Neutral is checked auto-unchecks Neutral (and vice-versa). Item S
+// invariant is enforced server-side at submit; the FE just presents
+// the interaction so users can't accidentally construct an invalid
+// grid.
+interface MultiTextGridInputProps {
+  value: MultiTextGridValue | string[] | undefined;
+  onChange: (value: MultiTextGridValue) => void;
+  minEntries: number | null;
+  defaultEntries: number | null;
+  brandOptions: BrandOption[];
+}
+
+// Normalize whatever we got from server / auto-save back into a stable
+// { names, brandFlags } shape. Old rows that only stored string[] arrive
+// here on resume — we just seed empty brandFlags for each name.
+function normalizeGridValue(
+  raw: MultiTextGridValue | string[] | undefined,
+  defaultCount: number
+): MultiTextGridValue {
+  if (Array.isArray(raw)) {
+    const names = raw.length > 0 ? raw : Array(defaultCount).fill('');
+    return { names, brandFlags: names.map(() => []) };
+  }
+  if (raw && typeof raw === 'object' && Array.isArray(raw.names)) {
+    const names = raw.names.length > 0 ? raw.names : Array(defaultCount).fill('');
+    const flags = names.map((_, i) => raw.brandFlags?.[i] ?? []);
+    return { names, brandFlags: flags };
+  }
+  return {
+    names: Array(defaultCount).fill(''),
+    brandFlags: Array.from({ length: defaultCount }, () => []),
+  };
+}
+
+function MultiTextGridInput({
+  value,
+  onChange,
+  minEntries,
+  defaultEntries,
+  brandOptions,
+}: MultiTextGridInputProps) {
+  const minRequired = minEntries ?? 1;
+  const defaultCount = defaultEntries ?? minRequired;
+  const state = normalizeGridValue(value, defaultCount);
+
+  useEffect(() => {
+    if (value === undefined || (Array.isArray(value) && value.length === 0)) {
+      onChange(state);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const emit = (names: string[], brandFlags: BrandFlagValue[][]) => {
+    onChange({ names, brandFlags });
+  };
+
+  const addEntry = () => {
+    emit([...state.names, ''], [...state.brandFlags, []]);
+  };
+
+  const updateName = (index: number, newName: string) => {
+    const names = [...state.names];
+    names[index] = newName;
+    emit(names, state.brandFlags);
+  };
+
+  const toggleFlag = (rowIndex: number, next: BrandFlagValue, on: boolean) => {
+    const rowFlags = [...(state.brandFlags[rowIndex] ?? [])];
+    let updated: BrandFlagValue[];
+
+    if (!on) {
+      // Turning OFF: remove the matching flag.
+      updated = rowFlags.filter((f) => !flagsEqual(f, next));
+    } else if (next.flagType === 'BRAND') {
+      // Turning a BRAND ON: strip any NEUTRAL / DONT_KNOW, add BRAND if
+      // not already present (idempotent).
+      const withoutSentinels = rowFlags.filter((f) => f.flagType === 'BRAND');
+      const alreadyOn = withoutSentinels.some((f) => flagsEqual(f, next));
+      updated = alreadyOn ? withoutSentinels : [...withoutSentinels, next];
+    } else {
+      // Turning NEUTRAL or DONT_KNOW ON: replace whatever's there with
+      // exactly this one sentinel flag (auto-swap per item R).
+      updated = [next];
+    }
+
+    const brandFlags = state.brandFlags.map((f, i) => (i === rowIndex ? updated : f));
+    emit(state.names, brandFlags);
+  };
+
+  return (
+    <div className="space-y-4">
+      {state.names.map((name, index) => (
+        <div key={index} className="space-y-2 rounded-lg border p-3">
+          <div className="flex items-center gap-2">
+            <span className="w-6 shrink-0 text-right text-xs text-muted-foreground">
+              {index + 1}
+            </span>
+            <Input
+              value={name}
+              onChange={(e) => updateName(index, e.target.value)}
+              placeholder={`Name ${index + 1}`}
+              className="text-base"
+            />
+            {index < minRequired && (
+              <span className="shrink-0 text-sm text-red-500">*</span>
+            )}
+          </div>
+
+          {name.trim().length > 0 && (
+            <BrandGridRow
+              flags={state.brandFlags[index] ?? []}
+              onToggle={(next, on) => toggleFlag(index, next, on)}
+              brandOptions={brandOptions}
+            />
+          )}
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm" onClick={addEntry}>
+        <Plus className="w-4 h-4 mr-1" />
+        Add Another
+      </Button>
+      {minRequired > 1 && (
+        <p className="text-xs text-muted-foreground">
+          * Minimum {minRequired} names required
+        </p>
+      )}
+    </div>
+  );
+}
+
+function flagsEqual(a: BrandFlagValue, b: BrandFlagValue): boolean {
+  if (a.flagType !== b.flagType) return false;
+  if (a.flagType === 'BRAND' && b.flagType === 'BRAND') {
+    return a.brandOptionId === b.brandOptionId;
+  }
+  return true;
+}
+
+interface BrandGridRowProps {
+  flags: BrandFlagValue[];
+  onToggle: (next: BrandFlagValue, on: boolean) => void;
+  brandOptions: BrandOption[];
+}
+
+function BrandGridRow({ flags, onToggle, brandOptions }: BrandGridRowProps) {
+  const brandIdSet = new Set(
+    flags.filter((f) => f.flagType === 'BRAND').map((f) => (f as { brandOptionId: string }).brandOptionId)
+  );
+  const isNeutral = flags.some((f) => f.flagType === 'NEUTRAL');
+  const isDontKnow = flags.some((f) => f.flagType === 'DONT_KNOW');
+
+  return (
+    <div className="pl-8">
+      <p className="mb-2 text-xs text-muted-foreground">
+        Bias toward brand?
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {brandOptions.map((b) => {
+          const active = brandIdSet.has(b.id);
+          return (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() =>
+                onToggle({ flagType: 'BRAND', brandOptionId: b.id }, !active)
+              }
+              className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+                active
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-gray-300 bg-white hover:bg-gray-50'
+              }`}
+            >
+              {b.brandName}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => onToggle({ flagType: 'NEUTRAL' }, !isNeutral)}
+          className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+            isNeutral
+              ? 'border-gray-800 bg-gray-800 text-white'
+              : 'border-gray-300 bg-white hover:bg-gray-50'
+          }`}
+        >
+          Neutral
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggle({ flagType: 'DONT_KNOW' }, !isDontKnow)}
+          className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+            isDontKnow
+              ? 'border-gray-800 bg-gray-800 text-white'
+              : 'border-gray-300 bg-white hover:bg-gray-50'
+          }`}
+        >
+          Don&apos;t Know
+        </button>
+      </div>
     </div>
   );
 }

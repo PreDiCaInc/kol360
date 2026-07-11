@@ -1,6 +1,10 @@
 import { prisma } from '../lib/prisma';
 import { PrismaPromise } from '@prisma/client';
-import { isPlaceholderEmail } from '@kol360/shared';
+import {
+  isPlaceholderEmail,
+  multiTextWithGridSchema,
+  nominationBrandFlagsSchema,
+} from '@kol360/shared';
 import { createAuditLog } from '../lib/audit';
 import { logger } from '../lib/logger';
 import { CampaignBrandOptionService } from './campaign-brand-option.service';
@@ -18,6 +22,15 @@ interface SurveyQuestion {
   options: unknown;
   minEntries: number | null;
   defaultEntries: number | null;
+  // v1.17.81 — Brand-Affinity Grid opt-in per question. False for every
+  // question of a classic (non-grid) campaign.
+  useBrandGrid: boolean;
+}
+
+interface BrandOptionForRespondent {
+  id: string;
+  brandName: string;
+  displayOrder: number;
 }
 
 interface SurveyData {
@@ -35,6 +48,10 @@ interface SurveyData {
     surveyAlreadyDoneMessage: string | null;
     surveyDisqualifiedTitle: string | null;
     surveyDisqualifiedMessage: string | null;
+    // v1.17.81 — Brand-Affinity Grid config. Empty array on classic
+    // campaigns; the FE reads this + question.useBrandGrid to decide
+    // whether to render the brand grid at all.
+    brandOptions: BrandOptionForRespondent[];
   };
   hcp: {
     firstName: string;
@@ -64,6 +81,11 @@ export class SurveyTakingService {
                   include: { section: { select: { name: true, description: true } } },
                 },
               },
+            },
+            // v1.17.81 — Brand-Affinity Grid config for grid campaigns.
+            brandOptions: {
+              orderBy: { displayOrder: 'asc' },
+              select: { id: true, brandName: true, displayOrder: true },
             },
           },
         },
@@ -99,6 +121,13 @@ export class SurveyTakingService {
         surveyAlreadyDoneMessage: campaignHcp.campaign.surveyAlreadyDoneMessage,
         surveyDisqualifiedTitle: campaignHcp.campaign.surveyDisqualifiedTitle,
         surveyDisqualifiedMessage: campaignHcp.campaign.surveyDisqualifiedMessage,
+        // v1.17.81 — always emit brandOptions; empty array on classic
+        // campaigns. FE gates rendering on question.useBrandGrid.
+        brandOptions: campaignHcp.campaign.brandOptions.map((b: { id: string; brandName: string; displayOrder: number }) => ({
+          id: b.id,
+          brandName: b.brandName,
+          displayOrder: b.displayOrder,
+        })),
       },
       hcp: campaignHcp.hcp,
       questions: (() => {
@@ -119,6 +148,7 @@ export class SurveyTakingService {
           questionTextSnapshot: string;
           sectionName: string | null;
           isRequired: boolean;
+          useBrandGrid: boolean;
           question: { type: string; options: unknown; minEntries: number | null; defaultEntries: number | null };
         }) => ({
           id: sq.id,
@@ -131,6 +161,8 @@ export class SurveyTakingService {
           options: sq.question.options,
           minEntries: sq.question.minEntries,
           defaultEntries: sq.question.defaultEntries,
+          // v1.17.81 — Brand-Affinity Grid opt-in per question.
+          useBrandGrid: sq.useBrandGrid,
         }));
       })(),
       response: response
@@ -266,6 +298,10 @@ export class SurveyTakingService {
             surveyQuestions: {
               include: { question: true },
             },
+            // v1.17.81 — brand list, needed to validate that any
+            // BRAND flag on a submitted nomination references an id
+            // that belongs to THIS campaign (cross-campaign leak guard).
+            brandOptions: { select: { id: true } },
           },
         },
         respondentHcp: {
@@ -372,34 +408,149 @@ export class SurveyTakingService {
     // No backfill of historical responses per pteam's call.
     await this.detectSurveyEmailMismatch(response.id);
 
-    // Create nominations from MULTI_TEXT answers
-    const nominations: Array<{
+    // v1.17.81 — Brand-Affinity Grid submit path.
+    // Prior to grid mode: MULTI_TEXT answerJson is `string[]`, we
+    // createMany the resulting Nominations with skipDuplicates.
+    //
+    // In grid mode the answerJson for a useBrandGrid question is
+    // `{ names: string[]; brandFlags: BrandFlagInput[][] }`. Each
+    // non-empty name row spawns:
+    //   - one Nomination (need the id to attach flags),
+    //   - N NominationBrandFlag rows (BRAND with brandOptionId, or a
+    //     single NEUTRAL / DONT_KNOW sentinel row).
+    // Cross-campaign brandOptionId is rejected (respondent MUST pick
+    // from THIS campaign's brand list).
+    //
+    // Classic questions on a grid campaign, and every question on a
+    // classic campaign, still take the string[] happy path with
+    // createMany. Only useBrandGrid = true questions go through the
+    // per-name loop.
+    const validBrandOptionIds = new Set(
+      (response.campaign as { brandOptions: { id: string }[] }).brandOptions.map((b) => b.id)
+    );
+
+    // Bucket 1: classic path (fast createMany).
+    const classicNominations: Array<{
       responseId: string;
       questionId: string;
       nominatorHcpId: string;
       rawNameEntered: string;
     }> = [];
 
+    // Bucket 2: grid path (per-name creates so we can attach flags).
+    // Rows are validated eagerly — any invariant break throws BEFORE
+    // the DB transaction opens.
+    interface GridNominationDraft {
+      questionId: string;
+      surveyQuestionId: string;
+      rawNameEntered: string;
+      flags: Array<{ flagType: 'BRAND' | 'NEUTRAL' | 'DONT_KNOW'; brandOptionId?: string }>;
+    }
+    const gridDrafts: GridNominationDraft[] = [];
+
     for (const answer of response.answers) {
-      if (answer.question.question.type === 'MULTI_TEXT' && answer.answerJson) {
-        const names = answer.answerJson as string[];
+      if (answer.question.question.type !== 'MULTI_TEXT' || !answer.answerJson) continue;
+
+      const isGridQuestion = answer.question.useBrandGrid;
+
+      if (!isGridQuestion) {
+        // Classic path — string[] only. Guard against a rogue payload
+        // that sent the grid shape on a non-grid question by unwrapping
+        // .names if present; ignore stray brand flags in that case.
+        const raw = answer.answerJson as unknown;
+        const names = Array.isArray(raw)
+          ? (raw as string[])
+          : ((raw as { names?: string[] }).names ?? []);
         for (const name of names.filter(Boolean)) {
-          nominations.push({
+          classicNominations.push({
             responseId: response.id,
             questionId: answer.questionId,
             nominatorHcpId: response.respondentHcpId,
             rawNameEntered: name.trim(),
           });
         }
+        continue;
+      }
+
+      // Grid path — must be the extended shape.
+      const parsed = multiTextWithGridSchema.safeParse(answer.answerJson);
+      if (!parsed.success) {
+        throw new Error(
+          `Brand grid answer for question "${answer.question.question.text}" is malformed — expected { names, brandFlags }`
+        );
+      }
+      const { names, brandFlags } = parsed.data;
+      if (brandFlags.length !== names.length) {
+        throw new Error(
+          `Brand grid answer for question "${answer.question.question.text}" has mismatched names/brandFlags lengths`
+        );
+      }
+
+      for (let i = 0; i < names.length; i++) {
+        const rawName = names[i]?.trim() ?? '';
+        if (!rawName) continue; // empty rows silently dropped, same as classic
+
+        const flagsForRow = brandFlags[i] ?? [];
+        // Enforce item S at submit-time (Zod can't reach here because
+        // it doesn't know per-question useBrandGrid).
+        const flagsCheck = nominationBrandFlagsSchema.safeParse(flagsForRow);
+        if (!flagsCheck.success) {
+          throw new Error(
+            `Brand grid for "${rawName}" on question "${answer.question.question.text}" is invalid: ${flagsCheck.error.issues.map((e) => e.message).join('; ')}`
+          );
+        }
+
+        // Reject BRAND flags whose brandOptionId isn't part of THIS
+        // campaign's list. Prevents an attacker or a stale client from
+        // referencing a brand from another campaign.
+        for (const f of flagsCheck.data) {
+          if (f.flagType === 'BRAND' && !validBrandOptionIds.has(f.brandOptionId!)) {
+            throw new Error(
+              `Brand grid for "${rawName}" references a brandOptionId that does not belong to this campaign`
+            );
+          }
+        }
+
+        gridDrafts.push({
+          questionId: answer.questionId,
+          surveyQuestionId: answer.question.id,
+          rawNameEntered: rawName,
+          flags: flagsCheck.data,
+        });
       }
     }
 
-    if (nominations.length > 0) {
-      await prisma.nomination.createMany({
-        data: nominations,
-        skipDuplicates: true,
-      });
-    }
+    // Write phase — classic first (bulk), then grid (per-row so we get
+    // Nomination ids to attach flags). One transaction so a mid-write
+    // failure rolls back partial nomination/flag writes.
+    await prisma.$transaction(async (tx) => {
+      if (classicNominations.length > 0) {
+        await tx.nomination.createMany({
+          data: classicNominations,
+          skipDuplicates: true,
+        });
+      }
+      for (const draft of gridDrafts) {
+        const nom = await tx.nomination.create({
+          data: {
+            responseId: response.id,
+            questionId: draft.questionId,
+            nominatorHcpId: response.respondentHcpId,
+            rawNameEntered: draft.rawNameEntered,
+          },
+          select: { id: true },
+        });
+        if (draft.flags.length > 0) {
+          await tx.nominationBrandFlag.createMany({
+            data: draft.flags.map((f) => ({
+              nominationId: nom.id,
+              flagType: f.flagType,
+              brandOptionId: f.flagType === 'BRAND' ? f.brandOptionId! : null,
+            })),
+          });
+        }
+      }
+    });
 
     // Create payment record if honorarium is set, skip for internal emails when exclude flag is on
     const isInternalEmail = response.respondentHcp?.email?.endsWith('@bio-exec.com');
