@@ -7,6 +7,7 @@ import {
 } from '@kol360/shared';
 import { createAuditLog } from '../lib/audit';
 import { logger } from '../lib/logger';
+import { PublicValidationError } from '../lib/public-errors';
 import { CampaignBrandOptionService } from './campaign-brand-option.service';
 
 const brandOptionService = new CampaignBrandOptionService();
@@ -475,13 +476,13 @@ export class SurveyTakingService {
       // Grid path — must be the extended shape.
       const parsed = multiTextWithGridSchema.safeParse(answer.answerJson);
       if (!parsed.success) {
-        throw new Error(
+        throw new PublicValidationError(
           `Brand grid answer for question "${answer.question.question.text}" is malformed — expected { names, brandFlags }`
         );
       }
       const { names, brandFlags } = parsed.data;
       if (brandFlags.length !== names.length) {
-        throw new Error(
+        throw new PublicValidationError(
           `Brand grid answer for question "${answer.question.question.text}" has mismatched names/brandFlags lengths`
         );
       }
@@ -495,7 +496,7 @@ export class SurveyTakingService {
         // it doesn't know per-question useBrandGrid).
         const flagsCheck = nominationBrandFlagsSchema.safeParse(flagsForRow);
         if (!flagsCheck.success) {
-          throw new Error(
+          throw new PublicValidationError(
             `Brand grid for "${rawName}" on question "${answer.question.question.text}" is invalid: ${flagsCheck.error.issues.map((e) => e.message).join('; ')}`
           );
         }
@@ -505,7 +506,7 @@ export class SurveyTakingService {
         // referencing a brand from another campaign.
         for (const f of flagsCheck.data) {
           if (f.flagType === 'BRAND' && !validBrandOptionIds.has(f.brandOptionId!)) {
-            throw new Error(
+            throw new PublicValidationError(
               `Brand grid for "${rawName}" references a brandOptionId that does not belong to this campaign`
             );
           }
