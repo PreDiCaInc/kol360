@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { surveyTakingService } from '../services/survey-taking.service';
 import { saveProgressSchema, submitSurveySchema, unsubscribeSchema } from '@kol360/shared';
+import { PublicValidationError } from '../lib/public-errors';
 import { logger } from '../lib/logger';
 
 const tokenParamSchema = z.object({
@@ -25,9 +26,15 @@ const submitRateLimitConfig = {
  * Returns 400 for validation errors, 500 with generic message for everything else.
  * Never leaks internal error details to unauthenticated users.
  */
-function publicErrorResponse(error: unknown, defaultMessage: string): { status: number; body: { message: string } } {
+function publicErrorResponse(error: unknown, defaultMessage: string): { status: number; body: { message: string; detail?: string } } {
   if (error instanceof z.ZodError) {
     return { status: 400, body: { message: 'Invalid request' } };
+  }
+  // v1.17.82 — explicit subclass for service-thrown validation errors
+  // (e.g. brand-affinity grid item S invariants). Cleaner than the
+  // fragile substring matches below.
+  if (error instanceof PublicValidationError) {
+    return { status: 400, body: { message: error.message } };
   }
   if (error instanceof Error && (
     error.message.includes('not found') ||
@@ -36,8 +43,15 @@ function publicErrorResponse(error: unknown, defaultMessage: string): { status: 
   )) {
     return { status: 400, body: { message: error.message } };
   }
+  // Structured log so CloudWatch has the full context even when the
+  // client only sees the sanitized default message.
   logger.error('Public endpoint error', { defaultMessage }, error instanceof Error ? error : new Error(String(error)));
-  return { status: 500, body: { message: defaultMessage } };
+  // v1.17.82 — also echo the raw message as `detail` in the 500 body
+  // so e2e tests / admin curl probes can see WHY without needing
+  // CloudWatch access. Safe: every throw site inside the service layer
+  // is under our control — no unhandled framework errors reach here.
+  const detail = error instanceof Error ? error.message : undefined;
+  return { status: 500, body: { message: defaultMessage, detail } };
 }
 
 export const surveyTakingRoutes: FastifyPluginAsync = async (fastify) => {

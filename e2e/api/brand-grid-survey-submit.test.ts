@@ -138,7 +138,13 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — survey submit path', () =
           ],
         },
       };
-      const { status } = await api.submitSurveyAnswerMap(surveyToken!, payload);
+      const { status, data } = await api.submitSurveyAnswerMap(surveyToken!, payload);
+      if (status !== 200) {
+        // v1.17.82 — publicErrorResponse now echoes the underlying
+        // Error.message as `detail` on 500s. If this trips, `detail`
+        // has the exact reason and drives the next hotfix.
+        console.log('DIAGNOSTIC — submit response:', status, JSON.stringify(data));
+      }
       expect(status).toBe(200);
 
       // Verify Nomination rows exist.

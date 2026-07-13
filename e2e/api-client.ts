@@ -846,11 +846,14 @@ export class ApiClient {
   // `submitSurvey` above is legacy and mostly gets 400'd by the server
   // in the workflow test; both are kept so no other test breaks.
   async submitSurveyAnswerMap(token: string, answers: Record<string, unknown>) {
-    return this.request<{ submitted?: boolean; error?: string; message?: string }>(
-      'POST',
-      `/api/v1/survey/take/${token}/submit`,
-      { answers }
-    );
+    return this.request<{
+      submitted?: boolean;
+      error?: string;
+      message?: string;
+      // v1.17.82 — publicErrorResponse now echoes the underlying
+      // Error.message here on 500s so triage doesn't need CloudWatch.
+      detail?: string;
+    }>('POST', `/api/v1/survey/take/${token}/submit`, { answers });
   }
 
   // ==================== Exports ====================
