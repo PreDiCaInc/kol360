@@ -357,6 +357,11 @@ export function CampaignBrandGridSection({
                       {q.nominationType
                         ? nominationTypeLabel(q.nominationType)
                         : 'Nomination question'}
+                      {q.section && (
+                        <span className="ml-2 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                          {q.section}
+                        </span>
+                      )}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {q.text}
