@@ -44,56 +44,70 @@ async function cleanupTestCampaigns() {
     console.log(`  - ${campaign.name} (${campaign.id})`);
   }
 
-  // Delete campaigns and all related data
+  // Delete campaigns and all related data. Every campaign is wrapped
+  // in its own try/catch so a single stubborn row doesn't halt the
+  // whole batch — that was the failure mode that leaked 483 stale
+  // campaigns on test between 2026-06-03 and 2026-07-13 (see
+  // "cleanup deletion order" note below).
+  let deleted = 0;
+  let failed = 0;
   for (const campaign of testCampaigns) {
     const campaignId = campaign.id;
-
-    // Get all response IDs for this campaign
-    const responses = await prisma.surveyResponse.findMany({
-      where: { campaignId },
-      select: { id: true },
-    });
-    const responseIds = responses.map((r) => r.id);
-
-    // Delete nominations (linked to responses)
-    if (responseIds.length > 0) {
-      await prisma.nomination.deleteMany({
-        where: { responseId: { in: responseIds } },
+    try {
+      // Get all response IDs for this campaign
+      const responses = await prisma.surveyResponse.findMany({
+        where: { campaignId },
+        select: { id: true },
       });
+      const responseIds = responses.map((r) => r.id);
 
-      // Delete survey response answers
-      await prisma.surveyResponseAnswer.deleteMany({
-        where: { responseId: { in: responseIds } },
-      });
+      // Deletion order matters because of FK constraints. Corrected on
+      // 2026-07-13 after the script blew up on Payment_responseId_fkey
+      // (Payment.responseId is @unique with default Restrict — you
+      // must drop the Payment row BEFORE the SurveyResponse it points
+      // at). Prior order (Payment last, per-campaignId) crashed on the
+      // first campaign that reached the payment-processing phase.
+      //
+      // NominationBrandFlag (v1.17.78+) is not listed here — it
+      // cascades from Nomination via onDelete: Cascade.
+      // CampaignBrandOption (v1.17.78+) cascades from Campaign.
+
+      // 1. Nominations (cascades to NominationBrandFlag).
+      if (responseIds.length > 0) {
+        await prisma.nomination.deleteMany({
+          where: { responseId: { in: responseIds } },
+        });
+        // 2. SurveyResponseAnswers.
+        await prisma.surveyResponseAnswer.deleteMany({
+          where: { responseId: { in: responseIds } },
+        });
+      }
+
+      // 3. Payments — MUST come before SurveyResponses. Payment has a
+      //    @unique responseId FK with default Restrict semantics.
+      await prisma.payment.deleteMany({ where: { campaignId } });
+
+      // 4. SurveyResponses.
+      await prisma.surveyResponse.deleteMany({ where: { campaignId } });
+
+      // 5. CampaignHcps.
+      await prisma.campaignHcp.deleteMany({ where: { campaignId } });
+
+      // 6. SurveyQuestions.
+      await prisma.surveyQuestion.deleteMany({ where: { campaignId } });
+
+      // 7. Campaign (cascades to CampaignBrandOption).
+      await prisma.campaign.delete({ where: { id: campaignId } });
+      console.log(`  ✓ Deleted: ${campaign.name}`);
+      deleted++;
+    } catch (err) {
+      failed++;
+      const message = err instanceof Error ? err.message.split('\n')[0] : String(err);
+      console.warn(`  ✗ Failed: ${campaign.name} — ${message}`);
     }
-
-    // Delete survey responses
-    await prisma.surveyResponse.deleteMany({ where: { campaignId } });
-
-    // Delete campaign HCPs
-    await prisma.campaignHcp.deleteMany({ where: { campaignId } });
-
-    // Delete survey questions
-    await prisma.surveyQuestion.deleteMany({ where: { campaignId } });
-
-    // CompositeScoreConfig deleteMany removed 2026-05-30 — model was
-    // dropped in Phase 3 PR B (prod-rel-4.1 / v1.17.0). The line lived
-    // here ~1.5 weeks crashing every cleanup run with
-    // `Cannot read properties of undefined (reading 'deleteMany')`,
-    // partially walking the per-campaign cascade and leaking 16 stale
-    // campaigns on prod before pteam flagged the failure.
-    // Weights now live on KolAnalysis.weightsJson; no per-campaign row
-    // to clean up.
-
-    // Delete payments
-    await prisma.payment.deleteMany({ where: { campaignId } });
-
-    // Finally delete the campaign
-    await prisma.campaign.delete({ where: { id: campaignId } });
-    console.log(`  ✓ Deleted: ${campaign.name}`);
   }
 
-  console.log('\n✅ Test campaigns cleaned up successfully!');
+  console.log(`\n${failed === 0 ? '✅' : '⚠️'} Cleanup complete: ${deleted} deleted, ${failed} failed.`);
 }
 
 async function cleanupAllTestData() {
