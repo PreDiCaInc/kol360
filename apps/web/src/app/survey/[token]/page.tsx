@@ -284,7 +284,7 @@ export default function SurveyPage() {
           if (!trimmed) continue;
           const flags = grid.brandFlags[i] ?? [];
           if (!Array.isArray(flags) || flags.length === 0) {
-            return `Please answer the brand grid for "${trimmed}" (pick a brand, Neutral, or Don't Know)`;
+            return `Please answer the brand grid for "${trimmed}" (pick a brand, Neutral, or Unknown)`;
           }
         }
       }
@@ -1160,55 +1160,77 @@ function BrandGridRow({ flags, onToggle, brandOptions }: BrandGridRowProps) {
     flags.filter((f) => f.flagType === 'BRAND').map((f) => (f as { brandOptionId: string }).brandOptionId)
   );
   const isNeutral = flags.some((f) => f.flagType === 'NEUTRAL');
-  const isDontKnow = flags.some((f) => f.flagType === 'DONT_KNOW');
+  const isUnknown = flags.some((f) => f.flagType === 'DONT_KNOW');
 
+  // v1.17.87 — small grid: header row of brand names + Neutral + Unknown,
+  // body row of checkboxes below. Replaces the pill/chip layout per pteam
+  // 2026-07-14. Horizontal scroll on narrow viewports so 5+ brand columns
+  // don't wrap awkwardly.
   return (
     <div className="pl-8">
       <p className="mb-2 text-xs text-muted-foreground">
-        Bias toward brand?
+        Favored prescription treatment
       </p>
-      <div className="flex flex-wrap gap-2">
-        {brandOptions.map((b) => {
-          const active = brandIdSet.has(b.id);
-          return (
-            <button
-              key={b.id}
-              type="button"
-              onClick={() =>
-                onToggle({ flagType: 'BRAND', brandOptionId: b.id }, !active)
-              }
-              className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-                active
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-gray-300 bg-white hover:bg-gray-50'
-              }`}
-            >
-              {b.brandName}
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          onClick={() => onToggle({ flagType: 'NEUTRAL' }, !isNeutral)}
-          className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-            isNeutral
-              ? 'border-gray-800 bg-gray-800 text-white'
-              : 'border-gray-300 bg-white hover:bg-gray-50'
-          }`}
-        >
-          Neutral
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggle({ flagType: 'DONT_KNOW' }, !isDontKnow)}
-          className={`rounded-full border px-3 py-1 text-sm transition-colors ${
-            isDontKnow
-              ? 'border-gray-800 bg-gray-800 text-white'
-              : 'border-gray-300 bg-white hover:bg-gray-50'
-          }`}
-        >
-          Don&apos;t Know
-        </button>
+      <div className="overflow-x-auto">
+        <table className="border-collapse text-sm">
+          <thead>
+            <tr>
+              {brandOptions.map((b) => (
+                <th
+                  key={b.id}
+                  className="border-b border-gray-300 px-3 py-1 text-center font-medium"
+                >
+                  {b.brandName}
+                </th>
+              ))}
+              <th className="border-b border-l border-gray-300 px-3 py-1 text-center font-medium">
+                Neutral
+              </th>
+              <th className="border-b border-gray-300 px-3 py-1 text-center font-medium">
+                Unknown
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {brandOptions.map((b) => {
+                const active = brandIdSet.has(b.id);
+                return (
+                  <td key={b.id} className="px-3 py-2 text-center">
+                    <Checkbox
+                      checked={active}
+                      onCheckedChange={(next) =>
+                        onToggle(
+                          { flagType: 'BRAND', brandOptionId: b.id },
+                          next === true
+                        )
+                      }
+                      aria-label={b.brandName}
+                    />
+                  </td>
+                );
+              })}
+              <td className="border-l border-gray-300 px-3 py-2 text-center">
+                <Checkbox
+                  checked={isNeutral}
+                  onCheckedChange={(next) =>
+                    onToggle({ flagType: 'NEUTRAL' }, next === true)
+                  }
+                  aria-label="Neutral"
+                />
+              </td>
+              <td className="px-3 py-2 text-center">
+                <Checkbox
+                  checked={isUnknown}
+                  onCheckedChange={(next) =>
+                    onToggle({ flagType: 'DONT_KNOW' }, next === true)
+                  }
+                  aria-label="Unknown"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );

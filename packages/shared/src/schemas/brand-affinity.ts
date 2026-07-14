@@ -106,7 +106,7 @@ export type BrandFlagInput = z.infer<typeof brandFlagSchema>;
 // Kept as an exported schema so the admin/read layer can reuse.
 export const nominationBrandFlagsSchema = z
   .array(brandFlagSchema)
-  .min(1, 'Brand grid response is required (pick at least one brand, Neutral, or Don’t Know)')
+  .min(1, 'Brand grid response is required (pick at least one brand, Neutral, or Unknown)')
   .max(NOMINATION_MAX_BRAND_FLAGS, 'Too many brand flags for a single nomination')
   .superRefine((flags, ctx) => {
     const brand = flags.filter((f) => f.flagType === 'BRAND');
