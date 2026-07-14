@@ -354,7 +354,14 @@ export class SurveyTakingService {
 
       // Check minEntries for MULTI_TEXT questions
       if (sq.question.type === 'MULTI_TEXT' && sq.question.minEntries != null && sq.question.minEntries > 0) {
-        const filledEntries = Array.isArray(answerValue) ? answerValue.filter(Boolean).length : 0;
+        // v1.17.82 — MULTI_TEXT with grid stores { names, brandFlags }; classic
+        // stores string[]. Extract names from either shape.
+        const namesArr = Array.isArray(answerValue)
+          ? answerValue
+          : (answerValue && typeof answerValue === 'object' && 'names' in (answerValue as Record<string, unknown>) && Array.isArray((answerValue as { names: unknown }).names)
+              ? (answerValue as { names: unknown[] }).names
+              : []);
+        const filledEntries = namesArr.filter(Boolean).length;
         if (filledEntries < sq.question.minEntries) {
           validationErrors.push(
             `Question "${sq.question.text}" requires at least ${sq.question.minEntries} names`
@@ -364,7 +371,9 @@ export class SurveyTakingService {
     }
 
     if (validationErrors.length > 0) {
-      throw new Error(`Validation failed: ${validationErrors.join('; ')}`);
+      // v1.17.82 — required-question failures are user-fixable input errors,
+      // not server bugs. Route through PublicValidationError → 400.
+      throw new PublicValidationError(`Validation failed: ${validationErrors.join('; ')}`);
     }
 
     // Mark as completed. Also freeze the campaign's brand-option list

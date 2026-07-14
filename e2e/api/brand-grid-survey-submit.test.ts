@@ -54,6 +54,15 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — survey submit path', () =
     brandXiidraId = upsert.data.brandOptions![0].id;
     brandRestasisId = upsert.data.brandOptions![1].id;
 
+
+    // Wipe the pre-existing SurveyQuestions that the seed template
+    // instantiated. Keeping them around forces the submit path through
+    // validateRequired on 3 unrelated questions (Rating, Single Choice,
+    // Discussion Leaders MULTI_TEXT with minEntries) — every one of
+    // which our grid-only payload would fail. The test's whole purpose
+    // is to exercise the grid write path, so isolate to just that.
+    await prisma.surveyQuestion.deleteMany({ where: { campaignId } });
+
     // Add a nomination-type SurveyQuestion with useBrandGrid = true.
     const nomQuestion = await prisma.question.findFirst({
       where: { nominationType: { not: null } },
@@ -171,10 +180,18 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — survey submit path', () =
 
   describe('Submit with grid — validation rejection paths', () => {
     // Reset the surveyResponse to IN_PROGRESS so we can re-submit.
+    // Also unfreeze the campaign — the persistence test set brandsFrozenAt
+    // when it flipped the response to COMPLETED. Leaving that in place
+    // would still let submit run (freeze only affects brand-options PUT),
+    // but resetting is defensive.
     async function resetResponseForRetry() {
       await prisma.surveyResponse.updateMany({
         where: { surveyToken: surveyToken! },
         data: { status: 'IN_PROGRESS', completedAt: null },
+      });
+      await prisma.campaign.updateMany({
+        where: { id: campaignId! },
+        data: { brandsFrozenAt: null },
       });
       // Wipe any nominations from the earlier successful submit so
       // dedup doesn't hide our attempts.
