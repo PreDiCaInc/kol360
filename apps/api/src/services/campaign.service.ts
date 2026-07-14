@@ -190,43 +190,50 @@ export class CampaignService {
       throw new Error('Force delete only allowed for E2E test campaigns');
     }
 
-    // Delete in correct order to handle foreign key constraints
+    // Delete in correct order to handle foreign key constraints.
+    //
+    // Payment.responseId is @unique with default Restrict — deleting a
+    // SurveyResponse that still has an attached Payment throws
+    // Payment_responseId_fkey. Payments MUST be deleted before their
+    // SurveyResponses. This bug lived here until 2026-07-13 when it was
+    // caught alongside the identical bug in e2e/cleanup-test-data.ts:
+    // the old order (Payment last) crashed on every test campaign that
+    // reached the payment-processing phase, leaking >500 stale rows on
+    // test between 2026-06-03 and 2026-07-13.
+    //
+    // NominationBrandFlag (v1.17.78+) cascades from Nomination; no
+    // explicit delete. CampaignBrandOption (v1.17.78+) cascades from
+    // Campaign; no explicit delete.
     await prisma.$transaction(async (tx) => {
-      // Get all response IDs for this campaign
       const responses = await tx.surveyResponse.findMany({
         where: { campaignId: id },
         select: { id: true },
       });
       const responseIds = responses.map((r) => r.id);
 
-      // Delete nominations (linked to responses)
+      // 1. Nominations (cascades to NominationBrandFlag) + answers.
       if (responseIds.length > 0) {
         await tx.nomination.deleteMany({
           where: { responseId: { in: responseIds } },
         });
-
-        // Delete survey response answers
         await tx.surveyResponseAnswer.deleteMany({
           where: { responseId: { in: responseIds } },
         });
       }
 
-      // Delete survey responses
-      await tx.surveyResponse.deleteMany({ where: { campaignId: id } });
-
-      // Delete campaign HCPs
-      await tx.campaignHcp.deleteMany({ where: { campaignId: id } });
-
-      // Delete survey questions
-      await tx.surveyQuestion.deleteMany({ where: { campaignId: id } });
-
-      // CompositeScoreConfig.deleteMany call removed in Phase 3 PR B —
-      // the table is dropped in this release.
-
-      // Delete payments
+      // 2. Payments — MUST come before SurveyResponses.
       await tx.payment.deleteMany({ where: { campaignId: id } });
 
-      // Finally delete the campaign
+      // 3. SurveyResponses.
+      await tx.surveyResponse.deleteMany({ where: { campaignId: id } });
+
+      // 4. CampaignHcps.
+      await tx.campaignHcp.deleteMany({ where: { campaignId: id } });
+
+      // 5. SurveyQuestions.
+      await tx.surveyQuestion.deleteMany({ where: { campaignId: id } });
+
+      // 6. Campaign (cascades to CampaignBrandOption).
       await tx.campaign.delete({ where: { id } });
     });
 
