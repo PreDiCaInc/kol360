@@ -101,7 +101,16 @@ export function ChartTableToggle({
       </div>
 
       {view === 'chart' ? (
-        children
+        // v1.18.3 — guaranteed-100%-width wrapper. Recharts'
+        // ResponsiveContainer measures its parent at mount; without an
+        // explicit width the pie card renders blank (Tailwind class
+        // cascade race). Wrapping every chart child ensures new callers
+        // don't have to re-add `w-full` inline. See
+        // docs/findings/insights-demographics-pie-blank-inside-chart-table-toggle-2026-07-08.md
+        // Fix #1 shipped in v1.17.76 at 2 known sites; this is Fix #2
+        // (the wrapper-level cleanup) that supersedes the inline
+        // workaround for any future chart type dropped in here.
+        <div className="w-full">{children}</div>
       ) : tableRows.length === 0 ? (
         <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">
           No data available

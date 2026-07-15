@@ -1403,6 +1403,9 @@ export interface CreateCampaignInput {
   description?: string;
   honorariumAmount?: number;
   excludeInternalEmails?: boolean;
+  // v1.18.3 — was accepted by Zod but silently dropped by the create
+  // service (same anti-pattern as excludeInternalEmails). Fixed now.
+  showTopicsDiscussed?: boolean;
   surveyOpenDate?: string;
   surveyCloseDate?: string;
 }

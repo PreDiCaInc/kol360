@@ -21,9 +21,9 @@
  * REQUIRES DATABASE_URL (test uses Prisma to set up + tear down the
  * test client without touching the API client-management flows).
  * Skips gracefully if DB is unreachable. Cleanup deletes the test
- * client + any DB User rows we created. Cognito users from the
- * accept-path tests accumulate (best-effort cleanup is out of scope
- * for this PR); test emails are unique-per-run so no re-creation conflict.
+ * client + any DB User rows we created + their Cognito counterparts
+ * (via the DELETE /users/:id API which cascades both). RUN_TAG kept
+ * as a belt-and-braces uniqueness marker in case cleanup fails.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -35,8 +35,10 @@ import { config } from '../config';
 const prisma = new PrismaClient();
 let dbAvailable = false;
 
-// Unique per-run suffix so accept-path tests don't collide with
-// previous runs' leftover Cognito users (we can't easily clean those).
+// Unique per-run suffix — belt-and-braces uniqueness marker in case
+// afterAll cleanup fails (e.g. API unreachable) and rows survive to
+// the next run. With cleanup working, RUN_TAG collision would be
+// vanishingly unlikely anyway.
 const RUN_TAG = randomUUID().slice(0, 8);
 
 // The "client's own domain" used by the gate-on tests below. Made up
@@ -93,11 +95,19 @@ describe('Per-client email-domain allowlist', () => {
   afterAll(async () => {
     if (!dbAvailable) return;
 
-    // Hard-delete any DB User rows we created so re-runs don't trip the
-    // unique-email constraint. Cognito users are intentionally left
-    // behind — they're best-effort cleanup at the e2e layer.
-    if (createdUserDbIds.length > 0) {
-      await prisma.user.deleteMany({ where: { id: { in: createdUserDbIds } } });
+    // Delete via the API so Cognito is cleaned up too — user.service
+    // .delete() calls cognitoService.deleteUser() before the DB delete,
+    // then prisma.user.delete(). The earlier prisma.user.deleteMany
+    // path left the Cognito users behind on every run; after enough
+    // runs the shared pool accumulated ~60 test users, all visible
+    // in the /admin/users screen. Individual errors are swallowed so
+    // one bad delete doesn't skip the rest.
+    for (const id of createdUserDbIds) {
+      try {
+        await client.deleteUser(id);
+      } catch (err) {
+        console.log(`⚠️ cleanup: deleteUser(${id}) failed —`, err instanceof Error ? err.message : err);
+      }
     }
     if (gatedClientId) {
       await prisma.client.delete({ where: { id: gatedClientId } }).catch(() => undefined);
