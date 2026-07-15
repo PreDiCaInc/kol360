@@ -280,7 +280,10 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      {/* v1.18.2 — max-h + overflow-y-auto so short-viewport laptops
+          can scroll to reach Cancel/Submit at the bottom. Matches the
+          pattern used by template-preview-dialog + section-preview-dialog. */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit Client' : 'Add Client'}</DialogTitle>
         </DialogHeader>
