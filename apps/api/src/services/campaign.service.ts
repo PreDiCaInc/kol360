@@ -100,6 +100,14 @@ export class CampaignService {
         surveyTemplateId: data.surveyTemplateId,
         honorariumAmount: data.honorariumAmount ?? 0,
         excludeInternalEmails: data.excludeInternalEmails ?? false,
+        // v1.18.3 — same class as the excludeInternalEmails silent-drop
+        // bug fixed in the prior sprint. Zod schema accepts the field
+        // but the create service enumerated fields explicitly and
+        // dropped this one, so POST /campaigns with
+        // showTopicsDiscussed: true silently defaulted to false. Admins
+        // had to POST-then-PATCH to enable the Topics Discussed charts
+        // on a fresh campaign.
+        showTopicsDiscussed: data.showTopicsDiscussed ?? false,
         surveyOpenDate: data.surveyOpenDate ? new Date(data.surveyOpenDate) : null,
         surveyCloseDate: data.surveyCloseDate ? new Date(data.surveyCloseDate) : null,
         createdBy,

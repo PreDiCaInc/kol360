@@ -283,6 +283,28 @@ describe('UCPM backfill — deep assertions (v1.17.4)', () => {
       expect(fetched.status).toBe(200);
       expect((fetched.data as { excludeInternalEmails?: boolean }).excludeInternalEmails).toBe(false);
     });
+
+    // v1.18.3 — parallel check for showTopicsDiscussed. Same silent-drop
+    // anti-pattern was present in the create service until v1.18.3; if
+    // this test starts failing, someone dropped the field again during
+    // a merge.
+    it('round-trips showTopicsDiscussed=true through POST /campaigns', async () => {
+      const created = await client.createTestCampaign({ showTopicsDiscussed: true });
+      expect([200, 201]).toContain(created.status);
+
+      const fetched = await client.getCampaign(created.data.id);
+      expect(fetched.status).toBe(200);
+      expect((fetched.data as { showTopicsDiscussed?: boolean }).showTopicsDiscussed).toBe(true);
+    });
+
+    it('defaults showTopicsDiscussed=false when omitted', async () => {
+      const created = await client.createTestCampaign({});
+      expect([200, 201]).toContain(created.status);
+
+      const fetched = await client.getCampaign(created.data.id);
+      expect(fetched.status).toBe(200);
+      expect((fetched.data as { showTopicsDiscussed?: boolean }).showTopicsDiscussed).toBe(false);
+    });
   });
 
   // ---------------------------------------------------------------------
