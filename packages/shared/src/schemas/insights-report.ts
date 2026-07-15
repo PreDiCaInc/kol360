@@ -258,6 +258,22 @@ export const kolProfileSchema = z.object({
 
 export type KolProfile = z.infer<typeof kolProfileSchema>;
 
+// v1.17.88 — Brand-Affinity Grid (Phase 3) sub-column descriptor. The
+// server tells the FE which brand columns to render, in what order,
+// and with what display name. Empty on:
+//   - Classic-only analyses (no grid campaigns pooled)
+//   - Mixed-brand-list analyses (per plan doc item N — hide the
+//     per-brand cluster when campaigns have differing brand lists;
+//     just show the Biased total)
+export const sociometricBrandColumnSchema = z.object({
+  // Sentinel keys `NEUTRAL` and `DONT_KNOW` are also valid brandOptionId
+  // values here — the FE keys `brandFlagCounts` on this string.
+  brandOptionId: z.string(),
+  displayName: z.string(),
+  displayOrder: z.number().int(),
+});
+export type SociometricBrandColumn = z.infer<typeof sociometricBrandColumnSchema>;
+
 // Sociometric summary item (master table)
 export const sociometricSummaryItemSchema = z.object({
   rank: z.number(),
@@ -278,6 +294,11 @@ export const sociometricSummaryItemSchema = z.object({
   regional: z.number(),
   biasedLeaders: z.number(),
   total: z.number(),
+  // v1.17.88 — Brand-Affinity Grid Phase 3. Sparse map keyed by
+  // brandOptionId (or 'NEUTRAL' / 'DONT_KNOW' sentinel). Value is the
+  // count of NominationBrandFlag rows for this HCP with that key.
+  // Always present; empty map when the analysis has no grid contribution.
+  brandFlagCounts: z.record(z.string(), z.number()).optional().default({}),
 });
 
 export type SociometricSummaryItem = z.infer<typeof sociometricSummaryItemSchema>;
@@ -289,6 +310,10 @@ export const sociometricSummaryResponseSchema = z.object({
   page: z.number(),
   limit: z.number(),
   totalPages: z.number(),
+  // v1.17.88 — Brand-Affinity Grid Phase 3. FE renders one column per
+  // entry, in displayOrder. Empty array = classic-only analysis OR
+  // mixed-brand-list analysis (plan doc item N).
+  brandColumns: z.array(sociometricBrandColumnSchema).optional().default([]),
 });
 
 export type SociometricSummaryResponse = z.infer<typeof sociometricSummaryResponseSchema>;

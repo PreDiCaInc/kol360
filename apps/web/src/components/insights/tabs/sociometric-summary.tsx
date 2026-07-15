@@ -113,11 +113,23 @@ function respEq(a: RespondentFiltersState, b: RespondentFiltersState): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+// v1.17.88 — Brand-Affinity Grid Phase 3. Two-state view toggle (plan
+// doc item T). In 'bias' mode the per-nomination-type columns are
+// hidden; the row identity cols + Total + Biased + brand cluster remain.
+// The user's column-selector preferences still gate visibility — this is
+// a preset that intersects with the selector, not a replacement.
+type SocoViewMode = 'all' | 'bias';
+const BIAS_FOCUS_ALWAYS_VISIBLE = new Set<string>([
+  'specialty', 'influencerType', 'city', 'state',
+  'total', 'biasedLeaders',
+]);
+
 export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: Props) {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
   const [sortBy, setSortBy] = useState<string>('total');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [viewMode, setViewMode] = useState<SocoViewMode>('all');
   // v1.17.53: live "pending" filter state (edits land here on every
   // dropdown change). Applied is snapshotted on Apply.
   const [search, setSearch] = useState('');
@@ -176,7 +188,25 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     'insights.sociometric-summary.columns',
     SOCIOMETRIC_DEFAULT_HIDDEN
   );
-  const isVisible = columnVisibility.isVisible;
+  // v1.17.88 — `isVisible` is the raw column-selector state. `effIsVisible`
+  // layers the view-mode preset on top: in `bias` mode, per-nomination-type
+  // columns are hidden even if the user marked them visible in the
+  // selector. Brand cluster columns are ALWAYS shown in bias mode when
+  // the server emitted them (they ARE the bias breakdown).
+  const rawIsVisible = columnVisibility.isVisible;
+  const isVisible = useCallback(
+    (key: string): boolean => {
+      if (!rawIsVisible(key)) return false;
+      if (viewMode === 'all') return true;
+      // Bias focus: strict whitelist of identity / total / biased cols.
+      // Brand cluster keys (`brand:<name>`, `NEUTRAL`, `DONT_KNOW`) always
+      // pass in bias mode when the selector has them on.
+      if (BIAS_FOCUS_ALWAYS_VISIBLE.has(key)) return true;
+      if (key.startsWith('brand:') || key === 'NEUTRAL' || key === 'DONT_KNOW') return true;
+      return false;
+    },
+    [rawIsVisible, viewMode]
+  );
 
   const { data: filterOptions } = useInsightsFilterOptions(diseaseAreaId);
   // v1.17.5: source role/focus/practice-setting options from the
@@ -216,6 +246,23 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
   };
 
   const { data, isLoading } = useSociometricSummary(diseaseAreaId, apiFilters, clientId);
+
+  // v1.17.88 — Brand-Affinity Grid Phase 3. brandColumns comes from the
+  // server; empty for classic-only or mixed-brand-list analyses. Column
+  // selector options extend with one entry per brand column. Default
+  // visibility: keep brand cols visible if the server sent them (user
+  // can hide via selector).
+  const brandColumns = data?.brandColumns ?? [];
+  const dynamicColumnOptions = useMemo(
+    () => [
+      ...SOCIOMETRIC_COLUMN_OPTIONS,
+      ...brandColumns.map((b) => ({
+        key: b.brandOptionId,
+        label: b.displayName,
+      })),
+    ],
+    [brandColumns]
+  );
 
   // Live "N KOLs match" — fires only on dirty pending edits.
   const matchCountFilters = useMemo<Record<string, unknown>>(() => ({
@@ -365,11 +412,15 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
     if (items.length === 0) return;
 
     // v1.17.69 — identifier header follows the data's country.
+    // v1.17.88 — brand cluster columns appended after Biased. Same order
+    // as the visible table (plan doc item G).
+    const brandExportColumns = fullData?.brandColumns ?? [];
     const headers = [
       'Rank',
       inferHcpIdLabel(items as ReadonlyArray<{ nationalIdType?: string | null }>),
       'Name', 'Specialty', 'Influencer Type', 'City', 'State',
       'Total', 'National', 'Discussion', 'Advice', 'Rising Star', 'Referral', 'Social', 'Biased',
+      ...brandExportColumns.map((b) => b.displayName),
     ];
     const rows = items.map((item, index) => [
       index + 1,
@@ -387,6 +438,7 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
       item.referralLeaders,
       item.socialLeaders,
       (item as { biasedLeaders?: number }).biasedLeaders ?? 0,
+      ...brandExportColumns.map((b) => item.brandFlagCounts?.[b.brandOptionId] ?? 0),
     ]);
 
     exportExcel({
@@ -431,8 +483,36 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                 filter bar below where the filters actually live.
                 Reset (inside ApplyFilterControls) is the single
                 clear-filters affordance. */}
+            {/* v1.17.88 — view toggle (plan doc item T). Two-state
+                segmented control that flips the column preset between
+                "All categories" and "Bias focus". Independent of the
+                column-selector state; the two compose. */}
+            {brandColumns.length > 0 && (
+              <div className="inline-flex rounded-md border">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('all')}
+                  className={cn(
+                    'px-3 py-1 text-xs font-medium transition-colors',
+                    viewMode === 'all' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  )}
+                >
+                  All categories
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('bias')}
+                  className={cn(
+                    'px-3 py-1 text-xs font-medium transition-colors',
+                    viewMode === 'bias' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  )}
+                >
+                  Bias focus
+                </button>
+              </div>
+            )}
             <ColumnSelector
-              columns={[...SOCIOMETRIC_COLUMN_OPTIONS]}
+              columns={dynamicColumnOptions}
               visibility={columnVisibility}
             />
             <Button
@@ -605,6 +685,27 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                     </div>
                   </th>
                 ))}
+                {/* v1.17.88 \u2014 Brand-Affinity Grid Phase 3 cluster. Not
+                    sortable in v1 (would need backend sortBy support);
+                    plan doc marks sort as nice-to-have. Tooltip warns
+                    about multi-brand double-counting: a nominee flagged
+                    with 2 brands adds to both columns, so brand counts
+                    can sum to more than the Biased total. */}
+                {brandColumns.filter((b) => isVisible(b.brandOptionId)).map((b) => (
+                  <th
+                    key={b.brandOptionId}
+                    title={
+                      b.brandOptionId === 'NEUTRAL'
+                        ? 'Nominations flagged as Neutral (respondent explicitly said no bias).'
+                        : b.brandOptionId === 'DONT_KNOW'
+                          ? 'Nominations flagged as Unknown (respondent had no opinion).'
+                          : `Count of nominations flagged as biased toward ${b.displayName}. Multi-brand nominations count in each brand column, so brand counts can sum to more than the Biased total.`
+                    }
+                    className="px-2 py-2 text-center text-sm font-medium bg-orange-100 dark:bg-orange-900/40"
+                  >
+                    <span>{b.displayName}</span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -692,6 +793,19 @@ export function SociometricSummaryTab({ diseaseAreaId, onKolSelect, clientId }: 
                         maxValue={maxValues.biasedLeaders}
                       />
                     )}
+                    {/* v1.17.88 — brand cluster body cells. Plain
+                        tabular-nums (no heat-map) so the sub-column
+                        counts don't compete visually with the Biased
+                        total's heat-map. Zero when the HCP has no
+                        flags for that column. */}
+                    {brandColumns.filter((b) => isVisible(b.brandOptionId)).map((b) => (
+                      <td
+                        key={b.brandOptionId}
+                        className="px-2 py-2 text-center tabular-nums bg-orange-50/50 dark:bg-orange-900/10"
+                      >
+                        {item.brandFlagCounts?.[b.brandOptionId] ?? 0}
+                      </td>
+                    ))}
                   </tr>
                 ))
               )}

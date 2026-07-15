@@ -15,6 +15,7 @@ import {
   NominatorDemographics,
   SociometricSummaryResponse,
   SociometricSummaryItem,
+  SociometricBrandColumn,
   DistributionItem,
   NOMINATION_TYPES,
   NominationType,
@@ -1269,13 +1270,20 @@ export class InsightsReportService {
           : null;
 
     const empty: SociometricSummaryResponse = {
-      items: [], total: 0, page, limit, totalPages: 0,
+      items: [], total: 0, page, limit, totalPages: 0, brandColumns: [],
     };
 
     const analysis = await this.resolveAnalysis(clientId, diseaseAreaId);
     if (!analysis) return empty;
 
     const scoreMap = await this.loadAnalysisScores(analysis.id);
+
+    // v1.17.88 — Brand-Affinity Grid (Phase 3). Load the analysis-scoped
+    // includedCampaignIds unconditionally now (used to be respondent-filter
+    // branch only) — needed for both brand-column resolution and per-HCP
+    // brand-flag aggregation.
+    const includedCampaignIdsForBrand = await this.loadIncludedCampaignIds(analysis.id);
+    const brandColumns = await this.resolveBrandColumnsForAnalysis(includedCampaignIdsForBrand);
 
     // v1.17.5: when respondent filters are active, recompute per-type
     // counts from nominations within the filtered response set.
@@ -1287,7 +1295,9 @@ export class InsightsReportService {
     if (hasAnyRespondentFilter(respondentFilters)) {
       // v1.17.50: getFilteredResponseIds — see perf-pass-C #1 comment
       // on getLeaderRankings.
-      const includedCampaignIds = await this.loadIncludedCampaignIds(analysis.id);
+      // v1.17.88 — reuse the already-loaded includedCampaignIds from the
+      // Brand-Affinity Grid section above.
+      const includedCampaignIds = includedCampaignIdsForBrand;
       const filteredResponseIds = await this.getFilteredResponseIds(
         respondentFilters!,
         includedCampaignIds
@@ -1347,6 +1357,18 @@ export class InsightsReportService {
       },
     });
 
+    // v1.17.88 — Brand-Affinity Grid Phase 3. Load per-HCP brand-flag
+    // counts (keyed by the same brandColumns[i].brandOptionId synthetic
+    // ids the FE will render), and the grid contribution to biasedLeaders
+    // (SUM of BRAND flags per HCP, per pteam decision 2026-07-10 — every
+    // check counts, not one per nomination).
+    const { perHcp: brandFlagCountsPerHcp, gridBiasPerHcp } =
+      await this.loadBrandFlagCountsForAnalysis(
+        baseHcpIds,
+        includedCampaignIdsForBrand,
+        brandColumns
+      );
+
     // Build the full result set from per-type counts (filtered or
     // pre-aggregated), then sort+paginate the whole set so ranking is
     // global (the old code sorted only the current page — a bug).
@@ -1382,9 +1404,18 @@ export class InsightsReportService {
       const socialLeaders = filteredPerType
         ? filteredPerType.get('SOCIAL_LEADER') ?? 0
         : a?.countSocialLeader ?? 0;
-      const biasedLeaders = filteredPerType
+      // v1.17.88 — biasedLeaders total is the SUM of:
+      //   - Classic contribution (BIASED_LEADER question nominations,
+      //     already in HcpAnalysisScore.countBiasedLeader / filteredPerType).
+      //   - Grid contribution (SUM of BRAND flags across grid-enabled
+      //     questions, per pteam decision 2026-07-10 — every check counts).
+      // Grid-only analyses have countBiasedLeader = 0; classic-only have
+      // gridBias = 0; mixed pools have both summed cleanly.
+      const classicBiased = filteredPerType
         ? filteredPerType.get('BIASED_LEADER') ?? 0
         : a?.countBiasedLeader ?? 0;
+      const gridBias = gridBiasPerHcp.get(hcp.id) ?? 0;
+      const biasedLeaders = classicBiased + gridBias;
       const total = discussionLeaders + referralLeaders + adviceLeaders +
         nationalLeaders + risingStars + socialLeaders + biasedLeaders;
       // Under respondent filtering, "regional" (total nomination count for
@@ -1406,6 +1437,16 @@ export class InsightsReportService {
         continue;
       }
 
+      // v1.17.88 — plain object (not Map) for JSON serialization. Empty
+      // {} when the HCP has no brand flags (classic-only analysis or HCP
+      // who received no grid nominations). FE reads it via
+      // `row.brandFlagCounts[brandColumn.brandOptionId] ?? 0`.
+      const brandFlagCountsObj: Record<string, number> = {};
+      const hcpFlagMap = brandFlagCountsPerHcp.get(hcp.id);
+      if (hcpFlagMap) {
+        for (const [k, v] of hcpFlagMap) brandFlagCountsObj[k] = v;
+      }
+
       all.push({
         rank: 0, // assigned after global sort
         hcpId: hcp.id,
@@ -1424,6 +1465,7 @@ export class InsightsReportService {
         biasedLeaders,
         regional,
         total,
+        brandFlagCounts: brandFlagCountsObj,
       });
     }
 
@@ -1456,11 +1498,170 @@ export class InsightsReportService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      brandColumns,
     };
     } catch (error) {
       logger.error('Error fetching sociometric summary', { diseaseAreaId, filters, error });
       throw error;
     }
+  }
+
+  /**
+   * v1.17.88 — Brand-Affinity Grid Phase 3. Resolve the brand cluster
+   * columns for the analysis's pool of campaigns.
+   *
+   * Rules (plan doc item N):
+   *   - Zero grid campaigns in pool → [] (nothing to render).
+   *   - N grid campaigns all sharing the same brand-name set (case-
+   *     insensitive) → union of brands + Neutral + Unknown sentinels.
+   *   - Mixed brand-name sets across pooled campaigns → [] (hide the
+   *     per-brand cluster; the Biased total column still renders).
+   *
+   * The synthetic `brandOptionId` values emitted here are what the FE
+   * uses to key `brandFlagCounts` in each row. Format:
+   *   - Brands:    `brand:<lowercase-name>`  (e.g., `brand:xiidra`)
+   *   - Sentinels: `NEUTRAL`, `DONT_KNOW`
+   * Name-based keys let us aggregate across campaigns that share brands
+   * but have distinct CampaignBrandOption.id values per campaign.
+   */
+  private async resolveBrandColumnsForAnalysis(
+    campaignIds: string[]
+  ): Promise<SociometricBrandColumn[]> {
+    if (campaignIds.length === 0) return [];
+
+    const brandOptions = await prisma.campaignBrandOption.findMany({
+      where: { campaignId: { in: campaignIds } },
+      select: { campaignId: true, brandName: true, displayOrder: true },
+      orderBy: [{ displayOrder: 'asc' }, { brandName: 'asc' }],
+    });
+    if (brandOptions.length === 0) return [];
+
+    // Group by campaign; each set is the campaign's canonical brand-name list.
+    const brandsByCampaign = new Map<string, Set<string>>();
+    for (const b of brandOptions) {
+      let set = brandsByCampaign.get(b.campaignId);
+      if (!set) {
+        set = new Set();
+        brandsByCampaign.set(b.campaignId, set);
+      }
+      set.add(b.brandName.trim().toLowerCase());
+    }
+
+    // Mixed-brand-set analyses: hide cluster (plan doc item N).
+    const brandSets = [...brandsByCampaign.values()];
+    if (brandSets.length > 1) {
+      const first = brandSets[0];
+      for (let i = 1; i < brandSets.length; i++) {
+        const other = brandSets[i];
+        if (first.size !== other.size) return [];
+        for (const name of first) {
+          if (!other.has(name)) return [];
+        }
+      }
+    }
+
+    // Dedup by lower-case name across campaigns (should already agree),
+    // preserve first-seen displayOrder + human display name.
+    const uniqueByName = new Map<string, { brandName: string; displayOrder: number }>();
+    for (const b of brandOptions) {
+      const key = b.brandName.trim().toLowerCase();
+      if (!uniqueByName.has(key)) {
+        uniqueByName.set(key, { brandName: b.brandName, displayOrder: b.displayOrder });
+      }
+    }
+
+    const columns: SociometricBrandColumn[] = [];
+    const ordered = [...uniqueByName.entries()].sort(
+      (a, b) => a[1].displayOrder - b[1].displayOrder
+    );
+    for (const [key, { brandName, displayOrder }] of ordered) {
+      columns.push({
+        brandOptionId: `brand:${key}`,
+        displayName: brandName,
+        displayOrder,
+      });
+    }
+    // Neutral + Unknown always last two. displayOrder 998/999 keeps
+    // any legitimate brand displayOrder collision-free.
+    columns.push({ brandOptionId: 'NEUTRAL', displayName: 'Neutral', displayOrder: 998 });
+    columns.push({ brandOptionId: 'DONT_KNOW', displayName: 'Unknown', displayOrder: 999 });
+    return columns;
+  }
+
+  /**
+   * v1.17.88 — Per-HCP brand-flag aggregation for the sociometric
+   * response. Returns:
+   *   - perHcp:         Map<hcpId, Map<brandKey, count>>  (populates row.brandFlagCounts)
+   *   - gridBiasPerHcp: Map<hcpId, sumOfBrandFlagsForThatHcp> (added to biasedLeaders)
+   *
+   * The brandKey normalization matches resolveBrandColumnsForAnalysis:
+   *   - BRAND      → `brand:<lowercase-name>`
+   *   - NEUTRAL    → `NEUTRAL`
+   *   - DONT_KNOW  → `DONT_KNOW`
+   *
+   * Any BRAND flag that maps to a brandKey NOT present in brandColumns
+   * (e.g. a Neutral/DK-only cross-campaign analysis where per-brand
+   * cluster is hidden) is silently omitted from perHcp — but it STILL
+   * contributes to gridBiasPerHcp so the Biased total stays right.
+   */
+  private async loadBrandFlagCountsForAnalysis(
+    hcpIds: string[],
+    campaignIds: string[],
+    brandColumns: SociometricBrandColumn[]
+  ): Promise<{
+    perHcp: Map<string, Map<string, number>>;
+    gridBiasPerHcp: Map<string, number>;
+  }> {
+    const perHcp = new Map<string, Map<string, number>>();
+    const gridBiasPerHcp = new Map<string, number>();
+    if (hcpIds.length === 0 || campaignIds.length === 0) {
+      return { perHcp, gridBiasPerHcp };
+    }
+
+    const validKeys = new Set(brandColumns.map((c) => c.brandOptionId));
+
+    // Aggregate flags in one query. Grouped by (hcpId, brandName-key, flagType).
+    // Prisma raw so we can use COALESCE + JOIN + GROUP BY cleanly.
+    const rows = await prisma.$queryRaw<Array<{
+      hcpId: string;
+      brandName: string | null;
+      flagType: 'BRAND' | 'NEUTRAL' | 'DONT_KNOW';
+      cnt: bigint;
+    }>>`
+      SELECT
+        n."matchedHcpId" AS "hcpId",
+        cbo."brandName"  AS "brandName",
+        nbf."flagType"::text AS "flagType",
+        COUNT(*)::bigint AS cnt
+      FROM "Nomination" n
+      JOIN "NominationBrandFlag" nbf ON nbf."nominationId" = n.id
+      JOIN "SurveyResponse" sr ON n."responseId" = sr.id
+      LEFT JOIN "CampaignBrandOption" cbo ON cbo.id = nbf."brandOptionId"
+      WHERE n."matchedHcpId" = ANY(${hcpIds}::text[])
+        AND sr."campaignId"  = ANY(${campaignIds}::text[])
+      GROUP BY n."matchedHcpId", cbo."brandName", nbf."flagType"::text
+    `;
+
+    for (const r of rows) {
+      const count = Number(r.cnt);
+      // Grid contribution to Biased total = every BRAND check.
+      if (r.flagType === 'BRAND') {
+        gridBiasPerHcp.set(r.hcpId, (gridBiasPerHcp.get(r.hcpId) ?? 0) + count);
+      }
+      // Per-column bucket for the row's brandFlagCounts.
+      const key =
+        r.flagType === 'BRAND'
+          ? `brand:${(r.brandName ?? '').trim().toLowerCase()}`
+          : r.flagType; // 'NEUTRAL' | 'DONT_KNOW'
+      if (!validKeys.has(key)) continue; // hidden cluster / unknown brand
+      let bucket = perHcp.get(r.hcpId);
+      if (!bucket) {
+        bucket = new Map();
+        perHcp.set(r.hcpId, bucket);
+      }
+      bucket.set(key, (bucket.get(key) ?? 0) + count);
+    }
+    return { perHcp, gridBiasPerHcp };
   }
 
 
