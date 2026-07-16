@@ -600,15 +600,17 @@ export class DistributionService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        // Normalize identifier. Accept both NPI and MINC column headers so
-        // CA templates work; validate as either 10-digit NPI or CAMD########
-        // MINC. MINC input normalized to canonical uppercase / no-separator
-        // form so DB lookup + create both use the canonical shape.
+        // Normalize identifier. Accept both NPI and MINC column headers.
+        // v1.18.4 — MINC validation relaxed to just "10 or 12
+        // alphanumeric chars" (was CAMD######## strict). Real CA HCP
+        // data via the Canada HCP table doesn't uniformly fit the old
+        // shape. Router: 10 all-digits → NPI, else 10-or-12 alphanumeric
+        // → MINC.
         const npi = normalizeIdentifierForLookup(
           String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || ''),
         );
-        if (!/^\d{10}$/.test(npi) && !/^CAMD\d{8}$/.test(npi)) {
-          throw new Error('Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)');
+        if (!/^\d{10}$/.test(npi) && !/^[A-Z0-9]{10}$|^[A-Z0-9]{12}$/.test(npi)) {
+          throw new Error('Invalid identifier format (expected 10-digit NPI or 10/12-char MINC)');
         }
 
         const hcpData = {
@@ -736,12 +738,13 @@ export class DistributionService {
           // Create new HCP atomically (beId generation + creation in single transaction)
           // email is guaranteed to be non-null here (validated above)
           // v1.17.69 — infer country/nationalIdType from the identifier
-          // shape. Value validation above narrowed to either a 10-digit
-          // NPI (US) or CAMD######## MINC (CA). If a CA admin uploads a
-          // campaign-hcp CSV that includes a MINC not yet in the DB,
-          // we must persist country='CA'/nationalIdType='MINC' so
-          // Insights doesn't misclassify it as a US HCP later.
-          const isMinc = /^CAMD\d{8}$/.test(npi);
+          // shape. Validation above narrowed to either 10 digits (NPI)
+          // or 10-or-12 alphanumeric (MINC after v1.18.4 relax). Router:
+          // if input is 10 all-digits → NPI/US; anything else that
+          // passed validation → MINC/CA. Any 10-digit-alphanumeric-with-
+          // letters value still goes to MINC (i.e., only pure-digit 10s
+          // are NPIs).
+          const isMinc = !/^\d{10}$/.test(npi);
           hcp = await hcpServiceInstance.createWithAtomicBeId({
             ...hcpData,
             email: hcpData.email as string, // Validated above - email is required

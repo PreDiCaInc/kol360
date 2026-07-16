@@ -5,17 +5,19 @@ export const npiSchema = z.string().regex(/^\d{10}$/, 'NPI must be 10 digits');
 // v1.17.68 — Canada MINC support.
 // Ticket: docs/findings/canada-hcp-support-lite-plan-2026-06-25.md
 //
-// MINC (Medical Identification Number for Canada) canonical form is a
-// 12-character alphanumeric identifier: CAMD######## where
-//   - CA (positions 1-2) → country code, always 'CA'
-//   - MD (positions 3-4) → profession code, always 'MD' for physicians
-//   - #### #### (positions 5-11) → 7-digit serial
-//   - # (position 12) → 1-digit check digit (format-only — no
-//     published checksum algorithm; we validate format only)
+// v1.18.4 — RELAXED FORMAT (pteam, 2026-07-15). The original spec
+// required MINC to match CAMD######## (12 chars: CA + MD prefix + 8
+// digits). Real-world Canada HCP data coming through the CA import
+// path (upcoming Canada HCP table import) doesn't uniformly fit that
+// shape, so the strict format was rejecting legitimate rows.
 //
-// Input may include optional hyphens (CA-MD-123-4567-8) or spaces for
-// display formatting. Normalizer strips non-alphanumerics and
-// uppercases before validation.
+// Current rule: any 10-or-12 character alphanumeric identifier after
+// normalization. No prefix requirement, no digit-tail requirement.
+// The `country` + `nationalIdType` fields (set from import context)
+// remain the authoritative routing signal.
+//
+// Input may include optional hyphens or spaces for display formatting.
+// Normalizer strips non-alphanumerics and uppercases before validation.
 export const COUNTRIES = ['US', 'CA'] as const;
 export const NATIONAL_ID_TYPES = ['NPI', 'MINC'] as const;
 export const countrySchema = z.enum(COUNTRIES);
@@ -24,27 +26,30 @@ export type Country = z.infer<typeof countrySchema>;
 export type NationalIdType = z.infer<typeof nationalIdTypeSchema>;
 
 /**
- * Normalize a MINC input string to the canonical 12-char uppercase
- * alphanumeric form. Returns null when the result isn't exactly 12
- * characters. Callers should feed the result into mincSchema for the
- * full format check.
+ * Normalize a MINC input string to canonical uppercase alphanumeric
+ * form. Returns null when the result isn't 10 or 12 characters after
+ * stripping. Callers should feed the result into mincSchema for the
+ * shape check.
+ *
+ * v1.18.4 — accepts 10 OR 12 chars (previously 12 only).
  */
 export function normalizeMinc(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const stripped = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  return stripped.length === 12 ? stripped : null;
+  return stripped.length === 10 || stripped.length === 12 ? stripped : null;
 }
 
 /**
- * Validate a normalized MINC value against the CA / MD / 8-digit
- * layout. Use `normalizeMinc()` first if the input may contain
- * hyphens or mixed case.
+ * v1.18.4 — length-only MINC validation. Previously required
+ * CAMD######## exact shape; now accepts any 10-or-12 char
+ * alphanumeric identifier. Prefix and content rules dropped per
+ * pteam ask — real CA HCP data doesn't uniformly fit the old shape.
  */
 export const mincSchema = z
   .string()
   .regex(
-    /^CAMD\d{8}$/,
-    'MINC must be 12 characters: CAMD followed by 8 digits (input may be hyphenated; will be normalized)',
+    /^([A-Z0-9]{10}|[A-Z0-9]{12})$/,
+    'MINC must be 10 or 12 alphanumeric characters (input may be hyphenated; will be normalized)',
   );
 
 /**

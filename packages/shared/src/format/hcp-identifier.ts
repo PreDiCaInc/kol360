@@ -29,8 +29,13 @@ export interface HcpIdRef {
  * Format a MINC's normalized 12-char storage form into its
  * hyphenated display form: `CAMD12345678` → `CA-MD-1234-567-8`.
  * Returns the input unchanged if it doesn't match the expected
- * 12-char CAMD######## layout (defensive — corrupted rows still
- * render, just without the pretty split).
+ * 12-char CAMD######## layout.
+ *
+ * v1.18.4 — MINC format was relaxed to just "10 or 12 alphanumeric
+ * chars" (no CAMD prefix, no digit-tail requirement). Non-CAMD values
+ * fall through the regex check and render raw — no pretty split, but
+ * the value is still shown intact. The regex here stays scoped to the
+ * classic CAMD shape so legacy rows keep their nicer display.
  */
 export function formatMincForDisplay(normalized: string): string {
   const match = /^([A-Z]{2})([A-Z]{2})(\d{4})(\d{3})(\d{1})$/.exec(normalized);

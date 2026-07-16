@@ -461,26 +461,27 @@ export class HcpService {
       }> = [];
 
       // v1.17.68 — country-aware validation. When the import is
-      // scoped to country='CA', the identifier column is a MINC —
-      // normalize (strip non-alphanumerics, upper-case) then validate
-      // against `CAMD\d{8}`. For country='US', keep the 10-digit NPI
-      // check. `nationalIdType` on the created rows is picked from
-      // country so downstream display helpers know which flavor the
-      // stored `npi` column holds.
+      // scoped to country='CA', the identifier column is a MINC.
+      // For country='US', keep the 10-digit NPI check.
+      // v1.18.4 — MINC format relaxed to "10 or 12 alphanumeric chars
+      // after normalization". Prior strict CAMD######## rule dropped
+      // per pteam; real CA HCP data via the Canada HCP table doesn't
+      // uniformly fit the old shape.
       const nationalIdType: 'NPI' | 'MINC' = country === 'CA' ? 'MINC' : 'NPI';
       const validateIdFormat = (val: string): { ok: true; normalized: string } | { ok: false } => {
         if (nationalIdType === 'NPI') {
           return /^\d{10}$/.test(val) ? { ok: true, normalized: val } : { ok: false };
         }
         // MINC: normalize hyphenated / spaced / lowercase input to
-        // canonical 12-char CAMD######## form, then check pattern.
+        // uppercase alphanumeric-only form, then accept if 10 or 12 chars.
         const stripped = val.toUpperCase().replace(/[^A-Z0-9]/g, '');
-        if (stripped.length !== 12) return { ok: false };
-        return /^CAMD\d{8}$/.test(stripped) ? { ok: true, normalized: stripped } : { ok: false };
+        return stripped.length === 10 || stripped.length === 12
+          ? { ok: true, normalized: stripped }
+          : { ok: false };
       };
       const idFormatMessage = nationalIdType === 'NPI'
         ? 'Invalid NPI format (must be 10 digits)'
-        : 'Invalid MINC format (must normalize to CAMD followed by 8 digits, e.g. CA-MD-1234-567-8)';
+        : 'Invalid MINC format (must be 10 or 12 alphanumeric characters after normalization)';
 
       // Phase 1a: light parse — pull identifier + name out of every
       // row so we can bulk-load before validation. Column header stays

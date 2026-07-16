@@ -115,11 +115,16 @@ describe('getBeIdRequestSchema — country/nationalIdType pairing (v1.17.71)', (
     }
   });
 
-  it('rejects NPI value under nationalIdType=MINC', () => {
+  it('rejects malformed value under nationalIdType=MINC', () => {
+    // v1.18.4 — the previous version used '1234567890' (10-digit NPI)
+    // as the "bad MINC" input, but that string is now a valid MINC
+    // under the relaxed rule (10 alphanumeric chars). Switch to an
+    // 11-char input which the length-based validator still rejects
+    // (MINC = exactly 10 or 12 chars after normalization).
     const result = getBeIdRequestSchema.safeParse({
       firstName: 'François',
       lastName: 'Tremblay',
-      npi: '1234567890',
+      npi: 'CAMD1234567', // 11 chars — not 10, not 12 → rejected
       country: 'CA',
       nationalIdType: 'MINC',
       discoveredFrom: BASE_DISCOVERED_FROM,
