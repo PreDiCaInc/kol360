@@ -792,20 +792,22 @@ export class NominationService {
     const beId = await hcpServiceInstance.generateBeId();
     const { diseaseAreaIds, ...hcpCreateData } = hcpData;
     // v1.17.70 — infer country/nationalIdType from the identifier shape
-    // when a value is present. Prevents a MINC nominated HCP from
+    // when a value is present. Prevents a CA nominated HCP from
     // landing with country='US' (schema default).
-    // v1.18.4 — MINC format relaxed from CAMD######## to "10 or 12
+    // v1.18.4 — OneKey ID format relaxed from CAMD######## to "10 or 12
     // alphanumeric". Router: 10 all-digit → NPI/US; anything else that
-    // could be a MINC (10 or 12 alphanumeric after normalize) → CA/MINC.
+    // could be a OneKey ID (10 or 12 alphanumeric after normalize) →
+    // CA/ONEKEY_ID.
+    // v1.19.0 — renamed from MINC to ONEKEY_ID.
     const normalizedNpi = hcpData.npi ? hcpData.npi.toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
     const isNpi = /^\d{10}$/.test(normalizedNpi);
-    const isMinc = !!hcpData.npi && !isNpi && (normalizedNpi.length === 10 || normalizedNpi.length === 12);
+    const isOneKeyId = !!hcpData.npi && !isNpi && (normalizedNpi.length === 10 || normalizedNpi.length === 12);
     const hcp = await prisma.hcp.create({
       data: {
         ...hcpCreateData,
-        npi: hcpData.npi ? (isMinc ? normalizedNpi : hcpData.npi) : null,
-        country: isMinc ? 'CA' : 'US',
-        nationalIdType: isMinc ? 'MINC' : 'NPI',
+        npi: hcpData.npi ? (isOneKeyId ? normalizedNpi : hcpData.npi) : null,
+        country: isOneKeyId ? 'CA' : 'US',
+        nationalIdType: isOneKeyId ? 'ONEKEY_ID' : 'NPI',
         // v1.17.20: Hcp.email is now NOT NULL with a placeholder default.
         // The nomination-create-HCP path may not have a real email; fall
         // back to the placeholder so the row inserts cleanly.

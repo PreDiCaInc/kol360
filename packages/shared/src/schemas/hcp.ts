@@ -2,68 +2,70 @@ import { z } from 'zod';
 
 export const npiSchema = z.string().regex(/^\d{10}$/, 'NPI must be 10 digits');
 
-// v1.17.68 — Canada MINC support.
+// v1.17.68 — multi-country HCP identifier support.
 // Ticket: docs/findings/canada-hcp-support-lite-plan-2026-06-25.md
 //
-// v1.18.4 — RELAXED FORMAT (pteam, 2026-07-15). The original spec
-// required MINC to match CAMD######## (12 chars: CA + MD prefix + 8
-// digits). Real-world Canada HCP data coming through the CA import
-// path (upcoming Canada HCP table import) doesn't uniformly fit that
-// shape, so the strict format was rejecting legitimate rows.
+// v1.18.4 — RELAXED FORMAT: any 10-or-12 alphanumeric chars after
+// normalization. Prior strict CAMD######## rule dropped because real
+// CA HCP data via the Canada HCP table import didn't fit that shape.
 //
-// Current rule: any 10-or-12 character alphanumeric identifier after
-// normalization. No prefix requirement, no digit-tail requirement.
-// The `country` + `nationalIdType` fields (set from import context)
-// remain the authoritative routing signal.
+// v1.19.0 — RENAMED: `MINC` → `ONEKEY_ID` (display: "OneKey ID"),
+// aligning with the IQVIA OneKey Reference vocabulary the Canada
+// team uses. The underlying validation is unchanged (still 10-or-12
+// alphanumeric). Historic `MINC` DB values are migrated to
+// `ONEKEY_ID` in the same release; CSV imports still accept legacy
+// column headers `MINC` / `minc` in addition to `OneKey`, `onekey`,
+// `OneKeyID`, `onekey_id`.
 //
-// Input may include optional hyphens or spaces for display formatting.
-// Normalizer strips non-alphanumerics and uppercases before validation.
+// Country + nationalIdType fields set from import context remain the
+// authoritative routing signal. Input may include hyphens or spaces
+// for display; normalizer strips non-alphanumerics and uppercases.
 export const COUNTRIES = ['US', 'CA'] as const;
-export const NATIONAL_ID_TYPES = ['NPI', 'MINC'] as const;
+export const NATIONAL_ID_TYPES = ['NPI', 'ONEKEY_ID'] as const;
 export const countrySchema = z.enum(COUNTRIES);
 export const nationalIdTypeSchema = z.enum(NATIONAL_ID_TYPES);
 export type Country = z.infer<typeof countrySchema>;
 export type NationalIdType = z.infer<typeof nationalIdTypeSchema>;
 
 /**
- * Normalize a MINC input string to canonical uppercase alphanumeric
- * form. Returns null when the result isn't 10 or 12 characters after
- * stripping. Callers should feed the result into mincSchema for the
- * shape check.
+ * Normalize a OneKey ID input string to canonical uppercase
+ * alphanumeric form. Returns null when the result isn't 10 or 12
+ * characters after stripping. Callers should feed the result into
+ * oneKeyIdSchema for the shape check.
  *
  * v1.18.4 — accepts 10 OR 12 chars (previously 12 only).
+ * v1.19.0 — renamed from `normalizeMinc`.
  */
-export function normalizeMinc(raw: string | null | undefined): string | null {
+export function normalizeOneKeyId(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const stripped = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
   return stripped.length === 10 || stripped.length === 12 ? stripped : null;
 }
 
 /**
- * v1.18.4 — length-only MINC validation. Previously required
- * CAMD######## exact shape; now accepts any 10-or-12 char
- * alphanumeric identifier. Prefix and content rules dropped per
- * pteam ask — real CA HCP data doesn't uniformly fit the old shape.
+ * v1.18.4 — length-only OneKey ID validation. Accepts any 10-or-12
+ * char alphanumeric identifier after normalization.
+ * v1.19.0 — renamed from `mincSchema`.
  */
-export const mincSchema = z
+export const oneKeyIdSchema = z
   .string()
   .regex(
     /^([A-Z0-9]{10}|[A-Z0-9]{12})$/,
-    'MINC must be 10 or 12 alphanumeric characters (input may be hyphenated; will be normalized)',
+    'OneKey ID must be 10 or 12 alphanumeric characters (input may be hyphenated; will be normalized)',
   );
 
 /**
  * Cross-check that the value stored in the `npi` column actually
- * matches its declared type. NPI values must be 10 digits; MINC
- * values must be 12-char CAMD######## after normalization.
- * Callers should already have normalized MINC input via
- * `normalizeMinc()` before passing here.
+ * matches its declared type. NPI values must be 10 digits; OneKey ID
+ * values must be 10 or 12 alphanumeric chars after normalization.
+ * Callers should already have normalized OneKey ID input via
+ * `normalizeOneKeyId()` before passing here.
  */
 export function validateNationalIdValue(
   value: string,
   type: NationalIdType,
 ): { ok: true } | { ok: false; message: string } {
-  const schema = type === 'NPI' ? npiSchema : mincSchema;
+  const schema = type === 'NPI' ? npiSchema : oneKeyIdSchema;
   const result = schema.safeParse(value);
   if (result.success) return { ok: true };
   return { ok: false, message: result.error.errors[0]?.message ?? 'Invalid identifier' };
@@ -100,9 +102,9 @@ export function normalizeHcpSpecialty(raw: string | null | undefined): HcpSpecia
   return null;
 }
 
-// v1.17.68 — `npi` field now holds either an NPI (US) or a MINC (CA)
-// depending on the row's nationalIdType. Column name unchanged for
-// backward compat across the ~100 references in api + web code.
+// v1.17.68 — `npi` field now holds either an NPI (US) or a OneKey ID
+// (CA) depending on the row's nationalIdType. Column name unchanged
+// for backward compat across the ~100 references in api + web code.
 // `country` + `nationalIdType` default to US/NPI when the caller
 // doesn't set them, keeping every existing writer working without
 // change.

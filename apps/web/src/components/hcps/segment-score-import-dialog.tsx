@@ -197,8 +197,8 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
     : 'Upload an Excel file with HCP segment scores across 8 categories.';
 
   const handleDownloadTemplate = () => {
-    const idColumn = templateCountry === 'CA' ? 'MINC' : 'NPI';
-    const sampleId = templateCountry === 'CA' ? 'CAMD12345678' : '1234567890';
+    const idColumn = templateCountry === 'CA' ? 'OneKey ID' : 'NPI';
+    const sampleId = templateCountry === 'CA' ? 'ABC123456789' : '1234567890';
     const headers = [idColumn, ...columns.map(c => c.name)];
     const exampleRow = [sampleId, ...columns.map(() => '50')];
 
@@ -367,7 +367,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
                       onClick={() => setTemplateCountry('CA')}
                       className={`px-2 py-1 text-xs border-l ${templateCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
                     >
-                      CA (MINC)
+                      CA (OneKey ID)
                     </button>
                   </div>
                   <Button variant="ghost" size="sm" className="text-xs h-7" onClick={handleDownloadTemplate}>
@@ -379,7 +379,7 @@ export function SegmentScoreImportDialog({ open, onOpenChange, scoreType = 'segm
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
                 <div className="flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  {templateCountry === 'CA' ? 'MINC (CAMD########)' : 'NPI (10 digits)'}
+                  {templateCountry === 'CA' ? 'OneKey ID (10 or 12 alphanumeric)' : 'NPI (10 digits)'}
                 </div>
                 {columns.map((col) => (
                   <div key={col.field} className="flex items-center gap-1">

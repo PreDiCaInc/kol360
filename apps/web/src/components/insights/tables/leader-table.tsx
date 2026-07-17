@@ -24,7 +24,7 @@ export interface LeaderTableItem {
   name: string;
   hcpId: string;
   npi?: string | null; // v1.17.32: surfaced for the full-list export
-  nationalIdType?: string | null; // v1.17.69 — for MINC/NPI column-label switch on CSV export
+  nationalIdType?: string | null; // v1.17.69 — for OneKey ID/NPI column-label switch on CSV export
   specialty: string | null;
   city?: string | null;
   state?: string | null;

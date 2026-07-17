@@ -159,8 +159,8 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
   }, []);
 
   const handleDownloadTemplate = () => {
-    const idColumn = importCountry === 'CA' ? 'MINC' : 'NPI';
-    const sampleId = importCountry === 'CA' ? 'CAMD12345678' : '1234567890';
+    const idColumn = importCountry === 'CA' ? 'OneKey ID' : 'NPI';
+    const sampleId = importCountry === 'CA' ? 'ABC123456789' : '1234567890';
     const sampleState = importCountry === 'CA' ? 'ON' : 'MA';
     const headers = [idColumn, 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-specialty', 'City', 'State'];
     const sampleRow = [sampleId, 'John', 'Smith', 'john.smith@example.com', 'Oncology', '', 'Boston', sampleState];
@@ -268,7 +268,7 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
                   onClick={() => setImportCountry('CA')}
                   className={`px-3 py-1.5 text-sm border-l ${importCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
                 >
-                  Canada (MINC)
+                  Canada (OneKey ID)
                 </button>
               </div>
             </div>
@@ -325,7 +325,7 @@ export function HcpImportDialog({ open, onOpenChange }: Props) {
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                 <li>
                   {importCountry === 'CA'
-                    ? 'MINC (12-char CA-MD-####-###-# — hyphens optional)'
+                    ? 'OneKey ID (10 or 12 alphanumeric characters — hyphens optional)'
                     : 'NPI (10 digits)'}
                 </li>
                 <li>First Name</li>

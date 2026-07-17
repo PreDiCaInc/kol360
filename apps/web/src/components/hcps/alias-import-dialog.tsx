@@ -25,14 +25,14 @@ export function AliasImportDialog({ open, onOpenChange }: Props) {
     skipped: number;
     errors: { row: number; error: string }[];
   } | null>(null);
-  // Template country: switches identifier column header (NPI vs MINC).
+  // Template country: switches identifier column header (NPI vs OneKey ID).
   // Backend accepts both — this only affects the informational text.
   const [templateCountry, setTemplateCountry] = useState<'US' | 'CA'>('US');
-  const idColumnName = templateCountry === 'CA' ? 'MINC' : 'NPI';
+  const idColumnName = templateCountry === 'CA' ? 'OneKey ID' : 'NPI';
   const idColumnDescr = templateCountry === 'CA'
-    ? 'MINC (CAMD########) - must match an existing HCP'
+    ? 'OneKey ID (10 or 12 alphanumeric chars) - must match an existing HCP'
     : 'NPI (10 digits) - must match an existing HCP';
-  const sampleId = templateCountry === 'CA' ? 'CAMD12345678' : '1234567890';
+  const sampleId = templateCountry === 'CA' ? 'ABC123456789' : '1234567890';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importAliases = useImportHcpAliases();
 
@@ -139,7 +139,7 @@ export function AliasImportDialog({ open, onOpenChange }: Props) {
                     onClick={() => setTemplateCountry('CA')}
                     className={`px-2 py-1 text-xs border-l ${templateCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
                   >
-                    CA (MINC)
+                    CA (OneKey ID)
                   </button>
                 </div>
               </div>

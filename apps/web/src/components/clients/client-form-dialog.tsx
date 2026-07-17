@@ -328,7 +328,7 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
 
             {/* v1.17.68 — country regime for this client's HCPs.
                 Determines which national-ID format the import dialog
-                expects (NPI for US, MINC for CA) and how identifiers
+                expects (NPI for US, OneKey ID for CA) and how identifiers
                 render across the admin surfaces. Per pteam: for a
                 customer running both US + CA programs, spin up TWO
                 Client rows rather than mixing countries on one. */}
@@ -346,11 +346,11 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="US">United States (NPI)</SelectItem>
-                      <SelectItem value="CA">Canada (MINC)</SelectItem>
+                      <SelectItem value="CA">Canada (OneKey ID)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Determines the identifier regime (NPI vs MINC) and scopes
+                    Determines the identifier regime (NPI vs OneKey ID) and scopes
                     HCP imports + list views to this country. Existing US
                     clients stay on the US path.
                   </p>

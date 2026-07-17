@@ -26,13 +26,13 @@ describe('getBeIdRequestSchema — country/nationalIdType pairing (v1.17.71)', (
     expect(result.success).toBe(true);
   });
 
-  it('accepts paired CA + MINC (canonical case)', () => {
+  it('accepts paired CA + ONEKEY_ID (canonical case)', () => {
     const result = getBeIdRequestSchema.safeParse({
       firstName: 'François',
       lastName: 'Tremblay',
       npi: 'CAMD12345678',
       country: 'CA',
-      nationalIdType: 'MINC',
+      nationalIdType: 'ONEKEY_ID',
       discoveredFrom: BASE_DISCOVERED_FROM,
     });
     expect(result.success).toBe(true);
@@ -52,13 +52,13 @@ describe('getBeIdRequestSchema — country/nationalIdType pairing (v1.17.71)', (
     }
   });
 
-  it('rejects unpaired US + MINC', () => {
+  it('rejects unpaired US + ONEKEY_ID', () => {
     const result = getBeIdRequestSchema.safeParse({
       firstName: 'Jane',
       lastName: 'Smith',
       npi: 'CAMD12345678',
       country: 'US',
-      nationalIdType: 'MINC',
+      nationalIdType: 'ONEKEY_ID',
       discoveredFrom: BASE_DISCOVERED_FROM,
     });
     expect(result.success).toBe(false);
@@ -96,7 +96,7 @@ describe('getBeIdRequestSchema — country/nationalIdType pairing (v1.17.71)', (
     expect(result.success).toBe(false);
   });
 
-  it('rejects MINC value under nationalIdType=NPI', () => {
+  it('rejects OneKey ID value under nationalIdType=NPI', () => {
     // Existing behavior (npi-vs-type validation) still fires — this
     // test guards against the pairing check swallowing the value-shape
     // validation when nationalIdType actually matches country.
@@ -115,18 +115,18 @@ describe('getBeIdRequestSchema — country/nationalIdType pairing (v1.17.71)', (
     }
   });
 
-  it('rejects malformed value under nationalIdType=MINC', () => {
+  it('rejects malformed value under nationalIdType=ONEKEY_ID', () => {
     // v1.18.4 — the previous version used '1234567890' (10-digit NPI)
-    // as the "bad MINC" input, but that string is now a valid MINC
-    // under the relaxed rule (10 alphanumeric chars). Switch to an
-    // 11-char input which the length-based validator still rejects
-    // (MINC = exactly 10 or 12 chars after normalization).
+    // as the "bad OneKey ID" input, but that string is now a valid
+    // OneKey ID under the relaxed rule (10 alphanumeric chars). Switch
+    // to an 11-char input which the length-based validator still
+    // rejects (OneKey ID = exactly 10 or 12 chars after normalization).
     const result = getBeIdRequestSchema.safeParse({
       firstName: 'François',
       lastName: 'Tremblay',
       npi: 'CAMD1234567', // 11 chars — not 10, not 12 → rejected
       country: 'CA',
-      nationalIdType: 'MINC',
+      nationalIdType: 'ONEKEY_ID',
       discoveredFrom: BASE_DISCOVERED_FROM,
     });
     expect(result.success).toBe(false);

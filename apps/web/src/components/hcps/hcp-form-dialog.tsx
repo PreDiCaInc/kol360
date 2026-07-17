@@ -75,9 +75,9 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
   });
 
   const country = (form.watch('country') as Country | undefined) ?? 'US';
-  const nationalIdType: NationalIdType = country === 'CA' ? 'MINC' : 'NPI';
-  const idPlaceholder = nationalIdType === 'MINC' ? 'CAMD12345678' : '1234567890';
-  const idMaxLength = nationalIdType === 'MINC' ? 12 : 10;
+  const nationalIdType: NationalIdType = country === 'CA' ? 'ONEKEY_ID' : 'NPI';
+  const idPlaceholder = nationalIdType === 'ONEKEY_ID' ? 'ABC123456789' : '1234567890';
+  const idMaxLength = nationalIdType === 'ONEKEY_ID' ? 12 : 10;
 
   useEffect(() => {
     form.setValue('nationalIdType', nationalIdType);
@@ -180,7 +180,7 @@ export function HcpFormDialog({ open, onOpenChange, hcpId }: Props) {
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="US">United States (NPI)</SelectItem>
-                        <SelectItem value="CA">Canada (MINC)</SelectItem>
+                        <SelectItem value="CA">Canada (OneKey ID)</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

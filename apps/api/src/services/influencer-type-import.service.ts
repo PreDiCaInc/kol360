@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { parse as parseCsv } from 'csv-parse/sync';
 import ExcelJS from 'exceljs';
-import { INFLUENCER_TYPES, type InfluencerType, normalizeMinc } from '@kol360/shared';
+import { INFLUENCER_TYPES, type InfluencerType, normalizeOneKeyId } from '@kol360/shared';
 import { resolveUserIdForAudit } from '../lib/audit';
 
 // v1.17.44 — canonical influencer-type list is INFLUENCER_TYPES in
@@ -89,6 +89,12 @@ interface PreviewOrImportArgs {
 interface RawCsvRow {
   NPI?: string;
   npi?: string;
+  // v1.19.0 — 'OneKey ID' + variants (backward-compat with legacy 'MINC').
+  'OneKey ID'?: string;
+  OneKey?: string;
+  OneKeyID?: string;
+  onekey?: string;
+  onekey_id?: string;
   MINC?: string;
   minc?: string;
   InfluencerType?: string;
@@ -142,12 +148,17 @@ async function parseRows(buffer: Buffer, filename: string): Promise<RawCsvRow[]>
 }
 
 function extractNpi(row: RawCsvRow): string {
-  const raw = (row.NPI ?? row.npi ?? row.MINC ?? row.minc ?? '').trim();
-  // v1.17.69 — normalize MINC to canonical uppercase / no-separator form
-  // so DB lookup matches. NPI values pass through unchanged.
+  const raw = (
+    row.NPI ?? row.npi ??
+    row['OneKey ID'] ?? row.OneKey ?? row.OneKeyID ?? row.onekey ?? row.onekey_id ??
+    row.MINC ?? row.minc ??
+    ''
+  ).trim();
+  // v1.17.69 — normalize OneKey ID to canonical uppercase / no-separator
+  // form so DB lookup matches. NPI values pass through unchanged.
   const upper = raw.toUpperCase();
   if (/[A-Z]/.test(upper)) {
-    const normalized = normalizeMinc(upper);
+    const normalized = normalizeOneKeyId(upper);
     if (normalized) return normalized;
   }
   return raw;
@@ -248,7 +259,7 @@ export class InfluencerTypeImportService {
           row: row.rowNumber,
           npi: row.npi,
           rawType: row.rawType,
-          reason: 'Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)',
+          reason: 'Invalid identifier format (expected 10-digit NPI or 10/12-char OneKey ID)',
         });
         continue;
       }

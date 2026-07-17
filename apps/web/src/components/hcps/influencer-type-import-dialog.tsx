@@ -120,11 +120,11 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
   // v1.17.43 — mirror the HcpImportDialog pattern: provide a
   // template so the data team doesn't have to guess the column shape.
   const handleDownloadTemplate = () => {
-    const idColumn = templateCountry === 'CA' ? 'MINC' : 'NPI';
+    const idColumn = templateCountry === 'CA' ? 'OneKey ID' : 'NPI';
     const headers = [idColumn, 'InfluencerType'];
     const sampleRows = INFLUENCER_TYPES.map((t, i) => [
       templateCountry === 'CA'
-        ? `CAMD${String(i + 1).padStart(8, '0')}`
+        ? `ABC${String(i + 1).padStart(9, '0')}`
         : `99900000${String(i + 1).padStart(2, '0')}`,
       t,
     ]);
@@ -204,7 +204,7 @@ export function InfluencerTypeImportDialog({ open, onOpenChange }: Props) {
                       onClick={() => setTemplateCountry('CA')}
                       className={`px-2 py-1 text-xs border-l ${templateCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
                     >
-                      CA (MINC)
+                      CA (OneKey ID)
                     </button>
                   </div>
                   <Button

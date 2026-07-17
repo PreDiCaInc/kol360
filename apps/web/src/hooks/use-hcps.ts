@@ -53,7 +53,7 @@ interface Hcp {
   // `getHcpIdValue()` know how to render it. Optional in the FE type
   // for backward compat with pre-v1.17.68 responses (defaults to
   // 'NPI' inside the display helpers).
-  nationalIdType?: 'NPI' | 'MINC';
+  nationalIdType?: 'NPI' | 'ONEKEY_ID';
   country?: 'US' | 'CA';
   isSurveyTaker: boolean;
   isNominated: boolean;

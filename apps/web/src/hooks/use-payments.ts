@@ -13,7 +13,7 @@ interface Payment {
   createdAt: string;
   hcp: {
     npi: string;
-    nationalIdType?: 'NPI' | 'MINC' | null;
+    nationalIdType?: 'NPI' | 'ONEKEY_ID' | null;
     firstName: string;
     lastName: string;
     email: string | null;

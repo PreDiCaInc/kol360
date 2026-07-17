@@ -97,9 +97,9 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
     onOpenChange(false);
   };
 
-  const idColumnName = templateCountry === 'CA' ? 'MINC' : 'NPI';
+  const idColumnName = templateCountry === 'CA' ? 'OneKey ID' : 'NPI';
   const idColumnDescription = templateCountry === 'CA'
-    ? '12-char CAMD######## Canadian Medical Identifier'
+    ? '10 or 12 alphanumeric characters (IQVIA OneKey Reference)'
     : '10-digit National Provider Identifier';
 
   const requiredColumns = [
@@ -242,7 +242,7 @@ export function CampaignHcpImportDialog({ open, onOpenChange, campaignId }: Prop
                       onClick={() => setTemplateCountry('CA')}
                       className={`px-2 py-1 text-xs border-l ${templateCountry === 'CA' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
                     >
-                      CA (MINC)
+                      CA (OneKey ID)
                     </button>
                   </div>
                   <Button variant="ghost" size="sm" className="text-xs h-7" onClick={downloadTemplate}>

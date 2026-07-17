@@ -926,7 +926,7 @@ export class InsightsReportService {
 
     // Perf pass #6 (Leader Rankings): narrow to the 6 fields consumed below.
     // v1.17.32: also npi (surfaced for the full-list export).
-    // v1.17.69 — also nationalIdType so the FE can render MINC vs NPI.
+    // v1.17.69 — also nationalIdType so the FE can render OneKey ID vs NPI.
     const hcps = await prisma.hcp.findMany({
       where: hcpWhere,
       select: {
