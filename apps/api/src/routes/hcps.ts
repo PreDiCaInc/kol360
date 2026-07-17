@@ -265,7 +265,7 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
   // Bulk import HCPs from Excel or CSV
   fastify.post('/import', async (request, reply) => {
     // v1.17.68 — `country` query param determines which national-ID
-    // regime validates the CSV's identifier column (`NPI` / `MINC`).
+    // regime validates the CSV's identifier column (NPI / OneKey ID).
     // Defaults to 'US' so existing admin import flows keep working
     // with zero change. The web UI passes 'CA' when the current
     // Client's defaultCountry is Canada.

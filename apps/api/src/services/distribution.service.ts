@@ -5,16 +5,16 @@ import { HcpService } from './hcp.service';
 const hcpServiceInstance = new HcpService();
 import { emailService } from './email.service';
 import { createAuditLog } from '../lib/audit';
-import { normalizeHcpSpecialty, normalizeMinc } from '@kol360/shared';
+import { normalizeHcpSpecialty, normalizeOneKeyId } from '@kol360/shared';
 
 // v1.17.69 — mirrors hcp.service.ts helper. Uppercases + strips
-// separators so a hyphenated / lowercase MINC in the campaign-hcp CSV
-// matches the canonical CAMD######## stored on Hcp.npi.
+// separators so a hyphenated / lowercase OneKey ID in the campaign-hcp
+// CSV matches the canonical form stored on Hcp.npi.
 function normalizeIdentifierForLookup(raw: string): string {
   const trimmed = raw.trim();
   const upper = trimmed.toUpperCase();
   if (/[A-Z]/.test(upper)) {
-    const normalized = normalizeMinc(upper);
+    const normalized = normalizeOneKeyId(upper);
     if (normalized) return normalized;
   }
   return trimmed;
@@ -600,15 +600,22 @@ export class DistributionService {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       try {
-        // Normalize identifier. Accept both NPI and MINC column headers so
-        // CA templates work; validate as either 10-digit NPI or CAMD########
-        // MINC. MINC input normalized to canonical uppercase / no-separator
-        // form so DB lookup + create both use the canonical shape.
+        // Normalize identifier. Accept NPI + OneKey ID column headers
+        // (plus legacy MINC headers for backward compat with any
+        // existing CA templates).
+        // v1.18.4 — validation relaxed to "10 or 12 alphanumeric chars"
+        // (was CAMD######## strict). Router: 10 all-digits → NPI,
+        // else 10-or-12 alphanumeric → OneKey ID.
         const npi = normalizeIdentifierForLookup(
-          String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || ''),
+          String(
+            row['NPI'] || row['npi'] ||
+            row['OneKey ID'] || row['OneKey'] || row['OneKeyID'] || row['onekey'] || row['onekey_id'] ||
+            row['MINC'] || row['minc'] ||
+            '',
+          ),
         );
-        if (!/^\d{10}$/.test(npi) && !/^CAMD\d{8}$/.test(npi)) {
-          throw new Error('Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)');
+        if (!/^\d{10}$/.test(npi) && !/^[A-Z0-9]{10}$|^[A-Z0-9]{12}$/.test(npi)) {
+          throw new Error('Invalid identifier format (expected 10-digit NPI or 10/12-char OneKey ID)');
         }
 
         const hcpData = {
@@ -736,18 +743,20 @@ export class DistributionService {
           // Create new HCP atomically (beId generation + creation in single transaction)
           // email is guaranteed to be non-null here (validated above)
           // v1.17.69 — infer country/nationalIdType from the identifier
-          // shape. Value validation above narrowed to either a 10-digit
-          // NPI (US) or CAMD######## MINC (CA). If a CA admin uploads a
-          // campaign-hcp CSV that includes a MINC not yet in the DB,
-          // we must persist country='CA'/nationalIdType='MINC' so
-          // Insights doesn't misclassify it as a US HCP later.
-          const isMinc = /^CAMD\d{8}$/.test(npi);
+          // shape. Validation above narrowed to either 10 digits (NPI)
+          // or 10-or-12 alphanumeric (OneKey ID after v1.18.4 relax).
+          // Router: if input is 10 all-digits → NPI/US; anything else
+          // that passed validation → ONEKEY_ID/CA. Any 10-alphanumeric-
+          // with-letters value still goes to OneKey ID (only pure-digit
+          // 10s are NPIs).
+          // v1.19.0 — renamed from MINC to ONEKEY_ID.
+          const isOneKeyId = !/^\d{10}$/.test(npi);
           hcp = await hcpServiceInstance.createWithAtomicBeId({
             ...hcpData,
             email: hcpData.email as string, // Validated above - email is required
             specialty: normalizeHcpSpecialty(hcpData.specialty),
-            country: isMinc ? 'CA' : 'US',
-            nationalIdType: isMinc ? 'MINC' : 'NPI',
+            country: isOneKeyId ? 'CA' : 'US',
+            nationalIdType: isOneKeyId ? 'ONEKEY_ID' : 'NPI',
           }, userId);
           createdHcpIds.push(hcp.id);
           // v1.17.35: dedicated hcp.created row per CREATE so audit

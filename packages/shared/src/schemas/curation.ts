@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { countrySchema, nationalIdTypeSchema, mincSchema, npiSchema } from './hcp';
+import { countrySchema, nationalIdTypeSchema, oneKeyIdSchema, npiSchema } from './hcp';
 
 // v1.17.29 — request/response contract for the curation integration.
 // Wire spec: kolcuration/spec/curation-kol360-sync-spec-v0.3.md §6.2
@@ -36,39 +36,36 @@ export const getBeIdRequestSchema = z
     city: z.string().optional(),
     state: z.string().length(2).optional(),
     // Optional identifier. When present, kol360 dedupes on Hcp.npi
-    // (which stores either NPI or MINC per nationalIdType) and returns
-    // the existing beId. When absent, mints a new beId with npi=NULL
-    // and stashes discoveredFrom.notes (the reviewer's reason).
+    // (which stores either NPI or OneKey ID per nationalIdType) and
+    // returns the existing beId. When absent, mints a new beId with
+    // npi=NULL and stashes discoveredFrom.notes.
     npi: z.string().optional(),
     // v1.17.69 — multi-country identifier support. Callers may specify
     // country + nationalIdType; both default to US/NPI so existing
-    // curation clients keep working. When nationalIdType='MINC',
-    // `npi` is validated as a MINC (12-char CAMD########).
+    // curation clients keep working.
+    // v1.19.0 — nationalIdType='ONEKEY_ID' (was 'MINC'); `npi` is
+    // validated as a OneKey ID (10 or 12 alphanumeric chars) when set.
     country: countrySchema.default('US'),
     nationalIdType: nationalIdTypeSchema.default('NPI'),
     discoveredFrom: discoveredFromSchema,
   })
   .superRefine((data, ctx) => {
     // v1.17.71 — enforce country/nationalIdType pairing at the schema
-    // level. Requested by the curation-svc team review of
-    // curation-svc-canada-integration-spec-v1.md §2.1: unpaired combos
-    // ('US' + 'MINC', 'CA' + 'NPI') are semantically wrong and were
-    // previously accepted with defaults applied per-field independently.
-    // Server-side is the right home for the invariant; belt-and-braces
-    // with curation-svc's client-side check.
-    const isMincCountry = data.country === 'CA';
-    const isMincType = data.nationalIdType === 'MINC';
-    if (isMincCountry !== isMincType) {
+    // level. Unpaired combos ('US' + 'ONEKEY_ID', 'CA' + 'NPI') are
+    // semantically wrong. v1.19.0 renamed 'MINC' → 'ONEKEY_ID'.
+    const isCaCountry = data.country === 'CA';
+    const isOneKeyIdType = data.nationalIdType === 'ONEKEY_ID';
+    if (isCaCountry !== isOneKeyIdType) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['nationalIdType'],
         message:
-          "country and nationalIdType must be paired: 'CA' → 'MINC', 'US' → 'NPI'",
+          "country and nationalIdType must be paired: 'CA' → 'ONEKEY_ID', 'US' → 'NPI'",
       });
       return; // don't spam a second error about identifier shape
     }
     if (!data.npi) return;
-    const schema = data.nationalIdType === 'MINC' ? mincSchema : npiSchema;
+    const schema = data.nationalIdType === 'ONEKEY_ID' ? oneKeyIdSchema : npiSchema;
     const check = schema.safeParse(data.npi);
     if (!check.success) {
       ctx.addIssue({

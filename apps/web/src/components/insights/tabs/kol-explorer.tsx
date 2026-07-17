@@ -417,7 +417,7 @@ function ScoreTableView({
 
     const headers = [
       'Rank',
-      // v1.17.69 — column header follows the data's country (NPI or MINC).
+      // v1.17.69 — column header follows the data's country (NPI or OneKey ID).
       inferHcpIdLabel(items as ReadonlyArray<{ nationalIdType?: string | null }>),
       'Name', 'Specialty', 'Degree', 'City', 'State', 'Influencer Type',
       'Publications', 'Trade Pubs', 'Org Leadership', 'Org Awards', 'Clinical Trials',
@@ -987,7 +987,7 @@ function ProfileView({
     const headers = [
       'Rank',
       'Name',
-      // v1.17.69 — MINC when the current dashboard is CA-scoped.
+      // v1.17.69 — OneKey ID when the current dashboard is CA-scoped.
       inferHcpIdLabel(sortedNominators as ReadonlyArray<{ nationalIdType?: string | null }>),
       'Specialty',
       'State',
@@ -1244,7 +1244,7 @@ function ProfileView({
                       <tr className="border-b">
                         <SortableHeader label="Name" field="name" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         {/* v1.17.45 — NPI column added per pteam request */}
-                        {/* v1.17.69 — MINC when CA-scoped. */}
+                        {/* v1.17.69 — OneKey ID when CA-scoped. */}
                         <SortableHeader label={inferHcpIdLabel(sortedNominators as ReadonlyArray<{ nationalIdType?: string | null }>)} field="npi" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         <SortableHeader label="Specialty" field="specialty" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />
                         <SortableHeader label="State" field="state" currentSort={nominatorSortField} currentOrder={nominatorSortOrder} onSort={(f) => handleNominatorSort(f as typeof nominatorSortField)} />

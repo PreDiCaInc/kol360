@@ -164,7 +164,7 @@ export default function HcpsPage() {
     if (!allHcps.length) return;
 
     // Build CSV content
-    // v1.17.69 — identifier header follows the list's country (NPI or MINC).
+    // v1.17.69 — identifier header follows the list's country (NPI or OneKey ID).
     const headers = ['BE ID', inferHcpIdLabel(allHcps), 'First Name', 'Last Name', 'Email', 'Specialty', 'Sub-Specialty', 'City', 'State', 'Aliases', 'Campaigns'];
     const rows = allHcps.map((hcp) => {
       const specialties = getSpecialtyDisplay(hcp);

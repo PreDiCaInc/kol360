@@ -2,19 +2,19 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
-import { CreateHcpInput, UpdateHcpInput, normalizeHcpSpecialty, normalizeMinc } from '@kol360/shared';
+import { CreateHcpInput, UpdateHcpInput, normalizeHcpSpecialty, normalizeOneKeyId } from '@kol360/shared';
 
 // v1.17.69 — shared identifier normalizer used by the aux CSV parsers
-// (aliases, segment-scores) so a hyphenated/lowercase MINC in the CSV
-// column matches the canonical CAMD######## stored on Hcp.npi.
-// Also uppercases MINC inputs — case-sensitivity would otherwise cause
-// lookup misses without any user-facing error.
+// (aliases, segment-scores) so a hyphenated/lowercase OneKey ID in the
+// CSV column matches the canonical form stored on Hcp.npi. Uppercases
+// too — case-sensitivity would otherwise cause lookup misses without
+// any user-facing error.
 function normalizeIdentifierForLookup(raw: string): string {
   const trimmed = raw.trim();
   const upper = trimmed.toUpperCase();
-  // MINC-shaped (starts with CA/MD when stripped of separators)
+  // OneKey ID-shaped (any letter present after stripping separators)
   if (/[A-Z]/.test(upper)) {
-    const normalized = normalizeMinc(upper);
+    const normalized = normalizeOneKeyId(upper);
     if (normalized) return normalized;
   }
   return trimmed;
@@ -461,38 +461,43 @@ export class HcpService {
       }> = [];
 
       // v1.17.68 — country-aware validation. When the import is
-      // scoped to country='CA', the identifier column is a MINC —
-      // normalize (strip non-alphanumerics, upper-case) then validate
-      // against `CAMD\d{8}`. For country='US', keep the 10-digit NPI
-      // check. `nationalIdType` on the created rows is picked from
-      // country so downstream display helpers know which flavor the
-      // stored `npi` column holds.
-      const nationalIdType: 'NPI' | 'MINC' = country === 'CA' ? 'MINC' : 'NPI';
+      // scoped to country='CA', the identifier column is a OneKey ID.
+      // For country='US', keep the 10-digit NPI check.
+      // v1.18.4 — OneKey ID format relaxed to "10 or 12 alphanumeric
+      // chars after normalization". Prior strict CAMD######## rule
+      // dropped per pteam; real CA HCP data via the Canada HCP table
+      // doesn't uniformly fit the old shape.
+      // v1.19.0 — nationalIdType renamed from 'MINC' to 'ONEKEY_ID'.
+      const nationalIdType: 'NPI' | 'ONEKEY_ID' = country === 'CA' ? 'ONEKEY_ID' : 'NPI';
       const validateIdFormat = (val: string): { ok: true; normalized: string } | { ok: false } => {
         if (nationalIdType === 'NPI') {
           return /^\d{10}$/.test(val) ? { ok: true, normalized: val } : { ok: false };
         }
-        // MINC: normalize hyphenated / spaced / lowercase input to
-        // canonical 12-char CAMD######## form, then check pattern.
+        // OneKey ID: normalize hyphenated / spaced / lowercase input to
+        // uppercase alphanumeric-only form, then accept if 10 or 12 chars.
         const stripped = val.toUpperCase().replace(/[^A-Z0-9]/g, '');
-        if (stripped.length !== 12) return { ok: false };
-        return /^CAMD\d{8}$/.test(stripped) ? { ok: true, normalized: stripped } : { ok: false };
+        return stripped.length === 10 || stripped.length === 12
+          ? { ok: true, normalized: stripped }
+          : { ok: false };
       };
       const idFormatMessage = nationalIdType === 'NPI'
         ? 'Invalid NPI format (must be 10 digits)'
-        : 'Invalid MINC format (must normalize to CAMD followed by 8 digits, e.g. CA-MD-1234-567-8)';
+        : 'Invalid OneKey ID format (must be 10 or 12 alphanumeric characters after normalization)';
 
       // Phase 1a: light parse — pull identifier + name out of every
       // row so we can bulk-load before validation. Column header stays
       // 'NPI' for backward compat across every existing CSV admins
-      // hand to the platform; that column just carries a MINC value
-      // when country='CA'. v1.17.68 also accepts 'MINC' as an
-      // alternate header for CA imports.
+      // hand to the platform; that column just carries a OneKey ID
+      // value when country='CA'. v1.17.68 also accepts 'MINC' as a
+      // legacy header + v1.19.0 accepts 'OneKey ID' / 'OneKey' etc.
       const parsed = rows.map((row, i) => ({
         rowIndex: i,
         row,
         rawNpi: String(
-          row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || '',
+          row['NPI'] || row['npi'] ||
+          row['OneKey ID'] || row['OneKey'] || row['OneKeyID'] || row['onekey'] || row['onekey_id'] ||
+          row['MINC'] || row['minc'] ||
+          '',
         ).trim(),
         rawFirstName: String(row['First Name'] || row['firstName'] || '').trim(),
         rawLastName: String(row['Last Name'] || row['lastName'] || '').trim(),
@@ -943,7 +948,12 @@ export class HcpService {
       const row = rows[i];
       try {
         const npi = normalizeIdentifierForLookup(
-          String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || ''),
+          String(
+            row['NPI'] || row['npi'] ||
+            row['OneKey ID'] || row['OneKey'] || row['OneKeyID'] || row['onekey'] || row['onekey_id'] ||
+            row['MINC'] || row['minc'] ||
+            '',
+          ),
         );
         const alias = String(row['Alias'] || row['alias'] || '').trim();
 
@@ -1101,16 +1111,22 @@ export class HcpService {
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        // Extract identifier first for error reporting. Accept both NPI and
-        // MINC column headers so CA templates work; validation accepts either
-        // 10-digit NPI or 12-char CAMD######## MINC. Normalize MINC to
-        // canonical uppercase / no-separator form so lookup matches stored.
+        // Extract identifier first for error reporting. Accept both NPI +
+        // OneKey ID column headers (plus legacy MINC for backward compat).
+        // Validation accepts either 10-digit NPI or 10-or-12-char OneKey ID.
+        // Normalize to canonical uppercase / no-separator form so lookup
+        // matches stored.
         const rawNpi = normalizeIdentifierForLookup(
-          String(row['NPI'] || row['npi'] || row['MINC'] || row['minc'] || ''),
+          String(
+            row['NPI'] || row['npi'] ||
+            row['OneKey ID'] || row['OneKey'] || row['OneKeyID'] || row['onekey'] || row['onekey_id'] ||
+            row['MINC'] || row['minc'] ||
+            '',
+          ),
         );
         try {
-          if (!/^\d{10}$/.test(rawNpi) && !/^CAMD\d{8}$/.test(rawNpi)) {
-            throw new Error('Invalid identifier format (expected 10-digit NPI or CAMD######## MINC)');
+          if (!/^\d{10}$/.test(rawNpi) && !/^[A-Z0-9]{10}$|^[A-Z0-9]{12}$/.test(rawNpi)) {
+            throw new Error('Invalid identifier format (expected 10-digit NPI or 10/12-char OneKey ID)');
           }
 
           const scoreData: Record<string, number> = {};

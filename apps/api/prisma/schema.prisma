@@ -24,7 +24,7 @@ model Client {
   /// reassignment time; existing users with mismatched domains keep working.
   emailDomains           String[]                @default([])
   // v1.17.68 — multi-country support. Determines which national-ID
-  // regime this client's HCPs use (NPI for US, MINC for CA) and
+  // regime this client's HCPs use (NPI for US, OneKey ID for CA) and
   // scopes Insights queries via WHERE Hcp.country = defaultCountry.
   // For a customer running both US + CA programs, spin up TWO
   // Client rows (e.g. "Sun Pharma US" + "Sun Pharma Canada") — each
@@ -191,22 +191,28 @@ model CampaignHcpExclusion {
 model Hcp {
   id                  String                 @id @default(cuid())
   beId                String                 @unique
-  // v1.17.68 — multi-country identifier support (Canada MINC).
+  // v1.17.68 — multi-country identifier support.
+  // v1.18.4 — CA identifier format relaxed to 10-or-12 alphanumeric.
+  // v1.19.0 — renamed 'MINC' → 'ONEKEY_ID' (display "OneKey ID"),
+  //           existing DB rows migrated in 20260716_rename_minc_to_onekey_id.
+  //
   // `npi` (column name unchanged for backward compat across 100+
-  // references) now stores whichever national ID the row's country
+  // references) stores whichever national ID the row's country
   // uses. Which regime is in play is determined by nationalIdType:
-  //   - 'NPI'  → 10-digit numeric (US)
-  //   - 'MINC' → 12-char CAMD######## (CA, normalized to uppercase
-  //     alphanumeric before store; display formatting is separate)
-  // The @unique constraint is safe as-is: NPI is always 10 digits;
-  // MINC always begins with 'CAMD' letters — the value spaces don't
-  // overlap by format so a stored NPI can never collide with a
-  // stored MINC. The 2-character country prefix on MINC also means
-  // no all-numeric values in the MINC space.
+  //   - 'NPI'       → 10-digit numeric (US)
+  //   - 'ONEKEY_ID' → 10 or 12 alphanumeric chars (CA — IQVIA OneKey
+  //                   Reference ID; canonical stored form is uppercase
+  //                   alphanumeric with no separators; display
+  //                   formatting is separate)
+  // The @unique constraint is safe: an NPI is always 10 digits while
+  // a OneKey ID that contains any letter can never collide. Note
+  // that a pure-10-digit input is routed to NPI (US), not OneKey ID,
+  // so the 10-digit ONEKEY_ID space is effectively unused.
   npi                 String?                @unique
   // v1.17.68 — which national-ID regime the value in `npi` belongs
   // to. Defaults to 'NPI' so existing 13k US HCPs and any code that
   // doesn't yet know about types keeps working.
+  // v1.19.0 — 'MINC' rows migrated to 'ONEKEY_ID'.
   nationalIdType      String                 @default("NPI")
   // v1.17.68 — ISO 3166-1 alpha-2 country. Threaded into Insights
   // via Client.defaultCountry (see Client model). Determines which
@@ -218,7 +224,7 @@ model Hcp {
   // only (NOT indexed, NOT used for queries or nomination matching).
   // The primary ID in `npi` is the source of truth for nominations,
   // exports, and Insights aggregations. Shape:
-  //   { type: 'NPI'|'MINC', country: 'US'|'CA', value: string }[]
+  //   { type: 'NPI'|'ONEKEY_ID', country: 'US'|'CA', value: string }[]
   alternateIds        Json?
   isSurveyTaker       Boolean                @default(false)
   isNominated         Boolean                @default(false)

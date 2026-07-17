@@ -80,7 +80,7 @@ export const curationRoutes: FastifyPluginAsync = async (fastify) => {
             // whatever the caller sent this time (rare but possible if
             // an earlier mint used different values).
             country: existing.country as 'US' | 'CA',
-            nationalIdType: existing.nationalIdType as 'NPI' | 'MINC',
+            nationalIdType: existing.nationalIdType as 'NPI' | 'ONEKEY_ID',
           };
           return reply.status(201).send(resp);
         }
@@ -140,7 +140,7 @@ export const curationRoutes: FastifyPluginAsync = async (fastify) => {
         createdAt: created.createdAt.toISOString(),
         wasExisting: false,
         country: created.country as 'US' | 'CA',
-        nationalIdType: created.nationalIdType as 'NPI' | 'MINC',
+        nationalIdType: created.nationalIdType as 'NPI' | 'ONEKEY_ID',
       };
       return reply.status(201).send(resp);
     }
