@@ -46,7 +46,8 @@ function freshOneKeyId(): string {
 // to avoid confusion with the 10-digit NPI shape (which the router
 // prefers as US/NPI even in a CA import context).
 function freshOneKeyId10(): string {
-  const suffix = String(Date.now() % 100_000).padStart(5, '0');
+  // CA (2) + suffix (4) + A2C4 (4) = 10 chars.
+  const suffix = String(Date.now() % 10_000).padStart(4, '0');
   return `CA${suffix}A2C4`;
 }
 
