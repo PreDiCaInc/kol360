@@ -156,10 +156,25 @@ async function cleanupAllTestData() {
   //   @e2etest.example.com email so future fixtures auto-clean without
   //   another script update.
   //
-  // FK note: HcpDiseaseArea rows reference Hcp via hcpId — delete those
-  // first to avoid FK violation on the Hcp delete.
+  // FK note: HcpDiseaseArea + CampaignHcp both reference Hcp via hcpId
+  // — delete those first to avoid FK violation on the Hcp delete. The
+  // per-campaign cleanup above only scopes CampaignHcp deletes to the
+  // matched test campaigns; per-run/global test HCPs can still be
+  // linked to non-test campaigns (e.g. long-lived stable fixtures), so
+  // we also sweep by hcpId here.
   try {
     const hcpDaResult = await prisma.hcpDiseaseArea.deleteMany({
+      where: {
+        hcp: {
+          OR: [
+            { npi: TEST_IDS.HCP_IMPORT.npi },
+            { email: { endsWith: '@e2etest.example.com' } },
+            { firstName: 'E2EDaTest' },
+          ],
+        },
+      },
+    });
+    const campaignHcpResult = await prisma.campaignHcp.deleteMany({
       where: {
         hcp: {
           OR: [
@@ -181,10 +196,16 @@ async function cleanupAllTestData() {
     });
     console.log(
       `  ✓ Deleted ${result.count} per-run test HCP(s) ` +
-      `(import.test + hcpda_ + static seed; ${hcpDaResult.count} HcpDiseaseArea rows)`
+      `(import.test + hcpda_ + static seed; ` +
+      `${hcpDaResult.count} HcpDiseaseArea + ${campaignHcpResult.count} CampaignHcp rows)`
     );
   } catch (e) {
-    console.log(`  - Per-run test HCP cleanup failed: ${e instanceof Error ? e.message : e}`);
+    // Do NOT swallow — leave a distinct ✗ marker so the caller (and
+    // the trailing "✅ All E2E test data cleaned up successfully!"
+    // line) don't misrepresent partial success. Matches the per-
+    // campaign "✗ Failed: …" style above.
+    const message = e instanceof Error ? e.message.split('\n')[0] : String(e);
+    console.warn(`  ✗ Failed: per-run test HCP cleanup — ${message}`);
   }
 
   // 4. Delete test specialty

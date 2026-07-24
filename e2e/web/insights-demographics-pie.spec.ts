@@ -16,7 +16,8 @@
 import { test, expect, Page } from '@playwright/test';
 
 const EMAIL = process.env.E2E_TEST_EMAIL || 'e2e.testuser@bio-exec.com';
-const PASSWORD = process.env.E2E_TEST_PASSWORD || 'E2eTest@2024Secure#1';
+const PASSWORD = process.env.E2E_TEST_PASSWORD;
+if (!PASSWORD) throw new Error('E2E_TEST_PASSWORD env var required');
 // Prefer an env override for a DA with real demographic data — the
 // stable e2e fixture DA is intentionally empty; a real customer DA is
 // what actually exercises the pie render path.

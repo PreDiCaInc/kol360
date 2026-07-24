@@ -19,7 +19,8 @@
 import { test, expect, Page } from '@playwright/test';
 
 const EMAIL = process.env.E2E_TEST_EMAIL || 'e2e.testuser@bio-exec.com';
-const PASSWORD = process.env.E2E_TEST_PASSWORD || 'E2eTest@2024Secure#1';
+const PASSWORD = process.env.E2E_TEST_PASSWORD;
+if (!PASSWORD) throw new Error('E2E_TEST_PASSWORD env var required');
 const DA_ID = process.env.E2E_TEST_DA_ID || 'cme2e0stable0disease01';
 
 // Every visible shepherd tooltip has multiple tooltip DIVs in the DOM
