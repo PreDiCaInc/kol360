@@ -22,7 +22,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { config } from '../config';
 import { ApiClient } from '../api-client';
-import { TEST_IDS } from '../fixtures';
+import { TEST_IDS, generateTestCampaignName } from '../fixtures';
 
 const skipIfNoAuth = !config.authToken;
 const prisma = new PrismaClient();
@@ -38,8 +38,20 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — survey submit path', () =
   beforeAll(async () => {
     // Create a campaign, activate it, assign the test HCP, seed brands,
     // add a nomination question with useBrandGrid = true.
-    const { status, data } = await api.createTestCampaign({
+    //
+    // NOTE: we deliberately DON'T pass surveyTemplateId (i.e. we don't
+    // use api.createTestCampaign). cleanup:all deletes the seeded
+    // SURVEY_TEMPLATE_ID row, so a targeted rerun of this file after
+    // a full-suite cleanup would 400 on the template lookup. This test
+    // wipes any auto-instantiated SurveyQuestions and Prisma-inserts
+    // its own nomination SurveyQuestion below — the template is
+    // unused, so drop the dependency.
+    const { status, data } = await api.createCampaign({
+      name: generateTestCampaignName(),
+      clientId: TEST_IDS.CLIENT_ID,
+      diseaseAreaId: TEST_IDS.DISEASE_AREA_ID,
       description: 'brand-grid submit-path test',
+      honorariumAmount: 150,
     });
     expect([200, 201]).toContain(status);
     campaignId = data.id;

@@ -14,12 +14,23 @@ export const NOMINATION_TYPES = nominationTypeSchema.options;
 // v1.17.44: added 'Regional Leaders' (distinct from Regional
 // Influencers — NOTE: NominationType.REGIONAL_LEADER is a different
 // concept with the same name) + 'Pre-Emergent'.
+// 2026-07: customer retag expansion added 8 new categories used by
+// data-team when segmenting/labeling KOLs post-import (DED Trace,
+// Industry, Glaucoma, Retina, Retired, Canada, Deceased, FDA).
 export const INFLUENCER_TYPES = [
   'National Leaders',
   'Rising Stars',
   'Regional Influencers',
   'Regional Leaders',
   'Pre-Emergent',
+  'DED Trace',
+  'Industry',
+  'Glaucoma',
+  'Retina',
+  'Retired',
+  'Canada',
+  'Deceased',
+  'FDA',
 ] as const;
 
 export type InfluencerType = (typeof INFLUENCER_TYPES)[number];
