@@ -19,15 +19,25 @@ import { ApiClient } from '../api-client';
 import { config } from '../config';
 
 // v1.17.57 — kept in sync with `packages/shared/src/schemas/insights-report.ts`
-// INFLUENCER_TYPES (v1.17.44 5-value expansion). Inlined rather than
-// imported because e2e doesn't resolve the @kol360/shared workspace
-// path (no tsconfig paths mapping).
+// INFLUENCER_TYPES. Inlined rather than imported because e2e doesn't
+// resolve the @kol360/shared workspace path (no tsconfig paths mapping).
+// v1.19.2 (prod-rel-5.0.1) added the 8 post-retag categories to the
+// canonical list (DED Trace / Industry / Glaucoma / Retina / Retired /
+// Canada / Deceased / FDA).
 const INFLUENCER_TYPES = [
   'National Leaders',
   'Rising Stars',
   'Regional Influencers',
   'Regional Leaders',
   'Pre-Emergent',
+  'DED Trace',
+  'Industry',
+  'Glaucoma',
+  'Retina',
+  'Retired',
+  'Canada',
+  'Deceased',
+  'FDA',
 ] as const;
 
 // Dynamically discovered at startup — never hardcode prod/test row IDs in
@@ -531,12 +541,17 @@ describe('Insights Report API', () => {
       // v1.17.57: was hardcoded to the pre-4.1.24 3-value list (National
       // Leaders, Rising Stars, Regional Influencers). v1.17.44 expanded
       // the canonical set to 5 (added Regional Leaders + Pre-Emergent).
-      // Constant inlined at top of this file — kept in sync with shared.
-      const valid = new Set<string>(INFLUENCER_TYPES);
+      // v1.19.2: added 8 post-retag categories. Constant inlined at top
+      // of this file — kept in sync with shared.
+      // v1.19.3: switched from `.includes(x).toBe(true)` to
+      // `.toContain(x)` so vitest's diff surfaces the offending value on
+      // failure instead of "expected false to be true" (post-soak
+      // Ticket 8 diagnostic sharpen — the previous shape stranded pteam
+      // when a category the const didn't cover appeared on prod).
       let classified = 0;
       data.items.forEach((kol) => {
         if (kol.influencerType != null && kol.influencerType !== '') {
-          expect(valid.has(kol.influencerType as string)).toBe(true);
+          expect(INFLUENCER_TYPES).toContain(kol.influencerType);
           classified++;
         }
       });
