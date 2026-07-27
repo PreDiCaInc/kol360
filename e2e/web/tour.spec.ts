@@ -99,12 +99,40 @@ async function closeAutoOpenedDrawer(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
+/**
+ * PLATFORM_ADMIN can't reach the Insights Tabs (Benchmarking,
+ * Sociometric, etc.) until a client is selected — the dashboard shell
+ * renders a "Select a client" empty state that hides the whole Tabs
+ * subtree. The "How to…" dropdown itself lives in the header and is
+ * always available, so `readGuideAnchor`-style tests pass without a
+ * client, but any tour that walks into a Tab (Cases 1-5 all do) needs
+ * one. Open the Client combobox and pick the first client so tour
+ * steps have targets to highlight.
+ *
+ * v2.0.3 — mirrors the F1 fix in insights-demographics-pie.spec.ts.
+ */
+async function ensureClientSelected(page: Page): Promise<void> {
+  const trigger = page
+    .getByRole('combobox')
+    .filter({ hasText: /select a client/i })
+    .first();
+  if (!(await trigger.count())) return;
+  await trigger.click();
+  await page.waitForTimeout(300);
+  const firstOption = page.getByRole('option').first();
+  if (await firstOption.count()) {
+    await firstOption.click();
+    await page.waitForTimeout(600);
+  }
+}
+
 test.describe('Interactive tour engine', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
     await page.goto(`/admin/dashboards/${DA_ID}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
     await closeAutoOpenedDrawer(page);
+    await ensureClientSelected(page);
   });
 
   test('"How to…" dropdown lists all 5 case studies', async ({ page }) => {
@@ -114,7 +142,7 @@ test.describe('Interactive tour engine', () => {
     await expect(menuItems).toHaveCount(6);
     // The 5 case titles should all appear
     for (const title of [
-      /florida|dinner in florida/i,
+      /organizing a doctor dinner in florida/i,
       /seco.*discussion|discussion and advice/i,
       /seco.*rising|rising stars/i,
       /symposium|ny\/nj/i,
@@ -126,7 +154,7 @@ test.describe('Interactive tour engine', () => {
 
   test('Case 1 tour launches from the dropdown + shows the step counter', async ({ page }) => {
     await page.getByRole('button', { name: /how to/i }).first().click();
-    await page.getByRole('menuitem', { name: /florida|dinner in florida/i }).click();
+    await page.getByRole('menuitem', { name: /organizing a doctor dinner in florida/i }).click();
     await page.waitForTimeout(1500);
 
     const tip = await readVisibleTooltip(page);
@@ -152,7 +180,7 @@ test.describe('Interactive tour engine', () => {
     });
 
     await page.getByRole('button', { name: /how to/i }).first().click();
-    await page.getByRole('menuitem', { name: /florida|dinner in florida/i }).click();
+    await page.getByRole('menuitem', { name: /organizing a doctor dinner in florida/i }).click();
     await page.waitForTimeout(1500);
 
     // Loop through up to 10 steps + a checkpoint. Advance strategy: Done
@@ -201,7 +229,7 @@ test.describe('Interactive tour engine', () => {
     // Run the tour to completion (compact version — reuse the walker
     // logic from the full-walk test).
     await page.getByRole('button', { name: /how to/i }).first().click();
-    await page.getByRole('menuitem', { name: /florida|dinner in florida/i }).click();
+    await page.getByRole('menuitem', { name: /organizing a doctor dinner in florida/i }).click();
     await page.waitForTimeout(1500);
     for (let i = 0; i < 12; i++) {
       const tip = await readVisibleTooltip(page);
@@ -220,7 +248,7 @@ test.describe('Interactive tour engine', () => {
 
     // Reopen the dropdown; Case 1 should now carry the ✓ marker.
     await page.getByRole('button', { name: /how to/i }).first().click();
-    const case1 = page.getByRole('menuitem', { name: /florida|dinner in florida/i });
+    const case1 = page.getByRole('menuitem', { name: /organizing a doctor dinner in florida/i });
     await expect(case1.locator('[aria-label="Tour completed"]')).toBeVisible();
   });
 

@@ -32,6 +32,37 @@ async function login(page: Page): Promise<void> {
   await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
 }
 
+/**
+ * PLATFORM_ADMIN can't reach the Demographics tab until a client is
+ * selected — the dashboard shell renders a "Select a client" empty
+ * state (see `insights-dashboard.tsx`) that hides the entire Tabs
+ * subtree. On envs where `E2E_TEST_DEMOGRAPHICS_CLIENT_ID` isn't set
+ * (e.g. prod smokes), open the Client combobox and pick the first
+ * client so downstream assertions have something to render against.
+ *
+ * v2.0.3 — F1 in
+ * docs/findings/prod-rel-5.0.2-post-soak-notes-2026-07-26.md.
+ */
+async function ensureClientSelected(page: Page): Promise<void> {
+  // The Client picker (shadcn Select over Radix) renders as a
+  // role="combobox" button whose text is the placeholder "Select a
+  // client…" while unselected. If we can't find it, assume a client is
+  // already selected (URL param path, or CLIENT_ADMIN with a fixed
+  // tenant) and continue.
+  const trigger = page
+    .getByRole('combobox')
+    .filter({ hasText: /select a client/i })
+    .first();
+  if (!(await trigger.count())) return;
+  await trigger.click();
+  await page.waitForTimeout(300);
+  const firstOption = page.getByRole('option').first();
+  if (await firstOption.count()) {
+    await firstOption.click();
+    await page.waitForTimeout(600);
+  }
+}
+
 test.describe('Insights Demographics — pie chart first-paint', () => {
   test.beforeEach(async ({ page }) => {
     await login(page);
@@ -46,6 +77,10 @@ test.describe('Insights Demographics — pie chart first-paint', () => {
     // Dismiss the auto-opened guide drawer if present.
     await page.keyboard.press('Escape').catch(() => {});
     await page.waitForTimeout(300);
+    // Client-picker fallback for envs missing E2E_TEST_DEMOGRAPHICS_CLIENT_ID.
+    if (!CLIENT_ID) {
+      await ensureClientSelected(page);
+    }
   });
 
   test('Respondent Role pie chart renders with non-zero dimensions on first paint', async ({

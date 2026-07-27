@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { ArrowLeft, Users, UserCheck, MessageSquare, BookOpen, Play, Check } from 'lucide-react';
 import { useSidebarContext } from '@/components/layout/sidebar-context';
 import { Button } from '@/components/ui/button';
@@ -183,6 +184,25 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
   // area). PLATFORM_ADMIN must pick a client (no "all"); a cross-client view
   // is a dedicated aggregate-client analysis.
   const [selectedClientId, setSelectedClientId] = useState<string>('');
+
+  // v2.0.3 — deep-link support: `/admin/dashboards/<da>?clientId=<id>`
+  // should auto-populate the client picker so bookmarks, shared
+  // dashboard links, and emailed reports land on data instead of the
+  // "Select a client" empty-state gate. Reads the URL param on mount;
+  // only fires when `selectedClientId` is still empty so a user's
+  // subsequent picker interaction isn't clobbered by param drift.
+  // See docs/findings/prod-rel-5.0.2-post-soak-notes-2026-07-26.md #F6.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const urlClientId = searchParams?.get('clientId');
+    if (urlClientId && !selectedClientId) {
+      setSelectedClientId(urlClientId);
+    }
+    // Intentionally depend only on searchParams: this effect exists to
+    // seed the initial value from the URL, not to keep them in sync
+    // afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const { user } = useAuth();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
