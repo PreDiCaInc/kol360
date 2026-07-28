@@ -1,16 +1,29 @@
 'use client';
 
-import {
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
-import { useEffect, useRef, useState } from 'react';
+/**
+ * v2.0.4 — inline-SVG donut chart. No Recharts.
+ *
+ * Background: 4 prior attempts (4.1.56 wrappers → 5.0.3 hook → 5.0.4 gate →
+ * 5.0.4 observer-only) all failed to close the Demographics "Respondent Role"
+ * pie regression. Root cause per pteam's late-day diagnostic
+ * (docs/findings/prod-rel-5.0.3-pie-fix-didnt-take-2026-07-28.md, §UPDATE):
+ * a React 18 hydration bailout caused by an invalid `<button>`-in-`<button>`
+ * in TabHelpPopover was creating a chaotic re-render cycle that no
+ * Recharts measurement fix could reliably survive.
+ *
+ * Pteam decision: swap this specific pie to hand-rolled inline SVG. Fixed
+ * viewBox, no ResponsiveContainer, no measurement, no lifecycle. Renders
+ * identically on server + client → hydration is a no-op. Total data is
+ * usually 2-4 slices — the visualization is trivial and doesn't warrant a
+ * chart library. Bar charts on the same tab still use Recharts and render
+ * fine; this swap is surgical to one component.
+ *
+ * Public interface preserved: `PieDistributionChart` still accepts
+ * `{name, value, color?}[]` + optional `title`. Percentages computed
+ * internally from `value`. Callers unchanged (demographics-tab.tsx,
+ * kol-explorer.tsx).
+ */
 
-// More saturated, vibrant palette
 const DEFAULT_COLORS = [
   '#2563EB', '#059669', '#D97706', '#DC2626', '#7C3AED',
   '#0891B2', '#DB2777', '#65A30D', '#EA580C', '#4F46E5',
@@ -28,74 +41,38 @@ interface PieDistributionChartProps {
   title?: string;
 }
 
-/**
- * v2.0.3 — Zero-to-non-zero mount-key hook.
- *
- * Recharts' `ResponsiveContainer` measures its parent DOM element at
- * mount and passes the measurement down to `<Pie>` as an absolute
- * width/height. When the parent's laid-out width is 0 at that moment
- * (which happens whenever the pie mounts inside a subtree that hadn't
- * settled its width yet — e.g. a `<TabsContent>` transitioning from
- * hidden → visible on first click, or a `grid-cols-1 lg:grid-cols-2`
- * cell during hydration), Recharts logs
- *
- *   "The width(-1) and height(-1) of chart should be greater than 0..."
- *
- * and never emits the SVG. Bar charts self-heal on the next scale
- * change; pies don't (their fixed `innerRadius`/`outerRadius` geometry
- * doesn't force a re-render on parent resize).
- *
- * The prod-rel-4.1.56 fix (inline `style={{ width: '100%', minHeight: 288 }}`
- * on the pie wrapper in demographics-tab.tsx) + the v1.18.3 wrapper
- * cleanup (`<div className="w-full">` in chart-table-toggle.tsx) both
- * relied on the parent settling before the mount measurement — which
- * held on 4.1.56 but stopped holding by v2.0.2 (the Recharts 3.x /
- * Radix Tabs / Tailwind cascade timing shifted; the two guarded
- * wrappers are still in the tree, they just aren't sufficient on their
- * own anymore).
- *
- * This hook observes the pie's outer wrapper via `ResizeObserver`;
- * when width transitions from 0 → non-zero for the first time, it
- * bumps `mountKey`, forcing a fresh `<ResponsiveContainer>` mount that
- * now measures a properly-sized parent. Purely additive: if the parent
- * happens to already be sized on first paint (already-visible tab,
- * cached client-side navigation), the observer fires once with width
- * > 0, sets the flag, and no remount happens.
- *
- * See docs/findings/prod-rel-5.0.2-post-soak-notes-2026-07-26.md #F5.
- */
-function useZeroToNonZeroKey(): [
-  React.MutableRefObject<HTMLDivElement | null>,
-  number,
-] {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [mountKey, setMountKey] = useState(0);
-  const wasNonZero = useRef(false);
+const SIZE = 240;
+const OUTER_RADIUS = 100;
+const INNER_RADIUS = 55;
+const CX = SIZE / 2;
+const CY = SIZE / 2;
 
-  useEffect(() => {
-    if (!ref.current || typeof ResizeObserver === 'undefined') return;
-    const el = ref.current;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0;
-      if (w > 0 && !wasNonZero.current) {
-        wasNonZero.current = true;
-        setMountKey((k) => k + 1);
-      } else if (w === 0 && wasNonZero.current) {
-        // If the parent collapses back to 0 (e.g. tab hidden), reset
-        // the latch so the next 0→N transition re-remounts.
-        wasNonZero.current = false;
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
+  return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+}
 
-  return [ref, mountKey];
+function donutSlicePath(
+  startAngle: number,
+  endAngle: number,
+  outerR: number,
+  innerR: number,
+): string {
+  const p1 = polarToCartesian(CX, CY, outerR, startAngle);
+  const p2 = polarToCartesian(CX, CY, outerR, endAngle);
+  const p3 = polarToCartesian(CX, CY, innerR, endAngle);
+  const p4 = polarToCartesian(CX, CY, innerR, startAngle);
+  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+  return [
+    `M ${p1.x} ${p1.y}`,
+    `A ${outerR} ${outerR} 0 ${largeArc} 1 ${p2.x} ${p2.y}`,
+    `L ${p3.x} ${p3.y}`,
+    `A ${innerR} ${innerR} 0 ${largeArc} 0 ${p4.x} ${p4.y}`,
+    'Z',
+  ].join(' ');
 }
 
 export function PieDistributionChart({ data, title }: PieDistributionChartProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
-  const [wrapperRef, mountKey] = useZeroToNonZeroKey();
 
   if (!data.length || total === 0) {
     return (
@@ -105,51 +82,63 @@ export function PieDistributionChart({ data, title }: PieDistributionChartProps)
     );
   }
 
+  let cumulative = 0;
+  const slices = data.map((d, i) => {
+    const percentage = (d.value / total) * 100;
+    const startAngle = (cumulative / 100) * 2 * Math.PI - Math.PI / 2;
+    cumulative += percentage;
+    const endAngle = (cumulative / 100) * 2 * Math.PI - Math.PI / 2;
+    const color = d.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+    return {
+      name: d.name,
+      value: d.value,
+      percentage,
+      color,
+      d: donutSlicePath(startAngle, endAngle, OUTER_RADIUS, INNER_RADIUS),
+    };
+  });
+
   return (
-    <div ref={wrapperRef} className="w-full h-full">
-      <ResponsiveContainer key={mountKey} width="100%" height="100%">
-        <PieChart>
-          {title && (
-            <text x="50%" y="16" textAnchor="middle" className="text-sm font-medium fill-current">
-              {title}
-            </text>
-          )}
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            innerRadius={50}
-            outerRadius={90}
-            paddingAngle={2}
-            label={({ name, percent }) =>
-              `${name} (${((percent || 0) * 100).toFixed(0)}%)`
-            }
-            labelLine={{ strokeWidth: 1 }}
-          >
-            {data.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={entry.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length]}
-                stroke="white"
-                strokeWidth={2}
+    <div className="h-full w-full flex flex-col items-center justify-center gap-4 py-2">
+      {title && (
+        <div className="text-sm font-medium text-center">{title}</div>
+      )}
+      <div className="flex flex-row items-center gap-8">
+        <svg
+          viewBox={`0 0 ${SIZE} ${SIZE}`}
+          className="w-52 h-52 shrink-0"
+          role="img"
+          aria-label={title || 'Distribution'}
+        >
+          {slices.map((s, i) => (
+            <path
+              key={`slice-${i}`}
+              d={s.d}
+              fill={s.color}
+              stroke="white"
+              strokeWidth={2}
+            >
+              <title>{`${s.name}: ${s.value} (${s.percentage.toFixed(1)}%)`}</title>
+            </path>
+          ))}
+        </svg>
+        <ul className="text-sm space-y-1.5">
+          {slices.map((s, i) => (
+            <li key={`legend-${i}`} className="flex items-center gap-2">
+              <span
+                className="inline-block w-3 h-3 rounded-sm shrink-0"
+                style={{ background: s.color }}
               />
-            ))}
-          </Pie>
-          <Tooltip
-            formatter={(value) => {
-              const num = Number(value) || 0;
-              return [
-                `${num} (${total > 0 ? ((num / total) * 100).toFixed(1) : 0}%)`,
-                'Count',
-              ];
-            }}
-            contentStyle={{ borderRadius: 8, fontSize: 13 }}
-          />
-          <Legend verticalAlign="bottom" height={36} />
-        </PieChart>
-      </ResponsiveContainer>
+              <span className="text-foreground">
+                {s.name}{' '}
+                <span className="text-muted-foreground">
+                  ({s.percentage.toFixed(1)}%)
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
