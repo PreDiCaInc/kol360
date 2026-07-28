@@ -40,7 +40,7 @@ while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
 
   # List every path in the tree being pushed, filter via the canonical manifest
   LEAK=$(git ls-tree -r --name-only "$LOCAL_SHA" \
-    | grep -iE '^func-spec/|^tech-spec|^tmp/|^creds/|^csv/|^sec-scan|^docs/|^\.claude/|\.csv$|\.log$|\.zip$|\.tar$|\.gz$|\.docx$|\.xlsx$|\.xls$|\.pem$|\.key$|\.md$' \
+    | grep -iE '^func-spec/|^tech-spec|^tmp/|^creds/|^csv/|^sec-scan|^docs/|^\.claude/|^\.githooks/|^scripts/|^e2e/|\.csv$|\.log$|\.zip$|\.tar$|\.gz$|\.docx$|\.xlsx$|\.xls$|\.pem$|\.key$|\.md$' \
     | grep -vxE 'README\.md|DEPLOYMENT\.md' \
     || true)
 
