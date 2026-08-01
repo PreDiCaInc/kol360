@@ -455,6 +455,44 @@ export class ApiClient {
   }
 
   /**
+   * v2.0.5 — same as importHcps() but takes a raw Buffer + explicit filename so
+   * xlsx fixtures can be uploaded end-to-end. Used by
+   * `e2e/api/hcp-import-xlsx-hyperlink.test.ts` to prove that ExcelJS
+   * hyperlink-cell shapes (`{ text, hyperlink }`) no longer silently drop rows
+   * (the BC Canada file's 14/417 loss, 2026-07-31).
+   */
+  async importHcpsFromBuffer(
+    buffer: Buffer,
+    filename: string,
+    contentType: string = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    country?: 'US' | 'CA'
+  ) {
+    const url = country
+      ? `${this.baseUrl}/api/v1/hcps/import?country=${country}`
+      : `${this.baseUrl}/api/v1/hcps/import`;
+    const formData = new FormData();
+    const blob = new Blob([buffer], { type: contentType });
+    formData.append('file', blob, filename);
+    const headers: Record<string, string> = {};
+    if (this.authToken) headers['Authorization'] = `Bearer ${this.authToken}`;
+    const response = await fetch(url, { method: 'POST', headers, body: formData });
+    let data: {
+      total: number;
+      created: number;
+      updated: number;
+      merged: number;
+      errors: Array<{ row: number; error: string }>;
+      batchId?: string;
+    };
+    try {
+      data = await response.json();
+    } catch {
+      data = { total: 0, created: 0, updated: 0, merged: 0, errors: [] };
+    }
+    return { status: response.status, data };
+  }
+
+  /**
    * Import segment scores (objective HCP × DiseaseArea scores). Multipart file
    * upload with diseaseAreaId as a query param. Returns counts incl. `deduped`
    * which is the count of within-file (hcpId, diseaseAreaId) duplicates that

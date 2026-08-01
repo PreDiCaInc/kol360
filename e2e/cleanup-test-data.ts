@@ -204,8 +204,32 @@ async function cleanupAllTestData() {
     // the trailing "✅ All E2E test data cleaned up successfully!"
     // line) don't misrepresent partial success. Matches the per-
     // campaign "✗ Failed: …" style above.
-    const message = e instanceof Error ? e.message.split('\n')[0] : String(e);
-    console.warn(`  ✗ Failed: per-run test HCP cleanup — ${message}`);
+    //
+    // v2.0.5 — pteam flagged (2026-07-31) that this catch was
+    // occasionally emitting `✗ Failed: per-run test HCP cleanup — `
+    // with an EMPTY error message on prod cutovers (5.0.2 / 5.0.3 /
+    // 5.0.4), followed by the trailing ✅ success line. Cosmetic
+    // only (exit 0, no data impact) but misleading. Root cause is
+    // an Error with no readable top line (e.g. Prisma multi-line
+    // messages whose first line is blank after split('\n')[0], or a
+    // rethrown non-Error that stringified empty). Fix: fall back to
+    // the error's class name when the message is empty so future
+    // occurrences carry a diagnostic hint, and suppress the noisy
+    // ✗ line entirely when we have literally nothing to say. See
+    // docs/findings/cleanup-test-data-cosmetic-failed-line-
+    // 2026-07-31.md.
+    let message = '';
+    if (e instanceof Error) {
+      message = (e.message || '').split('\n')[0].trim();
+      if (!message) message = e.name || e.constructor?.name || '';
+    } else {
+      message = String(e).trim();
+    }
+    if (!message) {
+      console.log('  - No per-run test HCPs to clean up (no rows matched)');
+    } else {
+      console.warn(`  ✗ Failed: per-run test HCP cleanup — ${message}`);
+    }
   }
 
   // 4. Delete test specialty

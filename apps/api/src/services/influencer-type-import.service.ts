@@ -3,6 +3,7 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import ExcelJS from 'exceljs';
 import { INFLUENCER_TYPES, type InfluencerType, normalizeOneKeyId } from '@kol360/shared';
 import { resolveUserIdForAudit } from '../lib/audit';
+import { cellText } from '../utils/excel';
 
 // v1.17.44 — canonical influencer-type list is INFLUENCER_TYPES in
 // @kol360/shared (single source of truth — same pattern as
@@ -132,15 +133,21 @@ async function parseRows(buffer: Buffer, filename: string): Promise<RawCsvRow[]>
   if (!sheet) return [];
   const rows: RawCsvRow[] = [];
   const headers: string[] = [];
+  // v2.0.5 — coerce cells through cellText() so ExcelJS hyperlink /
+  // rich-text / formula object shapes flatten to strings at the parse
+  // boundary. Prior `String(cell.value ?? '').trim()` stringified an
+  // object as '[object Object]'. See apps/api/src/utils/excel.ts +
+  // docs/findings/xlsx-import-hyperlink-cells-silently-drop-rows-
+  // 2026-07-31.md.
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) {
-      row.eachCell((cell) => headers.push(String(cell.value ?? '').trim()));
+      row.eachCell((cell) => headers.push(cellText(cell.value) ?? ''));
       return;
     }
     const rowData: Record<string, string> = {};
     row.eachCell((cell, colNumber) => {
       const header = headers[colNumber - 1];
-      if (header) rowData[header] = String(cell.value ?? '').trim();
+      if (header) rowData[header] = cellText(cell.value) ?? '';
     });
     rows.push(rowData as RawCsvRow);
   });

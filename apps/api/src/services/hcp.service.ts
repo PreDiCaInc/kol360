@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
+import { cellText } from '../utils/excel';
 import { CreateHcpInput, UpdateHcpInput, normalizeHcpSpecialty, normalizeOneKeyId } from '@kol360/shared';
 
 // v1.17.69 — shared identifier normalizer used by the aux CSV parsers
@@ -1332,17 +1333,24 @@ export class HcpService {
     const rows: Record<string, unknown>[] = [];
     const headers: string[] = [];
 
+    // v2.0.5 — same fix as distribution.service.ts:parseExcelToRows.
+    // Coerce every cell through cellText() so ExcelJS hyperlink /
+    // rich-text / formula object shapes flatten to strings at the
+    // parse boundary. Covers importFromFile (/hcps/import),
+    // importAliases (/hcps/aliases/import), and importSegmentScores
+    // (/hcps/segment-scores/import) — all three call parseFileToRows,
+    // which routes here for xlsx. See apps/api/src/utils/excel.ts.
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) {
         row.eachCell((cell) => {
-          headers.push(String(cell.value || ''));
+          headers.push(cellText(cell.value) ?? '');
         });
       } else {
         const rowData: Record<string, unknown> = {};
         row.eachCell((cell, colNumber) => {
           const header = headers[colNumber - 1];
           if (header) {
-            rowData[header] = cell.value;
+            rowData[header] = cellText(cell.value);
           }
         });
         rows.push(rowData);

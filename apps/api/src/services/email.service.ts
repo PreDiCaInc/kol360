@@ -25,6 +25,18 @@ const SEND_EXTERNAL_EMAIL = process.env.SEND_EXTERNAL_EMAIL === 'true';
 const ALLOWED_EMAIL_DOMAIN = 'bio-exec.com';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
+// v2.0.5 — Bio-Exec internal QA addresses bypass the 12-month
+// disease-area send cooldown so pteam / biz can validate new
+// campaigns against known test users (jboyd@bio-exec.com,
+// jpikor@bio-exec.com, etc.) without SQL surgery. Real HCPs still
+// get the anti-spam cooldown. Extracted as a named helper so the
+// unit test in email.service.test.ts can hit the predicate without
+// mocking Prisma / SES / the full sendBulkInvitations loop. See
+// docs/findings/send-cooldown-bioexec-exception-2026-07-30.md.
+export function isCooldownExempt(email: string | null | undefined): boolean {
+  return !!email && email.toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
+}
+
 // Base URL for survey links - derive from environment if not explicitly set
 function getAppUrl(): string {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
@@ -917,7 +929,13 @@ ${unsubscribeUrl}
         }
 
         // Check: Recently surveyed in same disease area
-        if (recentlySurveyedHcpIds.has(hcp.id)) {
+        // v2.0.5 — Bio-Exec internal QA addresses bypass the 12-month
+        // cooldown via isCooldownExempt() (see helper defined near the
+        // top of this file for rationale + doc link). Real HCPs still
+        // get the anti-spam cooldown. The opt-out check above is
+        // deliberately NOT bypassed — opt-outs are a legal / SES-
+        // suppression signal and apply to every domain.
+        if (recentlySurveyedHcpIds.has(hcp.id) && !isCooldownExempt(hcp.email)) {
           result.skipped++;
           result.skippedRecentlySurveyed = (result.skippedRecentlySurveyed || 0) + 1;
 
