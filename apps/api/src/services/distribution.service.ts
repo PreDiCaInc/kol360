@@ -21,6 +21,7 @@ function normalizeIdentifierForLookup(raw: string): string {
 }
 import ExcelJS from 'exceljs';
 import { parse as parseCsv } from 'csv-parse/sync';
+import { cellText } from '../utils/excel';
 
 interface ListParams {
   status?: string;
@@ -867,17 +868,27 @@ export class DistributionService {
     const rows: Record<string, unknown>[] = [];
     const headers: string[] = [];
 
+    // v2.0.5 — swap raw `cell.value` for `cellText()` at both header +
+    // data cell boundaries. ExcelJS returns hyperlink cells as
+    // `{ text, hyperlink }` objects (Excel auto-hyperlinks any cell
+    // whose value looks like an email address). Prior to this the row
+    // object carried the object shape into downstream Prisma calls,
+    // which threw PrismaClientValidationError caught at row level and
+    // buried in the per-row error panel — 14/417 rows silently
+    // dropped from the BC Canada file on 2026-07-31. See
+    // apps/api/src/utils/excel.ts + docs/findings/xlsx-import-
+    // hyperlink-cells-silently-drop-rows-2026-07-31.md.
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) {
         row.eachCell((cell) => {
-          headers.push(String(cell.value || ''));
+          headers.push(cellText(cell.value) ?? '');
         });
       } else {
         const rowData: Record<string, unknown> = {};
         row.eachCell((cell, colNumber) => {
           const header = headers[colNumber - 1];
           if (header) {
-            rowData[header] = cell.value;
+            rowData[header] = cellText(cell.value);
           }
         });
         rows.push(rowData);
