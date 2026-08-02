@@ -1,4 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// Mock prisma before importing the service — email.service.ts imports
+// `../lib/prisma` at module load, which instantiates `new PrismaClient()`.
+// In CI there's no DATABASE_URL env, so the constructor throws
+// PrismaClientConstructorValidationError before the test even runs.
+// The isCooldownExempt helper doesn't touch prisma, so an empty mock
+// is sufficient. Same pattern as campaign.service.test.ts /
+// distribution.service.test.ts.
+vi.mock('../../lib/prisma', () => ({
+  prisma: {},
+}));
+
 import { isCooldownExempt } from '../email.service';
 
 // v2.0.5 — regression coverage for the 12-month cooldown Bio-Exec
