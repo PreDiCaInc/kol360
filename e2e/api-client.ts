@@ -377,8 +377,12 @@ export class ApiClient {
     throw new Error(`Email progress ${progressId} did not complete within ${timeoutMs}ms`);
   }
 
+  // v2.1.0 — break-glass single-send. PLATFORM_ADMIN-only override
+  // that bypasses the 12-month same-DA cooldown. Response now
+  // includes `breakGlass: true` so callers can distinguish this from
+  // the (pre-v2.1.0) generic single-send shape.
   async sendSingleInvitation(campaignId: string, hcpId: string) {
-    return this.request<{ success: boolean; messageId: string }>(
+    return this.request<{ success: boolean; messageId: string; breakGlass?: boolean }>(
       'POST',
       `/api/v1/campaigns/${campaignId}/distribution/${hcpId}/send`
     );

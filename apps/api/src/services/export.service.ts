@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import ExcelJS from 'exceljs';
 import { PaymentStatus } from '@prisma/client';
+import { cellText } from '../utils/excel';
 
 interface ExportResult {
   buffer: Buffer;
@@ -611,11 +612,17 @@ export class ExportService {
       throw new Error('No worksheet found in file');
     }
 
-    // Get headers from first row
+    // Get headers from first row.
+    // v2.1.0 — route each cell through cellText() (same helper the HCP
+    // import parse boundaries use, added in v2.0.5) so hyperlinked /
+    // richText header cells don't collapse to `[object Object]`. Same
+    // class of bug as the BC Canada silent-drop; lower probability
+    // here (payment-import files are internally generated), but same
+    // hygiene applies.
     const headers: string[] = [];
     const headerRow = worksheet.getRow(1);
     headerRow.eachCell((cell, colNumber) => {
-      headers[colNumber - 1] = String(cell.value || '').toLowerCase().trim();
+      headers[colNumber - 1] = (cellText(cell.value) ?? '').toLowerCase().trim();
     });
 
     // Find column indices
@@ -669,13 +676,18 @@ export class ExportService {
       result.processed++;
 
       try {
-        // Get identifier (Payment ID or NPI)
+        // Get identifier (Payment ID or NPI).
+        // v2.1.0 — cellText() at every cell.value binding (same
+        // hygiene as headers above). Payment IDs are unlikely to be
+        // auto-hyperlinked; NPIs even less so; but there's no cost
+        // to routing through the same helper and it closes the class
+        // of bug pteam flagged in the v2.0.5 export.service.ts audit.
         let identifier = '';
         if (paymentIdCol >= 0) {
-          identifier = String(row.getCell(paymentIdCol + 1).value || '').trim();
+          identifier = cellText(row.getCell(paymentIdCol + 1).value) ?? '';
         }
         if (!identifier && npiCol >= 0) {
-          identifier = String(row.getCell(npiCol + 1).value || '').trim();
+          identifier = cellText(row.getCell(npiCol + 1).value) ?? '';
         }
 
         if (!identifier) {
@@ -687,7 +699,7 @@ export class ExportService {
         }
 
         // Get status
-        const rawStatus = String(row.getCell(statusCol + 1).value || '').toLowerCase().trim();
+        const rawStatus = (cellText(row.getCell(statusCol + 1).value) ?? '').toLowerCase();
         const mappedStatus = statusMap[rawStatus];
 
         if (!mappedStatus) {

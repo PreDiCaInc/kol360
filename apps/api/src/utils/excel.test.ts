@@ -116,4 +116,50 @@ describe('cellText', () => {
       expect(typeof result).toBe('string');
     });
   });
+
+  // v2.1.0 — payment-status import hygiene sweep. The 4 sites in
+  // apps/api/src/services/export.service.ts (paymentIdCol, npiCol,
+  // statusCol, and the header row) now route through cellText() —
+  // same class of pattern as the HCP import parse-boundary bug the
+  // v2.0.5 fix closed, but for payment-status imports. Lower risk
+  // than HCP (payment IDs / NPIs unlikely to be Excel-auto-hyperlinked
+  // in real payment exports) but same class of bug. These tests
+  // parameterize over the specific shapes those columns care about.
+  describe('payment-status import — column value shapes', () => {
+    const paymentIdShapes = [
+      ['plain string', 'PAY-2026-000123', 'PAY-2026-000123'],
+      ['trimmed whitespace', '  PAY-2026-000123  ', 'PAY-2026-000123'],
+      // Very unlikely to happen in a real payment export but proves
+      // the class of bug is closed.
+      ['auto-hyperlinked cell', { text: 'PAY-2026-000123', hyperlink: 'https://example.com/p/123' }, 'PAY-2026-000123'],
+      ['richText cell', { richText: [{ text: 'PAY-' }, { text: '2026-000123' }] }, 'PAY-2026-000123'],
+      ['numeric ID', 1000023, '1000023'],
+      ['empty cell', null, null],
+    ] as const;
+    it.each(paymentIdShapes)('payment ID column — %s', (_label, input, expected) => {
+      expect(cellText(input)).toBe(expected);
+    });
+
+    const npiShapes = [
+      ['plain string', '1234567890', '1234567890'],
+      ['numeric', 1234567890, '1234567890'],
+      // Real risk: an NPI cell where the user typed the URL to a
+      // provider directory instead of the raw ID → Excel auto-links.
+      ['hyperlinked (defensive)', { text: '1234567890', hyperlink: 'https://npi.example.com/1234567890' }, '1234567890'],
+      ['empty cell', '', null],
+    ] as const;
+    it.each(npiShapes)('NPI column — %s', (_label, input, expected) => {
+      expect(cellText(input)).toBe(expected);
+    });
+
+    const statusShapes = [
+      ['sent (plain)', 'sent', 'sent'],
+      ['SENT (case is preserved by helper; caller lowercases)', 'SENT', 'SENT'],
+      ['richText status', { richText: [{ text: 'del' }, { text: 'ivered' }] }, 'delivered'],
+      ['empty', undefined, null],
+    ] as const;
+    it.each(statusShapes)('status column — %s', (_label, input, expected) => {
+      expect(cellText(input)).toBe(expected);
+    });
+  });
 });

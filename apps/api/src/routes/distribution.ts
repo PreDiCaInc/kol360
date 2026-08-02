@@ -1,7 +1,7 @@
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { assignHcpsSchema } from '@kol360/shared';
-import { requireTenantUser, gateWritesToAdmins } from '../middleware/rbac';
+import { requireTenantUser, gateWritesToAdmins, requirePlatformAdmin } from '../middleware/rbac';
 import { distributionService } from '../services/distribution.service';
 import { createAuditLog } from '../lib/audit';
 import { importProgressStore } from '../services/import-progress.service';
@@ -414,9 +414,24 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // Send single invitation (resend to specific HCP)
+  // v2.1.0 — Break-glass single-send. Bypasses the 12-month same-DA
+  // send cooldown that the bulk path enforces (single-send routes
+  // through EmailService.sendSurveyInvitation directly, not the
+  // sendBulkInvitations cooldown branch — see email.service.ts:938).
+  // Intended use: pteam / biz-team override for a specific HCP the
+  // bulk path skipped (e.g. an internal QA re-test, or a customer
+  // who explicitly asked to be re-invited). PLATFORM_ADMIN-only:
+  // gateWritesToAdmins() already restricts to PLATFORM_ADMIN at the
+  // file level, but this route ALSO carries a per-route guard as
+  // defense-in-depth so a future middleware refactor can't quietly
+  // widen access to a break-glass tool. Every invocation writes a
+  // distinct `distribution.invitation_break_glass_send` audit event
+  // so operators can audit cooldown overrides after the fact.
+  // Pteam finding: docs/findings/send-cooldown-bioexec-exception-
+  // 2026-07-30.md ("deferred as follow-up").
   fastify.post<{ Params: { campaignId: string; hcpId: string } }>(
     '/campaigns/:campaignId/distribution/:hcpId/send',
+    { preHandler: [requirePlatformAdmin()] },
     async (request, reply) => {
       const { campaignId, hcpId } = request.params;
 
@@ -426,14 +441,21 @@ export const distributionRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         const result = await distributionService.sendSingleInvitation(campaignId, hcpId);
 
+        // Audit note: keep the entityId in the same `${campaignId}:${hcpId}`
+        // shape as the earlier `distribution.invitation_sent` events so
+        // history for a given (campaign, HCP) pair stays greppable across
+        // both action names.
         await createAuditLog(request.user!.sub, {
-          action: 'distribution.invitation_sent',
+          action: 'distribution.invitation_break_glass_send',
           entityType: 'CampaignHcp',
           entityId: `${campaignId}:${hcpId}`,
-          newValues: { messageId: result.messageId },
+          newValues: {
+            messageId: result.messageId,
+            reason: 'break_glass_cooldown_bypass',
+          },
         });
 
-        return { success: true, messageId: result.messageId };
+        return { success: true, messageId: result.messageId, breakGlass: true };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to send invitation';
         return reply.status(400).send({ error: 'Bad Request', message, statusCode: 400 });

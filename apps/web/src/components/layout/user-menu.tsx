@@ -64,7 +64,11 @@ export function UserMenu({ collapsed }: Props) {
   const { isImpersonating, clientId, clientName, startImpersonating, stopImpersonating } =
     useImpersonation();
   const isPlatformAdmin = user?.role === 'PLATFORM_ADMIN';
-  const { data: clientsData } = useClients();
+  // v2.1.0 — gated on isPlatformAdmin. Only PLATFORM_ADMIN gets the
+  // client-impersonation submenu that consumes this list; every other
+  // role was firing a `GET /clients` that the API returns 403 on
+  // (requirePlatformAdmin() at the route), just to render nothing.
+  const { data: clientsData } = useClients(false, isPlatformAdmin);
   const clients = clientsData?.items || [];
 
   const handleClientChange = (value: string) => {

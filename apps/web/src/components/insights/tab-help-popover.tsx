@@ -9,6 +9,19 @@
 // is hostile when the user wants to click a "See case study" link.
 // Popover persists until explicitly closed.
 //
+// v2.1.0 — this component is now rendered as a positioned SIBLING
+// of the surrounding `TabsTrigger` (see `insights-dashboard.tsx`),
+// not as a child. Prior versions nested the popover's `<button>`
+// inside the tab's `<button>`, which is invalid HTML and caused a
+// React 18 hydration bailout on the whole tab bar. Pteam's
+// 2026-07-28 diagnostic pinned this as the underlying cause of the
+// pie-chart re-render race + `-1/-1` bar-chart warnings. The parent
+// now wraps each (tab, popover) pair in a `relative` div; the ?
+// icon is visually inside the tab via `absolute` positioning but
+// DOM-adjacent to the tab button rather than nested inside it —
+// so this file can keep its natural `<button>` trigger without a
+// hydration warning.
+//
 // Ticket: docs/findings/insights-use-case-guide-presentation-2026-06-24.md
 
 import { HelpCircle } from 'lucide-react';
@@ -43,10 +56,13 @@ export function TabHelpPopover({ tab, onOpenGuide }: TabHelpPopoverProps) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          // stopPropagation so clicking the ? doesn't also activate the
-          // tab (TabsTrigger is the parent and reacts to clicks).
+          // Defense-in-depth stopPropagation: the parent wrapper is a
+          // plain <div>, not a TabsTrigger, so this button no longer
+          // sits inside a clickable ancestor — but if a future refactor
+          // ever slides it back under something interactive, the guard
+          // keeps clicks scoped to the popover trigger.
           onClick={(e) => e.stopPropagation()}
-          className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground hover:bg-muted/60 transition-colors"
+          className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground hover:bg-muted/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Help for ${tab}`}
         >
           <HelpCircle className="h-3.5 w-3.5" />

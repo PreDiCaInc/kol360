@@ -30,10 +30,19 @@ interface Client {
   };
 }
 
-export function useClients(includeInactive = false) {
+// v2.1.0 — `enabled` gate added so callers that render for non-
+// PLATFORM_ADMIN users (Insights Dashboard, top-right user menu) can
+// skip the fetch entirely instead of noisily 403-ing. `GET /clients`
+// is `requirePlatformAdmin()`-gated at the API; TEAM_MEMBER +
+// CLIENT_ADMIN callers can't consume the response anyway. Defaults
+// to `true` so existing PLATFORM_ADMIN-only pages (admin/clients,
+// admin/users, admin/campaigns, admin/kol-analysis, user edit/invite
+// dialogs) are unchanged.
+export function useClients(includeInactive = false, enabled = true) {
   return useQuery({
     queryKey: ['clients', { includeInactive }],
     queryFn: () => apiClient.get<{ items: Client[] }>('/api/v1/clients', { includeInactive }, { skipImpersonation: true }),
+    enabled,
   });
 }
 

@@ -42,25 +42,52 @@ async function login(page: Page): Promise<void> {
  *
  * v2.0.3 — F1 in
  * docs/findings/prod-rel-5.0.2-post-soak-notes-2026-07-26.md.
+ *
+ * v2.1.0 — rewritten after pteam reported "combobox opens but no
+ * selection completes" on prod. Prior implementation used blind
+ * `waitForTimeout(300)` after the trigger click, which was too short
+ * on prod (options list is larger + Radix Select portal + client
+ * data still fetching); the first-option click then either raced
+ * ahead of the portal being present, or landed on nothing. New shape
+ * uses explicit `waitFor({state:'visible'})` gates on both the option
+ * and the post-select tab list, so it self-times on the actual DOM
+ * state instead of walltime.
  */
 async function ensureClientSelected(page: Page): Promise<void> {
   // The Client picker (shadcn Select over Radix) renders as a
   // role="combobox" button whose text is the placeholder "Select a
-  // client…" while unselected. If we can't find it, assume a client is
-  // already selected (URL param path, or CLIENT_ADMIN with a fixed
-  // tenant) and continue.
+  // client…" while unselected. If we can't find it, assume a client
+  // is already selected (URL param path, or CLIENT_ADMIN with a
+  // fixed tenant) and continue.
   const trigger = page
     .getByRole('combobox')
     .filter({ hasText: /select a client/i })
     .first();
   if (!(await trigger.count())) return;
+
+  // Open the combobox. Wait for the Radix Select portal to actually
+  // render at least one option before clicking — the combobox opens
+  // instantly but options can be delayed by (a) the `useClients()`
+  // fetch still resolving, (b) the portal mount, or (c) Radix's
+  // internal virtualization.
   await trigger.click();
-  await page.waitForTimeout(300);
   const firstOption = page.getByRole('option').first();
-  if (await firstOption.count()) {
-    await firstOption.click();
-    await page.waitForTimeout(600);
-  }
+  await firstOption.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  if (!(await firstOption.count())) return;
+
+  await firstOption.click();
+
+  // Confirm the selection took by waiting for the tab list to appear
+  // (the "Select a client" empty-state renders no tabs; the
+  // post-select dashboard renders a `role="tablist"` with the 5 tab
+  // triggers). Bail silently on timeout — downstream `expect(demoTab)
+  // .toBeVisible()` assertions will surface a real failure with a
+  // clearer message than "waited too long for tablist".
+  await page
+    .getByRole('tablist')
+    .first()
+    .waitFor({ state: 'visible', timeout: 8000 })
+    .catch(() => {});
 }
 
 test.describe('Insights Demographics — pie chart first-paint', () => {

@@ -110,6 +110,13 @@ async function closeAutoOpenedDrawer(page: Page): Promise<void> {
  * steps have targets to highlight.
  *
  * v2.0.3 — mirrors the F1 fix in insights-demographics-pie.spec.ts.
+ *
+ * v2.1.0 — rewritten to wait on DOM state (option visibility, then
+ * tablist appearance) instead of blind timeouts. Prior version's
+ * `waitForTimeout(300)` was too short on prod where the options
+ * list is larger and the `useClients()` fetch takes longer, causing
+ * "combobox opens but no selection completes." Mirrors the F1
+ * follow-up in insights-demographics-pie.spec.ts.
  */
 async function ensureClientSelected(page: Page): Promise<void> {
   const trigger = page
@@ -117,13 +124,22 @@ async function ensureClientSelected(page: Page): Promise<void> {
     .filter({ hasText: /select a client/i })
     .first();
   if (!(await trigger.count())) return;
+
   await trigger.click();
-  await page.waitForTimeout(300);
   const firstOption = page.getByRole('option').first();
-  if (await firstOption.count()) {
-    await firstOption.click();
-    await page.waitForTimeout(600);
-  }
+  await firstOption.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+  if (!(await firstOption.count())) return;
+
+  await firstOption.click();
+
+  // Wait for the post-select tab list to appear (empty-state renders
+  // no tabs). Bail silently on timeout — downstream tour assertions
+  // will surface a real failure with a clearer message.
+  await page
+    .getByRole('tablist')
+    .first()
+    .waitFor({ state: 'visible', timeout: 8000 })
+    .catch(() => {});
 }
 
 test.describe('Interactive tour engine', () => {
