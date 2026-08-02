@@ -219,8 +219,12 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch clients for PLATFORM_ADMIN client selector
-  const { data: clientsData } = useClients();
+  // Fetch clients for the PLATFORM_ADMIN client selector. v2.1.0 —
+  // gated on `isPlatformAdmin` so TEAM_MEMBER / CLIENT_ADMIN users
+  // don't fire a `GET /clients` request that the API returns 403 on
+  // (requirePlatformAdmin() at the route). They're tenant-scoped and
+  // don't need the picker anyway. See pteam finding filed 2026-07-28.
+  const { data: clientsData } = useClients(false, isPlatformAdmin);
   const clients = clientsData?.items || [];
 
   // v1.17.41 — when a PLATFORM_ADMIN picks a client in Insights, surface
@@ -419,25 +423,55 @@ export function InsightsDashboard({ diseaseAreaId, onDiseaseAreaChange, onBack }
       </div>
 
       {/* Tabs */}
+      {/*
+        v2.1.0 — TabHelpPopover is now a POSITIONED SIBLING of
+        TabsTrigger, not a child. Prior versions nested the popover's
+        `<button>` inside the tab's `<button>`, which is invalid
+        HTML and caused a React 18 hydration bailout on the whole
+        tab bar (pteam 2026-07-28 diagnostic — pinned as the
+        underlying cause of the pie-chart re-render race + `-1/-1`
+        bar-chart warnings). Wrapping each (tab, popover) pair in a
+        `relative` div puts them in separate DOM subtrees; the ?
+        icon is visually inside the tab via `absolute right-1
+        top-1/2 -translate-y-1/2` but no longer nests into it.
+        Clicks on the ? no longer bubble to the tab either — they
+        land on the icon container, not the tab button.
+      */}
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="grid w-full grid-cols-5 print:hidden h-12">
           <TabsTrigger value="introduction" {...tourAnchor('tab-introduction')}>Introduction</TabsTrigger>
-          <TabsTrigger value="demographics" {...tourAnchor('tab-demographics')}>
-            Demographics
-            <TabHelpPopover tab="Demographics" onOpenGuide={openGuideAt} />
-          </TabsTrigger>
-          <TabsTrigger value="dynamic-benchmarking" {...tourAnchor('tab-benchmarking')}>
-            Benchmarking
-            <TabHelpPopover tab="Benchmarking" onOpenGuide={openGuideAt} />
-          </TabsTrigger>
-          <TabsTrigger value="sociometric-leaders" {...tourAnchor('tab-sociometric-leaders')}>
-            Sociometric Leaders
-            <TabHelpPopover tab="Sociometric Leaders" onOpenGuide={openGuideAt} />
-          </TabsTrigger>
-          <TabsTrigger value="total-weighted-score" {...tourAnchor('tab-total-weighted-score')}>
-            Total Weighted Score
-            <TabHelpPopover tab="Total Weighted Score" onOpenGuide={openGuideAt} />
-          </TabsTrigger>
+          <div className="relative flex">
+            <TabsTrigger value="demographics" className="w-full pr-7" {...tourAnchor('tab-demographics')}>
+              Demographics
+            </TabsTrigger>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 z-10">
+              <TabHelpPopover tab="Demographics" onOpenGuide={openGuideAt} />
+            </div>
+          </div>
+          <div className="relative flex">
+            <TabsTrigger value="dynamic-benchmarking" className="w-full pr-7" {...tourAnchor('tab-benchmarking')}>
+              Benchmarking
+            </TabsTrigger>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 z-10">
+              <TabHelpPopover tab="Benchmarking" onOpenGuide={openGuideAt} />
+            </div>
+          </div>
+          <div className="relative flex">
+            <TabsTrigger value="sociometric-leaders" className="w-full pr-7" {...tourAnchor('tab-sociometric-leaders')}>
+              Sociometric Leaders
+            </TabsTrigger>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 z-10">
+              <TabHelpPopover tab="Sociometric Leaders" onOpenGuide={openGuideAt} />
+            </div>
+          </div>
+          <div className="relative flex">
+            <TabsTrigger value="total-weighted-score" className="w-full pr-7" {...tourAnchor('tab-total-weighted-score')}>
+              Total Weighted Score
+            </TabsTrigger>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 z-10">
+              <TabHelpPopover tab="Total Weighted Score" onOpenGuide={openGuideAt} />
+            </div>
+          </div>
         </TabsList>
 
         <TabsContent value="introduction" className="mt-6">
