@@ -76,11 +76,29 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — survey submit path', () =
     await prisma.surveyQuestion.deleteMany({ where: { campaignId } });
 
     // Add a nomination-type SurveyQuestion with useBrandGrid = true.
-    const nomQuestion = await prisma.question.findFirst({
-      where: { nominationType: { not: null } },
+    //
+    // v2.1.1 — upsert a hermetic test-owned Question (id namespaced under
+    // cme2e0stable0) instead of `findFirst` on real prod Questions.
+    // Prior behavior picked up whatever nominationType Question came
+    // first in the DB; when admins bumped `minEntries` from 1 to 3 on a
+    // real Dry Eye Question, this test's 2-name submit correctly failed
+    // validation and looked like a release regression.
+    // The `update` clause enforces `minEntries: null` on every run so a
+    // future drift on the stable fixture id can't reintroduce the bug.
+    // See docs/findings/5.1.0-post-soak-two-e2e-fragility-items-2026-08-02.md
+    const nomQuestion = await prisma.question.upsert({
+      where: { id: 'cme2e0stable0quest0001' },
+      update: { minEntries: null },
+      create: {
+        id: 'cme2e0stable0quest0001',
+        text: 'E2E stable nomination Question (hermetic test fixture)',
+        type: 'MULTI_TEXT',
+        nominationType: 'NATIONAL_LEADER',
+        minEntries: null,
+        isRequired: false,
+      },
       select: { id: true, text: true, nominationType: true },
     });
-    if (!nomQuestion) throw new Error('No nomination Question in DB');
     const sq = await prisma.surveyQuestion.create({
       data: {
         campaignId,

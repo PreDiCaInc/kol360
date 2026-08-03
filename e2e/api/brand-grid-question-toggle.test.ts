@@ -37,17 +37,27 @@ describe.skipIf(skipIfNoAuth)('Brand-Affinity Grid — useBrandGrid per-question
     campaignId = created.data.id;
     console.log(`Created campaign ${campaignId} for question-toggle tests`);
 
-    // Look up any Question in the bank with a nominationType — the fixture
-    // question ids drift over time, so we search dynamically.
-    const nomQuestion = await prisma.question.findFirst({
-      where: { nominationType: { not: null } },
+    // v2.1.1 — upsert a hermetic test-owned Question (id namespaced
+    // under cme2e0stable0) instead of `findFirst` on real prod
+    // Questions. Same class of ambient-DB fragility as
+    // brand-grid-survey-submit.test.ts; the toggle test doesn't hit the
+    // minEntries validator today, but the coupling is the same and
+    // will eventually break for a similar reason (unfiltered `findFirst`
+    // on any admin-tunable column). See docs/findings/5.1.0-post-soak-
+    // two-e2e-fragility-items-2026-08-02.md.
+    const nomQuestion = await prisma.question.upsert({
+      where: { id: 'cme2e0stable0quest0001' },
+      update: { minEntries: null },
+      create: {
+        id: 'cme2e0stable0quest0001',
+        text: 'E2E stable nomination Question (hermetic test fixture)',
+        type: 'MULTI_TEXT',
+        nominationType: 'NATIONAL_LEADER',
+        minEntries: null,
+        isRequired: false,
+      },
       select: { id: true, text: true, nominationType: true },
     });
-    if (!nomQuestion) {
-      throw new Error(
-        'No Question row with nominationType found in the DB — cannot run useBrandGrid toggle test'
-      );
-    }
 
     // Insert a SurveyQuestion into the fresh test campaign referencing
     // that nomination Question. Cleanup cascades when the campaign gets
