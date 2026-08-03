@@ -127,19 +127,35 @@ async function ensureClientSelected(page: Page): Promise<void> {
 
   await trigger.click();
   const firstOption = page.getByRole('option').first();
-  await firstOption.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+
+  // v2.1.1 — surface helper failures as helper failures. Prior versions
+  // swallowed timeouts here, which meant downstream tour assertions
+  // failed with misleading "how-to button missing" errors when the real
+  // cause was "client-picker never populated." Now the failure names
+  // itself. See docs/findings/5.1.0-post-soak-two-e2e-fragility-items-2026-08-02.md
+  await firstOption.waitFor({ state: 'visible', timeout: 5000 }).catch((e) => {
+    throw new Error(
+      'ensureClientSelected: client-picker options never became visible — ' +
+        (e instanceof Error ? e.message : String(e)),
+    );
+  });
   if (!(await firstOption.count())) return;
 
   await firstOption.click();
 
   // Wait for the post-select tab list to appear (empty-state renders
-  // no tabs). Bail silently on timeout — downstream tour assertions
-  // will surface a real failure with a clearer message.
+  // no tabs). Failure here means the click was accepted but the picker
+  // didn't advance state — bubble that up as a helper-scoped error.
   await page
     .getByRole('tablist')
     .first()
     .waitFor({ state: 'visible', timeout: 8000 })
-    .catch(() => {});
+    .catch((e) => {
+      throw new Error(
+        'ensureClientSelected: post-select tablist never appeared — ' +
+          (e instanceof Error ? e.message : String(e)),
+      );
+    });
 }
 
 test.describe('Interactive tour engine', () => {
