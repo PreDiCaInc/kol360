@@ -21,6 +21,11 @@ function normalizeIdentifierForLookup(raw: string): string {
   return trimmed;
 }
 import { resolveUserIdForAudit } from '../lib/audit';
+import {
+  HCP_AUDIT_SELECT,
+  pickHcpAuditSnapshot,
+  type HcpAuditSnapshot,
+} from './hcp-fields';
 
 // v1.17.2: the local normalizeSpecialty() that used to live here mapped CSV
 // inputs to credential-form (MD/DO/OD) — a different output domain than the
@@ -531,14 +536,23 @@ export class HcpService {
       //      for "John Smith" would silently MERGE into a US "John
       //      Smith" HCP if the names collide. Country-scoping the
       //      alias fetch closes that data-integrity hole.
+      // v2.1.2 — expand the pre-update select to cover every field in
+      // `UPDATABLE_HCP_AUDIT_FIELDS` (via `HCP_AUDIT_SELECT`) so the
+      // per-row `hcp.updated` audit row (emitted at the bottom of this
+      // function) can carry a complete `oldValues` snapshot. Fixes the
+      // gap surfaced by the 2026-08-04 Jen Pikor incident where 416
+      // HCPs were corrupted by a sort-mangled CSV and surgical revert
+      // via AuditLog was OFF THE TABLE because every `hcp.updated` row
+      // written by this path had `oldValues = NULL`. See
+      // docs/findings/bulk-import-no-oldvalues-blocks-surgical-revert-2026-08-05.md.
+      //
+      // Note: `id` is added on top of `HCP_AUDIT_SELECT` because it's
+      // NOT in the audit snapshot (never changes / meta) but IS needed
+      // to key the pre-image map by Hcp.id for the audit-write loop.
       const [existingHcps, existingAliases] = await Promise.all([
         prisma.hcp.findMany({
           where: { npi: { in: candidateNpis }, country },
-          select: {
-            id: true, npi: true, firstName: true, lastName: true,
-            email: true, specialty: true, subSpecialty: true,
-            city: true, state: true, country: true,
-          },
+          select: { id: true, ...HCP_AUDIT_SELECT },
         }),
         prisma.hcpAlias.findMany({
           where: {
@@ -640,9 +654,20 @@ export class HcpService {
       const toMerge: Array<{ hcpId: string; data: Parameters<typeof prisma.hcp.update>[0]['data'] }> = [];
       const toCreate: typeof validRows = [];
 
+      // v2.1.2 — pre-image snapshots keyed by Hcp.id so the per-row
+      // `hcp.updated` audit rows emitted at the end of this function
+      // carry `oldValues` (which was previously always NULL, blocking
+      // surgical revert on data-corruption incidents like the 2026-08-04
+      // 416-HCP Jen Pikor case). Populated during categorization from
+      // the already-loaded `existingByNpi` map (UPDATE branch) and the
+      // `aliasByName` include (MERGE branch) — zero extra reads over
+      // the pre-fix implementation.
+      const preImagesByHcpId = new Map<string, HcpAuditSnapshot>();
+
       for (const row of validRows) {
         const existing = existingByNpi.get(row.npi);
         if (existing) {
+          preImagesByHcpId.set(existing.id, pickHcpAuditSnapshot(existing));
           // v1.17.57 — UPDATE only sets the columns the row actually
           // provides. Pre-fix this used `row.X || existing.X` fallbacks
           // (writing back stale snapshots from the bulk-load step at
@@ -675,6 +700,7 @@ export class HcpService {
         } else {
           const aliasMatch = aliasByName.get(row.fullName.toLowerCase());
           if (aliasMatch?.hcp) {
+            preImagesByHcpId.set(aliasMatch.hcp.id, pickHcpAuditSnapshot(aliasMatch.hcp));
             toMerge.push({
               hcpId: aliasMatch.hcp.id,
               data: {
@@ -852,7 +878,18 @@ export class HcpService {
       // Audit table partition pressure: 4k rows per import × 50
       // imports/year ≈ 200k/yr — comfortable for the current
       // unpartitioned design (~11.6k current). Revisit at 100M.
-      const auditRows: Array<{ action: string; entityId: string; metadata: Record<string, unknown> }> = [];
+      // v2.1.2 — added optional `oldValues` on each row so the
+      // `hcp.updated` shape carries the pre-image snapshot captured
+      // during categorization. `hcp.created` rows legitimately have no
+      // oldValues. See docs/findings/bulk-import-no-oldvalues-blocks-
+      // surgical-revert-2026-08-05.md for the incident that surfaced
+      // this gap.
+      const auditRows: Array<{
+        action: string;
+        entityId: string;
+        metadata: Record<string, unknown>;
+        oldValues?: HcpAuditSnapshot;
+      }> = [];
       for (const id of createdHcpIds) {
         auditRows.push({
           action: 'hcp.created',
@@ -865,6 +902,7 @@ export class HcpService {
           action: 'hcp.updated',
           entityId: id,
           metadata: { source: 'bulk_import', batchId: batch.id, fileName: filename },
+          oldValues: preImagesByHcpId.get(id),
         });
       }
       if (auditRows.length > 0) {
@@ -882,6 +920,12 @@ export class HcpService {
               action: r.action,
               entityType: 'Hcp',
               entityId: r.entityId,
+              // v2.1.2 — populated on hcp.updated rows via
+              // preImagesByHcpId; undefined on hcp.created rows (no
+              // pre-image exists). Prisma serializes `undefined` as
+              // absent (i.e. leaves DB NULL), which is the intended
+              // shape for created rows.
+              oldValues: r.oldValues as Prisma.InputJsonValue | undefined,
               newValues: r.metadata as Prisma.InputJsonValue,
             })),
           });

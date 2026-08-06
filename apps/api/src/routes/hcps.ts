@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { createHcpSchema, updateHcpSchema } from '@kol360/shared';
 import { requireTenantUser, gateWritesToAdmins, getClientHcpIds, hasHcpAccess } from '../middleware/rbac';
 import { HcpService } from '../services/hcp.service';
+import { pickHcpAuditSnapshot } from '../services/hcp-fields';
 // score-calculation.service removed in Phase 3 PR A — see /admin/kol-analysis.
 import { importProgressStore } from '../services/import-progress.service';
 import { createAuditLog } from '../lib/audit';
@@ -238,10 +239,17 @@ export const hcpRoutes: FastifyPluginAsync = async (fastify) => {
     // successfully, so we know SOMETHING in the payload was intended
     // as an update.)
     if (!isNpiChange && !isEmailChange && !isSpecialtyChange) {
+      // v2.1.2 — pre-image snapshot via the shared picker (was:
+      // `{ firstName, lastName }` inline — only 2 of 13 audit-worthy
+      // fields). Same const used by both bulk-import parse sites, so
+      // any Hcp column added later flows into audit consistently across
+      // admin-edit + bulk-import + campaign-scoped bulk. See
+      // docs/findings/bulk-import-no-oldvalues-blocks-surgical-revert-
+      // 2026-08-05.md.
       await createAuditLog(request.user!.sub, {
         ...baseEntity,
         action: 'hcp.updated',
-        oldValues: { firstName: existing.firstName, lastName: existing.lastName },
+        oldValues: pickHcpAuditSnapshot(existing),
         newValues: data,
       });
     }
