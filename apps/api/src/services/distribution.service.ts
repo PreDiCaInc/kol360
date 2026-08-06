@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { HcpService } from './hcp.service';
+import { pickHcpAuditSnapshot, UPDATABLE_HCP_AUDIT_FIELDS } from './hcp-fields';
 
 const hcpServiceInstance = new HcpService();
 import { emailService } from './email.service';
@@ -667,16 +668,18 @@ export class DistributionService {
         let hcp = await prisma.hcp.findUnique({ where: { npi } });
 
         if (hcp) {
-          // Capture old values for audit logging
-          const oldValues = {
-            firstName: hcp.firstName,
-            lastName: hcp.lastName,
-            email: hcp.email,
-            specialty: hcp.specialty,
-            subSpecialty: hcp.subSpecialty,
-            city: hcp.city,
-            state: hcp.state,
-          };
+          // v2.1.2 — pre-image snapshot for audit via the shared
+          // `pickHcpAuditSnapshot` (was: inline 7-field object literal).
+          // De-duped with hcp.service.ts:importFromFile + routes/hcps.ts
+          // PUT /:id so a future Hcp column addition can't silently drop
+          // from audit by touching only one of the three sites. See
+          // docs/findings/bulk-import-no-oldvalues-blocks-surgical-revert-
+          // 2026-08-05.md for the incident that motivated the extraction.
+          const oldSnapshot = pickHcpAuditSnapshot(hcp);
+          const oldEmail = hcp.email;
+          const oldSpecialty = hcp.specialty;
+          const oldFirstName = hcp.firstName;
+          const oldLastName = hcp.lastName;
 
           // Update existing HCP with any new data
           hcp = await prisma.hcp.update({
@@ -693,49 +696,43 @@ export class DistributionService {
             },
           });
 
-          // Audit log if any field actually changed
-          const newValues = {
-            firstName: hcp.firstName,
-            lastName: hcp.lastName,
-            email: hcp.email,
-            specialty: hcp.specialty,
-            subSpecialty: hcp.subSpecialty,
-            city: hcp.city,
-            state: hcp.state,
-          };
+          // v2.1.2 — post-update snapshot via the same shared picker,
+          // so any new Hcp column added later automatically flows into
+          // both old + new sides here.
+          const newSnapshot = pickHcpAuditSnapshot(hcp);
 
-          const hasChanges = Object.keys(oldValues).some(
-            (key) => oldValues[key as keyof typeof oldValues] !== newValues[key as keyof typeof newValues]
+          const hasChanges = UPDATABLE_HCP_AUDIT_FIELDS.some(
+            (key) => oldSnapshot[key] !== newSnapshot[key]
           );
 
           if (hasChanges) {
             // v1.17.35: emit dedicated email_changed / specialty_changed
             // rows in addition to the generic hcp.updated row so audit
             // queries on field churn are single-SELECT.
-            if (oldValues.email !== newValues.email) {
+            if (oldEmail !== hcp.email) {
               await createAuditLog(userId, {
                 action: 'hcp.email_changed',
                 entityType: 'Hcp',
                 entityId: hcp.id,
-                oldValues: { firstName: oldValues.firstName, lastName: oldValues.lastName, email: oldValues.email },
-                newValues: { email: newValues.email, _source: 'campaign-import', _campaignId: campaignId },
+                oldValues: { firstName: oldFirstName, lastName: oldLastName, email: oldEmail },
+                newValues: { email: hcp.email, _source: 'campaign-import', _campaignId: campaignId },
               });
             }
-            if (oldValues.specialty !== newValues.specialty) {
+            if (oldSpecialty !== hcp.specialty) {
               await createAuditLog(userId, {
                 action: 'hcp.specialty_changed',
                 entityType: 'Hcp',
                 entityId: hcp.id,
-                oldValues: { firstName: oldValues.firstName, lastName: oldValues.lastName, specialty: oldValues.specialty },
-                newValues: { specialty: newValues.specialty, _source: 'campaign-import', _campaignId: campaignId },
+                oldValues: { firstName: oldFirstName, lastName: oldLastName, specialty: oldSpecialty },
+                newValues: { specialty: hcp.specialty, _source: 'campaign-import', _campaignId: campaignId },
               });
             }
             await createAuditLog(userId, {
               action: 'hcp.updated',
               entityType: 'Hcp',
               entityId: hcp.id,
-              oldValues,
-              newValues: { ...newValues, _source: 'campaign-import', _campaignId: campaignId },
+              oldValues: oldSnapshot,
+              newValues: { ...newSnapshot, _source: 'campaign-import', _campaignId: campaignId },
             });
           }
           updatedHcpIds.push(hcp.id);
